@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Console appender with timestamp + logger name -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%-15thread] %highlight(%-5level) %cyan(%logger{30}) - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Suppress noisy Javalin / Jetty startup logs; keep INFO for CodeLens itself -->
+  <logger name="io.javalin"              level="WARN"/>
+  <logger name="org.eclipse.jetty"       level="WARN"/>
+  <logger name="org.apache.lucene"       level="WARN"/>
+  <logger name="com.zaxxer.hikari"       level="WARN"/>
+  <logger name="com.codelens"            level="INFO"/>
+
+  <root level="WARN">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

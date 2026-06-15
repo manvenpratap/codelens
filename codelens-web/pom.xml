@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.codelens</groupId><artifactId>codelens</artifactId><version>1.0.0</version></parent>
+  <artifactId>codelens-web</artifactId>
+  <name>CodeLens Web – Static frontend resources</name>
+  <!-- ADR: Vanilla JS + Canvas API for graph rendering – no build tool, no CDN,
+       100% offline. Custom force simulation replaces D3 to eliminate runtime deps. -->
+</project>

@@ -1,0 +1,18 @@
+# Maven build output
+target/
+*.class
+
+# CodeLens runtime data (re-created on each scan)
+codelens-data/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS noise
+.DS_Store
+Thumbs.db
