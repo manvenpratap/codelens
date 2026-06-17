@@ -19,6 +19,7 @@
     <module>codelens-parser</module>
     <module>codelens-analysis</module>
     <module>codelens-storage</module>
+    <module>codelens-git</module>
     <module>codelens-api</module>
     <module>codelens-web</module>
     <module>codelens-app</module>
@@ -45,6 +46,8 @@
     <hikaricp.version>5.1.0</hikaricp.version>
     <logback.version>1.5.3</logback.version>
     <slf4j.version>2.0.12</slf4j.version>
+    <!-- ADR: JGit – pure-Java git library; no system git binary required -->
+    <jgit.version>6.9.0.202403050737-r</jgit.version>
   </properties>
 
   <dependencyManagement>
@@ -56,6 +59,7 @@
       <dependency><groupId>com.codelens</groupId><artifactId>codelens-storage</artifactId><version>${project.version}</version></dependency>
       <dependency><groupId>com.codelens</groupId><artifactId>codelens-api</artifactId><version>${project.version}</version></dependency>
       <dependency><groupId>com.codelens</groupId><artifactId>codelens-web</artifactId><version>${project.version}</version></dependency>
+      <dependency><groupId>com.codelens</groupId><artifactId>codelens-git</artifactId><version>${project.version}</version></dependency>
       <!-- JavaParser -->
       <dependency><groupId>com.github.javaparser</groupId><artifactId>javaparser-core</artifactId><version>${javaparser.version}</version></dependency>
       <!-- H2 -->
@@ -66,6 +70,8 @@
       <dependency><groupId>org.apache.lucene</groupId><artifactId>lucene-analysis-common</artifactId><version>${lucene.version}</version></dependency>
       <!-- JGraphT -->
       <dependency><groupId>org.jgrapht</groupId><artifactId>jgrapht-core</artifactId><version>${jgrapht.version}</version></dependency>
+      <!-- JGit -->
+      <dependency><groupId>org.eclipse.jgit</groupId><artifactId>org.eclipse.jgit</artifactId><version>${jgit.version}</version></dependency>
       <!-- Javalin -->
       <dependency><groupId>io.javalin</groupId><artifactId>javalin</artifactId><version>${javalin.version}</version></dependency>
       <!-- Jackson -->

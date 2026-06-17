@@ -162,6 +162,18 @@ public class DatabaseManager {
                 "  kind             VARCHAR" +
                 ")");
 
+            // git_meta ──────────────────────────────────────────────────────
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS git_meta (" +
+                "  entity_fqn        VARCHAR PRIMARY KEY," +
+                "  last_author_name  VARCHAR," +
+                "  last_author_email VARCHAR," +
+                "  last_commit_time  BIGINT DEFAULT 0," +
+                "  last_commit_hash  VARCHAR," +
+                "  last_commit_msg   VARCHAR," +
+                "  commit_count      INTEGER DEFAULT 0" +
+                ")");
+
             // Indices for fast lookups ───────────────────────────────────────
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg  ON types(package_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type ON fields(declaring_type_fqn)");
@@ -182,6 +194,7 @@ public class DatabaseManager {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("DELETE FROM inconsistencies");
+            stmt.execute("DELETE FROM git_meta");
             stmt.execute("DELETE FROM relationships");
             stmt.execute("DELETE FROM methods");
             stmt.execute("DELETE FROM fields");

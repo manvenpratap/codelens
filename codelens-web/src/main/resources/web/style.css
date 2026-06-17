@@ -102,9 +102,84 @@ input, textarea { font-family: inherit; font-size: inherit; outline: none; }
   grid-template-areas:
     "header  header  header"
     "left    centre  right";
-  height: 100vh;
+  height: calc(100vh - 24px); /* Shared with footer height */
   width:  100vw;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   App Footer Styles
+   ───────────────────────────────────────────────────────────────────────────── */
+#app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.footer-segment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-indicator.live {
+  background: var(--emerald);
+  box-shadow: 0 0 6px var(--emerald);
+}
+.status-indicator.busy {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  animation: pulse 1s infinite alternate;
+}
+
+.footer-meta-pill {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.footer-shortcuts {
+  display: flex;
+  gap: 16px;
+}
+
+.shortcut-tip {
+  color: var(--text-muted);
+}
+
+.shortcut-tip kbd {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  padding: 0px 4px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  font-size: 9px;
+  margin-right: 2px;
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    4. Header bar
@@ -760,6 +835,17 @@ input, textarea { font-family: inherit; font-size: inherit; outline: none; }
   word-break: break-all;
 }
 .meta-val.highlight { color: var(--violet); }
+.source-file-link {
+  color: var(--violet);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--violet-dim);
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.source-file-link:hover {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
 
 /* Complexity bar */
 .complexity-bar {
@@ -1027,4 +1113,154 @@ input, textarea { font-family: inherit; font-size: inherit; outline: none; }
   text-align: center;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Git view — Tab panel 4
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.git-view-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+@media (max-width: 700px) {
+  .git-view-inner { grid-template-columns: 1fr; }
+}
+
+.git-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.git-section-title {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+  flex-shrink: 0;
+}
+
+/* Authors leaderboard */
+.git-authors-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.git-author-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.git-author-row:last-child { border-bottom: none; }
+.git-author-row:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
+
+.git-author-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b5cf6 0%, #22d3ee 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.git-author-info { flex: 1; min-width: 0; }
+
+.git-author-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-author-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.git-author-rank {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Hottest entities bar chart */
+.git-hot-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+
+.git-hot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+}
+
+.git-hot-label {
+  width: 110px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-hot-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-base);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.git-hot-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #22d3ee 0%, #f59e0b 60%, #ef4444 100%);
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+.git-hot-count {
+  width: 28px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Heat button active state */
+.graph-btn.active {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
 }

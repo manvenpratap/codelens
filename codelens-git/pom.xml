@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.codelens</groupId><artifactId>codelens</artifactId><version>1.0.0</version></parent>
+  <artifactId>codelens-git</artifactId>
+  <name>CodeLens Git – JGit blame and log annotation</name>
+
+  <!--
+    ADR: JGit (Eclipse) chosen over spawning a ProcessBuilder(git …) because:
+      · Zero system dependency — works even where git is not on PATH
+      · Fully embeddable in the fat JAR
+      · Provides a proper Java API for blame, log, and repo discovery
+  -->
+  <dependencies>
+    <dependency><groupId>com.codelens</groupId><artifactId>codelens-core</artifactId></dependency>
+    <!-- JGit: pure-Java Git library -->
+    <dependency>
+      <groupId>org.eclipse.jgit</groupId>
+      <artifactId>org.eclipse.jgit</artifactId>
+    </dependency>
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
+  </dependencies>
+</project>

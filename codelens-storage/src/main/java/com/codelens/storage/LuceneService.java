@@ -36,8 +36,10 @@ public class LuceneService {
     private static final String F_LABEL         = "label";      // display name
     private static final String F_FQN           = "fqn";
     private static final String F_SIMPLE_NAME   = "simpleName";
+    @SuppressWarnings("unused") // retained as schema documentation
     private static final String F_PACKAGE       = "packageFqn";
     private static final String F_DECLARING     = "declaringType";
+    @SuppressWarnings("unused") // retained as schema documentation
     private static final String F_EXTRA         = "extra";      // modifiers, return type, etc.
     private static final String F_SEARCH        = "search";     // all-in-one search field
 
@@ -150,7 +152,7 @@ public class LuceneService {
             List<SearchHit> results = new ArrayList<>(hits.scoreDocs.length);
 
             for (ScoreDoc sd : hits.scoreDocs) {
-                org.apache.lucene.document.Document doc = searcher.doc(sd.doc);
+                org.apache.lucene.document.Document doc = searcher.storedFields().document(sd.doc);
                 results.add(new SearchHit(
                     doc.get(F_ID),
                     doc.get(F_KIND),

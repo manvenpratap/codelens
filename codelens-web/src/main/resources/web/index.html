@@ -68,6 +68,9 @@
         spellcheck="false"
         aria-describedby="scan-hint"
       />
+      <button id="browse-btn" class="btn-ghost" aria-label="Browse directory">
+        Browse…
+      </button>
       <button id="scan-btn" class="btn-primary" aria-label="Start source scan">
         Scan
       </button>
@@ -209,6 +212,19 @@
         <span class="tab-badge" aria-label="inconsistency count">0</span>
       </button>
 
+      <!-- Git tab — blame annotation, top authors, hot files -->
+      <button
+        class="tab"
+        role="tab"
+        id="tab-git"
+        data-tab="git"
+        aria-selected="false"
+        aria-controls="git-view"
+      >
+        <span aria-hidden="true">⎇</span>
+        Git
+      </button>
+
     </nav><!-- /.tab-bar -->
 
 
@@ -264,6 +280,13 @@
       <div class="graph-controls" aria-label="Graph controls">
         <button
           class="graph-btn"
+          id="btn-heat"
+          title="Toggle commit-heat overlay (H)"
+          aria-label="Toggle commit heat overlay"
+          aria-pressed="false"
+        >🔥</button>
+        <button
+          class="graph-btn"
           id="btn-fit"
           title="Fit graph to screen (F)"
           aria-label="Fit graph to screen"
@@ -308,6 +331,34 @@
       </div>
     </section><!-- /#inconsistency-view -->
 
+
+    <!-- ── Tab panel 4: Git — blame annotations, top authors, hot files ─── -->
+    <section
+      class="tab-content"
+      id="git-view"
+      role="tabpanel"
+      aria-labelledby="tab-git"
+      tabindex="0"
+      aria-live="polite"
+    >
+      <div class="git-view-inner">
+        <!-- Top Authors leaderboard -->
+        <div class="git-section" id="git-authors-section">
+          <div class="git-section-title">Top Authors</div>
+          <div id="git-authors-list" class="git-authors-list">
+            <div class="list-empty">Run a scan on a git repository to see author stats.</div>
+          </div>
+        </div>
+        <!-- Hottest Entities -->
+        <div class="git-section" id="git-hot-section">
+          <div class="git-section-title">🔥 Hottest Entities</div>
+          <div id="git-hot-list" class="git-hot-list">
+            <div class="list-empty">No churn data available yet.</div>
+          </div>
+        </div>
+      </div>
+    </section><!-- /#git-view -->
+
   </main><!-- /#centre-panel -->
 
 
@@ -337,6 +388,26 @@
   </aside><!-- /#right-panel -->
 
 </div><!-- /#app -->
+
+<!-- Useful status/shortcut interactive footer -->
+<footer id="app-footer" role="contentinfo">
+  <div class="footer-segment footer-status">
+    <span class="status-indicator live"></span>
+    <span id="footer-status-text">Analyzer Idle</span>
+  </div>
+  <div class="footer-segment footer-info">
+    <span class="footer-meta-pill" title="Database status">DB: SQLite (Embedded)</span>
+    <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: —</span>
+  </div>
+  <div class="footer-segment footer-shortcuts">
+    <span class="shortcut-tip"><kbd>⌘K</kbd> Search</span>
+    <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
+    <span class="shortcut-tip"><kbd>2</kbd> KB</span>
+    <span class="shortcut-tip"><kbd>3</kbd> Issues</span>
+    <span class="shortcut-tip"><kbd>🔥</kbd> Heat Overlay</span>
+  </div>
+</footer>
+
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════

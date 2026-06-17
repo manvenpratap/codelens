@@ -18,6 +18,7 @@ import com.codelens.storage.LuceneService;
 public class Application {
 
     public static void main(String[] args) throws Exception {
+        System.setProperty("java.awt.headless", "false");
         String dataDir = System.getProperty("codelens.data", "./codelens-data");
         int    port    = Integer.parseInt(System.getProperty("codelens.port", "7878"));
 

@@ -98,11 +98,19 @@ class ForceGraph {
     this._ctx = this._canvas.getContext('2d');
 
     // Simulation state
-    this._nodes     = [];    // { id, label, role, type, x, y, vx, vy, pinned }
+    this._nodes     = [];    // { id, label, role, type, package, x, y, vx, vy, pinned }
     this._edges     = [];    // { source, target, kind }
     this._ticks     = 0;
     this._rafId     = null;
     this._hovered   = null;
+
+    // ── Graphify state ───────────────────────────────────────────────────────
+    this._heatMode  = false;            // commit-heat overlay toggle
+    this._heatData  = {};               // entityFqn → { commitCount, ... }
+    this._heatMax   = 1;                // max commitCount seen (for normalisation)
+    // Edge animation particles: each = { edgeIdx, t, speed }
+    this._particles = [];
+    this._particleTs = 0;               // timestamp of last particle spawn check
 
     // Viewport transform
     this._tx = 0;  // translate x
@@ -125,12 +133,13 @@ class ForceGraph {
   /**
    * Load new graph data and start/restart the simulation.
    *
-   * @param {Array<{id,label,role,type}>} nodes
+   * @param {Array<{id,label,role,type,package?}>} nodes
    * @param {Array<{source,target,kind}>} edges
    */
   setData(nodes, edges) {
-    const cx = this._canvas.width  / 2;
-    const cy = this._canvas.height / 2;
+    const dpr = window.devicePixelRatio || 1;
+    const cx = (this._canvas.width / dpr) / 2;
+    const cy = (this._canvas.height / dpr) / 2;
 
     // Initialise node positions: spread in a circle so spring forces
     // are meaningful from tick 0 (avoids a big bang at the origin).
@@ -146,16 +155,37 @@ class ForceGraph {
         pinned: false,
       };
     });
-    this._edges  = edges;
-    this._ticks  = 0;
-    this._hovered = null;
+    this._edges     = edges;
+    this._ticks     = 0;
+    this._hovered   = null;
+    this._particles = [];
     this._resetView();
+    this.fitToScreen();
     this._startLoop();
+  }
+
+  /**
+   * Supply commit-heat data so the heat overlay can scale node sizes and glow.
+   * @param {Object} heatMap  entityFqn → commitCount (number)
+   */
+  setHeatData(heatMap) {
+    this._heatData = heatMap || {};
+    const counts   = Object.values(this._heatData);
+    this._heatMax  = counts.length ? Math.max(...counts, 1) : 1;
+  }
+
+  /** Toggle the commit-heat overlay on/off. */
+  toggleHeat(on) {
+    this._heatMode = (on === undefined) ? !this._heatMode : !!on;
+    return this._heatMode;
   }
 
   /** Reset pan/zoom to fit all nodes in the viewport with padding. */
   fitToScreen() {
     if (this._nodes.length === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cw  = this._canvas.width / dpr;
+    const ch  = this._canvas.height / dpr;
     const pad = 60;
     const xs  = this._nodes.map(n => n.x);
     const ys  = this._nodes.map(n => n.y);
@@ -164,13 +194,13 @@ class ForceGraph {
     const dw   = maxX - minX || 1;
     const dh   = maxY - minY || 1;
     const sc   = Math.min(
-      (this._canvas.width  - pad * 2) / dw,
-      (this._canvas.height - pad * 2) / dh,
+      (cw - pad * 2) / dw,
+      (ch - pad * 2) / dh,
       2.0,
     );
     this._sc = sc;
-    this._tx = this._canvas.width  / 2 - ((minX + maxX) / 2) * sc;
-    this._ty = this._canvas.height / 2 - ((minY + maxY) / 2) * sc;
+    this._tx = cw / 2 - ((minX + maxX) / 2) * sc;
+    this._ty = ch / 2 - ((minY + maxY) / 2) * sc;
   }
 
   /** Remove all nodes and edges; stop the loop. */
@@ -204,8 +234,9 @@ class ForceGraph {
   _tick() {
     const nodes = this._nodes;
     const n     = nodes.length;
-    const cx    = this._canvas.width  / 2;
-    const cy    = this._canvas.height / 2;
+    const dpr   = window.devicePixelRatio || 1;
+    const cx    = (this._canvas.width / dpr) / 2;
+    const cy    = (this._canvas.height / dpr) / 2;
 
     // Reset accumulated forces
     for (let i = 0; i < n; i++) { nodes[i]._fx = 0; nodes[i]._fy = 0; }
@@ -241,14 +272,33 @@ class ForceGraph {
       tgt._fx -= fx;  tgt._fy -= fy;
     }
 
+    // ── Cluster gravity: same-package nodes attract each other ───────────────
+    const CLUSTER_K = 0.006;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (!nodes[i].package || nodes[i].package !== nodes[j].package) continue;
+        const dx   = nodes[j].x - nodes[i].x;
+        const dy   = nodes[j].y - nodes[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+        // Extra spring only when nodes are far apart
+        if (dist > PHYSICS.springLen * 1.5) {
+          const f  = (dist - PHYSICS.springLen) * CLUSTER_K;
+          const fx = (dx / dist) * f;
+          const fy = (dy / dist) * f;
+          nodes[i]._fx += fx;  nodes[i]._fy += fy;
+          nodes[j]._fx -= fx;  nodes[j]._fy -= fy;
+        }
+      }
+    }
+
     // ── Integrate velocity and position ──────────────────────────────────────
     for (let i = 0; i < n; i++) {
       const nd = nodes[i];
       if (nd.pinned) { nd.vx = 0; nd.vy = 0; continue; }
 
       // Weak centering force
-      nd._fx += (cx / this._sc - nd.x) * PHYSICS.centerForce * (n / 5 + 1);
-      nd._fy += (cy / this._sc - nd.y) * PHYSICS.centerForce * (n / 5 + 1);
+      nd._fx += (cx - nd.x) * PHYSICS.centerForce * (n / 5 + 1);
+      nd._fy += (cy - nd.y) * PHYSICS.centerForce * (n / 5 + 1);
 
       nd.vx = (nd.vx + nd._fx) * PHYSICS.damping;
       nd.vy = (nd.vy + nd._fy) * PHYSICS.damping;
@@ -300,11 +350,34 @@ class ForceGraph {
   }
 
   _drawEdges(ctx) {
-    for (const edge of this._edges) {
+    // ── Spawn new particles occasionally ────────────────────────────────────
+    const now = Date.now();
+    if (now - this._particleTs > 400 && this._edges.length > 0) {
+      this._particleTs = now;
+      // Spawn one particle per edge (up to 30 active at once)
+      if (this._particles.length < 30) {
+        const edgeIdx = Math.floor(Math.random() * this._edges.length);
+        this._particles.push({ edgeIdx, t: 0, speed: 0.008 + Math.random() * 0.006 });
+      }
+    }
+    // Advance particle positions
+    this._particles = this._particles.filter(p => p.t <= 1);
+    for (const p of this._particles) p.t += p.speed;
+
+    // Build lookup for particle drawing
+    const particlesByEdge = {};
+    for (const p of this._particles) {
+      if (!particlesByEdge[p.edgeIdx]) particlesByEdge[p.edgeIdx] = [];
+      particlesByEdge[p.edgeIdx].push(p.t);
+    }
+
+    for (let i = 0; i < this._edges.length; i++) {
+      const edge = this._edges[i];
       const src = this._nodes.find(n => n.id === edge.source);
       const tgt = this._nodes.find(n => n.id === edge.target);
       if (!src || !tgt) continue;
-      this._drawArrow(ctx, src.x, src.y, tgt.x, tgt.y, edge.kind);
+      this._drawArrow(ctx, src.x, src.y, tgt.x, tgt.y, edge.kind,
+                      particlesByEdge[i] || []);
     }
   }
 
@@ -362,12 +435,45 @@ class ForceGraph {
   }
 
   _drawNode(ctx, node, isHovered) {
-    const r         = PHYSICS.nodeRadius;
+    const baseR     = PHYSICS.nodeRadius;
     const x         = node.x;
     const y         = node.y;
-    const baseColour = GC.roles[node.role]  || GC.roles.default;
-    const lightColour = GC.roleLight[node.role] || GC.roleLight.default;
-    const isRoot    = node.role === 'root';
+
+    // ── Heat overlay: scale radius and pick colour based on commit count ──────
+    let heatRatio = 0;
+    let r         = baseR;
+    let baseColour, lightColour;
+
+    if (this._heatMode) {
+      const count   = this._heatData[node.id] || 0;
+      heatRatio     = Math.min(count / this._heatMax, 1);
+      r             = baseR + heatRatio * 10;   // up to +10px for hottest nodes
+      // Interpolate cold→warm→hot
+      if (heatRatio < 0.5) {
+        baseColour  = _lerpColor('#22d3ee', '#f59e0b', heatRatio * 2);
+        lightColour = _lerpColor('#67e8f9', '#fcd34d', heatRatio * 2);
+      } else {
+        baseColour  = _lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.5) * 2);
+        lightColour = _lerpColor('#fcd34d', '#fca5a5', (heatRatio - 0.5) * 2);
+      }
+    } else {
+      baseColour  = GC.roles[node.role]      || GC.roles.default;
+      lightColour = GC.roleLight[node.role]  || GC.roleLight.default;
+    }
+
+    const isRoot = node.role === 'root';
+
+    // ── Heat glow ring (heat mode only) ──────────────────────────────────────
+    if (this._heatMode && heatRatio > 0.1) {
+      const glowR = r + 4 + heatRatio * 14;
+      ctx.beginPath();
+      ctx.arc(x, y, glowR, 0, Math.PI * 2);
+      const glowGrad = ctx.createRadialGradient(x, y, r, x, y, glowR);
+      glowGrad.addColorStop(0,   baseColour + Math.round(heatRatio * 120).toString(16).padStart(2,'0'));
+      glowGrad.addColorStop(1,   'transparent');
+      ctx.fillStyle = glowGrad;
+      ctx.fill();
+    }
 
     // ── Outer glow ring for root node or hovered ──────────────────────────────
     if (isRoot || isHovered) {
@@ -413,13 +519,18 @@ class ForceGraph {
       ? node.label.slice(0, maxChars - 1) + '…'
       : node.label;
 
+    // Heat badge: show commit count in brackets when heat mode active
+    const heatLabel = (this._heatMode && this._heatData[node.id])
+      ? ` (${this._heatData[node.id]})`
+      : '';
+
     ctx.font        = isRoot
       ? `bold 11px ${getComputedStyle(document.documentElement).getPropertyValue('--font-ui') || 'system-ui'}`
       : `10px system-ui`;
     ctx.fillStyle   = isHovered ? '#e6edf3' : '#8b949e';
     ctx.textAlign   = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(lbl, x, y + r + PHYSICS.labelPad - 2);
+    ctx.fillText(lbl + heatLabel, x, y + r + PHYSICS.labelPad - 2);
   }
 
   /* ── Interaction ─────────────────────────────────────────────────────────── */
@@ -435,7 +546,7 @@ class ForceGraph {
     // ── Mouse down ─────────────────────────────────────────────────────────────
     cv.addEventListener('mousedown', e => {
       const wp = this._screenToWorld(e.offsetX, e.offsetY);
-      const hit = this._hitTest(wp.x, wp.y);
+      const hit = this._hitTest(e.offsetX, e.offsetY);
       clickStart = { x: e.offsetX, y: e.offsetY };
 
       if (hit) {
@@ -466,7 +577,7 @@ class ForceGraph {
 
       } else {
         // Hover hit test
-        const hit = this._hitTest(wp.x, wp.y);
+        const hit = this._hitTest(e.offsetX, e.offsetY);
         this._hovered = hit;
         cv.style.cursor = hit ? 'pointer' : 'grab';
         this._showTooltip(hit, e.clientX, e.clientY);
@@ -478,8 +589,8 @@ class ForceGraph {
       if (dragging) {
         const dx = e.offsetX - (clickStart?.x || 0);
         const dy = e.offsetY - (clickStart?.y || 0);
-        // If barely moved, treat as a click
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+        // Increase tolerance threshold to 8px for high-DPI reliability
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
           if (this.onNodeClick) this.onNodeClick(dragging);
         }
         dragging.pinned = false;
@@ -535,12 +646,23 @@ class ForceGraph {
     };
   }
 
-  _hitTest(wx, wy) {
-    const r2 = PHYSICS.nodeRadius * PHYSICS.nodeRadius;
+  _hitTest(sx, sy) {
     return this._nodes.find(n => {
-      const dx = n.x - wx;
-      const dy = n.y - wy;
-      return dx * dx + dy * dy < r2;
+      const screenX = n.x * this._sc + this._tx;
+      const screenY = n.y * this._sc + this._ty;
+      const dx = screenX - sx;
+      const dy = screenY - sy;
+
+      const r = PHYSICS.nodeRadius;
+      let nodeR = r;
+      if (this._heatMode) {
+        const count = this._heatData[n.id] || 0;
+        const heatRatio = Math.min(count / this._heatMax, 1);
+        nodeR = r + heatRatio * 10;
+      }
+
+      const clickRadius = Math.max(nodeR * this._sc, 16); // minimum 16px radius in screen space
+      return dx * dx + dy * dy < clickRadius * clickRadius;
     }) || null;
   }
 

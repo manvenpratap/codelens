@@ -81,6 +81,10 @@ const api = {
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
   saveNote:           (body)      => api.post('/notes', body),
   deleteNote:         (id)        => api.delete(`/notes/${id}`),
+  gitSummary:         ()          => api.get('/git/summary'),
+  gitMeta:            (fqn)       => api.get(`/git/meta/${enc(fqn)}`),
+  browse:             (current)   => api.get(`/scan/browse?current=${encodeURIComponent(current || '')}`),
+  openFolder:         (path)      => api.post('/open-folder', { path }),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -142,6 +146,12 @@ function updateScanProgress(s) {
   qs('.scan-status-text').textContent  = s.message || 'Scanning…';
   qs('.scan-pct').textContent          = pct + '%';
   qs('#scan-status-bar').classList.add('visible');
+  
+  // Footer update
+  const fText = qs('#footer-status-text');
+  const fInd = qs('.status-indicator');
+  if (fText) fText.textContent = `Scanning: ${s.message || ''} (${pct}%)`;
+  if (fInd) { fInd.className = 'status-indicator busy'; }
 }
 
 /** Called when scan finishes successfully. */
@@ -156,20 +166,55 @@ async function onScanComplete(s) {
   await loadPackageTree();
   await loadInconsistencies();
 
+  // Footer update
+  const fText = qs('#footer-status-text');
+  const fInd = qs('.status-indicator');
+  if (fText) fText.textContent = 'Analyzer Idle · Scan complete';
+  if (fInd) { fInd.className = 'status-indicator live'; }
+
+  // Check git branch
+  updateFooterGitBranch();
+
   showBanner(`✓ Scan complete — ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields`);
 }
 
 /** Toggle scan button and spinner states. */
 function setScanUI(state) {
   const btn = qs('#scan-btn');
+  const fText = qs('#footer-status-text');
+  const fInd = qs('.status-indicator');
   if (state === 'scanning') {
     btn.disabled      = true;
     btn.textContent   = 'Scanning…';
+    if (fText) fText.textContent = 'Scanning codebase…';
+    if (fInd) { fInd.className = 'status-indicator busy'; }
   } else {
     btn.disabled      = false;
     btn.textContent   = 'Scan';
+    if (fText && state === 'idle') {
+      fText.textContent = 'Analyzer Idle';
+      if (fInd) { fInd.className = 'status-indicator live'; }
+    }
   }
 }
+
+/** Query git summary and parse current repository branch name to display in footer metadata */
+async function updateFooterGitBranch() {
+  const branchEl = qs('#footer-git-branch');
+  if (!branchEl) return;
+  try {
+    const summary = await api.gitSummary();
+    if (summary && summary.branchName) {
+      branchEl.textContent = `Branch: ${summary.branchName}`;
+      branchEl.style.display = 'inline-block';
+    } else {
+      branchEl.textContent = 'Branch: —';
+    }
+  } catch (_) {
+    branchEl.textContent = 'Branch: —';
+  }
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    4. Left panel — package tree + search
@@ -599,6 +644,48 @@ async function loadCallGraph(methodId) {
   }
 }
 
+/** Load and render the callers sub-graph for a method. */
+async function loadCallersGraph(methodId) {
+  ensureGraph();
+  App.graph.clear();
+  try {
+    const view = await api.callers(methodId);
+    if (!view.nodes || view.nodes.length === 0) {
+      showGraphEmpty('No callers found for this method.');
+      return;
+    }
+    hideGraphEmpty();
+    App.graph.setData(view.nodes, view.edges);
+    renderLegend([
+      { colour: GC.roles.root,   label: 'Selected method' },
+      { colour: GC.roles.caller, label: 'Caller (calls this)' },
+    ]);
+  } catch (e) {
+    showGraphEmpty('Failed to load callers graph: ' + e.message);
+  }
+}
+
+/** Load and render the callees sub-graph for a method. */
+async function loadCalleesGraph(methodId) {
+  ensureGraph();
+  App.graph.clear();
+  try {
+    const view = await api.callees(methodId);
+    if (!view.nodes || view.nodes.length === 0) {
+      showGraphEmpty('No callees found for this method.');
+      return;
+    }
+    hideGraphEmpty();
+    App.graph.setData(view.nodes, view.edges);
+    renderLegend([
+      { colour: GC.roles.root,   label: 'Selected method' },
+      { colour: GC.roles.callee, label: 'Callee (called by)' },
+    ]);
+  } catch (e) {
+    showGraphEmpty('Failed to load callees graph: ' + e.message);
+  }
+}
+
 /** Load and render the field impact graph. */
 async function loadFieldImpact(fieldId) {
   ensureGraph();
@@ -662,16 +749,56 @@ function renderTypeDetail(data) {
   // Header
   renderEntityHeader(type.kind, type.simpleName, type.fqn);
 
+  let sourceElement = '—';
+  if (type.sourceFile) {
+    const link = createElement('a', {
+      href: '#',
+      class: 'source-file-link',
+      title: 'Reveal file in system file explorer:\n' + type.sourceFile
+    });
+    link.textContent = type.sourceFile.split('/').pop();
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        await api.openFolder(type.sourceFile);
+      } catch (err) {
+        showError('Failed to open file location: ' + err.message);
+      }
+    });
+    sourceElement = link;
+  }
+
   // Metadata grid
   body.appendChild(metaGrid([
     ['Package',   type.packageFqn || '—'],
     ['Kind',      type.kind],
     ['Modifiers', type.modifiers || '—'],
-    ['Source',    type.sourceFile ? type.sourceFile.split('/').pop() : '—'],
+    ['Source',    sourceElement],
     ['Lines',     type.startLine ? `${type.startLine}–${type.endLine} (${type.lineCount})` : '—'],
     ['Extends',   type.superClass || '—'],
     ['Implements', (type.interfaces || []).join(', ') || '—'],
   ]));
+
+  // Git Metadata Section
+  const gitSec = createElement('div', { class: 'git-meta-detail-section' });
+  body.appendChild(gitSec);
+  api.gitMeta(type.fqn).then(gm => {
+    if (gm && gm.commitCount !== undefined) {
+      gitSec.innerHTML = `
+        <div class="rp-section" style="margin-top:12px">Git Statistics</div>
+        <div class="meta-grid">
+          <div class="meta-key">Commits</div>
+          <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
+          <div class="meta-key">Main Author</div>
+          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-key">Churn</div>
+          <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
+          <div class="meta-key">Last Edit</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+        </div>`;
+    }
+  }).catch(() => {});
+
 
   // Fields section
   if (fields.length > 0) {
@@ -765,6 +892,7 @@ function renderMethodDetail(data) {
   const cc = method.cyclomaticComplexity || 1;
   const ccClass = cc <= 4 ? 'low' : cc <= 10 ? 'medium' : 'high';
 
+  // Metadata grid
   body.appendChild(metaGrid([
     ['Class',      shortFqn(method.declaringTypeFqn)],
     ['Returns',    method.returnType || 'void'],
@@ -772,6 +900,27 @@ function renderMethodDetail(data) {
     ['Parameters', paramStr || '(none)'],
     ['Lines',      method.startLine ? `${method.startLine}–${method.endLine}` : '—'],
   ]));
+
+  // Git Metadata Section
+  const gitSec = createElement('div', { class: 'git-meta-detail-section' });
+  body.appendChild(gitSec);
+  api.gitMeta(method.fqn).then(gm => {
+    if (gm && gm.commitCount !== undefined) {
+      gitSec.innerHTML = `
+        <div class="rp-section" style="margin-top:12px">Git Statistics</div>
+        <div class="meta-grid">
+          <div class="meta-key">Commits</div>
+          <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
+          <div class="meta-key">Main Author</div>
+          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-key">Churn</div>
+          <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
+          <div class="meta-key">Last Edit</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+        </div>`;
+    }
+  }).catch(() => {});
+
 
   // Cyclomatic complexity visualisation
   const ccRow = createElement('div', { class: 'meta-grid', style: 'padding-top:4px' });
@@ -789,8 +938,8 @@ function renderMethodDetail(data) {
 
   // Call graph action buttons
   body.appendChild(actionRow([
-    { label: '⬆ Callers', action: () => { switchTab('graph'); loadCallGraph(method.id); } },
-    { label: '⬇ Callees', action: () => { switchTab('graph'); loadCallGraph(method.id); } },
+    { label: '⬆ Callers', action: () => { switchTab('graph'); loadCallersGraph(method.id); } },
+    { label: '⬇ Callees', action: () => { switchTab('graph'); loadCalleesGraph(method.id); } },
   ]));
 
   renderNotes(method.fqn, notes);
@@ -810,6 +959,27 @@ function renderFieldDetail(data) {
     ['Init value',  field.initializer || '—'],
     ['Source line', field.startLine || '—'],
   ]));
+
+  // Git Metadata Section
+  const gitSec = createElement('div', { class: 'git-meta-detail-section' });
+  body.appendChild(gitSec);
+  api.gitMeta(field.fqn).then(gm => {
+    if (gm && gm.commitCount !== undefined) {
+      gitSec.innerHTML = `
+        <div class="rp-section" style="margin-top:12px">Git Statistics</div>
+        <div class="meta-grid">
+          <div class="meta-key">Commits</div>
+          <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
+          <div class="meta-key">Main Author</div>
+          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-key">Churn</div>
+          <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
+          <div class="meta-key">Last Edit</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+        </div>`;
+    }
+  }).catch(() => {});
+
 
   body.appendChild(actionRow([
     { label: '⚡ Impact', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
@@ -968,6 +1138,20 @@ function bindKeyboard() {
 async function init() {
   // Wire up scan button and Enter key
   qs('#scan-btn').addEventListener('click', startScan);
+  const browseBtn = qs('#browse-btn');
+  if (browseBtn) {
+    browseBtn.addEventListener('click', async () => {
+      try {
+        const current = qs('#scan-path-input').value.trim();
+        const res = await api.browse(current);
+        if (res && res.path) {
+          qs('#scan-path-input').value = res.path;
+        }
+      } catch (e) {
+        showError('Failed to open file chooser: ' + e.message);
+      }
+    });
+  }
   qs('#scan-path-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') startScan();
   });
@@ -985,14 +1169,25 @@ async function init() {
     tab.addEventListener('click', () => {
       switchTab(tab.dataset.tab);
       if (tab.dataset.tab === 'inconsistency') loadInconsistencies();
+      if (tab.dataset.tab === 'git') loadGitSummary();
     });
   });
 
   // Graph control buttons
   const fitBtn   = qs('#btn-fit');
   const resetBtn = qs('#btn-reset');
+  const heatBtn  = qs('#btn-heat');
   if (fitBtn)   fitBtn.addEventListener('click', () => App.graph?.fitToScreen());
   if (resetBtn) resetBtn.addEventListener('click', () => App.graph?.clear());
+  if (heatBtn) {
+    heatBtn.addEventListener('click', () => {
+      const isOn = App.graph?.toggleHeat();
+      heatBtn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+      heatBtn.classList.toggle('active', !!isOn);
+    });
+    // Pre-load heat data
+    loadGitHeatData();
+  }
 
   bindKeyboard();
 
@@ -1015,6 +1210,88 @@ async function init() {
     const badge  = qs('.tab[data-tab="inconsistency"] .tab-badge');
     if (badge) badge.textContent = issues.length;
   } catch (_) {}
+
+  // Pre-load git branch metadata in the status footer
+  updateFooterGitBranch();
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Git integration helpers
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Load git summary (top authors + hottest entities) and populate #git-view.
+ * Called when the user clicks the Git tab.
+ */
+async function loadGitSummary() {
+  const authorsList = qs('#git-authors-list');
+  const hotList     = qs('#git-hot-list');
+  if (!authorsList || !hotList) return;
+
+  authorsList.innerHTML = '<div class="list-empty">Loading…</div>';
+  hotList.innerHTML     = '<div class="list-empty">Loading…</div>';
+
+  try {
+    const summary = await api.gitSummary();
+    // ── Top authors ───────────────────────────────────────────────────────────
+    if (!summary.topAuthors || summary.topAuthors.length === 0) {
+      authorsList.innerHTML = '<div class="list-empty">No git data found. Scan a git repository first.</div>';
+    } else {
+      authorsList.innerHTML = summary.topAuthors.map((a, i) => {
+        const avatar = a.authorName
+          ? a.authorName.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()
+          : '?';
+        const dateStr = a.latestCommit
+          ? new Date(a.latestCommit * 1000).toLocaleDateString()
+          : '';
+        return `<div class="git-author-row">
+          <div class="git-author-avatar" aria-hidden="true">${avatar}</div>
+          <div class="git-author-info">
+            <div class="git-author-name">${esc(a.authorName || '(unknown)')}</div>
+            <div class="git-author-meta">${a.entityCount} entities &nbsp;·&nbsp; ${dateStr}</div>
+          </div>
+          <div class="git-author-rank" aria-label="rank">#${i + 1}</div>
+        </div>`;
+      }).join('');
+    }
+    // ── Hottest entities ──────────────────────────────────────────────────────
+    if (!summary.hotEntities || summary.hotEntities.length === 0) {
+      hotList.innerHTML = '<div class="list-empty">No churn data available.</div>';
+    } else {
+      const maxCount = Math.max(...summary.hotEntities.map(e => e.commitCount), 1);
+      hotList.innerHTML = summary.hotEntities.map(e => {
+        const pct   = Math.round((e.commitCount / maxCount) * 100);
+        const label = (e.entityFqn || '').split('.').pop();
+        return `<div class="git-hot-row">
+          <div class="git-hot-label" title="${esc(e.entityFqn)}">${esc(label)}</div>
+          <div class="git-hot-bar-wrap">
+            <div class="git-hot-bar" style="width:${pct}%" aria-label="${e.commitCount} commits"></div>
+          </div>
+          <div class="git-hot-count">${e.commitCount}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch (err) {
+    authorsList.innerHTML = '<div class="list-empty">Git data not available yet.</div>';
+    hotList.innerHTML = '';
+    console.warn('Git summary fetch failed:', err);
+  }
+}
+/** Load heat data (entityFqn → commitCount) and register it with the graph. */
+async function loadGitHeatData() {
+  try {
+    const summary = await api.gitSummary();
+    if (!summary.hotEntities) return;
+    const heatMap = {};
+    for (const e of summary.hotEntities) {
+      heatMap[e.entityFqn] = e.commitCount;
+    }
+    App.graph?.setHeatData(heatMap);
+  } catch (_) { /* non-fatal */ }
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -1032,7 +1309,8 @@ function renderEntityHeader(kind, name, fqn) {
     <div class="entity-name">${esc(name)}</div>
     <div class="entity-fqn">${esc(fqn)}</div>`;
   header.style.display = '';
-  qs('#entity-empty')?.remove();
+  const empty = qs('#detail-empty-state');
+  if (empty) empty.style.display = 'none';
 }
 
 /** Create a metadata grid block from key-value pairs. */
@@ -1042,7 +1320,11 @@ function metaGrid(pairs) {
     const key = createElement('div', { class: 'meta-key' });
     key.textContent = k;
     const val = createElement('div', { class: 'meta-val' });
-    val.textContent = v || '—';
+    if (v instanceof HTMLElement) {
+      val.appendChild(v);
+    } else {
+      val.textContent = v || '—';
+    }
     grid.appendChild(key);
     grid.appendChild(val);
   }

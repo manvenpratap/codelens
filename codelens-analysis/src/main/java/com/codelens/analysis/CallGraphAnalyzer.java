@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Builds an in-memory directed call graph from CALLS relationships and answers
@@ -33,8 +32,6 @@ public class CallGraphAnalyzer {
     private Graph<String, DefaultEdge> callGraph =
         new DefaultDirectedGraph<>(DefaultEdge.class);
 
-    /** Index of all known method FQNs, grouped by simple name for heuristic resolution. */
-    private Map<String, List<String>> methodsBySimpleName = new HashMap<>();
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -77,8 +74,7 @@ public class CallGraphAnalyzer {
             catch (Exception e) { /* duplicate edge – ignore */ }
         }
 
-        this.callGraph         = g;
-        this.methodsBySimpleName = byName;
+        this.callGraph = g;
         log.info("Call graph rebuilt: {} vertices, {} edges",
             g.vertexSet().size(), g.edgeSet().size());
     }
@@ -124,12 +120,76 @@ public class CallGraphAnalyzer {
 
         // Callee subtree
         for (GraphNode n : calleeNodes) {
-            if (seen.add(n.getId())) allNodes.add(n);
+            if (seen.add(n.id)) allNodes.add(n);
         }
 
         // Caller subtree
         for (GraphNode n : callerNodes) {
-            if (seen.add(n.getId())) allNodes.add(n);
+            if (seen.add(n.id)) allNodes.add(n);
+        }
+
+        // Edges — walk the graph and emit edges between nodes we've included
+        Graph<String, DefaultEdge> g = callGraph;
+        for (String v : seen) {
+            if (!g.containsVertex(v)) continue;
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (seen.contains(tgt)) {
+                    edges.add(new GraphEdge(v, tgt, "CALLS"));
+                }
+            }
+        }
+
+        return new GraphView(rootFqn, allNodes, edges);
+    }
+
+    public GraphView callersView(String rootFqn, int depth) {
+        List<GraphNode> callerNodes = callers(rootFqn, depth);
+
+        Set<String> seen = new HashSet<>();
+        List<GraphNode> allNodes = new ArrayList<>();
+        List<GraphEdge> edges    = new ArrayList<>();
+
+        // Root node
+        GraphNode root = new GraphNode(rootFqn, label(rootFqn), "root", "METHOD");
+        allNodes.add(root);
+        seen.add(rootFqn);
+
+        // Caller subtree
+        for (GraphNode n : callerNodes) {
+            if (seen.add(n.id)) allNodes.add(n);
+        }
+
+        // Edges — walk the graph and emit edges between nodes we've included
+        Graph<String, DefaultEdge> g = callGraph;
+        for (String v : seen) {
+            if (!g.containsVertex(v)) continue;
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (seen.contains(tgt)) {
+                    edges.add(new GraphEdge(v, tgt, "CALLS"));
+                }
+            }
+        }
+
+        return new GraphView(rootFqn, allNodes, edges);
+    }
+
+    public GraphView calleesView(String rootFqn, int depth) {
+        List<GraphNode> calleeNodes = callees(rootFqn, depth);
+
+        Set<String> seen = new HashSet<>();
+        List<GraphNode> allNodes = new ArrayList<>();
+        List<GraphEdge> edges    = new ArrayList<>();
+
+        // Root node
+        GraphNode root = new GraphNode(rootFqn, label(rootFqn), "root", "METHOD");
+        allNodes.add(root);
+        seen.add(rootFqn);
+
+        // Callee subtree
+        for (GraphNode n : calleeNodes) {
+            if (seen.add(n.id)) allNodes.add(n);
         }
 
         // Edges — walk the graph and emit edges between nodes we've included

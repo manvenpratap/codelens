@@ -2,9 +2,10 @@ package com.codelens.api;
 
 import com.codelens.analysis.*;
 import com.codelens.core.model.*;
+import com.codelens.git.GitBlameService;
+import com.codelens.git.GitRepoLocator;
 import com.codelens.parser.JavaSourceScanner;
 import com.codelens.storage.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.staticfiles.Location;
@@ -12,6 +13,12 @@ import io.javalin.json.JavalinJackson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.Desktop;
+import java.awt.GraphicsEnvironment;
+import javax.swing.JFileChooser;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import java.io.File;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,6 +70,7 @@ public class CodeLensServer {
     private final CallGraphAnalyzer  callGraph;
     private final FieldImpactAnalyzer fieldImpact;
     private final InconsistencyDetector inconsistencyDetector;
+    private final GitBlameService    gitBlameService;
     private final int                port;
 
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
@@ -88,6 +96,7 @@ public class CodeLensServer {
         this.callGraph             = new CallGraphAnalyzer();
         this.fieldImpact           = new FieldImpactAnalyzer();
         this.inconsistencyDetector = new InconsistencyDetector();
+        this.gitBlameService       = new GitBlameService();
         this.port                  = port;
     }
 
@@ -96,12 +105,10 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
 
     public void start() {
-        ObjectMapper mapper = new ObjectMapper();
-
         app = Javalin.create(cfg -> {
             // Serve static frontend files from the JAR classpath under /web/
             cfg.staticFiles.add("/web", Location.CLASSPATH);
-            cfg.jsonMapper(new JavalinJackson(mapper));
+            cfg.jsonMapper(new JavalinJackson());
             // Allow all origins during local use (no cross-origin issues)
             cfg.bundledPlugins.enableCors(cors ->
                 cors.addRule(rule -> rule.anyHost()));
@@ -113,6 +120,8 @@ public class CodeLensServer {
         // ── Scan ──────────────────────────────────────────────────────────────
         app.post("/api/scan",        this::startScan);
         app.get("/api/scan/status",  this::getScanStatus);
+        app.get("/api/scan/browse",  this::browseFolder);
+        app.post("/api/open-folder", this::openFolder);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -146,11 +155,27 @@ public class CodeLensServer {
         app.post("/api/notes",               this::saveNote);
         app.delete("/api/notes/{id}",        this::deleteNote);
 
+        // ── Git metadata ──────────────────────────────────────────────────────
+        app.get("/api/git/meta/{entityFqn}", this::getGitMeta);
+        app.get("/api/git/summary",          this::getGitSummary);
+
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
             log.error("Unhandled error on {} {}: {}", ctx.method(), ctx.path(), e.getMessage(), e);
             ctx.status(500).json(Map.of("error", e.getMessage()));
         });
+
+        // Build call graph from database on startup
+        try {
+            List<String> allMethodFqns = dao.findAllMethodFqns();
+            List<CodeRelationship> allRels = dao.findAllRelationships();
+            callGraph.rebuild(allMethodFqns, allRels);
+            fieldImpact.rebuild(allRels);
+            log.info("Initialized in-memory call graph from database with {} methods and {} relationships",
+                allMethodFqns.size(), allRels.size());
+        } catch (Exception e) {
+            log.error("Failed to initialize call graph from database on startup: {}", e.getMessage(), e);
+        }
 
         app.start(port);
         log.info("CodeLens server started on http://localhost:{}", port);
@@ -242,7 +267,19 @@ public class CodeLensServer {
                 inconsistencyDetector.detect(result.methods, result.fields);
             dao.batchInsertInconsistencies(issues);
 
-            // Done
+            // Phase 6: Git blame annotation (non-fatal if not a git repo)
+            progress.setMessage("Running git blame annotation…");
+            GitRepoLocator.locate(sourcePath).ifPresent(repoRoot -> {
+                try {
+                    GitBlameService.ScanResult gitResult = new GitBlameService.ScanResult(
+                        result.types, result.methods, result.fields);
+                    List<GitMeta> gitMetas = gitBlameService.annotate(gitResult, repoRoot);
+                    dao.batchInsertGitMeta(gitMetas);
+                    log.info("Git annotation: {} entities annotated", gitMetas.size());
+                } catch (Exception e) {
+                    log.warn("Git annotation phase failed (non-fatal): {}", e.getMessage());
+                }
+            });
             progress.setTypesFound(result.types.size());
             progress.setMethodsFound(result.methods.size());
             progress.setFieldsFound(result.fields.size());
@@ -323,13 +360,13 @@ public class CodeLensServer {
     private void getCallers(Context ctx) throws Exception {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 4);
-        ctx.json(callGraph.callers(id, depth));
+        ctx.json(callGraph.callersView(id, depth));
     }
 
     private void getCallees(Context ctx) throws Exception {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 4);
-        ctx.json(callGraph.callees(id, depth));
+        ctx.json(callGraph.calleesView(id, depth));
     }
 
     private void getCallGraph(Context ctx) throws Exception {
@@ -429,4 +466,111 @@ public class CodeLensServer {
         try { return Integer.parseInt(ctx.queryParam(name)); }
         catch (Exception e) { return defaultVal; }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Git metadata
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/git/meta/{entityFqn}
+     * Returns git blame metadata for a single entity.
+     * Returns 404 when the entity has no git annotation (not a git repo, or
+     * entity not yet scanned).
+     */
+    private void getGitMeta(Context ctx) throws Exception {
+        String entityFqn = decode(ctx.pathParam("entityFqn"));
+        var meta = dao.findGitMetaByEntity(entityFqn);
+        if (meta.isEmpty()) {
+            ctx.status(404).json(Map.of("error", "No git metadata for entity"));
+            return;
+        }
+        ctx.json(meta.get());
+    }
+
+    /**
+     * GET /api/git/summary
+     * Returns aggregate git statistics:
+     *   · topAuthors   – top 10 committers by entity count
+     *   · hotEntities  – top 20 most-changed entities (highest commit_count)
+     */
+    private void getGitSummary(Context ctx) throws Exception {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("topAuthors",  dao.findTopAuthors(10));
+        summary.put("hotEntities", dao.findHottestEntities(20));
+        ctx.json(summary);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Folder navigation / Reveal
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void browseFolder(Context ctx) {
+        if (GraphicsEnvironment.isHeadless()) {
+            ctx.status(400).json(Map.of("error", "Graphics environment is headless. Please type or paste the path manually."));
+            return;
+        }
+
+        CompletableFuture<String> future = new CompletableFuture<>();
+        SwingUtilities.invokeLater(() -> {
+            try {
+                try {
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception ignored) {}
+
+                JFileChooser chooser = new JFileChooser();
+                chooser.setDialogTitle("Select Java Source Folder");
+                chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                
+                String current = ctx.queryParam("current");
+                if (current != null && !current.trim().isEmpty()) {
+                    File f = new File(current.trim());
+                    if (f.exists() && f.isDirectory()) {
+                        chooser.setCurrentDirectory(f);
+                    }
+                }
+
+                int result = chooser.showOpenDialog(null);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    future.complete(chooser.getSelectedFile().getAbsolutePath());
+                } else {
+                    future.complete("");
+                }
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+
+        ctx.future(() -> future.thenAccept(path -> ctx.json(Map.of("path", path))));
+    }
+
+    private void openFolder(Context ctx) throws Exception {
+        Map<String, String> body = ctx.bodyAsClass(Map.class);
+        String path = body.get("path");
+        if (path == null || path.trim().isEmpty()) {
+            ctx.status(400).json(Map.of("error", "Missing path"));
+            return;
+        }
+
+        File file = new File(path.trim());
+        if (!file.exists()) {
+            ctx.status(404).json(Map.of("error", "File or folder not found"));
+            return;
+        }
+
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("mac")) {
+            Runtime.getRuntime().exec(new String[]{"open", "-R", file.getAbsolutePath()});
+        } else if (os.contains("win")) {
+            Runtime.getRuntime().exec(new String[]{"explorer.exe", "/select,", file.getAbsolutePath()});
+        } else {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(file.getParentFile());
+            } else {
+                ctx.status(500).json(Map.of("error", "Desktop action not supported on this platform"));
+                return;
+            }
+        }
+        ctx.json(Map.of("success", true));
+    }
 }
+

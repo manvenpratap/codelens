@@ -21,6 +21,7 @@ import java.util.*;
  */
 public class EntityDao {
 
+    @SuppressWarnings("unused")
     private static final Logger log = LoggerFactory.getLogger(EntityDao.class);
 
     private final DatabaseManager db;
@@ -398,6 +399,121 @@ public class EntityDao {
     }
 
     // =========================================================================
+    // GIT META
+    // =========================================================================
+
+    /**
+     * Batch-upsert git metadata records.
+     * Uses MERGE so re-scans overwrite stale data cleanly.
+     */
+    public void batchInsertGitMeta(List<GitMeta> metas) throws SQLException {
+        if (metas == null || metas.isEmpty()) return;
+        String sql =
+            "MERGE INTO git_meta " +
+            "(entity_fqn, last_author_name, last_author_email, last_commit_time, " +
+            " last_commit_hash, last_commit_msg, commit_count) " +
+            "KEY(entity_fqn) VALUES (?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            for (GitMeta m : metas) {
+                ps.setString(1, m.getEntityFqn());
+                ps.setString(2, m.getLastAuthorName());
+                ps.setString(3, m.getLastAuthorEmail());
+                ps.setLong(4,   m.getLastCommitTime());
+                ps.setString(5, m.getLastCommitHash());
+                ps.setString(6, m.getLastCommitMsg());
+                ps.setInt(7,    m.getCommitCount());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+            c.commit();
+        }
+    }
+
+    /** Retrieve git metadata for a single entity (returns empty if not present). */
+    public Optional<GitMeta> findGitMetaByEntity(String entityFqn) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                 "SELECT * FROM git_meta WHERE entity_fqn=?")) {
+            ps.setString(1, entityFqn);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(gitMetaFromRs(rs));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Retrieve all git metadata records (used by the graph heat overlay). */
+    public List<GitMeta> findAllGitMeta() throws SQLException {
+        List<GitMeta> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM git_meta");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) list.add(gitMetaFromRs(rs));
+        }
+        return list;
+    }
+
+    /**
+     * Returns the top N authors by number of entities they are the last-modifier of,
+     * ordered descending. Used for the Git summary panel.
+     */
+    public List<Map<String, Object>> findTopAuthors(int limit) throws SQLException {
+        List<Map<String, Object>> results = new ArrayList<>();
+        String sql =
+            "SELECT last_author_name, last_author_email, COUNT(*) AS entity_count, " +
+            "MAX(last_commit_time) AS latest_commit " +
+            "FROM git_meta WHERE last_author_name IS NOT NULL " +
+            "GROUP BY last_author_name, last_author_email " +
+            "ORDER BY entity_count DESC LIMIT ?";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("authorName",   rs.getString("last_author_name"));
+                    row.put("authorEmail",  rs.getString("last_author_email"));
+                    row.put("entityCount",  rs.getInt("entity_count"));
+                    row.put("latestCommit", rs.getLong("latest_commit"));
+                    results.add(row);
+                }
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Returns the top N most-changed entities (highest commit_count),
+     * with their last author info. Used for the "hottest files" view.
+     */
+    public List<Map<String, Object>> findHottestEntities(int limit) throws SQLException {
+        List<Map<String, Object>> results = new ArrayList<>();
+        String sql =
+            "SELECT g.entity_fqn, g.commit_count, g.last_author_name, " +
+            "g.last_commit_time, g.last_commit_hash " +
+            "FROM git_meta g " +
+            "WHERE g.commit_count > 0 " +
+            "ORDER BY g.commit_count DESC LIMIT ?";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("entityFqn",     rs.getString("entity_fqn"));
+                    row.put("commitCount",   rs.getInt("commit_count"));
+                    row.put("lastAuthor",    rs.getString("last_author_name"));
+                    row.put("lastCommitTime",rs.getLong("last_commit_time"));
+                    row.put("lastCommitHash",rs.getString("last_commit_hash"));
+                    results.add(row);
+                }
+            }
+        }
+        return results;
+    }
+
+    // =========================================================================
     // STATS
     // =========================================================================
 
@@ -505,6 +621,19 @@ public class EntityDao {
         r.setSourceLine(rs.getInt("source_line"));
         return r;
     }
+
+    private GitMeta gitMetaFromRs(ResultSet rs) throws SQLException {
+        GitMeta m = new GitMeta();
+        m.setEntityFqn(rs.getString("entity_fqn"));
+        m.setLastAuthorName(rs.getString("last_author_name"));
+        m.setLastAuthorEmail(rs.getString("last_author_email"));
+        m.setLastCommitTime(rs.getLong("last_commit_time"));
+        m.setLastCommitHash(rs.getString("last_commit_hash"));
+        m.setLastCommitMsg(rs.getString("last_commit_msg"));
+        m.setCommitCount(rs.getInt("commit_count"));
+        return m;
+    }
+
 
     // =========================================================================
     // Helpers
