@@ -552,8 +552,8 @@ public class CodeLensServer {
     }
 
     private void openFolder(Context ctx) throws Exception {
-        Map<String, String> body = ctx.bodyAsClass(Map.class);
-        String path = body.get("path");
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String path = (String) body.get("path");
         if (path == null || path.trim().isEmpty()) {
             ctx.status(400).json(Map.of("error", "Missing path"));
             return;

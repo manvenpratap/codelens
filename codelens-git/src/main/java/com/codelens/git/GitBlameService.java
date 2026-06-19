@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -148,7 +147,11 @@ public class GitBlameService {
                     .addPath(relPath)
                     .call();
                 int count = 0;
-                for (RevCommit ignored : commits) count++;
+                for (RevCommit c : commits) {
+                    if (c != null) {
+                        count++;
+                    }
+                }
                 return count;
             } catch (Exception e) {
                 log.debug("Log count failed for {}: {}", f, e.getMessage());
