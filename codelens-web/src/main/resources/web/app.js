@@ -40,6 +40,10 @@ const App = {
   packages: [],
   // Current stats
   stats: { types: 0, methods: 0, fields: 0, packages: 0 },
+  // Monaco Editor state
+  currentFilePath: null,
+  editor: null,
+  editorPromise: null,
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +89,8 @@ const api = {
   gitMeta:            (fqn)       => api.get(`/git/meta/${enc(fqn)}`),
   browse:             (current)   => api.get(`/scan/browse?current=${encodeURIComponent(current || '')}`),
   openFolder:         (path)      => api.post('/open-folder', { path }),
+  readFile:           (path)      => api.get(`/files/read?path=${encodeURIComponent(path)}`),
+  writeFile:          (path, content) => api.post('/files/write', { path, content }),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -471,6 +477,136 @@ function switchTab(tabName) {
   App.activeTab = tabName;
   qsa('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   qsa('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === tabName + '-view'));
+  if (tabName === 'source' && App.editor) {
+    setTimeout(() => {
+      App.editor.layout();
+    }, 20);
+  }
+}
+
+/** Load Monaco Editor from the CDN AMD loader. */
+function initMonaco() {
+  if (App.editorPromise) return App.editorPromise;
+
+  App.editorPromise = new Promise((resolve, reject) => {
+    if (typeof require === 'undefined') {
+      reject(new Error('Monaco AMD loader require() not found in window context.'));
+      return;
+    }
+    try {
+      require.config({
+        paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
+      });
+      require(['vs/editor/editor.main'], () => {
+        resolve(window.monaco);
+      }, err => {
+        reject(err);
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
+
+  return App.editorPromise;
+}
+
+/** Fetch a source file, mount Monaco Editor, load the code, and focus on the line. */
+async function openSourceFile(filePath, lineNum = null) {
+  if (!filePath) return;
+
+  App.currentFilePath = filePath;
+  
+  const pathLabel = qs('#editor-file-path');
+  if (pathLabel) {
+    pathLabel.innerHTML = `Source: <strong>${esc(filePath.split('/').pop())}</strong> <span style="font-size:10px; color:var(--text-muted)">(${esc(filePath)})</span>`;
+  }
+
+  try {
+    // Fetch file content first
+    const data = await api.readFile(filePath);
+
+    // Switch to source tab
+    switchTab('source');
+
+    // Hide placeholder/empty state and enable save
+    const emptyState = qs('#editor-empty-state');
+    if (emptyState) emptyState.style.display = 'none';
+    const saveBtn = qs('#editor-save-btn');
+    if (saveBtn) saveBtn.disabled = false;
+
+    // Load Monaco
+    const monaco = await initMonaco();
+
+    if (!App.editor) {
+      const container = qs('#editor-container');
+      App.editor = monaco.editor.create(container, {
+        theme: 'vs-dark',
+        automaticLayout: false, // handled manually via layout() to avoid overhead
+        minimap: { enabled: true },
+        fontSize: 13,
+        fontFamily: 'var(--font-mono), Menlo, Monaco, "Courier New", monospace',
+        lineHeight: 20,
+        scrollbar: {
+          vertical: 'visible',
+          horizontal: 'visible',
+          useShadows: false,
+          verticalScrollbarSize: 10,
+          horizontalScrollbarSize: 10
+        }
+      });
+    }
+
+    // Set model
+    const extension = filePath.split('.').pop().toLowerCase();
+    let language = 'text';
+    if (extension === 'java') language = 'java';
+    else if (extension === 'xml') language = 'xml';
+    else if (extension === 'json') language = 'json';
+    else if (extension === 'properties') language = 'ini';
+    else if (extension === 'md') language = 'markdown';
+
+    const uri = monaco.Uri.file(filePath);
+    let model = monaco.editor.getModel(uri);
+    if (!model) {
+      model = monaco.editor.createModel(data.content, language, uri);
+    } else {
+      model.setValue(data.content);
+    }
+
+    App.editor.setModel(model);
+
+    // Scroll and highlight
+    if (lineNum) {
+      setTimeout(() => {
+        App.editor.revealLineInCenter(lineNum);
+        App.editor.setPosition({ lineNumber: lineNum, column: 1 });
+        App.editor.focus();
+
+        const range = new monaco.Range(lineNum, 1, lineNum, 1);
+        const decorations = App.editor.deltaDecorations([], [
+          {
+            range: range,
+            options: {
+              isWholeLine: true,
+              className: 'monaco-line-highlight-neon'
+            }
+          }
+        ]);
+        setTimeout(() => {
+          if (App.editor) {
+            App.editor.deltaDecorations(decorations, []);
+          }
+        }, 2000);
+      }, 50);
+    } else {
+      App.editor.focus();
+    }
+
+    App.editor.layout();
+
+  } catch (err) {
+    showError('Failed to load file: ' + err.message);
+  }
 }
 
 /* ── Knowledge base view ─────────────────────────────────────────────────────── */
@@ -754,16 +890,12 @@ function renderTypeDetail(data) {
     const link = createElement('a', {
       href: '#',
       class: 'source-file-link',
-      title: 'Reveal file in system file explorer:\n' + type.sourceFile
+      title: 'Open file in editor:\n' + type.sourceFile
     });
     link.textContent = type.sourceFile.split('/').pop();
-    link.addEventListener('click', async (e) => {
+    link.addEventListener('click', (e) => {
       e.preventDefault();
-      try {
-        await api.openFolder(type.sourceFile);
-      } catch (err) {
-        showError('Failed to open file location: ' + err.message);
-      }
+      openSourceFile(type.sourceFile, type.startLine);
     });
     sourceElement = link;
   }
@@ -892,11 +1024,27 @@ function renderMethodDetail(data) {
   const cc = method.cyclomaticComplexity || 1;
   const ccClass = cc <= 4 ? 'low' : cc <= 10 ? 'medium' : 'high';
 
+  let sourceElement = '—';
+  if (data.sourceFile) {
+    const link = createElement('a', {
+      href: '#',
+      class: 'source-file-link',
+      title: 'Open file in editor:\n' + data.sourceFile
+    });
+    link.textContent = data.sourceFile.split('/').pop() + ':' + method.startLine;
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      openSourceFile(data.sourceFile, method.startLine);
+    });
+    sourceElement = link;
+  }
+
   // Metadata grid
   body.appendChild(metaGrid([
     ['Class',      shortFqn(method.declaringTypeFqn)],
     ['Returns',    method.returnType || 'void'],
     ['Modifiers',  method.modifiers || '—'],
+    ['Source',     sourceElement],
     ['Parameters', paramStr || '(none)'],
     ['Lines',      method.startLine ? `${method.startLine}–${method.endLine}` : '—'],
   ]));
@@ -952,10 +1100,26 @@ function renderFieldDetail(data) {
 
   renderEntityHeader('FIELD', field.simpleName, field.fqn);
 
+  let sourceElement = '—';
+  if (data.sourceFile) {
+    const link = createElement('a', {
+      href: '#',
+      class: 'source-file-link',
+      title: 'Open file in editor:\n' + data.sourceFile
+    });
+    link.textContent = data.sourceFile.split('/').pop() + ':' + field.startLine;
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      openSourceFile(data.sourceFile, field.startLine);
+    });
+    sourceElement = link;
+  }
+
   body.appendChild(metaGrid([
     ['Declared in', shortFqn(field.declaringTypeFqn)],
     ['Type',        field.fieldType || '—'],
     ['Modifiers',   field.modifiers || '—'],
+    ['Source',      sourceElement],
     ['Init value',  field.initializer || '—'],
     ['Source line', field.startLine || '—'],
   ]));
@@ -1173,6 +1337,31 @@ async function init() {
     });
   });
 
+  // Monaco Save button
+  const saveBtn = qs('#editor-save-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (!App.currentFilePath || !App.editor) return;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const content = App.editor.getValue();
+        await api.writeFile(App.currentFilePath, content);
+        showBanner('✓ File saved successfully');
+      } catch (e) {
+        showError('Failed to save file: ' + e.message);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+  }
+
+  // Monaco Resize handling
+  window.addEventListener('resize', () => {
+    if (App.editor) App.editor.layout();
+  });
+
   // Graph control buttons
   const fitBtn   = qs('#btn-fit');
   const resetBtn = qs('#btn-reset');
@@ -1387,16 +1576,13 @@ function setLoading() {
 
 /** Show a brief success banner at the bottom of the screen. */
 function showBanner(msg) {
-  const el = createElement('div', { style: `
-    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-    background:var(--bg-elevated);border:1px solid var(--emerald);
-    border-radius:var(--radius-md);padding:10px 20px;
-    color:var(--emerald);font-size:13px;font-weight:600;
-    box-shadow:0 4px 20px rgba(0,0,0,0.4);z-index:300;
-    animation:fadeIn 0.2s ease;` });
+  const el = createElement('div', { class: 'banner-toast' });
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }, 3500);
 }
 
 /** Flash a red border on an input briefly. */
@@ -1408,16 +1594,13 @@ function flashInput(el) {
 
 /** Show a temporary error toast. */
 function showError(msg) {
-  const el = createElement('div', { style: `
-    position:fixed;bottom:20px;right:20px;
-    background:var(--bg-elevated);border:1px solid var(--red);
-    border-radius:var(--radius-sm);padding:10px 16px;
-    color:var(--red);font-size:12px;max-width:320px;
-    box-shadow:0 4px 20px rgba(0,0,0,0.4);z-index:300;
-    animation:fadeIn 0.2s ease;` });
+  const el = createElement('div', { class: 'error-toast' });
   el.textContent = '⚠ ' + msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }, 4000);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

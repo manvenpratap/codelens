@@ -225,6 +225,19 @@
         Git
       </button>
 
+      <!-- Source tab — Monaco code editor view -->
+      <button
+        class="tab"
+        role="tab"
+        id="tab-source"
+        data-tab="source"
+        aria-selected="false"
+        aria-controls="source-view"
+      >
+        <span aria-hidden="true">⎄</span>
+        Source
+      </button>
+
     </nav><!-- /.tab-bar -->
 
 
@@ -359,6 +372,28 @@
       </div>
     </section><!-- /#git-view -->
 
+    <!-- ── Tab panel 5: Source — embedded Monaco code editor ──────────────── -->
+    <section
+      class="tab-content"
+      id="source-view"
+      role="tabpanel"
+      aria-labelledby="tab-source"
+      tabindex="0"
+    >
+      <div class="editor-header">
+        <span class="editor-file-path" id="editor-file-path">No file loaded</span>
+        <button class="btn-primary editor-save-btn" id="editor-save-btn" disabled>Save</button>
+      </div>
+      <div id="editor-container">
+        <!-- Monaco editor will mount here -->
+        <div class="editor-empty-state" id="editor-empty-state">
+          <div class="editor-empty-icon">⎄</div>
+          <div class="editor-empty-text">No source file open</div>
+          <div class="editor-empty-sub">Select any class or method source link in details panel to view code.</div>
+        </div>
+      </div>
+    </section><!-- /#source-view -->
+
   </main><!-- /#centre-panel -->
 
 
@@ -461,6 +496,7 @@
        1. graph.js   defines window.ForceGraph (no DOM interaction on load)
        2. app.js     calls window.ForceGraph after DOMContentLoaded fires
      ═══════════════════════════════════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script src="/graph.js"  defer></script>
 <script src="/app.js"    defer></script>
 

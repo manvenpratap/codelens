@@ -385,7 +385,7 @@ class ForceGraph {
    * Draws a directed arrow from (x1,y1) to (x2,y2), shortened by the node
    * radius so it terminates at the node's circumference, not its centre.
    */
-  _drawArrow(ctx, x1, y1, x2, y2, kind) {
+  _drawArrow(ctx, x1, y1, x2, y2, kind, particles) {
     const r    = PHYSICS.nodeRadius;
     const dx   = x2 - x1;
     const dy   = y2 - y1;
@@ -426,6 +426,31 @@ class ForceGraph {
     ctx.closePath();
     ctx.fillStyle = colour;
     ctx.fill();
+
+    // ── Flow particles ────────────────────────────────────────────────────────
+    if (particles && particles.length > 0) {
+      ctx.save();
+      for (const tVal of particles) {
+        const mt = 1 - tVal;
+        const px = mt * mt * sx + 2 * mt * tVal * mx + tVal * tVal * ex;
+        const py = mt * mt * sy + 2 * mt * tVal * my + tVal * tVal * ey;
+
+        // Glow halo
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fillStyle = colour;
+        ctx.globalAlpha = 0.5;
+        ctx.fill();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(px, py, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 1.0;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   _drawNodes(ctx) {
@@ -710,6 +735,31 @@ class ForceGraph {
     return String(str || '')
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+}
+
+/** Interpolate between two hexadecimal color strings. */
+function _lerpColor(color1, color2, t) {
+  t = Math.max(0, Math.min(1, t));
+  const parseHex = (hex) => {
+    let c = hex.replace('#', '');
+    if (c.length === 3) {
+      c = c.split('').map(x => x + x).join('');
+    }
+    return {
+      r: parseInt(c.slice(0, 2), 16),
+      g: parseInt(c.slice(2, 4), 16),
+      b: parseInt(c.slice(4, 6), 16)
+    };
+  };
+
+  const c1 = parseHex(color1);
+  const c2 = parseHex(color2);
+
+  const r = Math.round(c1.r + (c2.r - c1.r) * t);
+  const g = Math.round(c1.g + (c2.g - c1.g) * t);
+  const b = Math.round(c1.b + (c2.b - c1.b) * t);
+
+  return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
 /* Export to global scope for app.js */

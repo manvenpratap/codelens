@@ -155,6 +155,10 @@ public class CodeLensServer {
         app.post("/api/notes",               this::saveNote);
         app.delete("/api/notes/{id}",        this::deleteNote);
 
+        // ── Files ─────────────────────────────────────────────────────────────
+        app.get("/api/files/read",           this::readFile);
+        app.post("/api/files/write",         this::writeFile);
+
         // ── Git metadata ──────────────────────────────────────────────────────
         app.get("/api/git/meta/{entityFqn}", this::getGitMeta);
         app.get("/api/git/summary",          this::getGitSummary);
@@ -354,6 +358,8 @@ public class CodeLensServer {
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("method", m.get());
         detail.put("notes",  dao.findNotesByEntity(id));
+        Optional<CodeType> type = dao.findTypeById(m.get().getDeclaringTypeFqn());
+        detail.put("sourceFile", type.isPresent() ? type.get().getSourceFile() : "");
         ctx.json(detail);
     }
 
@@ -386,6 +392,8 @@ public class CodeLensServer {
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("field", f.get());
         detail.put("notes", dao.findNotesByEntity(id));
+        Optional<CodeType> type = dao.findTypeById(f.get().getDeclaringTypeFqn());
+        detail.put("sourceFile", type.isPresent() ? type.get().getSourceFile() : "");
         ctx.json(detail);
     }
 
@@ -571,6 +579,81 @@ public class CodeLensServer {
             }
         }
         ctx.json(Map.of("success", true));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // File reading / writing for Monaco Editor
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void readFile(Context ctx) {
+        String path = ctx.queryParam("path");
+        if (path == null || path.isBlank()) {
+            ctx.status(400).json(Map.of("error", "path parameter is required"));
+            return;
+        }
+
+        File file = new File(path.trim());
+        if (!file.exists() || !file.isFile()) {
+            ctx.status(404).json(Map.of("error", "File not found"));
+            return;
+        }
+
+        // Security check: must reside inside current scanned sourcePath
+        ScanProgress progress = scanState.get();
+        String scannedPath = progress != null ? progress.getSourcePath() : null;
+        if (scannedPath == null || scannedPath.isBlank()) {
+            ctx.status(403).json(Map.of("error", "Access denied: no scan active"));
+            return;
+        }
+
+        try {
+            String canonicalFile = file.getCanonicalPath();
+            String canonicalScan = new File(scannedPath.trim()).getCanonicalPath();
+            if (!canonicalFile.startsWith(canonicalScan)) {
+                ctx.status(403).json(Map.of("error", "Access denied: outside scanned path"));
+                return;
+            }
+
+            String content = java.nio.file.Files.readString(file.toPath());
+            ctx.json(Map.of("path", path, "content", content));
+        } catch (Exception e) {
+            ctx.status(500).json(Map.of("error", "Failed to read file: " + e.getMessage()));
+        }
+    }
+
+    private void writeFile(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String path = (String) body.get("path");
+        String content = (String) body.get("content");
+
+        if (path == null || path.isBlank() || content == null) {
+            ctx.status(400).json(Map.of("error", "path and content are required"));
+            return;
+        }
+
+        File file = new File(path.trim());
+
+        // Security check: must reside inside current scanned sourcePath
+        ScanProgress progress = scanState.get();
+        String scannedPath = progress != null ? progress.getSourcePath() : null;
+        if (scannedPath == null || scannedPath.isBlank()) {
+            ctx.status(403).json(Map.of("error", "Access denied: no scan active"));
+            return;
+        }
+
+        try {
+            String canonicalFile = file.getCanonicalPath();
+            String canonicalScan = new File(scannedPath.trim()).getCanonicalPath();
+            if (!canonicalFile.startsWith(canonicalScan)) {
+                ctx.status(403).json(Map.of("error", "Access denied: outside scanned path"));
+                return;
+            }
+
+            java.nio.file.Files.writeString(file.toPath(), content);
+            ctx.json(Map.of("success", true, "path", path));
+        } catch (Exception e) {
+            ctx.status(500).json(Map.of("error", "Failed to write file: " + e.getMessage()));
+        }
     }
 }
 
