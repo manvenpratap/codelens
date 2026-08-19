@@ -28,6 +28,10 @@ const App = {
   },
   // Active centre-panel tab
   activeTab: 'graph',
+  // Active graph mode: 'callGraph' | 'callers' | 'callees' | 'fieldImpact' | 'fieldPropagation'
+  activeGraphMode: 'callGraph',
+  // Active traversal depth (1..15)
+  graphDepth: 3,
   // Graph renderer instance
   graph: null,
   // Scan polling interval handle
@@ -77,7 +81,7 @@ const api = {
   callees:            (id, d=4)   => api.get(`/methods/${enc(id)}/callees?depth=${d}`),
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
   field:              (id)        => api.get(`/fields/${enc(id)}`),
-  fieldImpact:        (id)        => api.get(`/fields/${enc(id)}/impact`),
+  fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   inconsistencies:    ()          => api.get('/inconsistencies'),
   search:             (q, n=30)   => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`),
   scanStatus:         ()          => api.get('/scan/status'),
@@ -753,13 +757,49 @@ function ensureGraph() {
   }
 }
 
+/** Reload whichever graph is currently active with the current App.graphDepth. */
+async function reloadActiveGraph() {
+  if (!App.selected || !App.selected.id) return;
+  const id = App.selected.id;
+  if (App.selected.kind === 'method') {
+    if (App.activeGraphMode === 'callers')      await loadCallersGraph(id, App.graphDepth);
+    else if (App.activeGraphMode === 'callees') await loadCalleesGraph(id, App.graphDepth);
+    else                                        await loadCallGraph(id, App.graphDepth);
+  } else if (App.selected.kind === 'field') {
+    if (App.activeGraphMode === 'fieldPropagation') await loadFieldPropagationChain(id, App.graphDepth);
+    else                                            await loadFieldImpact(id, App.graphDepth);
+  }
+}
+
+/** Set the active graph depth and trigger reload. */
+function setGraphDepth(depth) {
+  App.graphDepth = Math.max(1, Math.min(15, parseInt(depth, 10) || 3));
+  
+  // Update indicator text
+  const indicator = qs('#depth-val-indicator');
+  if (indicator) indicator.textContent = (App.graphDepth >= 15 ? 'Max' : App.graphDepth) + ' hops';
+
+  // Update slider input value
+  const slider = qs('#graph-depth-slider');
+  if (slider) slider.value = Math.min(App.graphDepth, 10);
+
+  // Update pill active states
+  qsa('.depth-pill').forEach(btn => {
+    const d = parseInt(btn.dataset.depth, 10);
+    btn.classList.toggle('active', d === App.graphDepth || (d === 15 && App.graphDepth >= 15));
+  });
+
+  reloadActiveGraph();
+}
+
 /** Load and render the call hierarchy graph for a method. */
-async function loadCallGraph(methodId) {
+async function loadCallGraph(methodId, depth = App.graphDepth) {
+  App.activeGraphMode = 'callGraph';
   ensureGraph();
   App.graph.clear();
 
   try {
-    const view = await api.callGraph(methodId);
+    const view = await api.callGraph(methodId, depth);
 
     if (!view.nodes || view.nodes.length === 0) {
       showGraphEmpty('No call relationships found for this method.');
@@ -781,11 +821,12 @@ async function loadCallGraph(methodId) {
 }
 
 /** Load and render the callers sub-graph for a method. */
-async function loadCallersGraph(methodId) {
+async function loadCallersGraph(methodId, depth = App.graphDepth) {
+  App.activeGraphMode = 'callers';
   ensureGraph();
   App.graph.clear();
   try {
-    const view = await api.callers(methodId);
+    const view = await api.callers(methodId, depth);
     if (!view.nodes || view.nodes.length === 0) {
       showGraphEmpty('No callers found for this method.');
       return;
@@ -802,11 +843,12 @@ async function loadCallersGraph(methodId) {
 }
 
 /** Load and render the callees sub-graph for a method. */
-async function loadCalleesGraph(methodId) {
+async function loadCalleesGraph(methodId, depth = App.graphDepth) {
+  App.activeGraphMode = 'callees';
   ensureGraph();
   App.graph.clear();
   try {
-    const view = await api.callees(methodId);
+    const view = await api.callees(methodId, depth);
     if (!view.nodes || view.nodes.length === 0) {
       showGraphEmpty('No callees found for this method.');
       return;
@@ -822,13 +864,14 @@ async function loadCalleesGraph(methodId) {
   }
 }
 
-/** Load and render the field impact graph. */
-async function loadFieldImpact(fieldId) {
+/** Load and render direct field impact. */
+async function loadFieldImpact(fieldId, depth = 1) {
+  App.activeGraphMode = 'fieldImpact';
   ensureGraph();
   App.graph.clear();
 
   try {
-    const impact = await api.fieldImpact(fieldId);
+    const impact = await api.fieldImpact(fieldId, depth);
 
     if (!impact.graph || !impact.graph.nodes || impact.graph.nodes.length === 0) {
       showGraphEmpty('No field relationships found. Field may not be read or written in indexed code.');
@@ -846,6 +889,35 @@ async function loadFieldImpact(fieldId) {
     ]);
   } catch (e) {
     showGraphEmpty('Failed to load field impact: ' + e.message);
+  }
+}
+
+/** Load and render multi-hop field-to-method caller propagation chain. */
+async function loadFieldPropagationChain(fieldId, depth = App.graphDepth) {
+  App.activeGraphMode = 'fieldPropagation';
+  ensureGraph();
+  App.graph.clear();
+
+  try {
+    const impact = await api.fieldImpact(fieldId, Math.max(2, depth));
+
+    if (!impact.graph || !impact.graph.nodes || impact.graph.nodes.length === 0) {
+      showGraphEmpty('No field relationships or propagation paths found.');
+      return;
+    }
+
+    hideGraphEmpty();
+    App.graph.setData(impact.graph.nodes, impact.graph.edges);
+
+    renderLegend([
+      { colour: GC.roles.field,      label: 'Field' },
+      { colour: GC.roles.writer,     label: 'Direct Writer' },
+      { colour: GC.roles.propagator, label: 'Propagator' },
+      { colour: GC.roles.caller,     label: 'Upstream Caller (Trigger)' },
+      { colour: GC.roles.reader,     label: 'Direct Reader' },
+    ]);
+  } catch (e) {
+    showGraphEmpty('Failed to load field propagation chain: ' + e.message);
   }
 }
 
@@ -1086,8 +1158,8 @@ function renderMethodDetail(data) {
 
   // Call graph action buttons
   body.appendChild(actionRow([
-    { label: '⬆ Callers', action: () => { switchTab('graph'); loadCallersGraph(method.id); } },
-    { label: '⬇ Callees', action: () => { switchTab('graph'); loadCalleesGraph(method.id); } },
+    { label: '⬆ Callers', title: 'Trace all upstream methods that call this method (BFS)', action: () => { switchTab('graph'); loadCallersGraph(method.id); } },
+    { label: '⬇ Callees', title: 'Trace all downstream methods invoked by this method (BFS)', action: () => { switchTab('graph'); loadCalleesGraph(method.id); } },
   ]));
 
   renderNotes(method.fqn, notes);
@@ -1146,7 +1218,8 @@ function renderFieldDetail(data) {
 
 
   body.appendChild(actionRow([
-    { label: '⚡ Impact', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
+    { label: '⚡ Impact (Direct)', title: 'Show direct readers, writers, and immediate propagators of this field', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
+    { label: '🔗 Propagation Chain', title: 'Trace multi-hop upstream triggers and calling entrypoints that modify this field', action: () => { switchTab('graph'); loadFieldPropagationChain(field.id); } },
   ]));
 
   renderNotes(field.fqn, notes);
@@ -1274,23 +1347,37 @@ function ease(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
 
 function bindKeyboard() {
   document.addEventListener('keydown', e => {
+    const helpModal = qs('#help-modal');
+    // Escape → close modal or clear search
+    if (e.key === 'Escape') {
+      if (helpModal && helpModal.classList.contains('open')) {
+        helpModal.classList.remove('open');
+        helpModal.setAttribute('aria-hidden', 'true');
+        return;
+      }
+      qs('#search-input').value = '';
+      showExplorer();
+      qs('#search-input').blur();
+    }
     // Ctrl+K / Cmd+K → focus search
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
       e.preventDefault();
       qs('#search-input').focus();
       qs('#search-input').select();
     }
-    // Escape → clear search
-    if (e.key === 'Escape') {
-      qs('#search-input').value = '';
-      showExplorer();
-      qs('#search-input').blur();
-    }
-    // Tab switching: 1/2/3 when not in input
+    // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
       if (e.key === '1') switchTab('graph');
       if (e.key === '2') switchTab('knowledge');
       if (e.key === '3') switchTab('inconsistency');
+      if (e.key === '4') switchTab('git');
+      if (e.key === '5') switchTab('source');
+      if (e.key === '?') {
+        if (helpModal) {
+          helpModal.classList.toggle('open');
+          helpModal.setAttribute('aria-hidden', helpModal.classList.contains('open') ? 'false' : 'true');
+        }
+      }
     }
   });
 }
@@ -1376,6 +1463,45 @@ async function init() {
     });
     // Pre-load heat data
     loadGitHeatData();
+  }
+
+  // Graph depth slider and preset pills
+  const depthSlider = qs('#graph-depth-slider');
+  if (depthSlider) {
+    depthSlider.addEventListener('input', (e) => {
+      setGraphDepth(e.target.value);
+    });
+  }
+  qsa('.depth-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = parseInt(btn.dataset.depth, 10);
+      setGraphDepth(d);
+    });
+  });
+
+  // Feature Guide Modal controls
+  const helpBtn   = qs('#help-btn');
+  const helpModal = qs('#help-modal');
+  const helpClose = qs('#help-modal-close');
+  if (helpBtn && helpModal) {
+    helpBtn.addEventListener('click', () => {
+      helpModal.classList.add('open');
+      helpModal.setAttribute('aria-hidden', 'false');
+    });
+  }
+  if (helpClose && helpModal) {
+    helpClose.addEventListener('click', () => {
+      helpModal.classList.remove('open');
+      helpModal.setAttribute('aria-hidden', 'true');
+    });
+  }
+  if (helpModal) {
+    helpModal.addEventListener('click', (e) => {
+      if (e.target === helpModal) {
+        helpModal.classList.remove('open');
+        helpModal.setAttribute('aria-hidden', 'true');
+      }
+    });
   }
 
   bindKeyboard();
@@ -1551,6 +1677,7 @@ function actionRow(actions) {
   for (const a of actions) {
     const btn = createElement('button', { class: 'action-btn' });
     btn.textContent = a.label;
+    if (a.title) btn.title = a.title;
     btn.addEventListener('click', a.action);
     row.appendChild(btn);
   }

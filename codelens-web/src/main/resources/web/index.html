@@ -68,11 +68,14 @@
         spellcheck="false"
         aria-describedby="scan-hint"
       />
-      <button id="browse-btn" class="btn-ghost" aria-label="Browse directory">
+      <button id="browse-btn" class="btn-ghost" aria-label="Browse directory" title="Select source root folder">
         Browse…
       </button>
-      <button id="scan-btn" class="btn-primary" aria-label="Start source scan">
+      <button id="scan-btn" class="btn-primary" aria-label="Start source scan" title="Start AST parsing and repository indexation">
         Scan
+      </button>
+      <button id="help-btn" class="btn-ghost" aria-label="Open Feature & User Guide" title="Feature Guide & Documentation (?)">
+        ❓ Guide
       </button>
       <span id="scan-hint" class="visually-hidden">
         Press Enter or click Scan to index the Java source directory
@@ -81,15 +84,15 @@
 
     <!-- Live entity count statistics — updated by app.js after each scan -->
     <div class="stats-row" role="status" aria-live="polite" aria-label="Index statistics">
-      <div class="stat-pill" title="Indexed types">
+      <div class="stat-pill" title="Total indexed Java classes, interfaces, enums, and records">
         <span class="stat-count" id="stat-types">0</span>
         <span class="stat-label">types</span>
       </div>
-      <div class="stat-pill" title="Indexed methods">
+      <div class="stat-pill" title="Total indexed methods with cyclomatic complexity and call signatures">
         <span class="stat-count" id="stat-methods">0</span>
         <span class="stat-label">methods</span>
       </div>
-      <div class="stat-pill" title="Indexed fields">
+      <div class="stat-pill" title="Total indexed member and static fields">
         <span class="stat-count" id="stat-fields">0</span>
         <span class="stat-label">fields</span>
       </div>
@@ -132,14 +135,14 @@
 
     <!-- Filter chip row — narrows the explorer to one entity kind -->
     <div class="filter-chips" role="toolbar" aria-label="Filter by entity kind">
-      <button class="chip active" data-filter="all"       aria-pressed="true" >All</button>
-      <button class="chip"        data-filter="CLASS"     aria-pressed="false">Class</button>
-      <button class="chip"        data-filter="INTERFACE" aria-pressed="false">Iface</button>
-      <button class="chip"        data-filter="ENUM"      aria-pressed="false">Enum</button>
+      <button class="chip active" data-filter="all"       aria-pressed="true"  title="Show all Java types in explorer">All</button>
+      <button class="chip"        data-filter="CLASS"     aria-pressed="false" title="Filter to standard Java Classes">Class</button>
+      <button class="chip"        data-filter="INTERFACE" aria-pressed="false" title="Filter to Interfaces">Iface</button>
+      <button class="chip"        data-filter="ENUM"      aria-pressed="false" title="Filter to Enums">Enum</button>
     </div>
 
     <!-- Section heading for the tree -->
-    <div class="section-label" id="explorer-label">Explorer</div>
+    <div class="section-label" id="explorer-label" title="Hierarchical package and class tree structure">Explorer</div>
 
     <!-- Package / type tree — populated lazily by app.js loadPackageTree() -->
     <nav
@@ -180,6 +183,7 @@
         data-tab="graph"
         aria-selected="true"
         aria-controls="graph-view"
+        title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
       >
         <span aria-hidden="true">◈</span>
         Graph
@@ -193,6 +197,7 @@
         data-tab="knowledge"
         aria-selected="false"
         aria-controls="knowledge-view"
+        title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
       >
         <span aria-hidden="true">◉</span>
         Knowledge Base
@@ -206,6 +211,7 @@
         data-tab="inconsistency"
         aria-selected="false"
         aria-controls="inconsistency-view"
+        title="Detected structural divergences, duplicated AST blocks, and signature drift (Shortcut: 3)"
       >
         <span aria-hidden="true">⚠</span>
         Inconsistencies
@@ -220,6 +226,7 @@
         data-tab="git"
         aria-selected="false"
         aria-controls="git-view"
+        title="Git repository analytics: commit heat, top authors, and file churn"
       >
         <span aria-hidden="true">⎇</span>
         Git
@@ -233,6 +240,7 @@
         data-tab="source"
         aria-selected="false"
         aria-controls="source-view"
+        title="Integrated Monaco syntax-highlighted source code editor with line jumping"
       >
         <span aria-hidden="true">⎄</span>
         Source
@@ -288,6 +296,33 @@
         role="tooltip"
         aria-live="polite"
       ></div>
+
+      <!-- Depth control toolbar overlay (top-right overlay) -->
+      <div id="graph-depth-panel" class="graph-depth-panel" aria-label="Graph Traversal Depth Controls">
+        <div class="depth-header">
+          <span class="depth-title">Scan Depth</span>
+          <span class="depth-value" id="depth-val-indicator">3 hops</span>
+        </div>
+        <div class="depth-slider-row">
+          <input
+            id="graph-depth-slider"
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            value="3"
+            aria-label="Graph Traversal Depth Slider"
+          />
+        </div>
+        <div class="depth-pills" role="group" aria-label="Preset Depths">
+          <button class="depth-pill" data-depth="1" title="1 hop (direct relations)">1</button>
+          <button class="depth-pill" data-depth="2" title="2 hops">2</button>
+          <button class="depth-pill active" data-depth="3" title="3 hops (default)">3</button>
+          <button class="depth-pill" data-depth="5" title="5 hops">5</button>
+          <button class="depth-pill" data-depth="8" title="8 hops">8</button>
+          <button class="depth-pill" data-depth="15" title="15 hops (Full reach / max)">Max</button>
+        </div>
+      </div>
 
       <!-- Control toolbar (bottom-right overlay) -->
       <div class="graph-controls" aria-label="Graph controls">
@@ -443,7 +478,91 @@
   </div>
 </footer>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     FEATURE & SCREEN HELPER MODAL DIALOG
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="help-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="help-modal-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon">⬡</span>
+        <h2 id="help-modal-title">CodeLens Feature &amp; Screen Guide</h2>
+      </div>
+      <button class="modal-close-btn" id="help-modal-close" aria-label="Close Guide">✕</button>
+    </div>
+    <div class="modal-body">
 
+      <section class="help-section">
+        <h3>⚡ Five Core Analysis Capabilities</h3>
+        <div class="help-grid">
+          <div class="help-card">
+            <h4>1. AST Source Indexing</h4>
+            <p>JavaParser walks the source tree extracting classes, methods, fields, modifiers, lines, and relationships into an embedded database and Apache Lucene index.</p>
+          </div>
+          <div class="help-card">
+            <h4>2. Call Graph &amp; Dynamic Depth</h4>
+            <p>Calculates call hierarchies with configurable BFS depth (1 to 15 hops). Inspect immediate callers, downstream dependencies, or full transitives.</p>
+          </div>
+          <div class="help-card">
+            <h4>3. Field Impact &amp; Propagation</h4>
+            <p>Traces every method reading or writing a field, plus full upstream caller chains (Field &larr; Writers &larr; Callers) across the entire repo.</p>
+          </div>
+          <div class="help-card">
+            <h4>4. Structural Inconsistency Detection</h4>
+            <p>Identifies signature divergence across same-named methods, naming drift, and duplicate logic blocks via AST hash comparisons.</p>
+          </div>
+          <div class="help-card">
+            <h4>5. Git Intelligence &amp; Heatmaps</h4>
+            <p>Extracts per-entity commit frequencies, churn levels, top author contributions, and renders hot entities directly onto graph nodes.</p>
+          </div>
+          <div class="help-card">
+            <h4>6. In-App Monaco Editor</h4>
+            <p>Jump directly to exact source lines, inspect Java source files with syntax highlighting, and perform local edits safely.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="help-section">
+        <h3>🖥️ Screen &amp; Panel Breakdown</h3>
+        <div class="help-flow">
+          <div class="flow-step">
+            <strong>Header</strong>: Input absolute source paths, run scans, inspect live type/method/field counters, and check progress.
+          </div>
+          <div class="flow-step">
+            <strong>Left Panel (Explorer &amp; Search)</strong>: Filter by Class/Iface/Enum chips, browse packages, or press <code>⌘K</code> for Lucene search.
+          </div>
+          <div class="flow-step">
+            <strong>Centre Panel (5 Workspaces)</strong>:
+            <ul>
+              <li><strong>Graph</strong>: Force-directed interactive canvas with depth slider, fit view, and fire heat overlay.</li>
+              <li><strong>Knowledge Base</strong>: Structured catalog with complexity metrics and signatures.</li>
+              <li><strong>Inconsistencies</strong>: Prioritized list of code drift and clone warnings.</li>
+              <li><strong>Git</strong>: Author ranking and entity churn metrics.</li>
+              <li><strong>Source</strong>: Full Monaco code editor view.</li>
+            </ul>
+          </div>
+          <div class="flow-step">
+            <strong>Right Panel (Inspector)</strong>: Complete entity breakdown, Cyclomatic Complexity score bar, relationships, git metadata, and editable analyst notes.
+          </div>
+        </div>
+      </section>
+
+      <section class="help-section">
+        <h3>⌨️ Keyboard Shortcuts</h3>
+        <div class="shortcuts-table">
+          <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global full-text search</span></div>
+          <div class="sc-row"><kbd>Esc</kbd> <span>Clear search or close modals</span></div>
+          <div class="sc-row"><kbd>1</kbd> <span>Switch to Graph workspace</span></div>
+          <div class="sc-row"><kbd>2</kbd> <span>Switch to Knowledge Base</span></div>
+          <div class="sc-row"><kbd>3</kbd> <span>Switch to Inconsistencies workspace</span></div>
+          <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit heat overlay on graph</span></div>
+          <div class="sc-row"><kbd>F</kbd> <span>Fit graph to viewport</span></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      SCAN STATUS BAR — fixed overlay shown at bottom-centre during active scans

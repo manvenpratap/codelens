@@ -398,8 +398,9 @@ public class CodeLensServer {
     }
 
     private void getFieldImpact(Context ctx) throws Exception {
-        String id = decode(ctx.pathParam("id"));
-        ctx.json(fieldImpact.analyse(id));
+        String id    = decode(ctx.pathParam("id"));
+        int    depth = intParam(ctx, "depth", 1);
+        ctx.json(fieldImpact.analyse(id, depth, callGraph));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

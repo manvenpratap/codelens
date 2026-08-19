@@ -51,6 +51,14 @@ public class FieldImpactAnalyzer {
      * method that reads, writes, or propagates its value.
      */
     public ImpactView analyse(String fieldFqn) {
+        return analyse(fieldFqn, 1, null);
+    }
+
+    /**
+     * Returns an {@link ImpactView} for {@code fieldFqn} with multi-hop
+     * caller propagation up to {@code depth} hops.
+     */
+    public ImpactView analyse(String fieldFqn, int depth, CallGraphAnalyzer callGraphAnalyzer) {
         List<String> readers    = new ArrayList<>();
         List<String> writers    = new ArrayList<>();
         List<String> propagators = new ArrayList<>();
@@ -86,6 +94,27 @@ public class FieldImpactAnalyzer {
         addNodes(nodes, edges, readers,     seen, fieldFqn, "READS_FIELD",  "reader");
         addNodes(nodes, edges, writers,     seen, fieldFqn, "WRITES_FIELD", "writer");
         addNodes(nodes, edges, propagators, seen, fieldFqn, "CALLS",        "propagator");
+
+        // If depth > 1 and callGraphAnalyzer is available, trace upstream callers of writers & propagators
+        if (depth > 1 && callGraphAnalyzer != null) {
+            int callerDepth = depth - 1;
+            Set<String> directMethods = new LinkedHashSet<>();
+            directMethods.addAll(writers);
+            directMethods.addAll(propagators);
+            directMethods.addAll(readers);
+
+            for (String methodFqn : directMethods) {
+                List<CallGraphAnalyzer.GraphNode> upstreamCallers = callGraphAnalyzer.callers(methodFqn, callerDepth);
+                for (CallGraphAnalyzer.GraphNode callerNode : upstreamCallers) {
+                    if (seen.add(callerNode.id)) {
+                        nodes.add(new CallGraphAnalyzer.GraphNode(callerNode.id, callerNode.label, "caller", "METHOD"));
+                    }
+                }
+            }
+
+            // Also attach resolved call edges among all included methods
+            edges.addAll(callGraphAnalyzer.getEdgesBetween(seen));
+        }
 
         return new ImpactView(fieldFqn, readers, writers, propagators,
                               new CallGraphAnalyzer.GraphView(fieldFqn, nodes, edges));

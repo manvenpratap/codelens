@@ -102,6 +102,24 @@ public class CallGraphAnalyzer {
     }
 
     /**
+     * Returns all CALLS edges between any pairs of vertices in {@code vertexSet}.
+     */
+    public List<GraphEdge> getEdgesBetween(Set<String> vertexSet) {
+        List<GraphEdge> edges = new ArrayList<>();
+        Graph<String, DefaultEdge> g = callGraph;
+        for (String v : vertexSet) {
+            if (!g.containsVertex(v)) continue;
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (vertexSet.contains(tgt)) {
+                    edges.add(new GraphEdge(v, tgt, "CALLS"));
+                }
+            }
+        }
+        return edges;
+    }
+
+    /**
      * Builds a full {@link GraphView} suitable for JSON serialisation and
      * rendering by the frontend graph canvas.
      */
