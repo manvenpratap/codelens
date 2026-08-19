@@ -254,46 +254,78 @@ async function loadPackageTree() {
 }
 
 /**
- * Convert flat package list to a tree.
- * e.g. ["com.example", "com.example.trading"] → nested children.
+ * Convert flat package list to a full hierarchical tree.
+ * Creates synthetic intermediate package nodes if needed so "com.example.trading"
+ * can nest under "com" -> "example" -> "trading" or display naturally.
  */
 function buildPackageTree(packages) {
   const map = {};
   const roots = [];
 
-  // Sort so parents always come before children
-  const sorted = [...packages].sort((a, b) => a.fqn.localeCompare(b.fqn));
-
-  for (const pkg of sorted) {
-    map[pkg.fqn] = { ...pkg, children: [] };
+  // Index all explicit packages
+  for (const pkg of packages) {
+    map[pkg.fqn] = { ...pkg, children: [], isSynthetic: false };
   }
 
-  for (const pkg of sorted) {
-    if (pkg.parentFqn && map[pkg.parentFqn]) {
-      map[pkg.parentFqn].children.push(map[pkg.fqn]);
-    } else {
-      roots.push(map[pkg.fqn]);
+  // Ensure all ancestor packages exist in the tree
+  for (const pkg of packages) {
+    const parts = pkg.fqn.split('.');
+    let currentFqn = '';
+    let parentFqn = null;
+
+    for (let i = 0; i < parts.length; i++) {
+      currentFqn = i === 0 ? parts[0] : currentFqn + '.' + parts[i];
+      if (!map[currentFqn]) {
+        map[currentFqn] = {
+          id: currentFqn,
+          fqn: currentFqn,
+          name: parts[i],
+          parentFqn: parentFqn,
+          fileCount: 0,
+          typeCount: 0,
+          children: [],
+          isSynthetic: true
+        };
+      }
+      parentFqn = currentFqn;
     }
   }
 
+  // Link children to parents
+  const allNodes = Object.values(map).sort((a, b) => a.fqn.localeCompare(b.fqn));
+  for (const node of allNodes) {
+    if (node.parentFqn && map[node.parentFqn]) {
+      if (!map[node.parentFqn].children.some(c => c.fqn === node.fqn)) {
+        map[node.parentFqn].children.push(node);
+      }
+    } else {
+      if (!roots.some(r => r.fqn === node.fqn)) {
+        roots.push(node);
+      }
+    }
+  }
+
+  // Helper to collapse single-child package chains if desired or keep clean
   return roots;
 }
 
 /** Recursively render the package tree into a container element. */
 function renderPackageTree(nodes, container, depth) {
   for (const node of nodes) {
-    const hasChildren = node.children && node.children.length > 0;
-    const isOpen      = App.openPackages.has(node.fqn);
+    const hasSubPackages = node.children && node.children.length > 0;
+    // A package can have sub-packages AND/OR direct types
+    const canExpand = hasSubPackages || node.typeCount > 0;
+    const isOpen = App.openPackages.has(node.fqn);
 
     const item = createElement('div', {
-      class:       `tree-item${App.selected.id === node.fqn ? ' active' : ''}`,
+      class: `tree-item${App.selected.id === node.fqn ? ' active' : ''}`,
       'data-depth': depth,
-      'data-fqn':   node.fqn,
+      'data-fqn': node.fqn,
     });
 
     // Toggle arrow
-    const toggle = createElement('span', { class: `tree-toggle${hasChildren && isOpen ? ' open' : ''}` });
-    toggle.textContent = hasChildren ? '▶' : '';
+    const toggle = createElement('span', { class: `tree-toggle${canExpand && isOpen ? ' open' : ''}` });
+    toggle.textContent = canExpand ? '▶' : '';
     item.appendChild(toggle);
 
     // Icon
@@ -301,9 +333,10 @@ function renderPackageTree(nodes, container, depth) {
     icon.textContent = '📦';
     item.appendChild(icon);
 
-    // Label
+    // Label: show leaf name if nested, or FQN if root
     const label = createElement('span', { class: 'tree-label' });
     label.textContent = node.name || node.fqn;
+    label.title = node.fqn;
     item.appendChild(label);
 
     // Count badge
@@ -318,14 +351,21 @@ function renderPackageTree(nodes, container, depth) {
     // Child nodes container (types + sub-packages)
     const childContainer = createElement('div', {
       class: 'tree-children',
-      style: hasChildren && !isOpen ? 'display:none' : '',
+      style: !isOpen ? 'display:none' : '',
     });
     container.appendChild(childContainer);
 
-    // Click: toggle or load types
+    // If previously open and has types, load them
+    if (isOpen && node.typeCount > 0 && !childContainer.dataset.loaded) {
+      loadTypesInTree(node.fqn, childContainer, depth + 1);
+      childContainer.dataset.loaded = '1';
+    }
+
+    // Click handler for package item
     item.addEventListener('click', async e => {
       e.stopPropagation();
-      if (hasChildren) {
+
+      if (canExpand) {
         const open = App.openPackages.has(node.fqn);
         if (open) {
           App.openPackages.delete(node.fqn);
@@ -335,18 +375,22 @@ function renderPackageTree(nodes, container, depth) {
           App.openPackages.add(node.fqn);
           childContainer.style.display = '';
           toggle.classList.add('open');
-          // Lazy-load types if not already populated
-          if (!childContainer.dataset.loaded) {
+          
+          // Lazy-load types if not loaded yet
+          if (node.typeCount > 0 && !childContainer.dataset.loaded) {
             await loadTypesInTree(node.fqn, childContainer, depth + 1);
             childContainer.dataset.loaded = '1';
           }
         }
       }
-      selectPackage(node, item);
+
+      if (!node.isSynthetic) {
+        selectPackage(node, item);
+      }
     });
 
     // Recursively render sub-packages
-    if (hasChildren) {
+    if (hasSubPackages) {
       renderPackageTree(node.children, childContainer, depth + 1);
     }
   }
@@ -363,21 +407,23 @@ async function loadTypesInTree(pkgFqn, container, depth) {
 
     for (const t of typeEls) {
       const item = createElement('div', {
-        class:        `tree-item${App.selected.id === t.id ? ' active' : ''}`,
+        class: `tree-item${App.selected.id === t.id ? ' active' : ''}`,
         'data-depth': depth,
-        'data-id':    t.id,
+        'data-id': t.id,
       });
 
-      const icon  = createElement('span', { class: 'tree-icon' });
+      const icon = createElement('span', { class: 'tree-icon' });
       icon.textContent = kindIcon(t.kind);
       item.appendChild(icon);
 
       const label = createElement('span', { class: 'tree-label' });
       label.textContent = t.simpleName;
+      label.title = t.fqn;
       item.appendChild(label);
 
       item.addEventListener('click', e => {
         e.stopPropagation();
+        setActiveTreeItem(item);
         selectType(t.id);
       });
 
