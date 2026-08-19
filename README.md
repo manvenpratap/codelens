@@ -6,10 +6,17 @@ A high-performance, **offline**, self-contained Java codebase intelligence and a
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [Overview & Capabilities](#overview--capabilities)
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [System Requirements & Installation](#system-requirements--installation)
 - [Build & Run Guide](#build--run-guide)
+- [Shipping & Deployment Guide (New Computer)](#shipping--deployment-guide-new-computer)
+  - [Method 1: Standalone Single-File Fat JAR (Fastest)](#method-1-standalone-single-file-fat-jar-fastest)
+  - [Method 2: Building from Source on the New Machine](#method-2-building-from-source-on-the-new-machine)
+  - [Method 3: Docker Container Deployment](#method-3-docker-container-deployment)
+  - [Method 4: Production Linux Systemd Service](#method-4-production-linux-systemd-service)
+  - [Method 5: macOS LaunchAgent Daemon](#method-5-macos-launchagent-daemon)
 - [Scanning a Codebase](#scanning-a-codebase)
 - [Detailed Screen & Feature Helper](#detailed-screen--feature-helper)
   - [1. Header & Navigation Controls](#1-header--navigation-controls)
@@ -71,9 +78,12 @@ codelens/
 
 ## System Requirements & Installation
 
-- **Operating System**: macOS, Linux, or Windows (x86_64 / Apple Silicon ARM64)
-- **Java Runtime**: JDK 17 or higher (`java -version`)
-- **Maven**: Maven 3.8+ or the included Maven Wrapper (`./mvnw`)
+- **Target Machine OS**: macOS (Intel / Apple Silicon), Linux (Ubuntu, Debian, RHEL, Arch), or Windows 10/11
+- **Java Runtime Environment**: **JRE / JDK 17+** (`java -version`)
+  - *macOS*: `brew install openjdk@17`
+  - *Ubuntu / Debian*: `sudo apt install openjdk-17-jre-headless`
+  - *RHEL / Fedora*: `sudo dnf install java-17-openjdk`
+  - *Windows*: Download from [Eclipse Temurin](https://adoptium.net/)
 
 ---
 
@@ -103,6 +113,165 @@ java -Dcodelens.port=9090 -jar codelens-app/target/codelens-app-1.0.0.jar
 # Custom Data & Index Directory
 java -Dcodelens.data=/custom/path/codelens-data -jar codelens-app/target/codelens-app-1.0.0.jar
 ```
+
+---
+
+## Shipping & Deployment Guide (New Computer)
+
+CodeLens is designed as a **zero-dependency, single-binary distribution**. The fat JAR packages the Javalin/Jetty web server, Lucene search engine, H2 database, static UI assets, and AST parser into a single self-contained executable.
+
+### Method 1: Standalone Single-File Fat JAR (Fastest)
+
+You only need to transfer **one file** to the target machine.
+
+1. **Build the Fat JAR on your development machine**:
+   ```bash
+   ./mvnw clean package -DskipTests
+   ```
+2. **Copy the JAR to the new computer**:
+   Transfer `codelens-app/target/codelens-app-1.0.0.jar` via `scp`, USB drive, or internal artifact registry:
+   ```bash
+   scp codelens-app/target/codelens-app-1.0.0.jar user@remote-machine:/opt/codelens/codelens.jar
+   ```
+3. **Run on the new machine** (requires only Java 17+):
+   ```bash
+   java -jar codelens.jar
+   ```
+4. Access `http://localhost:7878` in any browser.
+
+---
+
+### Method 2: Building from Source on the New Machine
+
+If shipping the source repository (or cloning via Git):
+
+1. **Clone repository**:
+   ```bash
+   git clone <repo-url> codelens
+   cd codelens
+   ```
+2. **Build using the embedded Maven Wrapper** (no Maven installation required):
+   ```bash
+   # On macOS / Linux
+   ./mvnw clean package -DskipTests
+
+   # On Windows PowerShell
+   .\mvnw.cmd clean package -DskipTests
+   ```
+3. **Run**:
+   ```bash
+   java -jar codelens-app/target/codelens-app-1.0.0.jar
+   ```
+
+---
+
+### Method 3: Docker Container Deployment
+
+To run CodeLens inside an isolated container:
+
+1. **Create a `Dockerfile`** in the project root:
+   ```dockerfile
+   # Stage 1: Build fat JAR
+   FROM eclipse-temurin:17-jdk-jammy AS builder
+   WORKDIR /build
+   COPY . .
+   RUN chmod +x ./mvnw && ./mvnw clean package -DskipTests
+
+   # Stage 2: Minimal runtime image
+   FROM eclipse-temurin:17-jre-jammy
+   WORKDIR /app
+   COPY --from=builder /build/codelens-app/target/codelens-app-1.0.0.jar app.jar
+
+   VOLUME /app/data
+   VOLUME /sources
+
+   EXPOSE 7878
+   ENTRYPOINT ["java", "-Dcodelens.data=/app/data", "-jar", "app.jar"]
+   ```
+
+2. **Build and Run Docker Image**:
+   ```bash
+   # Build the container
+   docker build -t codelens:1.0.0 .
+
+   # Run container mounting your local source folder and persistent data volume
+   docker run -d \
+     --name codelens \
+     -p 7878:7878 \
+     -v codelens_data:/app/data \
+     -v /path/to/your/java/code:/sources:ro \
+     codelens:1.0.0
+   ```
+
+3. Scan the mounted code in the web UI by entering `/sources` as the source path.
+
+---
+
+### Method 4: Production Linux Systemd Service
+
+To run CodeLens as a background system daemon on Linux servers:
+
+1. Copy `codelens-app-1.0.0.jar` to `/opt/codelens/codelens.jar`.
+2. Create `/etc/systemd/system/codelens.service`:
+   ```ini
+   [Unit]
+   Description=CodeLens Java Intelligence Platform
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=codelens
+   WorkingDirectory=/opt/codelens
+   ExecStart=/usr/bin/java -Xms512m -Xmx2g -Dcodelens.port=7878 -Dcodelens.data=/var/lib/codelens -jar /opt/codelens/codelens.jar
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+3. Enable and start the service:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now codelens
+   sudo systemctl status codelens
+   ```
+
+---
+
+### Method 5: macOS LaunchAgent Daemon
+
+To run CodeLens automatically at login in the background on macOS:
+
+1. Place the JAR at `~/Applications/CodeLens/codelens.jar`.
+2. Create `~/Library/LaunchAgents/com.codelens.server.plist`:
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+       <key>Label</key>
+       <string>com.codelens.server</string>
+       <key>ProgramArguments</key>
+       <array>
+           <string>/usr/bin/java</string>
+           <string>-jar</string>
+           <string>/Users/yourusername/Applications/CodeLens/codelens.jar</string>
+       </array>
+       <key>RunAtLoad</key>
+       <true/>
+       <key>KeepAlive</key>
+       <true/>
+       <key>StandardOutPath</key>
+       <string>/tmp/codelens.log</string>
+       <key>StandardErrorPath</key>
+       <string>/tmp/codelens-err.log</string>
+   </dict>
+   </plist>
+   ```
+3. Load the daemon:
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.codelens.server.plist
+   ```
 
 ---
 
