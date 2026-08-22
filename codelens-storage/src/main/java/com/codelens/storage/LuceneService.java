@@ -8,6 +8,7 @@ import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.NIOFSDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,7 +60,11 @@ public class LuceneService {
     /** Opens (or creates) the index directory and initialises the IndexWriter. */
     public void initialize() throws IOException {
         Files.createDirectories(indexDir);
-        directory = FSDirectory.open(indexDir);
+        try {
+            directory = new NIOFSDirectory(indexDir);
+        } catch (Throwable t) {
+            directory = FSDirectory.open(indexDir);
+        }
         analyzer  = new StandardAnalyzer();
         IndexWriterConfig cfg = new IndexWriterConfig(analyzer);
         cfg.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
