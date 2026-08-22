@@ -422,11 +422,57 @@
       aria-live="polite"
     >
       <div class="git-view-inner">
+        <!-- Git Repository Connection Card -->
+        <div class="git-connect-card">
+          <div class="git-connect-header">
+            <div class="git-connect-title">
+              <span class="git-icon">🌿</span>
+              <span>Git Repository Connection</span>
+            </div>
+            <div id="git-validation-status" class="git-validation-status">
+              <span class="git-status-dot idle"></span>
+              <span class="git-status-text">Not connected</span>
+            </div>
+          </div>
+          <div class="git-connect-form">
+            <div class="git-input-wrap">
+              <input
+                type="text"
+                id="git-repo-input"
+                class="git-repo-input"
+                placeholder="Enter absolute Git repository root path (e.g. /path/to/repo)…"
+                spellcheck="false"
+              />
+              <button id="git-browse-btn" class="btn-ghost git-browse-btn" title="Browse for Git repository folder">
+                📁 Browse
+              </button>
+            </div>
+            <div class="git-action-row">
+              <button id="git-validate-btn" class="btn-ghost git-validate-btn" title="Validate repository path">
+                ✓ Validate Repo
+              </button>
+              <button id="git-analyze-btn" class="btn-primary git-analyze-btn" title="Run background Git blame &amp; churn analysis">
+                ⚡ Analyze Git History
+              </button>
+            </div>
+          </div>
+          <!-- Live Background Progress Bar -->
+          <div id="git-progress-box" class="git-progress-box" style="display:none">
+            <div class="git-progress-top">
+              <span id="git-progress-msg" class="git-progress-msg">Auditing Git blame…</span>
+              <span id="git-progress-pct" class="git-progress-pct">0%</span>
+            </div>
+            <div class="git-progress-track">
+              <div id="git-progress-fill" class="git-progress-fill" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Top Authors leaderboard -->
         <div class="git-section" id="git-authors-section">
           <div class="git-section-title">Top Authors</div>
           <div id="git-authors-list" class="git-authors-list">
-            <div class="list-empty">Run a scan on a git repository to see author stats.</div>
+            <div class="list-empty">Connect a Git repository above to inspect author telemetry.</div>
           </div>
         </div>
         <!-- Hottest Entities -->

@@ -91,6 +91,9 @@ const api = {
   deleteNote:         (id)        => api.delete(`/notes/${id}`),
   gitSummary:         ()          => api.get('/git/summary'),
   gitMeta:            (fqn)       => api.get(`/git/meta/${enc(fqn)}`),
+  validateGitRepo:    (repoPath)  => api.post('/git/validate', { repoPath }),
+  analyzeGit:         (repoPath)  => api.post('/git/analyze', { repoPath }),
+  gitStatus:          ()          => api.get('/git/status'),
   browse:             (current)   => api.get(`/scan/browse?current=${encodeURIComponent(current || '')}`),
   openFolder:         (path)      => api.post('/open-folder', { path }),
   readFile:           (path)      => api.get(`/files/read?path=${encodeURIComponent(path)}`),
@@ -1843,6 +1846,9 @@ async function init() {
   // Initialize code review controls
   initReviewControls();
 
+  // Initialize Git connection controls
+  initGitControls();
+
   // Pre-load git branch metadata in the status footer
   updateFooterGitBranch();
 }
@@ -1850,6 +1856,197 @@ async function init() {
 /* ─────────────────────────────────────────────────────────────────────────────
    Git integration helpers
    ───────────────────────────────────────────────────────────────────────────── */
+
+let gitPollInterval = null;
+
+function initGitControls() {
+  const repoInput   = qs('#git-repo-input');
+  const browseBtn   = qs('#git-browse-btn');
+  const validateBtn = qs('#git-validate-btn');
+  const analyzeBtn  = qs('#git-analyze-btn');
+
+  // Pre-fill input if empty and scan path is available
+  if (repoInput && (!repoInput.value || repoInput.value.trim() === '')) {
+    const scanPath = qs('#scan-path-input')?.value?.trim();
+    if (scanPath) {
+      repoInput.value = scanPath;
+    }
+  }
+
+  if (browseBtn) {
+    browseBtn.addEventListener('click', async () => {
+      const cur = repoInput ? repoInput.value.trim() : '';
+      const originalText = browseBtn.textContent;
+      browseBtn.textContent = 'Opening…';
+      browseBtn.disabled = true;
+      try {
+        const res = await api.browse(cur);
+        if (res && res.path && res.path.trim() !== '') {
+          if (repoInput) repoInput.value = res.path.trim();
+          validateGitRepoPath();
+        }
+      } catch (e) {
+        showError('Browse failed: ' + e.message);
+      } finally {
+        browseBtn.textContent = originalText;
+        browseBtn.disabled = false;
+      }
+    });
+  }
+
+  if (validateBtn) {
+    validateBtn.addEventListener('click', validateGitRepoPath);
+  }
+
+  if (repoInput) {
+    repoInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') validateGitRepoPath();
+    });
+    repoInput.addEventListener('input', () => {
+      updateGitValidationBadge({ idle: true });
+    });
+  }
+
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', startGitAnalysis);
+  }
+}
+
+function updateGitValidationBadge(info) {
+  const badge = qs('#git-validation-status');
+  if (!badge) return;
+  if (info.idle) {
+    badge.innerHTML = '<span class="git-status-dot idle"></span><span class="git-status-text">Not validated</span>';
+  } else if (info.valid) {
+    badge.innerHTML = `<span class="git-status-dot valid"></span><span class="git-status-text">✓ Valid (${esc(info.branch || 'HEAD')})</span>`;
+  } else if (info.running) {
+    badge.innerHTML = '<span class="git-status-dot running"></span><span class="git-status-text">Analyzing…</span>';
+  } else {
+    badge.innerHTML = `<span class="git-status-dot invalid"></span><span class="git-status-text" title="${esc(info.error || '')}">✗ ${esc(info.error || 'Invalid repository')}</span>`;
+  }
+}
+
+async function validateGitRepoPath() {
+  const repoInput = qs('#git-repo-input');
+  const repoPath = repoInput ? repoInput.value.trim() : '';
+  if (!repoPath) {
+    updateGitValidationBadge({ error: 'Please enter a path' });
+    return false;
+  }
+
+  const validateBtn = qs('#git-validate-btn');
+  if (validateBtn) {
+    validateBtn.disabled = true;
+    validateBtn.textContent = 'Validating…';
+  }
+
+  try {
+    const res = await api.validateGitRepo(repoPath);
+    if (res.valid) {
+      updateGitValidationBadge({ valid: true, branch: res.branch });
+      if (repoInput) repoInput.value = res.repoPath;
+      return true;
+    } else {
+      updateGitValidationBadge({ error: res.error });
+      return false;
+    }
+  } catch (e) {
+    updateGitValidationBadge({ error: e.message });
+    return false;
+  } finally {
+    if (validateBtn) {
+      validateBtn.disabled = false;
+      validateBtn.textContent = '✓ Validate Repo';
+    }
+  }
+}
+
+async function startGitAnalysis() {
+  const repoInput = qs('#git-repo-input');
+  let repoPath = repoInput ? repoInput.value.trim() : '';
+  if (!repoPath) {
+    const scanInput = qs('#scan-path-input');
+    if (scanInput && scanInput.value.trim()) {
+      repoPath = scanInput.value.trim();
+      if (repoInput) repoInput.value = repoPath;
+    }
+  }
+
+  const isValid = await validateGitRepoPath();
+  if (!isValid) return;
+
+  const analyzeBtn = qs('#git-analyze-btn');
+  if (analyzeBtn) {
+    analyzeBtn.disabled = true;
+    analyzeBtn.innerHTML = '<span class="spinner-inline"></span> Starting…';
+  }
+
+  try {
+    await api.analyzeGit(repoPath);
+    updateGitValidationBadge({ running: true });
+    showGitProgressBox(true);
+    pollGitAnalysisStatus();
+  } catch (e) {
+    showError('Git analysis failed to start: ' + e.message);
+    if (analyzeBtn) {
+      analyzeBtn.disabled = false;
+      analyzeBtn.innerHTML = '⚡ Analyze Git History';
+    }
+  }
+}
+
+function showGitProgressBox(show) {
+  const box = qs('#git-progress-box');
+  if (box) box.style.display = show ? 'flex' : 'none';
+}
+
+function pollGitAnalysisStatus() {
+  if (gitPollInterval) clearInterval(gitPollInterval);
+
+  gitPollInterval = setInterval(async () => {
+    try {
+      const status = await api.gitStatus();
+      const pctMsg = qs('#git-progress-pct');
+      const textMsg = qs('#git-progress-msg');
+      const fillBar = qs('#git-progress-fill');
+      const analyzeBtn = qs('#git-analyze-btn');
+
+      if (status.status === 'RUNNING') {
+        const pct = status.percentage || 0;
+        if (pctMsg) pctMsg.textContent = `${pct}%`;
+        if (textMsg) textMsg.textContent = status.message || `Auditing ${status.processedFiles}/${status.totalFiles} files…`;
+        if (fillBar) fillBar.style.width = `${pct}%`;
+      } else if (status.status === 'COMPLETE') {
+        clearInterval(gitPollInterval);
+        gitPollInterval = null;
+        if (fillBar) fillBar.style.width = '100%';
+        if (textMsg) textMsg.textContent = status.message || 'Git analysis complete!';
+        if (pctMsg) pctMsg.textContent = '100%';
+        updateGitValidationBadge({ valid: true, branch: status.branch });
+
+        if (analyzeBtn) {
+          analyzeBtn.disabled = false;
+          analyzeBtn.innerHTML = '⚡ Re-analyze History';
+        }
+
+        setTimeout(() => showGitProgressBox(false), 2000);
+        showBanner(`✓ Git history analyzed — ${status.entitiesAnnotated} entities annotated`);
+        await loadGitSummary();
+        await loadGitHeatData();
+        updateFooterGitBranch();
+      } else if (status.status === 'ERROR') {
+        clearInterval(gitPollInterval);
+        gitPollInterval = null;
+        updateGitValidationBadge({ error: status.errorDetail || 'Analysis failed' });
+        if (textMsg) textMsg.textContent = `Failed: ${status.errorDetail || 'Unknown error'}`;
+        if (analyzeBtn) {
+          analyzeBtn.disabled = false;
+          analyzeBtn.innerHTML = '⚡ Analyze Git History';
+        }
+      }
+    } catch (_) {}
+  }, 700);
+}
 
 /**
  * Load git summary (top authors + hottest entities) and populate #git-view.
@@ -1860,14 +2057,11 @@ async function loadGitSummary() {
   const hotList     = qs('#git-hot-list');
   if (!authorsList || !hotList) return;
 
-  authorsList.innerHTML = '<div class="list-empty">Loading…</div>';
-  hotList.innerHTML     = '<div class="list-empty">Loading…</div>';
-
   try {
     const summary = await api.gitSummary();
     // ── Top authors ───────────────────────────────────────────────────────────
     if (!summary.topAuthors || summary.topAuthors.length === 0) {
-      authorsList.innerHTML = '<div class="list-empty">No git data found. Scan a git repository first.</div>';
+      authorsList.innerHTML = '<div class="list-empty">Connect a Git repository above to inspect author telemetry.</div>';
     } else {
       authorsList.innerHTML = summary.topAuthors.map((a, i) => {
         const avatar = a.authorName
@@ -1888,7 +2082,7 @@ async function loadGitSummary() {
     }
     // ── Hottest entities ──────────────────────────────────────────────────────
     if (!summary.hotEntities || summary.hotEntities.length === 0) {
-      hotList.innerHTML = '<div class="list-empty">No churn data available.</div>';
+      hotList.innerHTML = '<div class="list-empty">No churn data available yet.</div>';
     } else {
       const maxCount = Math.max(...summary.hotEntities.map(e => e.commitCount), 1);
       hotList.innerHTML = summary.hotEntities.map(e => {

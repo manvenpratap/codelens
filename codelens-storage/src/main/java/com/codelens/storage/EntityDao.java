@@ -176,6 +176,16 @@ public class EntityDao {
         return Optional.empty();
     }
 
+    public List<CodeField> findAllFields() throws SQLException {
+        List<CodeField> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM fields ORDER BY fqn");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) list.add(fieldFromRs(rs));
+        }
+        return list;
+    }
+
     // =========================================================================
     // METHODS
     // =========================================================================
@@ -230,6 +240,16 @@ public class EntityDao {
             }
         }
         return Optional.empty();
+    }
+
+    public List<CodeMethod> findAllMethods() throws SQLException {
+        List<CodeMethod> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM methods ORDER BY fqn");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) list.add(methodFromRs(rs));
+        }
+        return list;
     }
 
     public List<String> findAllMethodFqns() throws SQLException {

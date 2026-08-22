@@ -76,6 +76,8 @@ public class CodeLensServer {
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
     private final AtomicReference<ScanProgress> scanState =
         new AtomicReference<>(new ScanProgress(ScanProgress.Status.IDLE));
+    private final AtomicReference<GitAnalysisProgress> gitProgress =
+        new AtomicReference<>(new GitAnalysisProgress(GitAnalysisProgress.Status.IDLE));
     private final ExecutorService scanExecutor =
         Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "codelens-scanner");
@@ -162,6 +164,9 @@ public class CodeLensServer {
         // ── Git metadata ──────────────────────────────────────────────────────
         app.get("/api/git/meta/{entityFqn}", this::getGitMeta);
         app.get("/api/git/summary",          this::getGitSummary);
+        app.post("/api/git/validate",        this::validateGitRepo);
+        app.post("/api/git/analyze",         this::analyzeGit);
+        app.get("/api/git/status",           this::getGitStatus);
 
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
@@ -278,30 +283,7 @@ public class CodeLensServer {
             callGraph.rebuild(allMethodFqns, allRels);
             fieldImpact.rebuild(allRels);
 
-            // Phase 5 removed — code review is now on-demand via POST /api/review
-            progress.setCurrentPhase("Finalizing");
-            progress.setMessage("Preparing code review engine…");
-            progress.setCurrentDetail("Ready for on-demand review");
-
-            // Phase 6: Git blame annotation (non-fatal if not a git repo)
-            progress.setCurrentPhase("Git History");
-            progress.setMessage("Extracting Git blame & churn heatmaps…");
-            progress.setCurrentDetail("Auditing commit history");
-            GitRepoLocator.locate(sourcePath).ifPresent(repoRoot -> {
-                try {
-                    GitBlameService.ScanResult gitResult = new GitBlameService.ScanResult(
-                        result.types, result.methods, result.fields);
-                    List<GitMeta> gitMetas = gitBlameService.annotate(gitResult, repoRoot, (done, total, curFile) -> {
-                        progress.setCurrentDetail(String.format("Auditing Git blame %d/%d files (%s)", done, total, curFile));
-                        progress.setProcessedFiles(done);
-                        progress.setTotalFiles(total);
-                    });
-                    dao.batchInsertGitMeta(gitMetas);
-                    log.info("Git annotation: {} entities annotated", gitMetas.size());
-                } catch (Exception e) {
-                    log.warn("Git annotation phase failed (non-fatal): {}", e.getMessage());
-                }
-            });
+            // Main scan finishes immediately after graph and indexing
             progress.setTypesFound(result.types.size());
             progress.setMethodsFound(result.methods.size());
             progress.setFieldsFound(result.fields.size());
@@ -310,7 +292,6 @@ public class CodeLensServer {
             progress.setCurrentDetail("Ready");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
-            progress.setMessage("Scan complete — " + result.types.size() + " types indexed.");
             log.info("Scan finished: {}", progress.getMessage());
 
         } catch (Exception e) {
@@ -576,6 +557,111 @@ public class CodeLensServer {
         summary.put("topAuthors",  dao.findTopAuthors(10));
         summary.put("hotEntities", dao.findHottestEntities(20));
         ctx.json(summary);
+    }
+
+    /**
+     * POST /api/git/validate
+     * Body: { "repoPath": "..." }
+     * Validates if the path is a valid Git repository root.
+     */
+    private void validateGitRepo(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String repoPath = (String) body.get("repoPath");
+        GitRepoLocator.ValidationResult result = GitRepoLocator.validate(repoPath);
+        if (result.isValid()) {
+            ctx.json(Map.of(
+                "valid", true,
+                "repoPath", result.getRepoPath(),
+                "branch", result.getBranch(),
+                "headCommit", result.getHeadCommit() != null ? result.getHeadCommit() : ""
+            ));
+        } else {
+            ctx.json(Map.of(
+                "valid", false,
+                "error", result.getError() != null ? result.getError() : "Invalid Git repository"
+            ));
+        }
+    }
+
+    /**
+     * POST /api/git/analyze
+     * Body: { "repoPath": "..." }
+     * Triggers asynchronous background Git blame & churn analysis.
+     */
+    private void analyzeGit(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String repoPath = (String) body.get("repoPath");
+
+        GitRepoLocator.ValidationResult validation = GitRepoLocator.validate(repoPath);
+        if (!validation.isValid()) {
+            ctx.status(400).json(Map.of("error", validation.getError()));
+            return;
+        }
+
+        GitAnalysisProgress current = gitProgress.get();
+        if (current != null && current.getStatus() == GitAnalysisProgress.Status.RUNNING) {
+            ctx.status(409).json(Map.of("error", "Git analysis already in progress", "progress", current));
+            return;
+        }
+
+        String canonicalRepoPath = validation.getRepoPath();
+        GitAnalysisProgress initial = new GitAnalysisProgress(GitAnalysisProgress.Status.RUNNING);
+        initial.setRepoPath(canonicalRepoPath);
+        initial.setBranch(validation.getBranch());
+        initial.setStartTime(System.currentTimeMillis());
+        initial.setMessage("Preparing Git history analysis…");
+        gitProgress.set(initial);
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                List<CodeType> types = dao.findAllTypes();
+                List<CodeMethod> methods = dao.findAllMethods();
+                List<CodeField> fields = dao.findAllFields();
+
+                GitBlameService.ScanResult gitResult = new GitBlameService.ScanResult(types, methods, fields);
+                File repoRoot = new File(canonicalRepoPath);
+
+                List<GitMeta> gitMetas = gitBlameService.annotate(gitResult, repoRoot, (done, total, curFile) -> {
+                    GitAnalysisProgress p = gitProgress.get();
+                    if (p != null) {
+                        p.setProcessedFiles(done);
+                        p.setTotalFiles(total);
+                        p.setCurrentFile(curFile);
+                        p.setMessage(String.format("Auditing Git blame %d/%d files (%s)", done, total, curFile));
+                    }
+                });
+
+                dao.batchInsertGitMeta(gitMetas);
+                log.info("Background Git analysis completed: {} entities annotated", gitMetas.size());
+
+                GitAnalysisProgress completed = gitProgress.get();
+                if (completed != null) {
+                    completed.setStatus(GitAnalysisProgress.Status.COMPLETE);
+                    completed.setEntitiesAnnotated(gitMetas.size());
+                    completed.setEndTime(System.currentTimeMillis());
+                    completed.setMessage("Git analysis complete — " + gitMetas.size() + " entities annotated.");
+                }
+            } catch (Exception e) {
+                log.error("Background Git analysis failed", e);
+                GitAnalysisProgress errorP = gitProgress.get();
+                if (errorP != null) {
+                    errorP.setStatus(GitAnalysisProgress.Status.ERROR);
+                    errorP.setErrorDetail(e.getMessage());
+                    errorP.setMessage("Git analysis failed: " + e.getMessage());
+                    errorP.setEndTime(System.currentTimeMillis());
+                }
+            }
+        });
+
+        ctx.json(Map.of("status", "started", "repoPath", canonicalRepoPath, "branch", validation.getBranch()));
+    }
+
+    /**
+     * GET /api/git/status
+     * Returns current background Git analysis status.
+     */
+    private void getGitStatus(Context ctx) {
+        ctx.json(gitProgress.get());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
