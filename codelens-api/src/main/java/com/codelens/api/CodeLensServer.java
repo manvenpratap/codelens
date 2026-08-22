@@ -534,17 +534,18 @@ public class CodeLensServer {
 
     private void browseFolder(Context ctx) {
         String current = ctx.queryParam("current");
-
-        // On Windows or headless environments, provide native PowerShell FolderBrowserDialog fallback
         String os = System.getProperty("os.name", "").toLowerCase();
-        if (GraphicsEnvironment.isHeadless() || os.contains("win")) {
-            try {
-                if (os.contains("win")) {
+
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+            // 1. Try Windows native PowerShell FolderBrowserDialog
+            if (os.contains("win")) {
+                try {
                     String initialPath = (current != null && !current.trim().isEmpty()) ? current.trim() : "";
                     String psScript = String.format(
                         "Add-Type -AssemblyName System.Windows.Forms; " +
                         "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; " +
                         "$dialog.Description = 'Select Java Source Folder'; " +
+                        "$dialog.ShowNewFolderButton = $false; " +
                         (initialPath.isEmpty() ? "" : "$dialog.SelectedPath = '" + initialPath.replace("'", "''") + "'; ") +
                         "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath } else { Write-Output '' }"
                     );
@@ -553,54 +554,53 @@ public class CodeLensServer {
                         String selected = reader.readLine();
                         process.waitFor(3, java.util.concurrent.TimeUnit.MINUTES);
                         if (selected != null && !selected.trim().isEmpty()) {
-                            ctx.json(Map.of("path", selected.trim()));
-                            return;
-                        } else {
-                            ctx.json(Map.of("path", ""));
-                            return;
+                            return selected.trim();
                         }
                     }
+                } catch (Exception e) {
+                    log.warn("PowerShell folder picker failed: {}", e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("PowerShell folder picker failed, falling back to Swing chooser: {}", e.getMessage());
             }
-        }
 
-        if (GraphicsEnvironment.isHeadless()) {
-            ctx.status(400).json(Map.of("error", "Graphics environment is headless. Please type or paste the path manually."));
-            return;
-        }
-
-        CompletableFuture<String> future = new CompletableFuture<>();
-        SwingUtilities.invokeLater(() -> {
-            try {
+            // 2. Try AWT / Swing JFileChooser if display is available
+            if (!GraphicsEnvironment.isHeadless()) {
                 try {
-                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                } catch (Exception ignored) {}
+                    CompletableFuture<String> swingFuture = new CompletableFuture<>();
+                    SwingUtilities.invokeLater(() -> {
+                        try {
+                            try {
+                                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                            } catch (Exception ignored) {}
 
-                JFileChooser chooser = new JFileChooser();
-                chooser.setDialogTitle("Select Java Source Folder");
-                chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                
-                if (current != null && !current.trim().isEmpty()) {
-                    File f = new File(current.trim());
-                    if (f.exists() && f.isDirectory()) {
-                        chooser.setCurrentDirectory(f);
-                    }
+                            JFileChooser chooser = new JFileChooser();
+                            chooser.setDialogTitle("Select Java Source Folder");
+                            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                            if (current != null && !current.trim().isEmpty()) {
+                                File f = new File(current.trim());
+                                if (f.exists() && f.isDirectory()) {
+                                    chooser.setCurrentDirectory(f);
+                                }
+                            }
+                            int result = chooser.showOpenDialog(null);
+                            if (result == JFileChooser.APPROVE_OPTION && chooser.getSelectedFile() != null) {
+                                swingFuture.complete(chooser.getSelectedFile().getAbsolutePath());
+                            } else {
+                                swingFuture.complete("");
+                            }
+                        } catch (Exception ex) {
+                            swingFuture.complete("");
+                        }
+                    });
+                    return swingFuture.get(2, java.util.concurrent.TimeUnit.MINUTES);
+                } catch (Exception e) {
+                    log.warn("Swing folder picker failed: {}", e.getMessage());
                 }
-
-                int result = chooser.showOpenDialog(null);
-                if (result == JFileChooser.APPROVE_OPTION) {
-                    future.complete(chooser.getSelectedFile().getAbsolutePath());
-                } else {
-                    future.complete("");
-                }
-            } catch (Exception e) {
-                future.completeExceptionally(e);
             }
+
+            return "";
         });
 
-        ctx.future(() -> future.thenAccept(path -> ctx.json(Map.of("path", path))));
+        ctx.future(() -> future.thenAccept(path -> ctx.json(Map.of("path", path != null ? path : ""))));
     }
 
     private void openFolder(Context ctx) throws Exception {

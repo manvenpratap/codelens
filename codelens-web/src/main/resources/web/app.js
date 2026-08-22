@@ -1540,34 +1540,48 @@ async function init() {
   if (folderPicker) {
     folderPicker.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
-        // In browser webkitdirectory, files[0].webkitRelativePath is e.g. "my-project/src/Main.java"
-        // or path is available via FileSystemDirectoryEntry
         const firstFile = e.target.files[0];
         const relPath = firstFile.webkitRelativePath || '';
-        const rootDir = relPath.split('/')[0] || relPath.split('\\')[0];
-        if (rootDir) {
-          showBanner(`Selected folder: ${rootDir} (${e.target.files.length} files detected). If running locally, verify the absolute path in the scan bar.`);
+        const rootDir = relPath.split('/')[0] || relPath.split('\\')[0] || '';
+        
+        // If the path input is currently empty, provide a helpful path scaffold
+        const input = qs('#scan-path-input');
+        if (input && (!input.value || input.value.trim() === '')) {
+          input.value = rootDir;
         }
+        showBanner(`✓ Folder selected: "${rootDir}" (${e.target.files.length} files detected). Please confirm the full absolute path in the scan bar and click Scan.`);
       }
     });
   }
 
   if (browseBtn) {
     browseBtn.addEventListener('click', async () => {
+      const originalText = browseBtn.textContent;
+      browseBtn.textContent = 'Browsing…';
+      browseBtn.disabled = true;
+
       try {
         const current = qs('#scan-path-input').value.trim();
         const res = await api.browse(current);
-        if (res && res.path) {
-          qs('#scan-path-input').value = res.path;
+        if (res && res.path && res.path.trim() !== '') {
+          qs('#scan-path-input').value = res.path.trim();
+          showBanner(`Selected folder: ${res.path.trim()}`);
+        } else if (res && res.path === '') {
+          // Dialog was either cancelled or native dialog could not display -> open browser directory picker
+          if (folderPicker) {
+            folderPicker.click();
+          }
         }
       } catch (e) {
-        console.warn('Native folder chooser error, falling back to browser picker:', e);
-        // Fallback: trigger HTML5 folder picker or show friendly prompt
+        console.warn('Native server browse dialog error:', e);
         if (folderPicker) {
           folderPicker.click();
         } else {
-          showError('Please type or paste the absolute source path (e.g. C:\\workspace\\project\\src).');
+          showError('Could not open folder chooser. Please paste your absolute source directory path into the scan bar.');
         }
+      } finally {
+        browseBtn.textContent = originalText;
+        browseBtn.disabled = false;
       }
     });
   }
