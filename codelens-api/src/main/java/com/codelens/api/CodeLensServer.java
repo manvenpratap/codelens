@@ -291,7 +291,11 @@ public class CodeLensServer {
                 try {
                     GitBlameService.ScanResult gitResult = new GitBlameService.ScanResult(
                         result.types, result.methods, result.fields);
-                    List<GitMeta> gitMetas = gitBlameService.annotate(gitResult, repoRoot);
+                    List<GitMeta> gitMetas = gitBlameService.annotate(gitResult, repoRoot, (done, total, curFile) -> {
+                        progress.setCurrentDetail(String.format("Auditing Git blame %d/%d files (%s)", done, total, curFile));
+                        progress.setProcessedFiles(done);
+                        progress.setTotalFiles(total);
+                    });
                     dao.batchInsertGitMeta(gitMetas);
                     log.info("Git annotation: {} entities annotated", gitMetas.size());
                 } catch (Exception e) {
