@@ -76,7 +76,7 @@ codelens/
 
 ---
 
-## System Requirements & Installation
+## System Requirements & Non-Admin Execution
 
 - **Target Machine OS**: macOS (Intel / Apple Silicon), Linux (Ubuntu, Debian, RHEL, Arch), or Windows 10/11
 - **Java Runtime Environment**: **JRE / JDK 17+** (`java -version`)
@@ -84,6 +84,13 @@ codelens/
   - *Ubuntu / Debian*: `sudo apt install openjdk-17-jre-headless`
   - *RHEL / Fedora*: `sudo dnf install java-17-openjdk`
   - *Windows*: Download from [Eclipse Temurin](https://adoptium.net/)
+
+> [!NOTE]
+> **Zero Admin Rights Required (100% User-Space Execution)**
+> - CodeLens **never** requires Administrator / `sudo` / `root` permissions.
+> - **Unprivileged Port**: Runs by default on port `7878` (any port $>1024$ can be bound without admin privileges).
+> - **Local Data Directory**: Writes its embedded H2 database and Lucene index strictly to the local directory (`./codelens-data` or `~/.codelens-data`) without touching system directories (`C:\Program Files`, `/var`, `/etc`).
+> - **Portable JRE (No installer needed)**: If you cannot install Java on a locked-down corporate Windows machine, simply extract a `.zip` build of [Eclipse Temurin 17 JRE](https://adoptium.net/temurin/releases/?version=17) into any user folder (e.g. `C:\Users\You\jre17`) and run `C:\Users\You\jre17\bin\java.exe -jar codelens.jar`.
 
 ---
 
