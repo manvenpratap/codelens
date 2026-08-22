@@ -147,7 +147,10 @@
     </div>
 
     <!-- Section heading for the tree -->
-    <div class="section-label" id="explorer-label" title="Hierarchical package and class tree structure">Explorer</div>
+    <div class="section-label-row">
+      <div class="section-label" id="explorer-label" title="Hierarchical package and class tree structure">Explorer</div>
+      <button id="btn-collapse-left" class="panel-collapse-btn" aria-label="Collapse Explorer Panel" title="Collapse Explorer Panel ([)">◀</button>
+    </div>
 
     <!-- Package / type tree — populated lazily by app.js loadPackageTree() -->
     <nav
@@ -169,6 +172,23 @@
     ></div>
 
   </aside><!-- /#left-panel -->
+
+  <!-- Left panel resizer handle -->
+  <div
+    id="resizer-left"
+    class="panel-resizer resizer-left"
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize Explorer Panel"
+    title="Drag to resize Explorer (Double-click to reset, [ to collapse)"
+    tabindex="0"
+  ></div>
+
+  <!-- Floating left expand strip when left panel is collapsed -->
+  <button id="left-expand-strip" class="panel-expand-strip left-expand-strip" aria-label="Expand Explorer Panel" title="Expand Explorer ([)">
+    <span class="expand-strip-icon">▶</span>
+    <span class="expand-strip-text">Explorer</span>
+  </button>
 
 
   <!-- ─────────────────────────────────────────────────────────────────────────
@@ -268,11 +288,6 @@
       aria-labelledby="tab-graph"
       tabindex="0"
     >
-      <!--
-        The <canvas> element is injected here by ForceGraph constructor in graph.js.
-        This keeps the canvas lifecycle tied to the JS class rather than to HTML markup.
-      -->
-
       <!-- Empty/placeholder state shown before any method or field is selected -->
       <div
         id="graph-empty"
@@ -282,19 +297,102 @@
         <div class="graph-empty-icon" aria-hidden="true">◈</div>
         <div class="graph-empty-text">Select a method or field to visualise</div>
         <div class="graph-empty-sub" id="graph-empty-sub">
-          Click any method in the Knowledge Base or Explorer to load its call graph.
+          Click any method in the Knowledge Base or Explorer to load its Graphify knowledge graph.
         </div>
       </div>
 
-      <!-- Colour legend overlay (top-left of canvas) -->
-      <div
-        id="graph-legend"
-        class="graph-legend"
-        aria-label="Graph legend"
-        aria-hidden="true"
-      ></div>
+      <!-- Graphify Top Floating HUD Bar (Search, Depth, Clusters, Physics, Heat, Zoom) -->
+      <div id="graph-hud-bar" class="graph-hud-bar" aria-label="Graph controls">
+        <!-- Quick Node Search Inside Graph -->
+        <div class="graph-search-wrap">
+          <span class="graph-search-icon">⌕</span>
+          <input
+            id="graph-node-search"
+            type="search"
+            placeholder="Find in graph…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div id="graph-node-search-results" class="graph-node-search-results" style="display:none"></div>
+        </div>
 
-      <!-- Tooltip shown on node hover — positioned by graph.js via clientX/Y -->
+        <div class="hud-divider"></div>
+
+        <!-- Depth traversal pills -->
+        <div class="graph-depth-pills" role="group" aria-label="Preset Depths">
+          <span class="hud-label">Depth:</span>
+          <button class="depth-pill" data-depth="1" title="1 hop (direct relations)">1</button>
+          <button class="depth-pill" data-depth="2" title="2 hops">2</button>
+          <button class="depth-pill active" data-depth="3" title="3 hops (default)">3</button>
+          <button class="depth-pill" data-depth="5" title="5 hops">5</button>
+          <button class="depth-pill" data-depth="15" title="Max reach">Max</button>
+        </div>
+
+        <div class="hud-divider"></div>
+
+        <!-- Feature Toggles -->
+        <div class="graph-hud-actions">
+          <button id="btn-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
+            🌿 <span class="hud-btn-text">Clusters</span>
+          </button>
+          <button id="btn-toggle-physics" class="hud-btn active" title="Toggle Live Physics Simulation (Space)">
+            ⚡ <span class="hud-btn-text">Physics</span>
+          </button>
+          <button id="btn-heat" class="hud-btn" title="Toggle Commit Churn Heat Overlay">
+            🔥 <span class="hud-btn-text">Heat</span>
+          </button>
+        </div>
+
+        <div class="hud-divider"></div>
+
+        <!-- Camera Controls -->
+        <div class="graph-camera-controls">
+          <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">＋</button>
+          <button class="hud-btn icon-only" id="btn-zoom-out" title="Zoom out (-)">－</button>
+          <button class="hud-btn icon-only" id="btn-fit" title="Fit graph to screen (F)">⊞</button>
+          <button class="hud-btn icon-only" id="btn-reset" title="Clear graph">⊠</button>
+        </div>
+      </div>
+
+      <!-- Graphify Community / Package Legend HUD (Top Right) -->
+      <div id="graph-community-legend" class="graph-community-legend" style="display:none">
+        <div class="legend-header">
+          <span class="legend-title">Communities &amp; Packages</span>
+          <button id="btn-legend-close" class="legend-close-btn" title="Minimize Legend">✕</button>
+        </div>
+        <div id="graph-legend-list" class="legend-list"></div>
+      </div>
+
+      <!-- Graphify Node Quick-Inspector Card (Floating HUD inside graph) -->
+      <div id="graph-node-card" class="graph-node-card" style="display:none">
+        <div class="node-card-header">
+          <div class="node-card-title-row">
+            <span id="node-card-icon" class="node-card-icon">🔷</span>
+            <span id="node-card-name" class="node-card-name">MethodName</span>
+          </div>
+          <button id="btn-node-card-close" class="node-card-close">✕</button>
+        </div>
+        <div class="node-card-body">
+          <div class="node-card-row">
+            <span class="nc-lbl">Community:</span>
+            <span id="node-card-community" class="nc-val">—</span>
+          </div>
+          <div class="node-card-row">
+            <span class="nc-lbl">Type:</span>
+            <span id="node-card-type" class="nc-val">—</span>
+          </div>
+          <div class="node-card-row">
+            <span class="nc-lbl">Connections:</span>
+            <span id="node-card-degree" class="nc-val">0 (in: 0, out: 0)</span>
+          </div>
+          <div class="node-card-neighbors-sec">
+            <div class="nc-neighbors-title">Connected Neighbors (<span id="node-card-neighbor-count">0</span>)</div>
+            <div id="node-card-neighbors" class="nc-neighbors-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tooltip shown on node hover -->
       <div
         id="graph-tooltip"
         class="graph-tooltip"
@@ -302,54 +400,9 @@
         aria-live="polite"
       ></div>
 
-      <!-- Depth control toolbar overlay (top-right overlay) -->
-      <div id="graph-depth-panel" class="graph-depth-panel" aria-label="Graph Traversal Depth Controls">
-        <div class="depth-header">
-          <span class="depth-title">Scan Depth</span>
-          <span class="depth-value" id="depth-val-indicator">3 hops</span>
-        </div>
-        <div class="depth-slider-row">
-          <input
-            id="graph-depth-slider"
-            type="range"
-            min="1"
-            max="10"
-            step="1"
-            value="3"
-            aria-label="Graph Traversal Depth Slider"
-          />
-        </div>
-        <div class="depth-pills" role="group" aria-label="Preset Depths">
-          <button class="depth-pill" data-depth="1" title="1 hop (direct relations)">1</button>
-          <button class="depth-pill" data-depth="2" title="2 hops">2</button>
-          <button class="depth-pill active" data-depth="3" title="3 hops (default)">3</button>
-          <button class="depth-pill" data-depth="5" title="5 hops">5</button>
-          <button class="depth-pill" data-depth="8" title="8 hops">8</button>
-          <button class="depth-pill" data-depth="15" title="15 hops (Full reach / max)">Max</button>
-        </div>
-      </div>
-
-      <!-- Control toolbar (bottom-right overlay) -->
-      <div class="graph-controls" aria-label="Graph controls">
-        <button
-          class="graph-btn"
-          id="btn-heat"
-          title="Toggle commit-heat overlay (H)"
-          aria-label="Toggle commit heat overlay"
-          aria-pressed="false"
-        >🔥</button>
-        <button
-          class="graph-btn"
-          id="btn-fit"
-          title="Fit graph to screen (F)"
-          aria-label="Fit graph to screen"
-        >⊞</button>
-        <button
-          class="graph-btn"
-          id="btn-reset"
-          title="Clear graph"
-          aria-label="Clear graph"
-        >⊠</button>
+      <!-- Minimap / Radar Overview (Bottom Right) -->
+      <div id="graph-minimap-wrap" class="graph-minimap-wrap">
+        <canvas id="graph-minimap" width="150" height="100"></canvas>
       </div>
 
     </section><!-- /#graph-view -->
@@ -509,6 +562,22 @@
 
   </main><!-- /#centre-panel -->
 
+  <!-- Right panel resizer handle -->
+  <div
+    id="resizer-right"
+    class="panel-resizer resizer-right"
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize Inspector Panel"
+    title="Drag to resize Inspector (Double-click to reset, ] to collapse)"
+    tabindex="0"
+  ></div>
+
+  <!-- Floating right expand strip when right panel is collapsed -->
+  <button id="right-expand-strip" class="panel-expand-strip right-expand-strip" aria-label="Expand Details Panel" title="Expand Details (])">
+    <span class="expand-strip-icon">◀</span>
+    <span class="expand-strip-text">Details</span>
+  </button>
 
   <!-- ─────────────────────────────────────────────────────────────────────────
        RIGHT PANEL — entity detail, metadata, analyst notes, relationships
@@ -518,6 +587,12 @@
     aria-label="Entity details"
     aria-live="polite"
   >
+
+    <!-- Right panel header toolbar with collapse toggle -->
+    <div class="right-panel-toolbar">
+      <span class="right-panel-title">Inspector</span>
+      <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">▶</button>
+    </div>
 
     <!-- Entity header: kind badge + name + FQN
          Rendered by renderEntityHeader() in app.js when an entity is selected. -->
@@ -548,11 +623,13 @@
     <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: —</span>
   </div>
   <div class="footer-segment footer-shortcuts">
+    <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)">◧ Explorer</button>
+    <button id="footer-toggle-right" class="footer-panel-toggle" title="Toggle Inspector panel (])">◨ Inspector</button>
     <span class="shortcut-tip"><kbd class="search-shortcut-key">Ctrl+K</kbd> Search</span>
     <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
     <span class="shortcut-tip"><kbd>2</kbd> KB</span>
-    <span class="shortcut-tip"><kbd>3</kbd> Issues</span>
-    <span class="shortcut-tip"><kbd>🔥</kbd> Heat Overlay</span>
+    <span class="shortcut-tip"><kbd>3</kbd> Review</span>
+    <span class="shortcut-tip"><kbd>🔥</kbd> Heat</span>
   </div>
 </footer>
 

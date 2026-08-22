@@ -1640,6 +1640,9 @@ function bindKeyboard() {
       if (e.key === '3') switchTab('review');
       if (e.key === '4') switchTab('git');
       if (e.key === '5') switchTab('source');
+      if (e.key === '[') toggleLeftPanel();
+      if (e.key === ']') toggleRightPanel();
+      if (e.key === '\\') resetPanelWidths();
       if (e.key === '?') {
         if (helpModal) {
           helpModal.classList.toggle('open');
@@ -1842,6 +1845,9 @@ async function init() {
 
   await loadStats();
   await loadPackageTree();
+
+  // Initialize adjustable panel resizers
+  initPanelResizers();
 
   // Initialize code review controls
   initReviewControls();
@@ -2289,4 +2295,303 @@ function formatDate(epochMs) {
 /** Map Java type kind to an emoji icon. */
 function kindIcon(kind) {
   return { CLASS: '🔷', INTERFACE: '🔹', ENUM: '🔸', ANNOTATION: '🔖' }[kind] || '📄';
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Adjustable Panel System & Resizer Handlers
+   ───────────────────────────────────────────────────────────────────────────── */
+
+const DEFAULT_LEFT_WIDTH = 310;
+const DEFAULT_RIGHT_WIDTH = 370;
+const MIN_LEFT_WIDTH = 160;
+const MAX_LEFT_WIDTH = 600;
+const MIN_RIGHT_WIDTH = 220;
+const MAX_RIGHT_WIDTH = 750;
+const MIN_CENTRE_WIDTH = 260;
+
+const PANEL_STORAGE = {
+  LEFT_WIDTH: 'codelens_panel_left_w',
+  RIGHT_WIDTH: 'codelens_panel_right_w',
+  LEFT_COLLAPSED: 'codelens_panel_left_collapsed',
+  RIGHT_COLLAPSED: 'codelens_panel_right_collapsed'
+};
+
+function initPanelResizers() {
+  const resizerLeft = qs('#resizer-left');
+  const resizerRight = qs('#resizer-right');
+  const btnCollapseLeft = qs('#btn-collapse-left');
+  const btnCollapseRight = qs('#btn-collapse-right');
+  const footerToggleLeft = qs('#footer-toggle-left');
+  const footerToggleRight = qs('#footer-toggle-right');
+
+  // Load saved state or defaults
+  let savedLeftW = parseInt(localStorage.getItem(PANEL_STORAGE.LEFT_WIDTH), 10);
+  let savedRightW = parseInt(localStorage.getItem(PANEL_STORAGE.RIGHT_WIDTH), 10);
+  const leftCollapsed = localStorage.getItem(PANEL_STORAGE.LEFT_COLLAPSED) === 'true';
+  const rightCollapsed = localStorage.getItem(PANEL_STORAGE.RIGHT_COLLAPSED) === 'true';
+
+  if (isNaN(savedLeftW) || savedLeftW < MIN_LEFT_WIDTH) savedLeftW = DEFAULT_LEFT_WIDTH;
+  if (isNaN(savedRightW) || savedRightW < MIN_RIGHT_WIDTH) savedRightW = DEFAULT_RIGHT_WIDTH;
+
+  // Apply initial widths and collapse states
+  if (leftCollapsed) {
+    collapseLeftPanel(true, false);
+  } else {
+    setLeftPanelWidth(savedLeftW, false);
+  }
+
+  if (rightCollapsed) {
+    collapseRightPanel(true, false);
+  } else {
+    setRightPanelWidth(savedRightW, false);
+  }
+
+  // ── Dragging Left Resizer (Explorer) ────────────────────────────────────────
+  if (resizerLeft) {
+    let startX = 0;
+    let startW = 0;
+
+    const onPointerMove = moveEvent => {
+      const delta = moveEvent.clientX - startX;
+      const availableW = window.innerWidth - (getRightPanelWidth() + 10 + MIN_CENTRE_WIDTH);
+      const maxW = Math.min(MAX_LEFT_WIDTH, Math.max(MIN_LEFT_WIDTH, availableW));
+      const newW = Math.min(maxW, Math.max(MIN_LEFT_WIDTH, startW + delta));
+      setLeftPanelWidth(newW, false);
+    };
+
+    const onPointerUp = upEvent => {
+      document.body.classList.remove('resizing');
+      resizerLeft.classList.remove('active');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+
+      const finalW = getLeftPanelWidth();
+      if (finalW > 0) {
+        localStorage.setItem(PANEL_STORAGE.LEFT_WIDTH, finalW);
+        localStorage.setItem(PANEL_STORAGE.LEFT_COLLAPSED, 'false');
+      }
+      triggerRelayout();
+    };
+
+    const startDrag = e => {
+      if (e.button !== 0 && e.buttons !== 1) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startW = getLeftPanelWidth();
+      document.body.classList.add('resizing');
+      resizerLeft.classList.add('active');
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    };
+
+    resizerLeft.addEventListener('pointerdown', startDrag);
+    resizerLeft.addEventListener('mousedown', startDrag);
+    resizerLeft.addEventListener('dblclick', () => {
+      setLeftPanelWidth(DEFAULT_LEFT_WIDTH, true);
+    });
+  }
+
+  // ── Dragging Right Resizer (Inspector) ───────────────────────────────────────
+  if (resizerRight) {
+    let startX = 0;
+    let startW = 0;
+
+    const onPointerMove = moveEvent => {
+      const delta = startX - moveEvent.clientX;
+      const availableW = window.innerWidth - (getLeftPanelWidth() + 10 + MIN_CENTRE_WIDTH);
+      const maxW = Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, availableW));
+      const newW = Math.min(maxW, Math.max(MIN_RIGHT_WIDTH, startW + delta));
+      setRightPanelWidth(newW, false);
+    };
+
+    const onPointerUp = upEvent => {
+      document.body.classList.remove('resizing');
+      resizerRight.classList.remove('active');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+
+      const finalW = getRightPanelWidth();
+      if (finalW > 0) {
+        localStorage.setItem(PANEL_STORAGE.RIGHT_WIDTH, finalW);
+        localStorage.setItem(PANEL_STORAGE.RIGHT_COLLAPSED, 'false');
+      }
+      triggerRelayout();
+    };
+
+    const startDrag = e => {
+      if (e.button !== 0 && e.buttons !== 1) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startW = getRightPanelWidth();
+      document.body.classList.add('resizing');
+      resizerRight.classList.add('active');
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    };
+
+    resizerRight.addEventListener('pointerdown', startDrag);
+    resizerRight.addEventListener('mousedown', startDrag);
+    resizerRight.addEventListener('dblclick', () => {
+      setRightPanelWidth(DEFAULT_RIGHT_WIDTH, true);
+    });
+  }
+
+  // ── Collapse / Expand Buttons & Floating Expand Strips ─────────────────────
+  if (btnCollapseLeft) {
+    btnCollapseLeft.addEventListener('click', () => toggleLeftPanel());
+  }
+  if (btnCollapseRight) {
+    btnCollapseRight.addEventListener('click', () => toggleRightPanel());
+  }
+  if (footerToggleLeft) {
+    footerToggleLeft.addEventListener('click', () => toggleLeftPanel());
+  }
+  if (footerToggleRight) {
+    footerToggleRight.addEventListener('click', () => toggleRightPanel());
+  }
+
+  const leftExpandStrip = qs('#left-expand-strip');
+  if (leftExpandStrip) {
+    leftExpandStrip.addEventListener('click', () => collapseLeftPanel(false, true));
+  }
+
+  const rightExpandStrip = qs('#right-expand-strip');
+  if (rightExpandStrip) {
+    rightExpandStrip.addEventListener('click', () => collapseRightPanel(false, true));
+  }
+}
+
+function getLeftPanelWidth() {
+  const panel = qs('#left-panel');
+  if (!panel || panel.classList.contains('collapsed')) return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--left-w');
+  return parseInt(raw, 10) || DEFAULT_LEFT_WIDTH;
+}
+
+function getRightPanelWidth() {
+  const panel = qs('#right-panel');
+  if (!panel || panel.classList.contains('collapsed')) return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--right-w');
+  return parseInt(raw, 10) || DEFAULT_RIGHT_WIDTH;
+}
+
+function setLeftPanelWidth(width, save = true) {
+  const leftPanel = qs('#left-panel');
+  const footerToggle = qs('#footer-toggle-left');
+  const resizer = qs('#resizer-left');
+  const expandStrip = qs('#left-expand-strip');
+
+  if (leftPanel) leftPanel.classList.remove('collapsed');
+  if (footerToggle) footerToggle.classList.remove('collapsed');
+  if (resizer) resizer.style.display = '';
+  if (expandStrip) expandStrip.style.display = 'none';
+
+  document.documentElement.style.setProperty('--left-w', `${width}px`);
+  if (save) {
+    localStorage.setItem(PANEL_STORAGE.LEFT_WIDTH, width);
+    localStorage.setItem(PANEL_STORAGE.LEFT_COLLAPSED, 'false');
+  }
+  triggerRelayout();
+}
+
+function setRightPanelWidth(width, save = true) {
+  const rightPanel = qs('#right-panel');
+  const footerToggle = qs('#footer-toggle-right');
+  const resizer = qs('#resizer-right');
+  const expandStrip = qs('#right-expand-strip');
+
+  if (rightPanel) rightPanel.classList.remove('collapsed');
+  if (footerToggle) footerToggle.classList.remove('collapsed');
+  if (resizer) resizer.style.display = '';
+  if (expandStrip) expandStrip.style.display = 'none';
+
+  document.documentElement.style.setProperty('--right-w', `${width}px`);
+  if (save) {
+    localStorage.setItem(PANEL_STORAGE.RIGHT_WIDTH, width);
+    localStorage.setItem(PANEL_STORAGE.RIGHT_COLLAPSED, 'false');
+  }
+  triggerRelayout();
+}
+
+function collapseLeftPanel(collapsed, save = true) {
+  const leftPanel = qs('#left-panel');
+  const footerToggle = qs('#footer-toggle-left');
+  const resizer = qs('#resizer-left');
+  const expandStrip = qs('#left-expand-strip');
+
+  if (collapsed) {
+    if (leftPanel) leftPanel.classList.add('collapsed');
+    if (footerToggle) footerToggle.classList.add('collapsed');
+    if (resizer) resizer.style.display = 'none';
+    if (expandStrip) expandStrip.style.display = 'flex';
+    document.documentElement.style.setProperty('--left-w', '0px');
+    if (save) localStorage.setItem(PANEL_STORAGE.LEFT_COLLAPSED, 'true');
+  } else {
+    let savedW = parseInt(localStorage.getItem(PANEL_STORAGE.LEFT_WIDTH), 10);
+    if (isNaN(savedW) || savedW < MIN_LEFT_WIDTH) savedW = DEFAULT_LEFT_WIDTH;
+    setLeftPanelWidth(savedW, save);
+  }
+  triggerRelayout();
+}
+
+function collapseRightPanel(collapsed, save = true) {
+  const rightPanel = qs('#right-panel');
+  const footerToggle = qs('#footer-toggle-right');
+  const resizer = qs('#resizer-right');
+  const expandStrip = qs('#right-expand-strip');
+
+  if (collapsed) {
+    if (rightPanel) rightPanel.classList.add('collapsed');
+    if (footerToggle) footerToggle.classList.add('collapsed');
+    if (resizer) resizer.style.display = 'none';
+    if (expandStrip) expandStrip.style.display = 'flex';
+    document.documentElement.style.setProperty('--right-w', '0px');
+    if (save) localStorage.setItem(PANEL_STORAGE.RIGHT_COLLAPSED, 'true');
+  } else {
+    let savedW = parseInt(localStorage.getItem(PANEL_STORAGE.RIGHT_WIDTH), 10);
+    if (isNaN(savedW) || savedW < MIN_RIGHT_WIDTH) savedW = DEFAULT_RIGHT_WIDTH;
+    setRightPanelWidth(savedW, save);
+  }
+  triggerRelayout();
+}
+
+function toggleLeftPanel() {
+  const leftPanel = qs('#left-panel');
+  const isCollapsed = leftPanel?.classList.contains('collapsed');
+  collapseLeftPanel(!isCollapsed, true);
+}
+
+function toggleRightPanel() {
+  const rightPanel = qs('#right-panel');
+  const isCollapsed = rightPanel?.classList.contains('collapsed');
+  collapseRightPanel(!isCollapsed, true);
+}
+
+function resetPanelWidths() {
+  setLeftPanelWidth(DEFAULT_LEFT_WIDTH, true);
+  setRightPanelWidth(DEFAULT_RIGHT_WIDTH, true);
+  showBanner('Panels reset to default dimensions');
+}
+
+function triggerRelayout() {
+  if (App.editor && typeof App.editor.layout === 'function') {
+    App.editor.layout();
+  }
+  if (App.graph && typeof App.graph._resize === 'function') {
+    App.graph._resize();
+  }
 }
