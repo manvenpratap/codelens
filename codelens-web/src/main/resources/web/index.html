@@ -67,11 +67,12 @@
       <input
         id="scan-path-input"
         type="text"
-        placeholder="Enter Java source directory path (e.g. /home/user/myproject/src)"
+        placeholder="Enter Java source directory path (e.g. C:\workspace\project\src or /home/src)"
         autocomplete="off"
         spellcheck="false"
         aria-describedby="scan-hint"
       />
+      <input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none" aria-hidden="true" />
       <button id="browse-btn" class="btn-ghost" aria-label="Browse directory" title="Select source root folder">
         Browse…
       </button>
@@ -129,7 +130,7 @@
         <input
           id="search-input"
           type="search"
-          placeholder="Search… (⌘K)"
+          placeholder="Search… (Ctrl+K)"
           autocomplete="off"
           spellcheck="false"
           aria-label="Search types, methods and fields"
@@ -474,7 +475,7 @@
     <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: —</span>
   </div>
   <div class="footer-segment footer-shortcuts">
-    <span class="shortcut-tip"><kbd>⌘K</kbd> Search</span>
+    <span class="shortcut-tip"><kbd class="search-shortcut-key">Ctrl+K</kbd> Search</span>
     <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
     <span class="shortcut-tip"><kbd>2</kbd> KB</span>
     <span class="shortcut-tip"><kbd>3</kbd> Issues</span>

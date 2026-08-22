@@ -1449,10 +1449,46 @@ function bindKeyboard() {
    9. Bootstrapping — runs on DOMContentLoaded
    ───────────────────────────────────────────────────────────────────────────── */
 
+/** Detect client OS and adapt keyboard shortcut labels across the UI. */
+function adaptOsShortcuts() {
+  const isMac = navigator.platform.toUpperCase().includes('MAC') ||
+                navigator.userAgent.toUpperCase().includes('MAC');
+  const shortcutKey = isMac ? '⌘K' : 'Ctrl+K';
+
+  const searchInput = qs('#search-input');
+  if (searchInput) {
+    searchInput.placeholder = `Search… (${shortcutKey})`;
+  }
+
+  qsa('.search-shortcut-key').forEach(el => {
+    el.textContent = shortcutKey;
+  });
+}
+
 async function init() {
+  adaptOsShortcuts();
+
   // Wire up scan button and Enter key
   qs('#scan-btn').addEventListener('click', startScan);
+
   const browseBtn = qs('#browse-btn');
+  const folderPicker = qs('#folder-picker');
+
+  if (folderPicker) {
+    folderPicker.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        // In browser webkitdirectory, files[0].webkitRelativePath is e.g. "my-project/src/Main.java"
+        // or path is available via FileSystemDirectoryEntry
+        const firstFile = e.target.files[0];
+        const relPath = firstFile.webkitRelativePath || '';
+        const rootDir = relPath.split('/')[0] || relPath.split('\\')[0];
+        if (rootDir) {
+          showBanner(`Selected folder: ${rootDir} (${e.target.files.length} files detected). If running locally, verify the absolute path in the scan bar.`);
+        }
+      }
+    });
+  }
+
   if (browseBtn) {
     browseBtn.addEventListener('click', async () => {
       try {
@@ -1462,10 +1498,17 @@ async function init() {
           qs('#scan-path-input').value = res.path;
         }
       } catch (e) {
-        showError('Failed to open file chooser: ' + e.message);
+        console.warn('Native folder chooser error, falling back to browser picker:', e);
+        // Fallback: trigger HTML5 folder picker or show friendly prompt
+        if (folderPicker) {
+          folderPicker.click();
+        } else {
+          showError('Please type or paste the absolute source path (e.g. C:\\workspace\\project\\src).');
+        }
       }
     });
   }
+
   qs('#scan-path-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') startScan();
   });

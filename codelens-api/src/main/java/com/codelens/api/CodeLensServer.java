@@ -533,6 +533,39 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void browseFolder(Context ctx) {
+        String current = ctx.queryParam("current");
+
+        // On Windows or headless environments, provide native PowerShell FolderBrowserDialog fallback
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (GraphicsEnvironment.isHeadless() || os.contains("win")) {
+            try {
+                if (os.contains("win")) {
+                    String initialPath = (current != null && !current.trim().isEmpty()) ? current.trim() : "";
+                    String psScript = String.format(
+                        "Add-Type -AssemblyName System.Windows.Forms; " +
+                        "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+                        "$dialog.Description = 'Select Java Source Folder'; " +
+                        (initialPath.isEmpty() ? "" : "$dialog.SelectedPath = '" + initialPath.replace("'", "''") + "'; ") +
+                        "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath } else { Write-Output '' }"
+                    );
+                    Process process = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript).start();
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                        String selected = reader.readLine();
+                        process.waitFor(3, java.util.concurrent.TimeUnit.MINUTES);
+                        if (selected != null && !selected.trim().isEmpty()) {
+                            ctx.json(Map.of("path", selected.trim()));
+                            return;
+                        } else {
+                            ctx.json(Map.of("path", ""));
+                            return;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("PowerShell folder picker failed, falling back to Swing chooser: {}", e.getMessage());
+            }
+        }
+
         if (GraphicsEnvironment.isHeadless()) {
             ctx.status(400).json(Map.of("error", "Graphics environment is headless. Please type or paste the path manually."));
             return;
@@ -549,7 +582,6 @@ public class CodeLensServer {
                 chooser.setDialogTitle("Select Java Source Folder");
                 chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
                 
-                String current = ctx.queryParam("current");
                 if (current != null && !current.trim().isEmpty()) {
                     File f = new File(current.trim());
                     if (f.exists() && f.isDirectory()) {
