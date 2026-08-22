@@ -102,6 +102,22 @@ public class CallGraphAnalyzer {
     }
 
     /**
+     * Returns the number of direct callers (in-degree) for the given method.
+     */
+    public int callerCount(String methodFqn) {
+        if (!callGraph.containsVertex(methodFqn)) return 0;
+        return callGraph.inDegreeOf(methodFqn);
+    }
+
+    /**
+     * Returns the number of direct callees (out-degree) for the given method.
+     */
+    public int calleeCount(String methodFqn) {
+        if (!callGraph.containsVertex(methodFqn)) return 0;
+        return callGraph.outDegreeOf(methodFqn);
+    }
+
+    /**
      * Returns all CALLS edges between any pairs of vertices in {@code vertexSet}.
      */
     public List<GraphEdge> getEdgesBetween(Set<String> vertexSet) {

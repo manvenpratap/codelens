@@ -921,60 +921,245 @@ input, textarea { font-family: inherit; font-size: inherit; outline: none; trans
 .badge-enum   { background: rgba(16,185,129,0.15); color: var(--emerald); }
 .badge-annot  { background: rgba(245,158,11,0.15); color: var(--amber); }
 
-/* ── Inconsistency list view ─────────────────────────────────────────────── */
-#inconsistency-view {
+/* ── Code Review workspace view ─────────────────────────────────────────── */
+#review-view {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
-.incon-item {
-  padding: 16px;
+.review-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+.review-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.review-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-mode-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
 }
-.incon-item:hover {
+.review-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+.review-mode-btn.active {
+  background: rgba(147, 129, 255, 0.15);
+  border-color: rgba(147, 129, 255, 0.35);
+  color: var(--violet);
+  font-weight: 600;
+}
+.review-run-btn {
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-snippet-area {
+  width: 100%;
+}
+.review-snippet-input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.review-snippet-input:focus {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 1px var(--violet-glow);
+}
+.review-target-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}
+.review-target-info strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.review-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.review-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-secondary);
+}
+.review-empty span {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 8px;
+}
+.review-results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.review-category-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.review-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.review-cat-icon { font-size: 12px; }
+.review-cat-label { flex: 1; }
+.review-cat-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+}
+.review-finding-card {
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.review-finding-card:hover {
   background: var(--bg-elevated);
   border-color: var(--border-hover);
   transform: translateY(-1px);
 }
-.incon-header {
+.review-finding-card.sev-critical {
+  border-left-color: var(--red);
+  background: rgba(244, 63, 94, 0.04);
+}
+.review-finding-card.sev-critical:hover {
+  background: rgba(244, 63, 94, 0.08);
+}
+.review-finding-card.sev-warning {
+  border-left-color: var(--amber);
+  background: rgba(245, 158, 11, 0.04);
+}
+.review-finding-card.sev-warning:hover {
+  background: rgba(245, 158, 11, 0.08);
+}
+.review-finding-card.sev-info {
+  border-left-color: var(--cyan);
+  background: rgba(56, 189, 248, 0.03);
+}
+.review-finding-card.sev-info:hover {
+  background: rgba(56, 189, 248, 0.06);
+}
+.finding-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
 }
-.incon-kind {
-  font-size: 9px;
+.finding-severity {
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
   letter-spacing: 0.5px;
   font-family: var(--font-display);
 }
-.incon-kind.DIVERGENT_SIGNATURE { background: rgba(244, 63, 94, 0.15); color: var(--red); border: 1px solid rgba(244, 63, 94, 0.25); }
-.incon-kind.SIMILAR_NAME        { background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.25); }
-.incon-kind.SIMILAR_BODY        { background: rgba(56, 189, 248, 0.15); color: var(--cyan); border: 1px solid rgba(56, 189, 248, 0.25); }
-.incon-score {
+.finding-check {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.finding-line {
   margin-left: auto;
   font-size: 11px;
-  color: var(--cyan);
-  font-weight: 600;
   font-family: var(--font-mono);
+  color: var(--violet);
+  background: rgba(147, 129, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
 }
-.incon-entities {
+.finding-entity {
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
-  margin-bottom: 6px;
 }
-.incon-reason { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.finding-message {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.finding-suggestion {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-xs);
+  padding: 6px 8px;
+}
+.finding-snippet {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  line-height: 1.4;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    7. Right panel — entity detail + notes

@@ -208,19 +208,19 @@
         Knowledge Base
       </button>
 
-      <!-- Inconsistency tab — flagged structural divergences -->
+      <!-- Code Review tab — on-demand AST-based code reviewer -->
       <button
         class="tab"
         role="tab"
-        id="tab-inconsistency"
-        data-tab="inconsistency"
+        id="tab-review"
+        data-tab="review"
         aria-selected="false"
-        aria-controls="inconsistency-view"
-        title="Detected structural divergences, duplicated AST blocks, and signature drift (Shortcut: 3)"
+        aria-controls="review-view"
+        title="On-demand Code Review & Logic Auditor (Shortcut: 3)"
       >
-        <span aria-hidden="true">⚠</span>
-        Inconsistencies
-        <span class="tab-badge" aria-label="inconsistency count">0</span>
+        <span aria-hidden="true">🧪</span>
+        Code Review
+        <span class="tab-badge" aria-label="finding count">0</span>
       </button>
 
       <!-- Git tab — blame annotation, top authors, hot files -->
@@ -370,19 +370,46 @@
     </section><!-- /#knowledge-view -->
 
 
-    <!-- ── Tab panel 3: Inconsistency report list ────────────────────────── -->
+    <!-- ── Tab panel 3: Code Review workspace ─────────────────────────── -->
     <section
       class="tab-content"
-      id="inconsistency-view"
+      id="review-view"
       role="tabpanel"
-      aria-labelledby="tab-inconsistency"
+      aria-labelledby="tab-review"
       tabindex="0"
       aria-live="polite"
     >
-      <div class="list-empty">
-        Run a scan to detect structural inconsistencies.
+      <!-- Review target selector -->
+      <div class="review-workspace">
+        <div class="review-controls">
+          <div class="review-mode-selector">
+            <button class="review-mode-btn active" data-mode="selection" title="Review the currently selected type/method from the Explorer">
+              📋 Review Selection
+            </button>
+            <button class="review-mode-btn" data-mode="file" title="Review the file currently open in the Source tab">
+              📄 Review Open File
+            </button>
+            <button class="review-mode-btn" data-mode="snippet" title="Paste arbitrary Java code to review">
+              ✏️ Paste & Review
+            </button>
+          </div>
+          <button id="run-review-btn" class="btn-primary review-run-btn" title="Run the code review engine">
+            ⚡ Run Review
+          </button>
+        </div>
+        <div id="review-snippet-area" class="review-snippet-area" style="display:none">
+          <textarea id="review-snippet-input" class="review-snippet-input"
+            placeholder="Paste Java code here to review…"
+            spellcheck="false"
+            rows="12"
+          ></textarea>
+        </div>
+        <div id="review-target-info" class="review-target-info">
+          Select a class or method in the Explorer, then click <strong>⚡ Run Review</strong>.
+        </div>
+        <div id="review-results" class="review-results"></div>
       </div>
-    </section><!-- /#inconsistency-view -->
+    </section><!-- /#review-view -->
 
 
     <!-- ── Tab panel 4: Git — blame annotations, top authors, hot files ─── -->
@@ -513,8 +540,8 @@
             <p>Traces every method reading or writing a field, plus full upstream caller chains (Field &larr; Writers &larr; Callers) across the entire repo.</p>
           </div>
           <div class="help-card">
-            <h4>4. Structural Inconsistency Detection</h4>
-            <p>Identifies signature divergence across same-named methods, naming drift, and duplicate logic blocks via AST hash comparisons.</p>
+            <h4>4. On-Demand Code Review &amp; Logic Auditor</h4>
+            <p>Runs 32 deep AST-based checks across 6 categories (Correctness, Concurrency, Exception Safety, Code Smells, API Contracts, and Impact) on selected classes, files, or pasted snippets.</p>
           </div>
           <div class="help-card">
             <h4>5. Git Intelligence &amp; Heatmaps</h4>
@@ -541,7 +568,7 @@
             <ul>
               <li><strong>Graph</strong>: Force-directed interactive canvas with depth slider, fit view, and fire heat overlay.</li>
               <li><strong>Knowledge Base</strong>: Structured catalog with complexity metrics and signatures.</li>
-              <li><strong>Inconsistencies</strong>: Prioritized list of code drift and clone warnings.</li>
+              <li><strong>Code Review</strong>: 32-check on-demand logic auditor with actionable fix suggestions.</li>
               <li><strong>Git</strong>: Author ranking and entity churn metrics.</li>
               <li><strong>Source</strong>: Full Monaco code editor view.</li>
             </ul>
@@ -559,7 +586,7 @@
           <div class="sc-row"><kbd>Esc</kbd> <span>Clear search or close modals</span></div>
           <div class="sc-row"><kbd>1</kbd> <span>Switch to Graph workspace</span></div>
           <div class="sc-row"><kbd>2</kbd> <span>Switch to Knowledge Base</span></div>
-          <div class="sc-row"><kbd>3</kbd> <span>Switch to Inconsistencies workspace</span></div>
+          <div class="sc-row"><kbd>3</kbd> <span>Switch to Code Review workspace</span></div>
           <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit heat overlay on graph</span></div>
           <div class="sc-row"><kbd>F</kbd> <span>Fit graph to viewport</span></div>
         </div>
@@ -582,7 +609,7 @@
   <div class="scan-spinner" aria-hidden="true"></div>
   <div class="scan-status-info">
     <div class="scan-status-top">
-      <span class="scan-phase-badge">Phase 1/6</span>
+      <span class="scan-phase-badge">Phase 1/5</span>
       <span class="scan-status-text">Scanning…</span>
     </div>
     <div class="scan-detail-text">Initializing engine…</div>
@@ -599,7 +626,7 @@
   <p>Escape: clear search</p>
   <p>Key 1: switch to Graph tab</p>
   <p>Key 2: switch to Knowledge Base tab</p>
-  <p>Key 3: switch to Inconsistencies tab</p>
+  <p>Key 3: switch to Code Review tab</p>
 </div>
 
 

@@ -5,11 +5,13 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>com.codelens</groupId><artifactId>codelens</artifactId><version>1.0.0</version></parent>
   <artifactId>codelens-analysis</artifactId>
-  <name>CodeLens Analysis – Call graph, field impact, inconsistency detection</name>
+  <name>CodeLens Analysis – Call graph, field impact, code review engine</name>
   <!-- ADR: JGraphT used for BFS/DFS traversal and EdgeReversedGraph (caller trees). -->
+  <!-- ADR: JavaParser used by CodeReviewEngine for on-demand AST-based code review. -->
   <dependencies>
     <dependency><groupId>com.codelens</groupId><artifactId>codelens-core</artifactId></dependency>
     <dependency><groupId>org.jgrapht</groupId><artifactId>jgrapht-core</artifactId></dependency>
+    <dependency><groupId>com.github.javaparser</groupId><artifactId>javaparser-core</artifactId></dependency>
     <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
   </dependencies>
 </project>

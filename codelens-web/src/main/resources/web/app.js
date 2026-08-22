@@ -82,7 +82,7 @@ const api = {
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
-  inconsistencies:    ()          => api.get('/inconsistencies'),
+  review:             (body)      => api.post('/review', body),
   search:             (q, n=30)   => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`),
   scanStatus:         ()          => api.get('/scan/status'),
   startScan:          (sourcePath) => api.post('/scan', { sourcePath }),
@@ -191,7 +191,6 @@ async function onScanComplete(s) {
   // Refresh stats and tree
   await loadStats();
   await loadPackageTree();
-  await loadInconsistencies();
 
   // Footer update
   const fText = qs('#footer-status-text');
@@ -544,6 +543,9 @@ function switchTab(tabName) {
   App.activeTab = tabName;
   qsa('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   qsa('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === tabName + '-view'));
+  if (tabName === 'review') {
+    updateReviewTargetInfo();
+  }
   if (tabName === 'source' && App.editor) {
     setTimeout(() => {
       App.editor.layout();
@@ -639,6 +641,7 @@ async function openSourceFile(filePath, lineNum = null) {
   if (!filePath) return;
 
   App.currentFilePath = filePath;
+  updateReviewTargetInfo();
   
   const pathLabel = qs('#editor-file-path');
   if (pathLabel) {
@@ -778,44 +781,177 @@ async function loadKnowledgeBase(pkgFqn) {
 
 /* ── Inconsistency view ────────────────────────────────────────────────────── */
 
-async function loadInconsistencies() {
-  const view   = qs('#inconsistency-view');
-  const badge  = qs('.tab[data-tab="inconsistency"] .tab-badge');
+/* ─────────────────────────────────────────────────────────────────────────────
+   5b. Code Review — on-demand AST-based review engine
+   ───────────────────────────────────────────────────────────────────────────── */
 
-  try {
-    const items = await api.inconsistencies();
-    if (badge) badge.textContent = items.length;
-    view.innerHTML = '';
+// Active review mode: 'selection' | 'file' | 'snippet'
+let reviewMode = 'selection';
 
-    if (items.length === 0) {
-      view.innerHTML = '<div class="list-empty">No inconsistencies detected.</div>';
+const SEVERITY_META = {
+  CRITICAL: { icon: '🔴', label: 'Critical', cls: 'sev-critical' },
+  WARNING:  { icon: '🟠', label: 'Warning',  cls: 'sev-warning'  },
+  INFO:     { icon: '🔵', label: 'Info',      cls: 'sev-info'     }
+};
+
+const CATEGORY_META = {
+  CORRECTNESS:       { icon: '🔴', label: 'Correctness & Logic Defects' },
+  EXCEPTION_SAFETY:  { icon: '🟠', label: 'Exception & Resource Safety' },
+  THREAD_SAFETY:     { icon: '🟡', label: 'Thread Safety & Concurrency' },
+  CODE_SMELL:        { icon: '🔵', label: 'Code Smell & Maintainability' },
+  API_CONTRACT:      { icon: '🟣', label: 'API Contract & Design' },
+  IMPACT:            { icon: '⚪', label: 'Impact & Cross-Cutting' }
+};
+
+function updateReviewTargetInfo() {
+  const snippetArea = qs('#review-snippet-area');
+  const targetInfo  = qs('#review-target-info');
+  if (!targetInfo) return;
+
+  if (reviewMode === 'snippet') {
+    if (snippetArea) snippetArea.style.display = 'block';
+    targetInfo.innerHTML = 'Paste your Java code above, then click <strong>⚡ Run Review</strong>.';
+  } else {
+    if (snippetArea) snippetArea.style.display = 'none';
+    if (reviewMode === 'selection') {
+      if (App.selected) {
+        targetInfo.innerHTML = `Target: <strong>${esc(App.selected.id)}</strong> <span style="font-size:10px; color:var(--text-muted)">(${App.selected.kind.toUpperCase()})</span>`;
+      } else {
+        targetInfo.innerHTML = 'Select a class or method in the Explorer, then click <strong>⚡ Run Review</strong>.';
+      }
+    } else {
+      if (App.currentFilePath) {
+        targetInfo.innerHTML = `Target file: <strong>${esc(App.currentFilePath)}</strong>`;
+      } else {
+        targetInfo.innerHTML = 'Open a file in the Source tab first, then click <strong>⚡ Run Review</strong>.';
+      }
+    }
+  }
+}
+
+function initReviewControls() {
+  // Mode selector buttons
+  const modeBtns = qsa('.review-mode-btn');
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      modeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      reviewMode = btn.dataset.mode;
+      updateReviewTargetInfo();
+    });
+  });
+
+  // Run review button
+  const runBtn = qs('#run-review-btn');
+  if (runBtn) {
+    runBtn.addEventListener('click', runCodeReview);
+  }
+}
+
+async function runCodeReview() {
+  const resultsDiv = qs('#review-results');
+  const badge      = qs('.tab[data-tab="review"] .tab-badge');
+  const runBtn     = qs('#run-review-btn');
+  const targetInfo = qs('#review-target-info');
+
+  // Build request body based on mode
+  let body = {};
+  if (reviewMode === 'snippet') {
+    const snippetInput = qs('#review-snippet-input');
+    const code = snippetInput ? snippetInput.value.trim() : '';
+    if (!code) {
+      showBanner('Paste some Java code first', 'warning');
       return;
     }
+    body = { snippet: code };
+  } else if (reviewMode === 'file') {
+    if (!App.currentFilePath) {
+      showBanner('Open a file in the Source tab first', 'warning');
+      return;
+    }
+    body = { filePath: App.currentFilePath };
+  } else { // selection
+    if (!App.selected) {
+      showBanner('Select a class or method in the Explorer first', 'warning');
+      return;
+    }
+    body = { entityFqn: App.selected.id };
+  }
 
-    for (const item of items) {
-      const el = createElement('div', { class: 'incon-item fade-in' });
-      el.innerHTML = `
-        <div class="incon-header">
-          <span class="incon-kind ${item.kind}">${item.kind.replace(/_/g,' ')}</span>
-          <span class="incon-score">${(item.similarityScore * 100).toFixed(0)}% similar</span>
-        </div>
-        <div class="incon-entities">
-          ${esc(shortFqn(item.entity1Fqn))}
-          <span style="color:var(--text-muted)"> ↔ </span>
-          ${esc(shortFqn(item.entity2Fqn))}
-        </div>
-        <div class="incon-reason">${esc(item.reason || '')}</div>`;
+  // Show loading state
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spinner-inline"></span> Reviewing…';
+  resultsDiv.innerHTML = '<div class="review-loading"><div class="scan-spinner"></div><span>Running 32 AST-based checks…</span></div>';
 
-      el.addEventListener('click', () => {
-        // Navigate to the first entity for context
-        if (item.entity1Kind === 'METHOD') selectMethod(item.entity1Fqn);
-        else if (item.entity1Kind === 'FIELD') selectField(item.entity1Fqn);
-      });
-
-      view.appendChild(el);
+  try {
+    const findings = await api.review(body);
+    if (badge) badge.textContent = findings.length;
+    renderReviewFindings(findings, resultsDiv);
+    if (findings.length > 0) {
+      targetInfo.innerHTML = `Found <strong>${findings.length}</strong> findings.`;
+    } else {
+      targetInfo.innerHTML = '✅ <strong>No issues found.</strong> Code looks good!';
     }
   } catch (e) {
-    view.innerHTML = `<div class="list-empty">Error: ${e.message}</div>`;
+    resultsDiv.innerHTML = `<div class="list-empty">Review failed: ${esc(e.message)}</div>`;
+  } finally {
+    runBtn.disabled = false;
+    runBtn.innerHTML = '⚡ Run Review';
+  }
+}
+
+function renderReviewFindings(findings, container) {
+  container.innerHTML = '';
+  if (findings.length === 0) {
+    container.innerHTML = '<div class="review-empty"><span>✅</span><p>No issues detected. Clean code!</p></div>';
+    return;
+  }
+
+  // Group by category
+  const grouped = {};
+  const catOrder = ['CORRECTNESS', 'EXCEPTION_SAFETY', 'THREAD_SAFETY', 'CODE_SMELL', 'API_CONTRACT', 'IMPACT'];
+  for (const f of findings) {
+    if (!grouped[f.category]) grouped[f.category] = [];
+    grouped[f.category].push(f);
+  }
+
+  for (const cat of catOrder) {
+    if (!grouped[cat] || grouped[cat].length === 0) continue;
+    const catMeta = CATEGORY_META[cat] || { icon: '❓', label: cat };
+
+    const section = createElement('div', { class: 'review-category-group' });
+    section.innerHTML = `
+      <div class="review-category-header">
+        <span class="review-cat-icon">${catMeta.icon}</span>
+        <span class="review-cat-label">${catMeta.label}</span>
+        <span class="review-cat-count">${grouped[cat].length}</span>
+      </div>`;
+
+    for (const f of grouped[cat]) {
+      const sev = SEVERITY_META[f.severity] || SEVERITY_META.INFO;
+      const card = createElement('div', { class: `review-finding-card ${sev.cls} fade-in` });
+      card.innerHTML = `
+        <div class="finding-header">
+          <span class="finding-severity">${sev.icon} ${sev.label}</span>
+          <span class="finding-check">${f.checkName.replace(/_/g, ' ')}</span>
+          ${f.line > 0 ? `<span class="finding-line">L${f.line}</span>` : ''}
+        </div>
+        <div class="finding-entity">${esc(shortFqn(f.entityFqn))}</div>
+        <div class="finding-message">${esc(f.message)}</div>
+        <div class="finding-suggestion">💡 ${esc(f.suggestion)}</div>
+        ${f.sourceSnippet ? `<pre class="finding-snippet">${esc(f.sourceSnippet)}</pre>` : ''}`;
+
+      // Click to navigate to the entity
+      card.addEventListener('click', () => {
+        if (f.entityKind === 'METHOD') selectMethod(f.entityFqn);
+        else if (f.entityKind === 'TYPE') selectType(f.entityFqn);
+        else if (f.entityKind === 'FIELD') selectField(f.entityFqn);
+      });
+
+      section.appendChild(card);
+    }
+
+    container.appendChild(section);
   }
 }
 
@@ -831,6 +967,7 @@ async function selectType(id) {
     App.selected = { kind: 'type', id, data };
     renderTypeDetail(data);
     renderKnowledgeBaseForType(data);
+    updateReviewTargetInfo();
     switchTab('knowledge');
   } catch (e) {
     showError(e.message);
@@ -844,6 +981,7 @@ async function selectMethod(id) {
     const data = await api.method(id);
     App.selected = { kind: 'method', id, data };
     renderMethodDetail(data);
+    updateReviewTargetInfo();
     switchTab('graph');
     await loadCallGraph(id);
   } catch (e) {
@@ -858,6 +996,7 @@ async function selectField(id) {
     const data = await api.field(id);
     App.selected = { kind: 'field', id, data };
     renderFieldDetail(data);
+    updateReviewTargetInfo();
     switchTab('graph');
     await loadFieldImpact(id);
   } catch (e) {
@@ -1495,7 +1634,7 @@ function bindKeyboard() {
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
       if (e.key === '1') switchTab('graph');
       if (e.key === '2') switchTab('knowledge');
-      if (e.key === '3') switchTab('inconsistency');
+      if (e.key === '3') switchTab('review');
       if (e.key === '4') switchTab('git');
       if (e.key === '5') switchTab('source');
       if (e.key === '?') {
@@ -1602,7 +1741,6 @@ async function init() {
   qsa('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       switchTab(tab.dataset.tab);
-      if (tab.dataset.tab === 'inconsistency') loadInconsistencies();
       if (tab.dataset.tab === 'git') loadGitSummary();
     });
   });
@@ -1702,12 +1840,8 @@ async function init() {
   await loadStats();
   await loadPackageTree();
 
-  // Pre-load inconsistencies badge count
-  try {
-    const issues = await api.inconsistencies();
-    const badge  = qs('.tab[data-tab="inconsistency"] .tab-badge');
-    if (badge) badge.textContent = issues.length;
-  } catch (_) {}
+  // Initialize code review controls
+  initReviewControls();
 
   // Pre-load git branch metadata in the status footer
   updateFooterGitBranch();

@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * GET  /api/fields/{id}           → field detail
  * GET  /api/fields/{id}/impact    → field impact analysis graph
  *
- * GET  /api/inconsistencies       → all detected inconsistencies
+ * POST /api/review                → on-demand code review (file, snippet, or entity)
  *
  * GET  /api/search?q=             → full-text search (Lucene)
  *
@@ -69,7 +69,7 @@ public class CodeLensServer {
     private final EntityDao          dao;
     private final CallGraphAnalyzer  callGraph;
     private final FieldImpactAnalyzer fieldImpact;
-    private final InconsistencyDetector inconsistencyDetector;
+    private final CodeReviewEngine   codeReviewEngine;
     private final GitBlameService    gitBlameService;
     private final int                port;
 
@@ -95,7 +95,7 @@ public class CodeLensServer {
         this.dao                   = new EntityDao(db);
         this.callGraph             = new CallGraphAnalyzer();
         this.fieldImpact           = new FieldImpactAnalyzer();
-        this.inconsistencyDetector = new InconsistencyDetector();
+        this.codeReviewEngine      = new CodeReviewEngine();
         this.gitBlameService       = new GitBlameService();
         this.port                  = port;
     }
@@ -144,8 +144,8 @@ public class CodeLensServer {
         app.get("/api/fields/{id}",          this::getField);
         app.get("/api/fields/{id}/impact",   this::getFieldImpact);
 
-        // ── Inconsistencies ───────────────────────────────────────────────────
-        app.get("/api/inconsistencies",      this::listInconsistencies);
+        // ── Code Review ───────────────────────────────────────────────────────
+        app.post("/api/review",              this::reviewCode);
 
         // ── Search ────────────────────────────────────────────────────────────
         app.get("/api/search",               this::search);
@@ -278,13 +278,10 @@ public class CodeLensServer {
             callGraph.rebuild(allMethodFqns, allRels);
             fieldImpact.rebuild(allRels);
 
-            // Phase 5: inconsistency detection
-            progress.setCurrentPhase("Inconsistency Audit");
-            progress.setMessage("Detecting naming drift & duplicate logic…");
-            progress.setCurrentDetail(String.format("Auditing %d methods", result.methods.size()));
-            List<InconsistencyReport> issues =
-                inconsistencyDetector.detect(result.methods, result.fields);
-            dao.batchInsertInconsistencies(issues);
+            // Phase 5 removed — code review is now on-demand via POST /api/review
+            progress.setCurrentPhase("Finalizing");
+            progress.setMessage("Preparing code review engine…");
+            progress.setCurrentDetail("Ready for on-demand review");
 
             // Phase 6: Git blame annotation (non-fatal if not a git repo)
             progress.setCurrentPhase("Git History");
@@ -423,10 +420,59 @@ public class CodeLensServer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Inconsistencies
+    // Code Review (on-demand)
+    // Body: { "filePath": "..." } or { "snippet": "..." } or { "entityFqn": "..." }
     // ─────────────────────────────────────────────────────────────────────────
-    private void listInconsistencies(Context ctx) throws Exception {
-        ctx.json(dao.findAllInconsistencies());
+    private void reviewCode(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String filePath  = (String) body.get("filePath");
+        String snippet   = (String) body.get("snippet");
+        String entityFqn = (String) body.get("entityFqn");
+
+        List<ReviewFinding> findings;
+
+        if (snippet != null && !snippet.isBlank()) {
+            // Review a pasted code snippet
+            findings = codeReviewEngine.reviewSnippet(snippet, callGraph, fieldImpact);
+        } else if (filePath != null && !filePath.isBlank()) {
+            // Review a specific file
+            findings = codeReviewEngine.reviewFile(filePath.trim(), callGraph, fieldImpact);
+        } else if (entityFqn != null && !entityFqn.isBlank()) {
+            // Review by entity FQN — look up its source file
+            try {
+                String sourceFile = null;
+                Optional<CodeType> typeOpt = dao.findTypeById(entityFqn);
+                if (typeOpt.isPresent()) {
+                    sourceFile = typeOpt.get().getSourceFile();
+                } else {
+                    // Try to find it as a method's declaring type
+                    Optional<CodeMethod> methodOpt = dao.findMethodById(entityFqn);
+                    if (methodOpt.isPresent()) {
+                        String declaringType = methodOpt.get().getDeclaringTypeFqn();
+                        if (declaringType != null) {
+                            Optional<CodeType> parentType = dao.findTypeById(declaringType);
+                            if (parentType.isPresent()) {
+                                sourceFile = parentType.get().getSourceFile();
+                            }
+                        }
+                    }
+                }
+                if (sourceFile != null && !sourceFile.isBlank()) {
+                    findings = codeReviewEngine.reviewFile(sourceFile, callGraph, fieldImpact);
+                } else {
+                    ctx.status(404).json(Map.of("error", "Source file not found for entity: " + entityFqn));
+                    return;
+                }
+            } catch (Exception e) {
+                ctx.status(500).json(Map.of("error", "Review failed: " + e.getMessage()));
+                return;
+            }
+        } else {
+            ctx.status(400).json(Map.of("error", "Provide filePath, snippet, or entityFqn"));
+            return;
+        }
+
+        ctx.json(findings);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
