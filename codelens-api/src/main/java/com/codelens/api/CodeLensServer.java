@@ -235,18 +235,27 @@ public class CodeLensServer {
     private void runScan(String sourcePath, ScanProgress progress) {
         try {
             // Phase 1: parse sources
-            progress.setMessage("Scanning Java sources…");
+            progress.setCurrentPhase("AST Parsing");
+            progress.setMessage("Scanning Java source files…");
             JavaSourceScanner scanner = new JavaSourceScanner();
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
                     progress.setProcessedFiles(done);
-                    progress.setMessage("Parsing file " + done + "/" + total);
+                    String fileName = file;
+                    try {
+                        fileName = java.nio.file.Paths.get(file).getFileName().toString();
+                    } catch (Exception ignored) {}
+                    progress.setCurrentDetail(fileName);
+                    progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
                 });
 
             // Phase 2: persist to H2
-            progress.setMessage("Persisting index to database…");
+            progress.setCurrentPhase("Database Storage");
+            progress.setMessage("Persisting AST & relationships to database…");
+            progress.setCurrentDetail(String.format("%d types · %d methods · %d fields · %d rels",
+                result.types.size(), result.methods.size(), result.fields.size(), result.relationships.size()));
             db.clearAll();
             dao.batchInsertPackages(result.packages);
             dao.batchInsertTypes(result.types);
@@ -255,24 +264,32 @@ public class CodeLensServer {
             dao.batchInsertRelationships(result.relationships);
 
             // Phase 3: rebuild Lucene index
-            progress.setMessage("Rebuilding search index…");
+            progress.setCurrentPhase("Lucene Indexing");
+            progress.setMessage("Rebuilding full-text search index…");
+            progress.setCurrentDetail("Indexing " + (result.types.size() + result.methods.size() + result.fields.size()) + " symbols");
             lucene.rebuildIndex(result.types, result.methods, result.fields);
 
             // Phase 4: rebuild in-memory call graph
-            progress.setMessage("Building call graph…");
+            progress.setCurrentPhase("Graph Analysis");
+            progress.setMessage("Computing call graph & field propagation…");
             List<String> allMethodFqns = dao.findAllMethodFqns();
             List<CodeRelationship> allRels = dao.findAllRelationships();
+            progress.setCurrentDetail(String.format("Analyzing %d call paths", allRels.size()));
             callGraph.rebuild(allMethodFqns, allRels);
             fieldImpact.rebuild(allRels);
 
             // Phase 5: inconsistency detection
-            progress.setMessage("Running inconsistency detection…");
+            progress.setCurrentPhase("Inconsistency Audit");
+            progress.setMessage("Detecting naming drift & duplicate logic…");
+            progress.setCurrentDetail(String.format("Auditing %d methods", result.methods.size()));
             List<InconsistencyReport> issues =
                 inconsistencyDetector.detect(result.methods, result.fields);
             dao.batchInsertInconsistencies(issues);
 
             // Phase 6: Git blame annotation (non-fatal if not a git repo)
-            progress.setMessage("Running git blame annotation…");
+            progress.setCurrentPhase("Git History");
+            progress.setMessage("Extracting Git blame & churn heatmaps…");
+            progress.setCurrentDetail("Auditing commit history");
             GitRepoLocator.locate(sourcePath).ifPresent(repoRoot -> {
                 try {
                     GitBlameService.ScanResult gitResult = new GitBlameService.ScanResult(
@@ -288,6 +305,8 @@ public class CodeLensServer {
             progress.setMethodsFound(result.methods.size());
             progress.setFieldsFound(result.fields.size());
             progress.setRelationshipsFound(result.relationships.size());
+            progress.setCurrentPhase("Complete");
+            progress.setCurrentDetail("Ready");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
             progress.setMessage("Scan complete — " + result.types.size() + " types indexed.");

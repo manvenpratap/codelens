@@ -124,7 +124,7 @@ async function startScan() {
   }
 }
 
-/** Poll /api/scan/status every 900 ms until COMPLETE or ERROR. */
+/** Poll /api/scan/status every 350 ms until COMPLETE or ERROR. */
 function pollScanStatus() {
   if (App.scanPollHandle) clearInterval(App.scanPollHandle);
 
@@ -146,21 +146,38 @@ function pollScanStatus() {
     } catch (e) {
       console.warn('Poll error:', e);
     }
-  }, 900);
+  }, 350);
 }
 
 /** Update the progress bar and status text during an active scan. */
 function updateScanProgress(s) {
   const pct = s.percentage || 0;
   qs('#scan-progress-bar').style.width = pct + '%';
-  qs('.scan-status-text').textContent  = s.message || 'Scanning…';
-  qs('.scan-pct').textContent          = pct + '%';
+
+  const phaseBadge = qs('.scan-phase-badge');
+  if (phaseBadge) {
+    phaseBadge.textContent = s.currentPhase || (pct < 100 ? 'Scanning' : 'Finishing');
+  }
+
+  const statusText = qs('.scan-status-text');
+  if (statusText) {
+    statusText.textContent = s.message || 'Scanning codebase…';
+  }
+
+  const detailText = qs('.scan-detail-text');
+  if (detailText) {
+    detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing...');
+  }
+
+  qs('.scan-pct').textContent = pct + '%';
   qs('#scan-status-bar').classList.add('visible');
   
   // Footer update
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
-  if (fText) fText.textContent = `Scanning: ${s.message || ''} (${pct}%)`;
+  if (fText) {
+    fText.textContent = `[${s.currentPhase || 'SCAN'}] ${s.message || ''} (${pct}%)`;
+  }
   if (fInd) { fInd.className = 'status-indicator busy'; }
 }
 

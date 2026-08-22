@@ -9,6 +9,8 @@ public class ScanProgress {
 
     private Status status = Status.IDLE;
     private String sourcePath;
+    private String currentPhase;
+    private String currentDetail;
     private int totalFiles;
     private int processedFiles;
     private int typesFound;
@@ -34,6 +36,10 @@ public class ScanProgress {
     public void setStatus(Status s)            { this.status = s; }
     public String getSourcePath()               { return sourcePath; }
     public void setSourcePath(String p)        { this.sourcePath = p; }
+    public String getCurrentPhase()             { return currentPhase; }
+    public void setCurrentPhase(String phase)  { this.currentPhase = phase; }
+    public String getCurrentDetail()            { return currentDetail; }
+    public void setCurrentDetail(String detail){ this.currentDetail = detail; }
     public int getTotalFiles()                  { return totalFiles; }
     public void setTotalFiles(int n)           { this.totalFiles = n; }
     public int getProcessedFiles()              { return processedFiles; }
