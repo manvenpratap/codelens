@@ -551,13 +551,14 @@ function switchTab(tabName) {
   }
 }
 
-/** Load Monaco Editor from the CDN AMD loader. */
+/** Load Monaco Editor with offline / blocked tracking prevention fallback. */
 function initMonaco() {
   if (App.editorPromise) return App.editorPromise;
 
-  App.editorPromise = new Promise((resolve, reject) => {
+  App.editorPromise = new Promise((resolve) => {
     if (typeof require === 'undefined') {
-      reject(new Error('Monaco AMD loader require() not found in window context.'));
+      console.warn('Monaco AMD loader not available (offline/blocked), using fallback viewer.');
+      resolve(null);
       return;
     }
     try {
@@ -567,17 +568,73 @@ function initMonaco() {
       require(['vs/editor/editor.main'], () => {
         resolve(window.monaco);
       }, err => {
-        reject(err);
+        console.warn('Monaco CDN load failed/blocked, using fallback viewer:', err);
+        resolve(null);
       });
     } catch (e) {
-      reject(e);
+      console.warn('Monaco require error, using fallback viewer:', e);
+      resolve(null);
     }
   });
 
   return App.editorPromise;
 }
 
-/** Fetch a source file, mount Monaco Editor, load the code, and focus on the line. */
+/** Simple syntax token highlighter for fallback code viewer */
+function highlightJavaSyntax(code) {
+  const keywords = ['abstract','assert','boolean','break','byte','case','catch','char','class','const','continue','default','do','double','else','enum','extends','final','finally','float','for','if','implements','import','instanceof','int','interface','long','native','new','package','private','protected','public','return','short','static','strictfp','super','switch','synchronized','this','throw','throws','transient','try','void','volatile','while','record','sealed','permits','var','yield'];
+  
+  // Escape HTML
+  let escaped = esc(code);
+  
+  // Highlight strings
+  escaped = escaped.replace(/(&quot;.*?&quot;|&#39;.*?&#39;|".*?"|'.*?')/g, '<span class="tok-string">$1</span>');
+  // Highlight annotations
+  escaped = escaped.replace(/(@\w+)/g, '<span class="tok-annotation">$1</span>');
+  // Highlight keywords (word boundary)
+  const kwRegex = new RegExp('\\b(' + keywords.join('|') + ')\\b', 'g');
+  escaped = escaped.replace(kwRegex, '<span class="tok-kw">$1</span>');
+  // Highlight comments
+  escaped = escaped.replace(/(\/\/.*$)/gm, '<span class="tok-comment">$1</span>');
+
+  return escaped;
+}
+
+/** Render native fallback code editor/viewer with line numbers */
+function renderFallbackViewer(content, lineNum) {
+  const container = qs('#editor-container');
+  if (!container) return;
+
+  const lines = content.split('\n');
+  const linesHtml = lines.map((line, idx) => {
+    const num = idx + 1;
+    const isTarget = (lineNum && num === lineNum);
+    const highlighted = highlightJavaSyntax(line);
+    return `<div class="fallback-line ${isTarget ? 'highlight-target' : ''}" id="fallback-line-${num}">
+      <span class="fallback-line-num">${num}</span>
+      <span class="fallback-line-content">${highlighted || ' '}</span>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="fallback-code-wrap">
+      <div class="fallback-code-scroll">
+        ${linesHtml}
+      </div>
+    </div>
+  `;
+
+  if (lineNum) {
+    setTimeout(() => {
+      const targetEl = qs(`#fallback-line-${lineNum}`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
+  }
+}
+
+/** Fetch a source file, mount Monaco Editor (or fallback), load the code, and focus on the line. */
 async function openSourceFile(filePath, lineNum = null) {
   if (!filePath) return;
 
@@ -585,7 +642,7 @@ async function openSourceFile(filePath, lineNum = null) {
   
   const pathLabel = qs('#editor-file-path');
   if (pathLabel) {
-    pathLabel.innerHTML = `Source: <strong>${esc(filePath.split('/').pop())}</strong> <span style="font-size:10px; color:var(--text-muted)">(${esc(filePath)})</span>`;
+    pathLabel.innerHTML = `Source: <strong>${esc(filePath.split('/').pop().split('\\').pop())}</strong> <span style="font-size:10px; color:var(--text-muted)">(${esc(filePath)})</span>`;
   }
 
   try {
@@ -601,8 +658,14 @@ async function openSourceFile(filePath, lineNum = null) {
     const saveBtn = qs('#editor-save-btn');
     if (saveBtn) saveBtn.disabled = false;
 
-    // Load Monaco
+    // Attempt to load Monaco (falls back gracefully if CDN/tracking prevention blocked)
     const monaco = await initMonaco();
+
+    if (!monaco) {
+      // Fallback: render built-in syntax-highlighted code viewer
+      renderFallbackViewer(data.content, lineNum);
+      return;
+    }
 
     if (!App.editor) {
       const container = qs('#editor-container');

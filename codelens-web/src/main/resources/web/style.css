@@ -1705,6 +1705,55 @@ input, textarea { font-family: inherit; font-size: inherit; outline: none; trans
   box-shadow: inset 4px 0 0 0 var(--violet);
 }
 
+/* Offline / Zero-CDN Native Code Viewer */
+.fallback-code-wrap {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #090c14;
+  font-family: var(--font-mono), Menlo, Monaco, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 22px;
+}
+.fallback-code-scroll {
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: 12px 0;
+}
+.fallback-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 16px;
+  white-space: pre;
+  transition: background var(--dur-fast);
+}
+.fallback-line:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.fallback-line.highlight-target {
+  background: rgba(167, 139, 250, 0.15) !important;
+  box-shadow: inset 4px 0 0 0 var(--violet);
+}
+.fallback-line-num {
+  width: 48px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 18px;
+  color: var(--text-muted);
+  font-size: 11px;
+  user-select: none;
+  opacity: 0.6;
+}
+.fallback-line-content {
+  flex: 1;
+  color: var(--text-primary);
+}
+.tok-kw { color: #f472b6; font-weight: 600; }
+.tok-string { color: #34d399; }
+.tok-annotation { color: #fbbf24; }
+.tok-comment { color: #64748b; font-style: italic; }
+
 /* ─────────────────────────────────────────────────────────────────────────────
    Help / Guide Modal Dialog
    ───────────────────────────────────────────────────────────────────────────── */
