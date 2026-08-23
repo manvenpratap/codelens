@@ -616,10 +616,10 @@ class ForceGraph {
     ctx.fillStyle = GC.bg;
     ctx.fillRect(0, 0, W, H);
 
-    // Radial dark ambient gradient
+    // Subtle neutral dark ambient gradient (Zero indigo/blue tint)
     const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.75);
-    grad.addColorStop(0, 'rgba(18, 24, 48, 0.45)');
-    grad.addColorStop(1, 'rgba(8, 10, 20, 0.95)');
+    grad.addColorStop(0, 'rgba(22, 27, 34, 0.25)');
+    grad.addColorStop(1, 'rgba(13, 17, 23, 0.85)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -932,8 +932,8 @@ class ForceGraph {
     const ph = 18;
     const px = x - pw / 2;
 
-    // Label pill background
-    ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
+    // Label pill background (Neutral Charcoal)
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.94)';
     ctx.strokeStyle = isSelected ? '#ffffff' : (isHovered ? mainColor : hexToRgba(mainColor, 0.6));
     ctx.lineWidth = isSelected ? 1.8 : (isHovered ? 1.4 : 1.0);
     ctx.beginPath();
@@ -963,7 +963,7 @@ class ForceGraph {
     const MH = this._minimapCanvas.height;
 
     mctx.clearRect(0, 0, MW, MH);
-    mctx.fillStyle = 'rgba(8, 11, 22, 0.92)';
+    mctx.fillStyle = 'rgba(13, 17, 23, 0.95)';
     mctx.fillRect(0, 0, MW, MH);
 
     if (this._nodes.length === 0) return;
