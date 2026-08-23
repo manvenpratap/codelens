@@ -1372,12 +1372,20 @@ function renderTypeDetail(data) {
 function renderKnowledgeBaseForType(data) {
   const { type, fields = [], methods = [] } = data;
   const view = qs('#knowledge-view');
-  view.innerHTML = `<div class="kb-section-header">
-    <span class="kb-type-pill">${type.kind}</span> ${esc(type.simpleName)}
-  </div>`;
+  view.innerHTML = '';
+
+  const header = createElement('div', { class: 'kb-section-header' });
+  header.innerHTML = `<span class="kb-type-pill">${esc(type.kind)}</span> ${esc(type.simpleName)}`;
+  view.appendChild(header);
 
   if (fields.length > 0) {
-    view.innerHTML += `<div class="kb-section-header" style="font-size:10px;padding-left:16px">Fields</div>`;
+    const fieldsHeader = createElement('div', {
+      class: 'kb-section-header',
+      style: 'font-size:10px;padding-left:16px'
+    });
+    fieldsHeader.textContent = 'Fields';
+    view.appendChild(fieldsHeader);
+
     for (const f of fields) {
       const item = createElement('div', { class: 'kb-item fade-in' });
       item.innerHTML = `
@@ -1387,13 +1395,19 @@ function renderKnowledgeBaseForType(data) {
           <div class="kb-item-meta">${esc(f.fieldType || '')} · ${esc(f.modifiers || '')} · line ${f.startLine}</div>
         </div>
         <span class="kb-item-badge badge-enum">${esc(f.fieldType || '')}</span>`;
-      item.addEventListener('click', () => selectField(f.id));
+      item.addEventListener('click', () => selectField(f.id || f.fqn));
       view.appendChild(item);
     }
   }
 
   if (methods.length > 0) {
-    view.innerHTML += `<div class="kb-section-header" style="font-size:10px;padding-left:16px">Methods</div>`;
+    const methodsHeader = createElement('div', {
+      class: 'kb-section-header',
+      style: 'font-size:10px;padding-left:16px'
+    });
+    methodsHeader.textContent = 'Methods';
+    view.appendChild(methodsHeader);
+
     for (const m of methods) {
       const item = createElement('div', { class: 'kb-item fade-in' });
       const paramStr = (m.parameters || []).map(p => p.type + ' ' + p.name).join(', ');
@@ -1410,7 +1424,7 @@ function renderKnowledgeBaseForType(data) {
           <div class="kb-item-meta" style="color:var(--text-muted)">(${esc(paramStr)})</div>
         </div>
         <span class="kb-item-badge badge-iface">${esc(m.modifiers || '')}</span>`;
-      item.addEventListener('click', () => selectMethod(m.id));
+      item.addEventListener('click', () => selectMethod(m.id || m.fqn));
       view.appendChild(item);
     }
   }
