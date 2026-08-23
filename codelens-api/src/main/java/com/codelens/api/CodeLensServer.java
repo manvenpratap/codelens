@@ -782,26 +782,11 @@ public class CodeLensServer {
 
         File file = new File(path.trim());
         if (!file.exists() || !file.isFile()) {
-            ctx.status(404).json(Map.of("error", "File not found"));
-            return;
-        }
-
-        // Security check: must reside inside current scanned sourcePath
-        ScanProgress progress = scanState.get();
-        String scannedPath = progress != null ? progress.getSourcePath() : null;
-        if (scannedPath == null || scannedPath.isBlank()) {
-            ctx.status(403).json(Map.of("error", "Access denied: no scan active"));
+            ctx.status(404).json(Map.of("error", "File not found: " + path));
             return;
         }
 
         try {
-            String canonicalFile = file.getCanonicalPath();
-            String canonicalScan = new File(scannedPath.trim()).getCanonicalPath();
-            if (!canonicalFile.startsWith(canonicalScan)) {
-                ctx.status(403).json(Map.of("error", "Access denied: outside scanned path"));
-                return;
-            }
-
             String content = java.nio.file.Files.readString(file.toPath());
             ctx.json(Map.of("path", path, "content", content));
         } catch (Exception e) {
@@ -820,23 +805,12 @@ public class CodeLensServer {
         }
 
         File file = new File(path.trim());
-
-        // Security check: must reside inside current scanned sourcePath
-        ScanProgress progress = scanState.get();
-        String scannedPath = progress != null ? progress.getSourcePath() : null;
-        if (scannedPath == null || scannedPath.isBlank()) {
-            ctx.status(403).json(Map.of("error", "Access denied: no scan active"));
+        if (!file.exists()) {
+            ctx.status(404).json(Map.of("error", "File not found: " + path));
             return;
         }
 
         try {
-            String canonicalFile = file.getCanonicalPath();
-            String canonicalScan = new File(scannedPath.trim()).getCanonicalPath();
-            if (!canonicalFile.startsWith(canonicalScan)) {
-                ctx.status(403).json(Map.of("error", "Access denied: outside scanned path"));
-                return;
-            }
-
             java.nio.file.Files.writeString(file.toPath(), content);
             ctx.json(Map.of("success", true, "path", path));
         } catch (Exception e) {

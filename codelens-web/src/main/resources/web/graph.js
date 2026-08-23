@@ -17,37 +17,37 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 const GRAPHIFY_COLORS = [
-  '#4E79A7', // 0: Slate Indigo / Steel Blue
-  '#F28E2B', // 1: Amber Flame
-  '#E15759', // 2: Coral Crimson
-  '#76B7B2', // 3: Cyan Teal
-  '#59A14F', // 4: Forest Emerald
-  '#EDC948', // 5: Sunbeam Gold
-  '#B07AA1', // 6: Amethyst Lavender
-  '#FF9DA7', // 7: Blush Rose
-  '#9C755F', // 8: Cocoa Bronze
-  '#BAB0AC', // 9: Titanium Ash
+  '#3B82F6', // 0: Precision Cobalt
+  '#10B981', // 1: Emerald Green
+  '#F59E0B', // 2: Warm Amber
+  '#0EA5E9', // 3: Sky Cyan
+  '#EF4444', // 4: Crimson Red
+  '#14B8A6', // 5: Mint Teal
+  '#06B6D4', // 6: Ocean Cyan
+  '#F97316', // 7: Blaze Orange
+  '#84CC16', // 8: Lime Green
+  '#64748B', // 9: Steel Slate
 ];
 
 const GC = {
-  bg:       '#080a14',
-  grid:     'rgba(255, 255, 255, 0.025)',
+  bg:       '#0d1117',
+  grid:     'rgba(255, 255, 255, 0.02)',
   roles: {
-    root:        '#a78bfa',
+    root:        '#2563eb',
     caller:      '#38bdf8',
     callee:      '#34d399',
     propagator:  '#fbbf24',
     field:       '#fb923c',
     reader:      '#38bdf8',
     writer:      '#f87171',
-    default:     '#4e79a7',
+    default:     '#3b82f6',
   },
   edgeKind: {
     CALLS:        '#38bdf8',
     READS_FIELD:  '#2dd4bf',
     WRITES_FIELD: '#f59e0b',
-    EXTENDS:      '#a78bfa',
-    IMPLEMENTS:   '#a78bfa',
+    EXTENDS:      '#94a3b8',
+    IMPLEMENTS:   '#94a3b8',
     default:      '#64748b',
   },
 };
@@ -686,7 +686,7 @@ class ForceGraph {
       const px = cx - pw / 2;
       const py = minY - 8 - ph;
 
-      ctx.fillStyle = 'rgba(8, 10, 20, 0.75)';
+      ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
       ctx.strokeStyle = hexToRgba(comm.color, 0.4);
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -896,16 +896,16 @@ class ForceGraph {
     ctx.lineWidth = isSelected ? 3 : (isHovered ? 2.5 : 1.8);
     ctx.stroke();
 
-    // 4. Type Glyph / Icon inside node
+    // 4. Type Glyph / Icon inside node (Standard IDE symbols)
     const typeIcons = {
-      METHOD: 'λ',
-      FIELD: 'f',
-      CLASS: 'C',
+      METHOD:    'm',
+      FIELD:     'f',
+      CLASS:     'C',
       INTERFACE: 'I',
-      ENUM: 'E',
-      RECORD: 'R',
+      ENUM:      'E',
+      RECORD:    'R',
     };
-    const glyph = typeIcons[node.type] || '•';
+    const glyph = typeIcons[node.type] || 'm';
 
     ctx.font = `bold ${Math.round(r * 0.62)}px JetBrains Mono, monospace`;
     ctx.fillStyle = '#ffffff';
@@ -1159,37 +1159,37 @@ class ForceGraph {
     const typeColors = {
       METHOD: '#38bdf8',    // Cyan
       FIELD: '#f59e0b',     // Amber
-      CLASS: '#818cf8',     // Indigo / Violet
-      INTERFACE: '#34d399', // Emerald
+      CLASS: '#3b82f6',     // Cobalt
+      INTERFACE: '#10b981', // Emerald
       ENUM: '#fb7185',      // Rose
-      RECORD: '#e879f9',    // Fuchsia
+      RECORD: '#0d9488',    // Teal
     };
     const typeGlyphs = {
-      METHOD: 'λ',
-      FIELD: 'f',
-      CLASS: 'C',
+      METHOD:    'm',
+      FIELD:     'f',
+      CLASS:     'C',
       INTERFACE: 'I',
-      ENUM: 'E',
-      RECORD: 'R',
+      ENUM:      'E',
+      RECORD:    'R',
     };
     const nodeType = node.type || 'METHOD';
     const tColor = typeColors[nodeType] || commColor;
     const tGlyph = typeGlyphs[nodeType] || '◈';
 
     // Dynamic colorful card shell
-    card.style.borderColor = hexToRgba(commColor, 0.55);
-    card.style.boxShadow = `0 16px 44px rgba(0, 0, 0, 0.7), 0 0 28px ${hexToRgba(commColor, 0.28)}, inset 0 1px 0 rgba(255, 255, 255, 0.12)`;
+    card.style.borderColor = hexToRgba(commColor, 0.45);
+    card.style.boxShadow = `0 16px 44px rgba(0, 0, 0, 0.7), 0 0 24px ${hexToRgba(commColor, 0.2)}, inset 0 1px 0 rgba(255, 255, 255, 0.10)`;
 
     if (accentBar) {
-      accentBar.style.background = `linear-gradient(90deg, ${commColor}, ${tColor}, ${lerpColor(commColor, '#ffffff', 0.4)}, transparent)`;
+      accentBar.style.background = `linear-gradient(90deg, ${commColor}, ${tColor}, transparent)`;
     }
 
     if (iconEl) {
       iconEl.textContent = tGlyph;
-      iconEl.style.background = hexToRgba(commColor, 0.18);
-      iconEl.style.borderColor = hexToRgba(commColor, 0.6);
+      iconEl.style.background = hexToRgba(commColor, 0.16);
+      iconEl.style.borderColor = hexToRgba(commColor, 0.45);
       iconEl.style.color = commColor;
-      iconEl.style.boxShadow = `0 0 12px ${hexToRgba(commColor, 0.35)}`;
+      iconEl.style.boxShadow = `0 0 10px ${hexToRgba(commColor, 0.25)}`;
     }
 
     if (nameEl) {
@@ -1199,19 +1199,19 @@ class ForceGraph {
     if (commEl) {
       commEl.textContent = node.communityLabel;
       commEl.style.color = commColor;
-      commEl.style.background = hexToRgba(commColor, 0.14);
-      commEl.style.borderColor = hexToRgba(commColor, 0.4);
+      commEl.style.background = hexToRgba(commColor, 0.12);
+      commEl.style.borderColor = hexToRgba(commColor, 0.35);
     }
 
     if (typeEl) {
       typeEl.textContent = nodeType;
       typeEl.style.color = tColor;
-      typeEl.style.background = hexToRgba(tColor, 0.14);
-      typeEl.style.borderColor = hexToRgba(tColor, 0.4);
+      typeEl.style.background = hexToRgba(tColor, 0.12);
+      typeEl.style.borderColor = hexToRgba(tColor, 0.35);
     }
 
     if (degEl) {
-      degEl.innerHTML = `<span style="color:#38bdf8">${node.inDegree} in</span> · <span style="color:#f43f5e">${node.outDegree} out</span> (<span style="color:#c084fc">${node.degree} total</span>)`;
+      degEl.innerHTML = `<span style="color:#38bdf8">${node.inDegree} in</span> · <span style="color:#f43f5e">${node.outDegree} out</span> (<span style="color:#94a3b8">${node.degree} total</span>)`;
     }
 
     // Neighbors list
