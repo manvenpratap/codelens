@@ -1618,6 +1618,11 @@ function bindKeyboard() {
     const helpModal = qs('#help-modal');
     // Escape → close modal or clear search
     if (e.key === 'Escape') {
+      const settingsModal = qs('#settings-modal');
+      if (settingsModal && settingsModal.classList.contains('open')) {
+        closeSettings();
+        return;
+      }
       if (helpModal && helpModal.classList.contains('open')) {
         helpModal.classList.remove('open');
         helpModal.setAttribute('aria-hidden', 'true');
@@ -1855,6 +1860,9 @@ async function init() {
 
   // Initialize adjustable panel resizers
   initPanelResizers();
+
+  // Initialize settings & themes
+  initSettings();
 
   // Initialize code review controls
   initReviewControls();
@@ -2582,5 +2590,331 @@ function triggerRelayout() {
   }
   if (App.graph && typeof App.graph._resize === 'function') {
     App.graph._resize();
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   10. Themes & Settings System
+   ───────────────────────────────────────────────────────────────────────────── */
+
+const THEMES = {
+  midnight: {
+    label: 'Midnight', icon: '🌑', tagline: 'Cold precision. Clean engineering.',
+    css: {
+      '--bg-base': '#0d1117', '--bg-panel': '#161b22', '--bg-surface': '#1c2128',
+      '--bg-elevated': '#21262d', '--bg-modal': '#161b22', '--bg-glass': 'rgba(22,27,34,0.85)',
+      '--border': 'rgba(255,255,255,0.08)', '--border-hover': 'rgba(255,255,255,0.16)',
+      '--border-light': 'rgba(255,255,255,0.12)', '--border-focus': '#3b82f6',
+      '--primary': '#2563eb', '--primary-hover': '#1d4ed8', '--primary-active': '#1e40af',
+      '--primary-subtle': 'rgba(37,99,235,0.14)', '--primary-glow': 'rgba(37,99,235,0.28)',
+      '--primary-border': 'rgba(59,130,246,0.40)',
+      '--cyan-bright': '#38bdf8', '--emerald': '#10b981', '--amber': '#f59e0b', '--red': '#ef4444',
+      '--text-primary': '#f0f6fc', '--text-secondary': '#9ca3af', '--text-muted': '#6b7280',
+    },
+    graph: {
+      bg: '#0d1117', grid: 'rgba(255,255,255,0.02)',
+      roles: { root:'#2563eb',caller:'#38bdf8',callee:'#34d399',propagator:'#fbbf24',field:'#fb923c',reader:'#38bdf8',writer:'#f87171',default:'#3b82f6' },
+      edgeKind: { CALLS:'#38bdf8',READS_FIELD:'#2dd4bf',WRITES_FIELD:'#f59e0b',EXTENDS:'#94a3b8',IMPLEMENTS:'#94a3b8',default:'#64748b' },
+      nodeColors: ['#3B82F6','#10B981','#F59E0B','#0EA5E9','#EF4444','#14B8A6','#06B6D4','#F97316','#84CC16','#64748B'],
+    },
+    preview: ['#0d1117','#2563eb','#38bdf8','#10b981','#f59e0b'],
+  },
+  cyberpunk: {
+    label: 'Cyberpunk', icon: '🟣', tagline: 'Neon-soaked. Blade Runner terminals.',
+    css: {
+      '--bg-base': '#05000a', '--bg-panel': '#0c0614', '--bg-surface': '#120a1e',
+      '--bg-elevated': '#1a0f2e', '--bg-modal': '#0c0614', '--bg-glass': 'rgba(12,6,20,0.88)',
+      '--border': 'rgba(224,64,251,0.12)', '--border-hover': 'rgba(224,64,251,0.28)',
+      '--border-light': 'rgba(224,64,251,0.16)', '--border-focus': '#e040fb',
+      '--primary': '#e040fb', '--primary-hover': '#d500f9', '--primary-active': '#aa00ff',
+      '--primary-subtle': 'rgba(224,64,251,0.14)', '--primary-glow': 'rgba(224,64,251,0.30)',
+      '--primary-border': 'rgba(224,64,251,0.40)',
+      '--cyan-bright': '#00e5ff', '--emerald': '#39ff14', '--amber': '#ffea00', '--red': '#ff1744',
+      '--text-primary': '#e8e0f0', '--text-secondary': '#a78bba', '--text-muted': '#7c5e99',
+    },
+    graph: {
+      bg: '#05000a', grid: 'rgba(224,64,251,0.04)',
+      roles: { root:'#e040fb',caller:'#00e5ff',callee:'#39ff14',propagator:'#ffea00',field:'#ff6e40',reader:'#00e5ff',writer:'#ff1744',default:'#e040fb' },
+      edgeKind: { CALLS:'#00e5ff',READS_FIELD:'#39ff14',WRITES_FIELD:'#ffea00',EXTENDS:'#7c4dff',IMPLEMENTS:'#7c4dff',default:'#b388ff' },
+      nodeColors: ['#e040fb','#00e5ff','#39ff14','#7c4dff','#ff1744','#00bfa5','#ffea00','#ff6e40','#b2ff59','#e0e0e0'],
+    },
+    preview: ['#05000a','#e040fb','#00e5ff','#39ff14','#ffea00'],
+  },
+  ember: {
+    label: 'Ember', icon: '🔥', tagline: 'Forge heat. Warm engineering.',
+    css: {
+      '--bg-base': '#110e0a', '--bg-panel': '#1a1510', '--bg-surface': '#221c14',
+      '--bg-elevated': '#2a231a', '--bg-modal': '#1a1510', '--bg-glass': 'rgba(26,21,16,0.88)',
+      '--border': 'rgba(245,158,11,0.10)', '--border-hover': 'rgba(245,158,11,0.22)',
+      '--border-light': 'rgba(245,158,11,0.14)', '--border-focus': '#e87f17',
+      '--primary': '#e87f17', '--primary-hover': '#ca6c0e', '--primary-active': '#b45309',
+      '--primary-subtle': 'rgba(232,127,23,0.14)', '--primary-glow': 'rgba(232,127,23,0.28)',
+      '--primary-border': 'rgba(232,127,23,0.40)',
+      '--cyan-bright': '#fbbf24', '--emerald': '#d97706', '--amber': '#f59e0b', '--red': '#dc2626',
+      '--text-primary': '#fef3c7', '--text-secondary': '#c4a46e', '--text-muted': '#92774a',
+    },
+    graph: {
+      bg: '#110e0a', grid: 'rgba(245,158,11,0.04)',
+      roles: { root:'#e87f17',caller:'#fbbf24',callee:'#d97706',propagator:'#f59e0b',field:'#ea580c',reader:'#fbbf24',writer:'#dc2626',default:'#e87f17' },
+      edgeKind: { CALLS:'#fbbf24',READS_FIELD:'#d97706',WRITES_FIELD:'#f59e0b',EXTENDS:'#92400e',IMPLEMENTS:'#92400e',default:'#78350f' },
+      nodeColors: ['#f59e0b','#d97706','#ef4444','#fbbf24','#b45309','#fb923c','#a16207','#c2410c','#ca8a04','#78716c'],
+    },
+    preview: ['#110e0a','#e87f17','#fbbf24','#d97706','#ef4444'],
+  },
+  arctic: {
+    label: 'Arctic', icon: '❄️', tagline: 'Ice clarity. Surgical precision.',
+    css: {
+      '--bg-base': '#f0f4f8', '--bg-panel': '#ffffff', '--bg-surface': '#e8edf2',
+      '--bg-elevated': '#dde3ea', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(240,244,248,0.92)',
+      '--border': 'rgba(0,0,0,0.10)', '--border-hover': 'rgba(0,0,0,0.18)',
+      '--border-light': 'rgba(0,0,0,0.08)', '--border-focus': '#1e6bb8',
+      '--primary': '#1e6bb8', '--primary-hover': '#165a9e', '--primary-active': '#10498a',
+      '--primary-subtle': 'rgba(30,107,184,0.10)', '--primary-glow': 'rgba(30,107,184,0.18)',
+      '--primary-border': 'rgba(30,107,184,0.35)',
+      '--cyan-bright': '#0284c7', '--emerald': '#059669', '--amber': '#d97706', '--red': '#dc2626',
+      '--text-primary': '#1a2233', '--text-secondary': '#4a5568', '--text-muted': '#718096',
+    },
+    graph: {
+      bg: '#f0f4f8', grid: 'rgba(0,0,0,0.06)',
+      roles: { root:'#1e6bb8',caller:'#0284c7',callee:'#059669',propagator:'#d97706',field:'#c2410c',reader:'#0284c7',writer:'#dc2626',default:'#1e6bb8' },
+      edgeKind: { CALLS:'#0284c7',READS_FIELD:'#059669',WRITES_FIELD:'#d97706',EXTENDS:'#64748b',IMPLEMENTS:'#64748b',default:'#94a3b8' },
+      nodeColors: ['#1e6bb8','#059669','#6d28d9','#0f766e','#e11d48','#166534','#9333ea','#374151','#475569','#0891b2'],
+      lightMode: true,
+    },
+    preview: ['#f0f4f8','#1e6bb8','#0284c7','#059669','#d97706'],
+  },
+  forest: {
+    label: 'Forest', icon: '🌲', tagline: 'Deep canopy. Organic intelligence.',
+    css: {
+      '--bg-base': '#070d08', '--bg-panel': '#0e1a10', '--bg-surface': '#142016',
+      '--bg-elevated': '#1a281c', '--bg-modal': '#0e1a10', '--bg-glass': 'rgba(14,26,16,0.88)',
+      '--border': 'rgba(34,197,94,0.10)', '--border-hover': 'rgba(34,197,94,0.22)',
+      '--border-light': 'rgba(34,197,94,0.14)', '--border-focus': '#22c55e',
+      '--primary': '#22c55e', '--primary-hover': '#16a34a', '--primary-active': '#15803d',
+      '--primary-subtle': 'rgba(34,197,94,0.14)', '--primary-glow': 'rgba(34,197,94,0.28)',
+      '--primary-border': 'rgba(34,197,94,0.40)',
+      '--cyan-bright': '#4ade80', '--emerald': '#22c55e', '--amber': '#a3e635', '--red': '#f87171',
+      '--text-primary': '#dcfce7', '--text-secondary': '#86efac', '--text-muted': '#4ade80',
+    },
+    graph: {
+      bg: '#070d08', grid: 'rgba(34,197,94,0.04)',
+      roles: { root:'#22c55e',caller:'#4ade80',callee:'#a3e635',propagator:'#84cc16',field:'#65a30d',reader:'#4ade80',writer:'#f87171',default:'#22c55e' },
+      edgeKind: { CALLS:'#4ade80',READS_FIELD:'#a3e635',WRITES_FIELD:'#84cc16',EXTENDS:'#166534',IMPLEMENTS:'#166534',default:'#14532d' },
+      nodeColors: ['#22c55e','#4ade80','#166534','#15803d','#65a30d','#a3e635','#0d9488','#059669','#84cc16','#6b7280'],
+    },
+    preview: ['#070d08','#22c55e','#4ade80','#a3e635','#84cc16'],
+  },
+};
+
+const SETTINGS_DEFAULTS = {
+  theme: 'midnight',
+  nodeBaseRadius: 9,
+  repulsion: 20000,
+  springLen: 180,
+  damping: 0.80,
+  showParticles: true,
+  showMinimap: true,
+  showLabels: true,
+  showGrid: true,
+  defaultDepth: 3,
+  autoFit: true,
+  showHulls: true,
+};
+
+const SETTINGS_STORAGE_KEY = 'codelens_settings';
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (raw) return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) };
+  } catch (_) { /* corrupt */ }
+  return { ...SETTINGS_DEFAULTS };
+}
+
+function saveSettings(settings) {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function applyTheme(themeKey) {
+  const theme = THEMES[themeKey];
+  if (!theme) return;
+
+  // Apply CSS custom properties
+  const root = document.documentElement;
+  for (const [prop, val] of Object.entries(theme.css)) {
+    root.style.setProperty(prop, val);
+  }
+
+  // Toggle light mode class for Arctic
+  document.body.classList.toggle('theme-light', !!theme.graph.lightMode);
+  document.body.dataset.theme = themeKey;
+
+  // Apply graph canvas theme
+  if (App.graph) {
+    App.graph.applyTheme(theme.graph);
+  }
+
+  // Update theme card active state
+  qsa('.theme-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.theme === themeKey);
+  });
+}
+
+function applyAllSettings(settings) {
+  // Apply theme
+  applyTheme(settings.theme);
+
+  // Apply graph physics/visual settings
+  if (App.graph) {
+    App.graph.applySettings({
+      nodeBaseRadius: settings.nodeBaseRadius,
+      repulsion: settings.repulsion,
+      springLen: settings.springLen,
+      damping: settings.damping,
+      showParticles: settings.showParticles,
+      showMinimap: settings.showMinimap,
+      showLabels: settings.showLabels,
+      showGrid: settings.showGrid,
+      showHulls: settings.showHulls,
+    });
+  }
+
+  // Default depth
+  App.graphDepth = settings.defaultDepth;
+}
+
+function syncSettingsUI(settings) {
+  const modal = qs('#settings-modal');
+  if (!modal) return;
+
+  // Theme cards
+  qsa('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === settings.theme));
+
+  // Sliders
+  const setSlider = (id, val) => {
+    const el = qs(`#${id}`);
+    if (el) { el.value = val; const vEl = qs(`#${id}-val`); if (vEl) vEl.textContent = val; }
+  };
+  setSlider('set-node-size', settings.nodeBaseRadius);
+  setSlider('set-repulsion', settings.repulsion);
+  setSlider('set-spring-len', settings.springLen);
+  setSlider('set-damping', settings.damping);
+
+  // Toggles
+  const setToggle = (id, val) => { const el = qs(`#${id}`); if (el) el.checked = val; };
+  setToggle('set-particles', settings.showParticles);
+  setToggle('set-minimap', settings.showMinimap);
+  setToggle('set-labels', settings.showLabels);
+  setToggle('set-grid', settings.showGrid);
+  setToggle('set-auto-fit', settings.autoFit);
+  setToggle('set-hulls', settings.showHulls);
+
+  // Depth dropdown
+  const depthSel = qs('#set-default-depth');
+  if (depthSel) depthSel.value = settings.defaultDepth;
+}
+
+function openSettings() {
+  const modal = qs('#settings-modal');
+  if (!modal) return;
+  syncSettingsUI(loadSettings());
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSettings() {
+  const modal = qs('#settings-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function resetSettings() {
+  const defaults = { ...SETTINGS_DEFAULTS };
+  saveSettings(defaults);
+  applyAllSettings(defaults);
+  syncSettingsUI(defaults);
+  showBanner('Settings restored to defaults');
+}
+
+function initSettings() {
+  // Apply stored settings on load
+  const settings = loadSettings();
+  applyAllSettings(settings);
+
+  // Wire ⚙ button
+  const settingsBtn = qs('#settings-btn');
+  if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+
+  // Wire modal close
+  const closeBtn = qs('#settings-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+
+  // Wire modal backdrop click
+  const modal = qs('#settings-modal');
+  if (modal) {
+    modal.addEventListener('click', e => { if (e.target === modal) closeSettings(); });
+  }
+
+  // Wire Reset Defaults
+  const resetBtn = qs('#settings-reset-btn');
+  if (resetBtn) resetBtn.addEventListener('click', resetSettings);
+
+  // Wire theme cards
+  qsa('.theme-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const s = loadSettings();
+      s.theme = card.dataset.theme;
+      saveSettings(s);
+      applyAllSettings(s);
+      syncSettingsUI(s);
+    });
+  });
+
+  // Wire sliders
+  const wireSlider = (id, key, parser = parseFloat) => {
+    const el = qs(`#${id}`);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      const s = loadSettings();
+      s[key] = parser(el.value);
+      saveSettings(s);
+      applyAllSettings(s);
+      const vEl = qs(`#${id}-val`);
+      if (vEl) vEl.textContent = el.value;
+    });
+  };
+  wireSlider('set-node-size', 'nodeBaseRadius', parseInt);
+  wireSlider('set-repulsion', 'repulsion', parseInt);
+  wireSlider('set-spring-len', 'springLen', parseInt);
+  wireSlider('set-damping', 'damping', parseFloat);
+
+  // Wire toggles
+  const wireToggle = (id, key) => {
+    const el = qs(`#${id}`);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const s = loadSettings();
+      s[key] = el.checked;
+      saveSettings(s);
+      applyAllSettings(s);
+    });
+  };
+  wireToggle('set-particles', 'showParticles');
+  wireToggle('set-minimap', 'showMinimap');
+  wireToggle('set-labels', 'showLabels');
+  wireToggle('set-grid', 'showGrid');
+  wireToggle('set-auto-fit', 'autoFit');
+  wireToggle('set-hulls', 'showHulls');
+
+  // Wire depth dropdown
+  const depthSel = qs('#set-default-depth');
+  if (depthSel) {
+    depthSel.addEventListener('change', () => {
+      const s = loadSettings();
+      s.defaultDepth = parseInt(depthSel.value);
+      saveSettings(s);
+      applyAllSettings(s);
+    });
   }
 }

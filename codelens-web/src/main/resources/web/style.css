@@ -2801,3 +2801,422 @@ body.resizing .panel-resizer {
     animation: none !important;
   }
 }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SETTINGS MODAL & THEME SYSTEM
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.settings-gear-btn {
+  font-size: 17px;
+  padding: 4px 10px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity var(--dur-std) var(--ease);
+}
+.settings-gear-btn:hover {
+  opacity: 1;
+}
+
+.settings-gear-icon {
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.settings-dialog {
+  max-width: 640px;
+}
+
+.settings-body {
+  gap: 20px;
+}
+
+/* ── Settings Groups ────────────────────────────────────────────── */
+
+.settings-group {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+
+.settings-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0 0 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Settings Row (label + control) ─────────────────────────────── */
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-row:first-of-type {
+  padding-top: 0;
+}
+
+.settings-row > label:first-child {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+/* ── Range Slider ───────────────────────────────────────────────── */
+
+.settings-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-panel);
+  box-shadow: 0 0 6px var(--primary-glow);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.settings-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.settings-row input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-panel);
+  box-shadow: 0 0 6px var(--primary-glow);
+  cursor: pointer;
+}
+
+.settings-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  font-family: var(--font-mono);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ── Toggle Switch ──────────────────────────────────────────────── */
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.toggle-track::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--primary-subtle);
+  border-color: var(--primary-border);
+}
+
+.toggle-switch input:checked + .toggle-track::before {
+  transform: translateX(16px);
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
+/* ── Select Dropdown ────────────────────────────────────────────── */
+
+.settings-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-body);
+  padding: 6px 28px 6px 10px;
+  cursor: pointer;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239ca3af'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color var(--dur-std) var(--ease);
+}
+
+.settings-select:hover {
+  border-color: var(--border-hover);
+}
+
+.settings-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-subtle);
+}
+
+/* ── Theme Picker Cards ─────────────────────────────────────────── */
+
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.theme-card {
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.theme-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+
+.theme-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-glow), 0 6px 24px rgba(0,0,0,0.3);
+}
+
+.theme-preview {
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 20px;
+}
+
+.theme-preview span {
+  flex: 1;
+  display: block;
+}
+
+.theme-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.theme-tagline {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Settings Footer ────────────────────────────────────────────── */
+
+.settings-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.settings-reset-btn {
+  font-size: 11px;
+  padding: 6px 16px;
+  color: var(--red);
+  border-color: var(--red-subtle);
+}
+
+.settings-reset-btn:hover {
+  background: var(--red-subtle);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ARCTIC LIGHT MODE OVERRIDES
+   Applied when body has class 'theme-light'
+   ───────────────────────────────────────────────────────────────────────────── */
+
+body.theme-light {
+  color: var(--text-primary);
+}
+
+body.theme-light .logo-text {
+  color: var(--text-primary);
+}
+
+body.theme-light #scan-path-input,
+body.theme-light .search-input-wrap input {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+body.theme-light .chip {
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+body.theme-light .chip.active {
+  color: var(--primary);
+  background: var(--primary-subtle);
+  border-color: var(--primary-border);
+}
+
+body.theme-light .stat-count {
+  color: var(--text-primary);
+}
+
+body.theme-light .tab {
+  color: var(--text-secondary);
+}
+
+body.theme-light .tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+body.theme-light .section-label {
+  color: var(--text-secondary);
+}
+
+body.theme-light .tree-type-item,
+body.theme-light .tree-member-item {
+  color: var(--text-primary);
+}
+
+body.theme-light .tree-type-item:hover,
+body.theme-light .tree-member-item:hover {
+  background: var(--primary-subtle);
+}
+
+body.theme-light .detail-empty-text,
+body.theme-light .graph-empty-text {
+  color: var(--text-secondary);
+}
+
+body.theme-light .nc-lbl {
+  color: var(--text-muted);
+}
+
+body.theme-light .nc-val {
+  color: var(--text-primary);
+}
+
+body.theme-light .review-results,
+body.theme-light .git-view-inner {
+  color: var(--text-primary);
+}
+
+body.theme-light .modal-header {
+  background: var(--bg-surface);
+}
+
+body.theme-light .settings-row > label:first-child {
+  color: var(--text-secondary);
+}
+
+body.theme-light .theme-tagline {
+  color: var(--text-muted);
+}
+
+body.theme-light .toggle-track {
+  background: var(--bg-surface);
+}
+
+body.theme-light .settings-select {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+body.theme-light #app-footer {
+  background: var(--bg-panel);
+  border-top-color: var(--border);
+  color: var(--text-secondary);
+}
+
+body.theme-light .footer-meta-pill {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+body.theme-light .scan-status-bar {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+body.theme-light .btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+body.theme-light .btn-ghost {
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+body.theme-light .btn-ghost:hover {
+  color: var(--text-primary);
+  background: var(--primary-subtle);
+}

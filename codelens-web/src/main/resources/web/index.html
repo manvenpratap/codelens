@@ -56,6 +56,9 @@
       <button id="help-btn" class="btn-ghost" aria-label="Open Feature & User Guide" title="Feature Guide & Documentation (?)">
         Guide
       </button>
+      <button id="settings-btn" class="btn-ghost settings-gear-btn" aria-label="Open Settings" title="App Settings & Themes">
+        ⚙
+      </button>
       <span id="scan-hint" class="visually-hidden">
         Press Enter or click Scan to index the Java source directory
       </span>
@@ -712,6 +715,91 @@
           <div class="sc-row"><kbd>[</kbd> / <kbd>]</kbd> <span>Toggle Left Explorer / Right Inspector panels</span></div>
         </div>
       </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SETTINGS & THEMES MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="settings-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="settings-modal-title">
+  <div class="modal-dialog settings-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon settings-gear-icon">⚙</span>
+        <h2 id="settings-modal-title">Settings &amp; Themes</h2>
+      </div>
+      <button class="modal-close-btn" id="settings-modal-close" aria-label="Close Settings">✕</button>
+    </div>
+    <div class="modal-body settings-body">
+
+      <!-- ── Theme Picker ─────────────────────────────────────────────── -->
+      <section class="settings-group">
+        <h3 class="settings-group-title">🎨 Theme</h3>
+        <div class="theme-picker">
+          <div class="theme-card active" data-theme="midnight">
+            <div class="theme-preview"><span style="background:#0d1117"></span><span style="background:#2563eb"></span><span style="background:#38bdf8"></span><span style="background:#10b981"></span><span style="background:#f59e0b"></span></div>
+            <div class="theme-meta"><span class="theme-name">🌑 Midnight</span><span class="theme-tagline">Cold precision</span></div>
+          </div>
+          <div class="theme-card" data-theme="cyberpunk">
+            <div class="theme-preview"><span style="background:#05000a"></span><span style="background:#e040fb"></span><span style="background:#00e5ff"></span><span style="background:#39ff14"></span><span style="background:#ffea00"></span></div>
+            <div class="theme-meta"><span class="theme-name">🟣 Cyberpunk</span><span class="theme-tagline">Neon terminals</span></div>
+          </div>
+          <div class="theme-card" data-theme="ember">
+            <div class="theme-preview"><span style="background:#110e0a"></span><span style="background:#e87f17"></span><span style="background:#fbbf24"></span><span style="background:#d97706"></span><span style="background:#ef4444"></span></div>
+            <div class="theme-meta"><span class="theme-name">🔥 Ember</span><span class="theme-tagline">Forge heat</span></div>
+          </div>
+          <div class="theme-card" data-theme="arctic">
+            <div class="theme-preview"><span style="background:#f0f4f8"></span><span style="background:#1e6bb8"></span><span style="background:#0284c7"></span><span style="background:#059669"></span><span style="background:#d97706"></span></div>
+            <div class="theme-meta"><span class="theme-name">❄️ Arctic</span><span class="theme-tagline">Light clarity</span></div>
+          </div>
+          <div class="theme-card" data-theme="forest">
+            <div class="theme-preview"><span style="background:#070d08"></span><span style="background:#22c55e"></span><span style="background:#4ade80"></span><span style="background:#a3e635"></span><span style="background:#84cc16"></span></div>
+            <div class="theme-meta"><span class="theme-name">🌲 Forest</span><span class="theme-tagline">Organic canopy</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Graph Physics ────────────────────────────────────────────── -->
+      <section class="settings-group">
+        <h3 class="settings-group-title">🔬 Graph Physics</h3>
+        <div class="settings-row"><label>Node Size</label><input type="range" id="set-node-size" min="5" max="20" step="1" value="9" /><span class="settings-val" id="set-node-size-val">9</span></div>
+        <div class="settings-row"><label>Repulsion</label><input type="range" id="set-repulsion" min="5000" max="50000" step="1000" value="20000" /><span class="settings-val" id="set-repulsion-val">20000</span></div>
+        <div class="settings-row"><label>Spring Length</label><input type="range" id="set-spring-len" min="80" max="400" step="10" value="180" /><span class="settings-val" id="set-spring-len-val">180</span></div>
+        <div class="settings-row"><label>Damping</label><input type="range" id="set-damping" min="0.50" max="0.95" step="0.01" value="0.80" /><span class="settings-val" id="set-damping-val">0.80</span></div>
+      </section>
+
+      <!-- ── Visual & Rendering ───────────────────────────────────────── -->
+      <section class="settings-group">
+        <h3 class="settings-group-title">🎨 Visual &amp; Rendering</h3>
+        <div class="settings-row"><label>Edge Particles</label><label class="toggle-switch"><input type="checkbox" id="set-particles" checked /><span class="toggle-track"></span></label></div>
+        <div class="settings-row"><label>Minimap</label><label class="toggle-switch"><input type="checkbox" id="set-minimap" checked /><span class="toggle-track"></span></label></div>
+        <div class="settings-row"><label>Node Labels</label><label class="toggle-switch"><input type="checkbox" id="set-labels" checked /><span class="toggle-track"></span></label></div>
+        <div class="settings-row"><label>Grid Dots</label><label class="toggle-switch"><input type="checkbox" id="set-grid" checked /><span class="toggle-track"></span></label></div>
+      </section>
+
+      <!-- ── Defaults ─────────────────────────────────────────────────── -->
+      <section class="settings-group">
+        <h3 class="settings-group-title">🗂 Defaults</h3>
+        <div class="settings-row">
+          <label>Default Graph Depth</label>
+          <select id="set-default-depth" class="settings-select">
+            <option value="1">1 hop</option>
+            <option value="2">2 hops</option>
+            <option value="3" selected>3 hops</option>
+            <option value="5">5 hops</option>
+            <option value="15">Max</option>
+          </select>
+        </div>
+        <div class="settings-row"><label>Auto-fit on Load</label><label class="toggle-switch"><input type="checkbox" id="set-auto-fit" checked /><span class="toggle-track"></span></label></div>
+        <div class="settings-row"><label>Community Hulls</label><label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label></div>
+      </section>
+
+      <!-- ── Footer ───────────────────────────────────────────────────── -->
+      <div class="settings-footer">
+        <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
+      </div>
 
     </div>
   </div>

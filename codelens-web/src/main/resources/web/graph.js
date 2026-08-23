@@ -16,7 +16,7 @@
    Graphify Color Palette & Constants
    ───────────────────────────────────────────────────────────────────────────── */
 
-const GRAPHIFY_COLORS = [
+let GRAPHIFY_COLORS = [
   '#3B82F6', // 0: Precision Cobalt
   '#10B981', // 1: Emerald Green
   '#F59E0B', // 2: Warm Amber
@@ -29,7 +29,7 @@ const GRAPHIFY_COLORS = [
   '#64748B', // 9: Steel Slate
 ];
 
-const GC = {
+let GC = {
   bg:       '#0d1117',
   grid:     'rgba(255, 255, 255, 0.02)',
   roles: {
@@ -52,7 +52,7 @@ const GC = {
   },
 };
 
-const PHYSICS = {
+let PHYSICS = {
   repulsion:      20000,  // strong anti-overlap charge repulsion
   springLen:      180,    // compact rest spring length
   springK:        0.015,  // spring tension
@@ -166,6 +166,12 @@ class ForceGraph {
     this._rafId       = null;
     this._physicsEnabled = true;
     this._showHulls   = true;
+
+    // Visual toggle flags (controlled by Settings)
+    this._showParticles = true;
+    this._showMinimap   = true;
+    this._showLabels    = true;
+    this._showGrid      = true;
 
     // Selection & Highlight
     this._hoveredNode   = null;
@@ -572,7 +578,7 @@ class ForceGraph {
         this._simulateTick();
       }
       this._draw();
-      this._drawMinimap();
+      if (this._showMinimap) this._drawMinimap();
       this._rafId = requestAnimationFrame(loop);
     };
     if (this._rafId) cancelAnimationFrame(this._rafId);
@@ -624,16 +630,18 @@ class ForceGraph {
     ctx.fillRect(0, 0, W, H);
 
     // Grid dots aligned to camera transform
-    const step = 32;
-    const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
-    const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+    if (this._showGrid) {
+      const step = 32;
+      const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+      const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
-    ctx.fillStyle = GC.grid;
-    for (let x = offX; x < W; x += step * this._sc) {
-      for (let y = offY; y < H; y += step * this._sc) {
-        ctx.beginPath();
-        ctx.arc(x, y, 1.2, 0, Math.PI * 2);
-        ctx.fill();
+      ctx.fillStyle = GC.grid;
+      for (let x = offX; x < W; x += step * this._sc) {
+        for (let y = offY; y < H; y += step * this._sc) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
@@ -707,17 +715,17 @@ class ForceGraph {
     const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const now = Date.now();
     // Spawn energy particles periodically if motion is enabled
-    if (!reducedMotion && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
+    if (this._showParticles && !reducedMotion && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
       this._lastParticleSpawn = now;
       const edgeIdx = Math.floor(Math.random() * this._edges.length);
       this._particles.push({ edgeIdx, t: 0, speed: 0.007 + Math.random() * 0.006 });
     }
 
     // Advance particles
-    if (!reducedMotion) {
+    if (this._showParticles && !reducedMotion) {
       this._particles = this._particles.filter(p => p.t <= 1);
       for (const p of this._particles) p.t += p.speed;
-    } else {
+    } else if (!this._showParticles || reducedMotion) {
       this._particles = [];
     }
 
@@ -913,7 +921,8 @@ class ForceGraph {
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, x, y);
 
-    // 5. High-Legibility Colorful Label Pill Below Node
+    // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels)
+    if (!this._showLabels) { ctx.restore(); return; }
     const maxChars = 22;
     const fullLabel = node.label || node.id.split('.').pop() || '';
     const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
@@ -1610,6 +1619,39 @@ class ForceGraph {
 
   _hideTooltip() {
     if (this._tooltip) this._tooltip.style.display = 'none';
+  }
+  /* ── Public API: Apply Theme & Settings from Settings Modal ──────────── */
+
+  applyTheme(graphTheme) {
+    if (!graphTheme) return;
+    if (graphTheme.bg)        GC.bg   = graphTheme.bg;
+    if (graphTheme.grid)      GC.grid = graphTheme.grid;
+    if (graphTheme.roles)     Object.assign(GC.roles, graphTheme.roles);
+    if (graphTheme.edgeKind)  Object.assign(GC.edgeKind, graphTheme.edgeKind);
+    if (graphTheme.nodeColors && graphTheme.nodeColors.length) {
+      GRAPHIFY_COLORS = graphTheme.nodeColors.slice();
+    }
+    // Update minimap wrap visibility for Arctic (light bg)
+    const mmWrap = document.getElementById('graph-minimap-wrap');
+    if (mmWrap) mmWrap.style.display = this._showMinimap ? '' : 'none';
+  }
+
+  applySettings(s) {
+    if (!s) return;
+    if (s.nodeBaseRadius !== undefined) PHYSICS.nodeBaseRadius = s.nodeBaseRadius;
+    if (s.repulsion !== undefined)      PHYSICS.repulsion      = s.repulsion;
+    if (s.springLen !== undefined)       PHYSICS.springLen      = s.springLen;
+    if (s.springK !== undefined)         PHYSICS.springK        = s.springK;
+    if (s.damping !== undefined)         PHYSICS.damping        = s.damping;
+    if (s.showParticles !== undefined)   this._showParticles    = s.showParticles;
+    if (s.showMinimap !== undefined) {
+      this._showMinimap = s.showMinimap;
+      const mmWrap = document.getElementById('graph-minimap-wrap');
+      if (mmWrap) mmWrap.style.display = s.showMinimap ? '' : 'none';
+    }
+    if (s.showLabels !== undefined)      this._showLabels       = s.showLabels;
+    if (s.showGrid !== undefined)        this._showGrid         = s.showGrid;
+    if (s.showHulls !== undefined)       this._showHulls        = s.showHulls;
   }
 }
 
