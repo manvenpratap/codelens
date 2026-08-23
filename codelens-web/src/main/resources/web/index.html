@@ -616,31 +616,61 @@
     <div class="modal-body">
 
       <section class="help-section">
-        <h3>Core Analysis Capabilities</h3>
+        <h3>Graph Legend &amp; Standard IDE Symbols</h3>
         <div class="help-grid">
           <div class="help-card">
-            <h4>1. AST Source Indexing</h4>
-            <p>JavaParser walks the source tree extracting classes, methods, fields, modifiers, lines, and relationships into an embedded database and Apache Lucene index.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.4)">m</span> Method</h4>
+            <p>Java member methods and constructors. Circle size reflects connectivity degree (callers + callees).</p>
           </div>
           <div class="help-card">
-            <h4>2. Call Graph &amp; Dynamic Depth</h4>
-            <p>Calculates call hierarchies with configurable BFS depth (1 to 15 hops). Inspect immediate callers, downstream dependencies, or full transitives.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4)">f</span> Field / Property</h4>
+            <p>Class fields and static variables. Tracks repository-wide reader and writer methods.</p>
           </div>
           <div class="help-card">
-            <h4>3. Field Impact &amp; Propagation</h4>
-            <p>Traces every method reading or writing a field, plus full upstream caller chains (Field &larr; Writers &larr; Callers) across the entire repo.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.4)">C</span> Class</h4>
+            <p>Standard Java classes. Contains member methods, fields, and inheritance relationships.</p>
           </div>
           <div class="help-card">
-            <h4>4. On-Demand Code Review &amp; Logic Auditor</h4>
-            <p>Runs 32 deep AST-based checks across 6 categories (Correctness, Concurrency, Exception Safety, Code Smells, API Contracts, and Impact) on selected classes, files, or pasted snippets.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.4)">I</span> Interface</h4>
+            <p>Java interface contracts. Displays polymorphic implementation links across packages.</p>
           </div>
           <div class="help-card">
-            <h4>5. Git Intelligence &amp; Heatmaps</h4>
-            <p>Extracts per-entity commit frequencies, churn levels, top author contributions, and renders hot entities directly onto graph nodes.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(251,113,133,0.15); color:#fb7185; border:1px solid rgba(251,113,133,0.4)">E</span> Enum</h4>
+            <p>Enumeration types with constant values and associated behavior.</p>
           </div>
           <div class="help-card">
-            <h4>6. In-App Monaco Editor</h4>
-            <p>Jump directly to exact source lines, inspect Java source files with syntax highlighting, and perform local edits safely.</p>
+            <h4><span class="nc-val nc-badge" style="background:rgba(13,148,136,0.15); color:#0d9488; border:1px solid rgba(13,148,136,0.4)">R</span> Record</h4>
+            <p>Java 17+ immutable data carriers with auto-generated component accessors.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="help-section">
+        <h3>Core Intelligence Capabilities</h3>
+        <div class="help-grid">
+          <div class="help-card">
+            <h4>1. AST Source Indexing &amp; Master Browse</h4>
+            <p>Single-click folder selection parses 100% of Java AST structures and syncs Git history simultaneously into embedded H2 and Apache Lucene storage.</p>
+          </div>
+          <div class="help-card">
+            <h4>2. Knowledge Graph &amp; Force Physics</h4>
+            <p>Force-directed layout with Coulomb repulsion, Hooke spring tension, package convex hulls, and a toggleable Physics engine (<kbd>Space</kbd>) to freeze layouts.</p>
+          </div>
+          <div class="help-card">
+            <h4>3. Dynamic Call Hierarchy (BFS Depth)</h4>
+            <p>Traverse upstream callers and downstream callees across selectable graph depths (1, 2, 3, 5, or Max hops) with zero lag.</p>
+          </div>
+          <div class="help-card">
+            <h4>4. Field Impact &amp; Mutation Propagation</h4>
+            <p>Traces every method reading or writing a field, plus full upstream caller chains (Field &larr; Writers &larr; Callers) across the entire codebase.</p>
+          </div>
+          <div class="help-card">
+            <h4>5. Git Intelligence &amp; Churn Heatmap (<kbd>H</kbd>)</h4>
+            <p>Renders live commit frequencies, churn levels, and top contributing authors directly onto graph nodes as thermal shaders.</p>
+          </div>
+          <div class="help-card">
+            <h4>6. Integrated Monaco Code Editor</h4>
+            <p>Click any class, method, or link to inspect source files with full syntax highlighting and instant on-disk saving.</p>
           </div>
         </div>
       </section>
@@ -649,23 +679,23 @@
         <h3>Screen &amp; Panel Breakdown</h3>
         <div class="help-flow">
           <div class="flow-step">
-            <strong>Header</strong>: Input absolute source paths, run scans, inspect live type/method/field counters, and check progress.
+            <strong>Header</strong>: Single master Browse button to pick your Java repository, live AST entity counters (Types, Methods, Fields, Rels), and real-time scan progress bar.
           </div>
           <div class="flow-step">
-            <strong>Left Panel (Explorer &amp; Search)</strong>: Filter by Class/Iface/Enum chips, browse packages, or press <code>⌘K</code> for Lucene search.
+            <strong>Left Panel (Explorer &amp; Search)</strong>: Filter by Type chips, browse packages and member trees, or press <kbd>⌘K</kbd> for instant Lucene search. Collapsible via <kbd>[</kbd>.
           </div>
           <div class="flow-step">
             <strong>Centre Panel (5 Workspaces)</strong>:
             <ul>
-              <li><strong>Graph</strong>: Force-directed interactive canvas with depth slider, fit view, and fire heat overlay.</li>
-              <li><strong>Knowledge Base</strong>: Structured catalog with complexity metrics and signatures.</li>
-              <li><strong>Code Review</strong>: 32-check on-demand logic auditor with actionable fix suggestions.</li>
-              <li><strong>Git</strong>: Author ranking and entity churn metrics.</li>
-              <li><strong>Source</strong>: Full Monaco code editor view.</li>
+              <li><strong>Graph (<kbd>1</kbd>)</strong>: Interactive force canvas with depth pills, convex cluster hulls, live physics simulation, quick-inspector card, and minimap radar.</li>
+              <li><strong>Knowledge Base (<kbd>2</kbd>)</strong>: Structured catalog with member signatures, complexity metrics, and quick search.</li>
+              <li><strong>Code Review (<kbd>3</kbd>)</strong>: 32 AST-based static quality &amp; concurrency checks with actionable fix recommendations.</li>
+              <li><strong>Git (<kbd>4</kbd>)</strong>: Commit author leaderboards, recent history, and hottest churned files.</li>
+              <li><strong>Source (<kbd>5</kbd>)</strong>: Embedded Monaco code editor for deep source inspection and live edits.</li>
             </ul>
           </div>
           <div class="flow-step">
-            <strong>Right Panel (Inspector)</strong>: Complete entity breakdown, Cyclomatic Complexity score bar, relationships, git metadata, and editable analyst notes.
+            <strong>Right Panel (Inspector)</strong>: Complete entity detail, Cyclomatic Complexity score bar, relationships, git blame telemetry, and editable analyst notes. Collapsible via <kbd>]</kbd>.
           </div>
         </div>
       </section>
@@ -673,13 +703,13 @@
       <section class="help-section">
         <h3>Keyboard Shortcuts</h3>
         <div class="shortcuts-table">
-          <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global full-text search</span></div>
-          <div class="sc-row"><kbd>Esc</kbd> <span>Clear search or close modals</span></div>
-          <div class="sc-row"><kbd>1</kbd> <span>Switch to Graph workspace</span></div>
-          <div class="sc-row"><kbd>2</kbd> <span>Switch to Knowledge Base</span></div>
-          <div class="sc-row"><kbd>3</kbd> <span>Switch to Code Review workspace</span></div>
-          <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit heat overlay on graph</span></div>
-          <div class="sc-row"><kbd>F</kbd> <span>Fit graph to viewport</span></div>
+          <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global Lucene entity search</span></div>
+          <div class="sc-row"><kbd>Esc</kbd> <span>Close search popup, guide, or deselect node</span></div>
+          <div class="sc-row"><kbd>1</kbd> – <kbd>5</kbd> <span>Switch workspace tab (Graph, KB, Review, Git, Source)</span></div>
+          <div class="sc-row"><kbd>Space</kbd> <span>Toggle / Freeze live graph physics simulation</span></div>
+          <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit churn heatmap on graph nodes</span></div>
+          <div class="sc-row"><kbd>F</kbd> <span>Fit entire graph to screen</span></div>
+          <div class="sc-row"><kbd>[</kbd> / <kbd>]</kbd> <span>Toggle Left Explorer / Right Inspector panels</span></div>
         </div>
       </section>
 

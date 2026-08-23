@@ -1520,13 +1520,28 @@ class ForceGraph {
 
   _showTooltip(node, clientX, clientY) {
     if (!this._tooltip) return;
+    const typeGlyphs = {
+      METHOD:    'm',
+      FIELD:     'f',
+      CLASS:     'C',
+      INTERFACE: 'I',
+      ENUM:      'E',
+      RECORD:    'R',
+    };
+    const tGlyph = typeGlyphs[node.type] || 'm';
+    const heatVal = this._heatData[node.id] || 0;
+    const heatSnippet = (this._heatMode && heatVal > 0)
+      ? `<div class="tt-heat" style="margin-top:4px; font-size:11px; color:#fbbf24;">♨ Churn: <strong>${heatVal}</strong> commits</div>`
+      : '';
+
     this._tooltip.innerHTML = `
-      <div class="tt-header">
-        <span class="tt-dot" style="background:${node.communityColor}"></span>
-        <span class="tt-name">${node.label}</span>
+      <div class="tt-header" style="display:flex; align-items:center; gap:8px;">
+        <span class="tt-glyph-badge" style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; font-family:JetBrains Mono,monospace; font-size:11px; font-weight:700; background:${hexToRgba(node.communityColor, 0.2)}; color:${node.communityColor}; border:1px solid ${hexToRgba(node.communityColor, 0.4)}">${tGlyph}</span>
+        <span class="tt-name" style="font-weight:600; color:#f8fafc;">${node.label}</span>
       </div>
-      <div class="tt-sub">${node.package} · ${node.type}</div>
-      <div class="tt-meta">Degree: ${node.degree} (In: ${node.inDegree}, Out: ${node.outDegree})</div>
+      <div class="tt-sub" style="font-size:11px; color:#94a3b8; margin-top:2px;">${node.package || 'default'} · ${node.type || 'METHOD'}</div>
+      <div class="tt-meta" style="font-size:11px; color:#64748b; margin-top:4px;">Connections: ${node.degree || 0} (In: ${node.inDegree || 0}, Out: ${node.outDegree || 0})</div>
+      ${heatSnippet}
     `;
     this._tooltip.style.display = 'block';
 

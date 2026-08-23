@@ -313,104 +313,121 @@ realpath sample-project/src/main/java
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ ⬡ CodeLens  [ /path/to/source/dir                    ] [ Browse… ] [ Scan ] [ ❓ Guide ] │
-│             [ 8 types ] [ 72 methods ] [ 31 fields ]                                  │
+│             [ 8 types ] [ 72 methods ] [ 31 fields ] [ 230 rels ]                     │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Source Path Input**: Accepts absolute filesystem paths to Java source trees.
-- **Browse… Button**: Opens the native folder picker dialog to select project folders easily.
-- **Scan Button**: Triggers the AST scanner, H2 batch inserts, Lucene index rebuild, call graph compilation, and Git blame analysis.
-- **❓ Guide Button**: Opens the full interactive in-app documentation and feature guide modal.
-- **Live Stats Pills**: Displays indexed entity counts (Types, Methods, Fields) with animated counters.
-- **Scan Progress Bar**: Sits flush under the header, animating from 0% to 100% across scan phases.
+- **Unified Master Browse… Button**: Opens the native folder picker to select any Java repository. Automatically syncs Git repository discovery and source roots in one click.
+- **Scan Button**: Runs the JavaParser AST visitor, H2 batch storage, Lucene search index rebuild, in-memory call graph compilation, and Git blame analysis.
+- **❓ Guide Button**: Opens the in-app feature walkthrough, standard IDE symbol legend, and keyboard shortcuts modal.
+- **Live Metric Counters**: Displays real-time counts for parsed Types, Methods, Fields, and Relationships.
+- **Animated Scan Progress Bar**: Sits flush under the header, displaying scan phases (AST Parsing, Call Graph, Field Impact, Git Blame, Lucene Indexing).
 
 ---
 
 ### 2. Left Panel: Explorer & Lucene Search
 
 ```
-┌───────────────────────────────┐
-│ ⌕ Search… (⌘K)                │
-│ [ All ] [ Class ] [ Iface ] [ Enum ] │
-│ Explorer                      │
-│ ▾ com.example.trading         │
-│   🔷 Portfolio                │
-│   🔷 TradeProcessor           │
-│   🔷 RiskEngine               │
-└───────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ ⌕ Search classes, methods, fields… (⌘K)         │
+│ [ All ] [ Class ] [ Iface ] [ Enum ] [ Record ] │
+│ Explorer                                        │
+│ ▾ com.example.trading                           │
+│   🔷 Portfolio                                  │
+│   🔷 TradeProcessor                             │
+│   🔷 RiskEngine                                 │
+└─────────────────────────────────────────────────┘
 ```
 
 - **Lucene Full-Text Search (`⌘K` / `Ctrl+K`)**:
-  - Sub-millisecond indexed search across all classes, interfaces, enums, methods, fields, and signatures.
-  - Pressing `Esc` clears the search results and restores the package explorer.
-- **Entity Filter Chips (`All`, `Class`, `Iface`, `Enum`)**:
-  - Instantly toggles the explorer tree to display only specific entity stereotypes.
+  - Sub-millisecond indexed search across all classes, interfaces, enums, records, methods, fields, and signatures.
+  - Pressing <kbd>Esc</kbd> clears search results and restores the package hierarchy.
+- **Stereotype Filter Chips (`All`, `Class`, `Iface`, `Enum`, `Record`)**:
+  - Instantly filters the explorer tree to display only matching entity kinds.
 - **Package Hierarchy Tree**:
   - Collapsible tree view of packages and types.
-  - Clicking any type displays its full detail in the right panel and switches to the Knowledge Base.
+  - Clicking any type displays its full detail in the Inspector panel and switches to the Knowledge Base.
+  - Toggle panel visibility with the collapse button or <kbd>[</kbd>.
 
 ---
 
 ### 3. Centre Workspace Tabs
 
-#### A. Graph Canvas (Dynamic BFS Depth & Physics)
-The interactive force-directed graph canvas visualises architectural call paths and data mutations.
+#### A. Graph Canvas (Graphify Knowledge Graph & Force Physics)
+The interactive Canvas 2D engine visualises architectural hierarchies, call paths, and data mutation chains with standard IDE notation.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ [Legend]                              [Scan Depth: 3 hops]   │
-│ 🟣 Selected Method                    [---●------] [1 2 3 5 8 Max] │
-│ 🔵 Caller (Calls this)                                       │
-│ 🟢 Callee (Called by)                                        │
-│                                                              │
-│                   (Node) ──CALLS──> (Node)                   │
-│                                                              │
-│                                           [🔥] [⊞] [⊠]       │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ [⌕ Find in graph…] [Depth: 1 2 3 5 Max] [◈ Clusters] [⏻ Physics] [♨ Heat] [⊞]   │
+│                                                                                │
+│   ╭────────────── com.example.trading ───────────────╮                         │
+│   │                                                  │  [Floating Inspector]   │
+│   │     (m: recordTrade) ──CALLS──> (m: updateCash)  │  ┌────────────────────┐ │
+│   │            │                                     │  │ m recordTrade      │ │
+│   │       WRITES_FIELD                               │  │ Type: METHOD       │ │
+│   │            ▼                                     │  │ Degree: 4 (In:1,2) │ │
+│   │     (f: cashBalance)                             │  │ Neighbors: [links] │ │
+│   ╰──────────────────────────────────────────────────╯  └────────────────────┘ │
+│                                                                 [Minimap Radar]│
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Force Physics & Manipulation**:
-  - **Pan & Zoom**: Click and drag empty space to pan; scroll wheel to zoom in/out.
-  - **Node Dragging**: Click and drag any node to anchor its position; double-click or fit to release.
-  - **Node Inspection**: Clicking any node navigates directly to that method or field in the Inspector panel.
-- **Dynamic Depth Slider & Quick Pills**:
-  - Adjust the BFS traversal depth from **1** to **10** (or click **Max / 15 hops**).
-  - The graph dynamically re-evaluates and expands without deselecting your current entity.
-- **Toolbar Overlay (Bottom-Right)**:
-  - **🔥 Heat Overlay (`H`)**: Toggles Git churn heat visualization. Hotly modified methods pulse with red/orange outer radial glows.
-  - **⊞ Fit View (`F`)**: Automatically recalibrates camera zoom and centers the graph viewport around all active nodes.
-  - **⊠ Clear Canvas**: Clears the current visual graph.
+- **Standard IDE Entity Symbols**:
+  - **`m`** → Method (Light Blue / Cobalt)
+  - **`f`** → Field / Property (Amber)
+  - **`C`** → Class (Royal Blue)
+  - **`I`** → Interface (Emerald Green)
+  - **`E`** → Enum (Rose Coral)
+  - **`R`** → Record (Teal)
+- **Multi-Community Convex Hulls (`◈ Clusters`)**:
+  - Packages and architectural domains are automatically rendered as shaded convex hulls with dynamic community colors.
+- **Live Force Physics Engine (`⏻ Physics` / <kbd>Space</kbd>)**:
+  - **Physics ON**: Dynamic force equilibrium calculating Coulomb repulsion, Hooke spring tension, package clustering, and multi-pass anti-collision separation. Connected nodes flex and react organically when dragged.
+  - **Physics OFF (Frozen)**: Freezes node positions instantly for custom manual diagramming and lower CPU usage.
+- **Git Commit Churn Heatmap (`♨ Heat` / <kbd>H</kbd>)**:
+  - Shaders highlight frequently modified code entities with golden/red thermal glows based on Git commit frequency.
+- **Quick Node Search (`⌕ Find in graph…`)**:
+  - Dropdown search box directly inside the graph HUD to quickly locate and zoom to any node.
+- **Configurable BFS Depth (1, 2, 3, 5, Max)**:
+  - Dynamically traverses upstream callers and downstream dependencies up to 15 hops.
+- **Floating Quick Node Inspector**:
+  - Draggable, viewport-clamped card showing entity metadata, in/out degrees, and direct neighbor navigation links.
+- **Minimap Radar**:
+  - Bottom-right live radar overview for spatial awareness in large graphs.
 
 #### B. Knowledge Base View
-- Structured breakdown of all types within selected packages.
-- Lists each field's type, modifiers, and source line.
-- Lists each method's parameter list, return type, modifiers, and computed **Cyclomatic Complexity (CC)** metric with color badges (`Green: 1-4`, `Amber: 5-10`, `Red: 11+`).
+- Structured catalog of all classes and members within scanned packages.
+- Lists field types, modifiers, and source line numbers.
+- Computes **Cyclomatic Complexity (CC)** scores for every method with colored health indicators (`Green: 1-4`, `Amber: 5-10`, `Red: 11+`).
 
-#### C. Inconsistencies & Structural Drift Detector
-- Automatically flags code smells and maintenance hazards across three detection passes:
-  1. **Signature Divergence**: Same-named methods across different classes with conflicting parameters or return types.
-  2. **Naming Drift**: Classes or methods with >80% string similarity but diverging internal structures.
-  3. **Duplicate AST Blocks**: Identical logic and method bodies detected via SHA-256 normalization.
-- Displays a similarity percentage badge, entity pairing, and natural-language explanation for each flagged item.
+#### C. On-Demand Code Review & Logic Auditor
+- 32 deep AST-based static checks across 6 quality categories:
+  1. **Correctness**: Null pointer risks, unclosed streams, switch fallthroughs.
+  2. **Concurrency**: Non-thread-safe mutation, unsynchronized state access.
+  3. **Exception Safety**: Swallowed exceptions, raw `Throwable` catches.
+  4. **Code Smells**: Long parameter lists, excessive cyclomatic complexity.
+  5. **API Contracts**: Missing documentation on public APIs, broken equals/hashCode contracts.
+  6. **Blast Radius Impact**: High-centrality method mutation risks.
 
 #### D. Git Analytics & Churn Heatmap
-- **Top Authors Leaderboard**: Ranked table of code authors, total entities touched, and latest commit dates.
-- **🔥 Hottest Entities**: Real-time churn bar chart highlighting the most frequently modified classes, methods, and fields.
+- **Top Authors Leaderboard**: Ranked table of code contributors, total entities touched, and latest commit dates.
+- **♨ Hottest Entities**: Real-time churn bar chart highlighting the most frequently modified classes, methods, and fields.
 
 #### E. Integrated Monaco Source Code Editor
 - Embedded Microsoft Monaco editor (the engine powering VS Code).
-- Click any **Source line link** (e.g. `Portfolio.java:42`) in the inspector to open the file directly in Monaco, jumping automatically to that line with neon highlighting.
+- Click any **Source line link** (e.g. `Portfolio.java:42`) in the inspector or search results to open the file directly in Monaco, jumping automatically to that line with syntax highlighting.
 - Modify source code and click **Save** to persist changes directly to disk.
 
 ---
 
 ### 4. Right Inspector Panel & Analyst Notes
 
-- **Entity Header**: Displays entity kind badge (`CLASS`, `INTERFACE`, `METHOD`, `FIELD`), simple name, and Fully Qualified Name (FQN).
+- **Entity Header**: Displays standard IDE entity badge, simple name, and Fully Qualified Name (FQN).
 - **Metadata Grid**: Lists declaring class, return type, field type, modifiers, parameter signatures, line ranges, and clickable source links.
-- **Git Statistics Box**: Shows total commit count, primary author, churn risk level, and last modified date.
-- **Cyclomatic Complexity Bar**: Visual meter reflecting method complexity risk.
-- **Action Buttons**:
+- **Git Telemetry Box**: Displays total commit count, primary author, churn risk level, and last modified timestamp.
+- **Cyclomatic Complexity Meter**: Visual risk bar reflecting method complexity.
+- **Action Triggers**:
   - `⬆ Callers`: Visualizes upstream callers in the Graph view.
   - `⬇ Callees`: Visualizes downstream dependencies in the Graph view.
   - `⚡ Impact (Direct)`: Shows immediate readers, writers, and propagators for a field.
@@ -421,7 +438,7 @@ The interactive force-directed graph canvas visualises architectural call paths 
 
 ### 5. Interactive Footer & Realtime Status
 
-- **Status Indicator**: Live pulsating dot indicating analyzer status (`Idle` or `Scanning`).
+- **Status Indicator**: Live pulsating indicator showing analyzer status (`Analyzer Idle` or `Scanning…`).
 - **Database & Git Branch**: Displays active database engine and the current Git branch.
 - **Quick Keyboard Shortcut Hints**: Persistent reminder of core navigation shortcuts.
 
@@ -453,15 +470,18 @@ The interactive force-directed graph canvas visualises architectural call paths 
 | Shortcut | Action | Scope |
 |---|---|---|
 | `⌘K` / `Ctrl+K` | Focus global Lucene entity search | Global |
-| `Esc` | Clear search query / Close active modal dialog | Global |
+| `Esc` | Clear search query / Close active modal dialog / Deselect node | Global |
 | `1` | Switch to **Graph** workspace | Global |
 | `2` | Switch to **Knowledge Base** workspace | Global |
-| `3` | Switch to **Inconsistencies** workspace | Global |
+| `3` | Switch to **Code Review & Logic Auditor** workspace | Global |
 | `4` | Switch to **Git Analytics** workspace | Global |
 | `5` | Switch to **Source Code Editor** workspace | Global |
+| `[` | Toggle **Left Explorer Panel** | Global |
+| `]` | Toggle **Right Inspector Panel** | Global |
 | `?` | Open / Close **Feature Guide Modal** | Global |
-| `H` | Toggle Git commit heat overlay on Graph nodes | Graph view |
-| `F` | Fit graph simulation to viewport | Graph view |
+| `Space` | Toggle / Freeze **Live Force Physics Simulation** | Graph view |
+| `H` | Toggle **Git Commit Churn Heatmap** on Graph nodes | Graph view |
+| `F` | **Fit Entire Graph** to viewport | Graph view |
 
 ---
 
