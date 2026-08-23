@@ -2751,7 +2751,7 @@ function applyTheme(themeKey) {
 
   // Apply graph canvas theme
   if (App.graph) {
-    App.graph.applyTheme(theme.graph);
+    App.graph.applyTheme({ ...theme.graph, key: themeKey });
   }
 
   // Update theme card active state

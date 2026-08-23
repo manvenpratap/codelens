@@ -619,29 +619,239 @@ class ForceGraph {
   }
 
   _drawGridBackground(ctx, W, H) {
-    ctx.fillStyle = GC.bg;
-    ctx.fillRect(0, 0, W, H);
+    const themeKey = this._activeTheme || 'midnight';
 
-    // Subtle neutral dark ambient gradient (Zero indigo/blue tint)
-    const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.75);
-    grad.addColorStop(0, 'rgba(22, 27, 34, 0.25)');
-    grad.addColorStop(1, 'rgba(13, 17, 23, 0.85)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
+    if (themeKey === 'cyberpunk') {
+      // 🟣 CYBERPUNK: Synthwave grid, neon perspective crosshairs, CRT scanlines, purple nebula
+      ctx.fillStyle = '#040008';
+      ctx.fillRect(0, 0, W, H);
 
-    // Grid dots aligned to camera transform
-    if (this._showGrid) {
-      const step = 32;
-      const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
-      const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+      // Deep magenta/cyan ambient nebula
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) * 0.8);
+      grad.addColorStop(0, 'rgba(224, 64, 251, 0.15)');
+      grad.addColorStop(0.5, 'rgba(0, 229, 255, 0.05)');
+      grad.addColorStop(1, 'rgba(4, 0, 8, 0.95)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
 
-      ctx.fillStyle = GC.grid;
-      for (let x = offX; x < W; x += step * this._sc) {
-        for (let y = offY; y < H; y += step * this._sc) {
-          ctx.beginPath();
-          ctx.arc(x, y, 1.2, 0, Math.PI * 2);
-          ctx.fill();
+      if (this._showGrid) {
+        const step = 36;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        // Neon synth grid lines
+        ctx.strokeStyle = 'rgba(224, 64, 251, 0.07)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = offX; x < W; x += step * this._sc) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, H);
         }
+        for (let y = offY; y < H; y += step * this._sc) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+        }
+        ctx.stroke();
+
+        // Glowing cyan crosshairs at intersections
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+        ctx.lineWidth = 1.2;
+        const arm = 3;
+        ctx.beginPath();
+        for (let x = offX; x < W; x += step * this._sc) {
+          for (let y = offY; y < H; y += step * this._sc) {
+            ctx.moveTo(x - arm, y);
+            ctx.lineTo(x + arm, y);
+            ctx.moveTo(x, y - arm);
+            ctx.lineTo(x, y + arm);
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Subtle CRT scanline overlay
+      ctx.fillStyle = 'rgba(224, 64, 251, 0.015)';
+      for (let y = 0; y < H; y += 4) {
+        ctx.fillRect(0, y, W, 1);
+      }
+
+    } else if (themeKey === 'ember') {
+      // 🔥 EMBER: Molten hearth glow, warm bronze background, golden diamond constellation ticks
+      ctx.fillStyle = '#110d08';
+      ctx.fillRect(0, 0, W, H);
+
+      // Warm radial hearth glow
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, 'rgba(232, 127, 23, 0.18)');
+      grad.addColorStop(0.45, 'rgba(180, 83, 9, 0.08)');
+      grad.addColorStop(1, 'rgba(17, 13, 8, 0.95)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (this._showGrid) {
+        const step = 36;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        // Diamond spark ticks (◆)
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+        let countX = 0;
+        for (let x = offX; x < W; x += step * this._sc, countX++) {
+          let countY = 0;
+          for (let y = offY; y < H; y += step * this._sc, countY++) {
+            const isMajor = (countX % 3 === 0 && countY % 3 === 0);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(Math.PI / 4);
+            const size = isMajor ? 3.5 : 2;
+            ctx.fillStyle = isMajor ? 'rgba(251, 191, 36, 0.45)' : 'rgba(245, 158, 11, 0.14)';
+            ctx.fillRect(-size / 2, -size / 2, size, size);
+            ctx.restore();
+          }
+        }
+      }
+
+    } else if (themeKey === 'arctic') {
+      // ❄️ ARCTIC: Light architectural drafting paper, crisp blue-gray orthogonal grid, blueprint ticks
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle cool daylight vignette
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, Math.max(W, H) * 0.85);
+      grad.addColorStop(0, 'rgba(248, 250, 252, 0.9)');
+      grad.addColorStop(1, 'rgba(226, 232, 240, 0.7)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (this._showGrid) {
+        const step = 28;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        // Fine drafting grid lines
+        ctx.strokeStyle = 'rgba(30, 107, 184, 0.06)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = offX; x < W; x += step * this._sc) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, H);
+        }
+        for (let y = offY; y < H; y += step * this._sc) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+        }
+        ctx.stroke();
+
+        // Major blueprint grid intersections (every 4th step)
+        ctx.strokeStyle = 'rgba(30, 107, 184, 0.22)';
+        ctx.lineWidth = 1.2;
+        const tick = 4;
+        ctx.beginPath();
+        let mX = 0;
+        for (let x = offX; x < W; x += step * this._sc, mX++) {
+          let mY = 0;
+          for (let y = offY; y < H; y += step * this._sc, mY++) {
+            if (mX % 4 === 0 && mY % 4 === 0) {
+              ctx.moveTo(x - tick, y); ctx.lineTo(x + tick, y);
+              ctx.moveTo(x, y - tick); ctx.lineTo(x, y + tick);
+            }
+          }
+        }
+        ctx.stroke();
+      }
+
+    } else if (themeKey === 'forest') {
+      // 🌲 FOREST: Deep bioluminescent canopy, tactical sonar radar rings, firefly spore dots
+      ctx.fillStyle = '#040a05';
+      ctx.fillRect(0, 0, W, H);
+
+      // Deep bioluminescent green bloom
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, 'rgba(34, 197, 94, 0.14)');
+      grad.addColorStop(0.5, 'rgba(16, 185, 129, 0.05)');
+      grad.addColorStop(1, 'rgba(4, 10, 5, 0.95)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (this._showGrid) {
+        // Tactical sonar range rings centered at camera position
+        const cx = this._tx;
+        const cy = this._ty;
+        const ringStep = 110 * this._sc;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.06)';
+        ctx.lineWidth = 1;
+        for (let r = ringStep; r < Math.max(W, H) * 2; r += ringStep) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // 45-degree tactical cross axes
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.04)';
+        ctx.beginPath();
+        ctx.moveTo(cx - 3000, cy); ctx.lineTo(cx + 3000, cy);
+        ctx.moveTo(cx, cy - 3000); ctx.lineTo(cx, cy + 3000);
+        ctx.stroke();
+        ctx.restore();
+
+        // Bio-spore matrix dots
+        const step = 34;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        ctx.fillStyle = 'rgba(74, 222, 128, 0.16)';
+        for (let x = offX; x < W; x += step * this._sc) {
+          for (let y = offY; y < H; y += step * this._sc) {
+            ctx.beginPath();
+            ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+    } else {
+      // 🌑 MIDNIGHT: Industrial neutral dark charcoal, blueprint dot matrix, precision telemetry crosshairs
+      ctx.fillStyle = '#0d1117';
+      ctx.fillRect(0, 0, W, H);
+
+      // Neutral ambient gradient
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, 'rgba(22, 27, 34, 0.40)');
+      grad.addColorStop(1, 'rgba(13, 17, 23, 0.95)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (this._showGrid) {
+        const step = 32;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        for (let x = offX; x < W; x += step * this._sc) {
+          for (let y = offY; y < H; y += step * this._sc) {
+            ctx.beginPath();
+            ctx.arc(x, y, 1.1, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        // Precision crosshair markers every 4th step
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.22)';
+        ctx.lineWidth = 1;
+        const ch = 3;
+        ctx.beginPath();
+        let kX = 0;
+        for (let x = offX; x < W; x += step * this._sc, kX++) {
+          let kY = 0;
+          for (let y = offY; y < H; y += step * this._sc, kY++) {
+            if (kX % 4 === 0 && kY % 4 === 0) {
+              ctx.moveTo(x - ch, y); ctx.lineTo(x + ch, y);
+              ctx.moveTo(x, y - ch); ctx.lineTo(x, y + ch);
+            }
+          }
+        }
+        ctx.stroke();
       }
     }
   }
@@ -941,9 +1151,33 @@ class ForceGraph {
     const ph = 18;
     const px = x - pw / 2;
 
-    // Label pill background (Neutral Charcoal)
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.94)';
-    ctx.strokeStyle = isSelected ? '#ffffff' : (isHovered ? mainColor : hexToRgba(mainColor, 0.6));
+    // Theme-specific label pill styling
+    const themeKey = this._activeTheme || 'midnight';
+    let pillBg, pillBorder, pillText;
+    if (themeKey === 'arctic') {
+      pillBg = 'rgba(255, 255, 255, 0.96)';
+      pillBorder = isSelected ? '#1e6bb8' : (isHovered ? mainColor : 'rgba(30, 107, 184, 0.35)');
+      pillText = isSelected ? '#1e6bb8' : '#1e293b';
+    } else if (themeKey === 'cyberpunk') {
+      pillBg = 'rgba(12, 6, 20, 0.95)';
+      pillBorder = isSelected ? '#00e5ff' : (isHovered ? '#e040fb' : 'rgba(224, 64, 251, 0.55)');
+      pillText = isSelected ? '#00e5ff' : '#f5f3ff';
+    } else if (themeKey === 'ember') {
+      pillBg = 'rgba(26, 21, 16, 0.95)';
+      pillBorder = isSelected ? '#fbbf24' : (isHovered ? '#e87f17' : 'rgba(245, 158, 11, 0.45)');
+      pillText = isSelected ? '#fbbf24' : '#fef3c7';
+    } else if (themeKey === 'forest') {
+      pillBg = 'rgba(14, 26, 16, 0.95)';
+      pillBorder = isSelected ? '#4ade80' : (isHovered ? '#22c55e' : 'rgba(34, 197, 94, 0.45)');
+      pillText = isSelected ? '#4ade80' : '#dcfce7';
+    } else {
+      pillBg = 'rgba(13, 17, 23, 0.94)';
+      pillBorder = isSelected ? '#ffffff' : (isHovered ? mainColor : hexToRgba(mainColor, 0.6));
+      pillText = isSelected ? '#ffffff' : (isHovered ? '#ffffff' : '#e2e8f0');
+    }
+
+    ctx.fillStyle = pillBg;
+    ctx.strokeStyle = pillBorder;
     ctx.lineWidth = isSelected ? 1.8 : (isHovered ? 1.4 : 1.0);
     ctx.beginPath();
     ctx.roundRect(px, lblY - ph / 2, pw, ph, 5);
@@ -957,7 +1191,7 @@ class ForceGraph {
     ctx.fill();
 
     // Text label
-    ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#ffffff' : '#e2e8f0');
+    ctx.fillStyle = pillText;
     ctx.fillText(labelText, px + 8 + dotRadius * 2 + dotMargin, lblY);
 
     ctx.restore();
@@ -971,8 +1205,32 @@ class ForceGraph {
     const MW = this._minimapCanvas.width;
     const MH = this._minimapCanvas.height;
 
+    const themeKey = this._activeTheme || 'midnight';
+    let mmBg, mmVpStroke, mmVpFill;
+    if (themeKey === 'arctic') {
+      mmBg = 'rgba(241, 245, 249, 0.96)';
+      mmVpStroke = 'rgba(30, 107, 184, 0.9)';
+      mmVpFill = 'rgba(30, 107, 184, 0.10)';
+    } else if (themeKey === 'cyberpunk') {
+      mmBg = 'rgba(4, 0, 8, 0.96)';
+      mmVpStroke = 'rgba(0, 229, 255, 0.9)';
+      mmVpFill = 'rgba(224, 64, 251, 0.12)';
+    } else if (themeKey === 'ember') {
+      mmBg = 'rgba(17, 13, 8, 0.96)';
+      mmVpStroke = 'rgba(232, 127, 23, 0.9)';
+      mmVpFill = 'rgba(245, 158, 11, 0.12)';
+    } else if (themeKey === 'forest') {
+      mmBg = 'rgba(4, 10, 5, 0.96)';
+      mmVpStroke = 'rgba(74, 222, 128, 0.9)';
+      mmVpFill = 'rgba(34, 197, 94, 0.12)';
+    } else {
+      mmBg = 'rgba(13, 17, 23, 0.95)';
+      mmVpStroke = 'rgba(56, 189, 248, 0.85)';
+      mmVpFill = 'rgba(56, 189, 248, 0.08)';
+    }
+
     mctx.clearRect(0, 0, MW, MH);
-    mctx.fillStyle = 'rgba(13, 17, 23, 0.95)';
+    mctx.fillStyle = mmBg;
     mctx.fillRect(0, 0, MW, MH);
 
     if (this._nodes.length === 0) return;
@@ -1020,10 +1278,10 @@ class ForceGraph {
     const rvw = viewW * mScale;
     const rvh = viewH * mScale;
 
-    mctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+    mctx.strokeStyle = mmVpStroke;
     mctx.lineWidth = 1.2;
     mctx.strokeRect(rvx, rvy, rvw, rvh);
-    mctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+    mctx.fillStyle = mmVpFill;
     mctx.fillRect(rvx, rvy, rvw, rvh);
   }
 
@@ -1624,6 +1882,7 @@ class ForceGraph {
 
   applyTheme(graphTheme) {
     if (!graphTheme) return;
+    this._activeTheme = graphTheme.key || 'midnight';
     if (graphTheme.bg)        GC.bg   = graphTheme.bg;
     if (graphTheme.grid)      GC.grid = graphTheme.grid;
     if (graphTheme.roles)     Object.assign(GC.roles, graphTheme.roles);
