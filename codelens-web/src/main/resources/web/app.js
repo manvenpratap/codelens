@@ -1709,8 +1709,18 @@ async function init() {
         const current = qs('#scan-path-input').value.trim();
         const res = await api.browse(current);
         if (res && res.path && res.path.trim() !== '') {
-          qs('#scan-path-input').value = res.path.trim();
-          showBanner(`Selected folder: ${res.path.trim()}`);
+          const selectedPath = res.path.trim();
+          qs('#scan-path-input').value = selectedPath;
+
+          // Seamlessly synchronize Git repository path and validate
+          const gitInput = qs('#git-repo-input');
+          if (gitInput) {
+            gitInput.value = selectedPath;
+            gitInput.dataset.synced = 'true';
+            validateGitRepoPath();
+          }
+
+          showBanner(`Selected folder: ${selectedPath}`);
         } else if (res && res.path === '') {
           // Dialog was either cancelled or native dialog could not display -> open browser directory picker
           if (folderPicker) {
@@ -1730,6 +1740,16 @@ async function init() {
       }
     });
   }
+
+  qs('#scan-path-input').addEventListener('input', () => {
+    const scanPath = qs('#scan-path-input').value.trim();
+    const gitInput = qs('#git-repo-input');
+    if (gitInput && (!gitInput.value || gitInput.dataset.synced === 'true')) {
+      gitInput.value = scanPath;
+      gitInput.dataset.synced = 'true';
+      updateGitValidationBadge({ idle: true });
+    }
+  });
 
   qs('#scan-path-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') startScan();
@@ -1776,21 +1796,8 @@ async function init() {
     if (App.editor) App.editor.layout();
   });
 
-  // Graph control buttons
-  const fitBtn   = qs('#btn-fit');
-  const resetBtn = qs('#btn-reset');
-  const heatBtn  = qs('#btn-heat');
-  if (fitBtn)   fitBtn.addEventListener('click', () => App.graph?.fitToScreen());
-  if (resetBtn) resetBtn.addEventListener('click', () => App.graph?.clear());
-  if (heatBtn) {
-    heatBtn.addEventListener('click', () => {
-      const isOn = App.graph?.toggleHeat();
-      heatBtn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
-      heatBtn.classList.toggle('active', !!isOn);
-    });
-    // Pre-load heat data
-    loadGitHeatData();
-  }
+  // Pre-load Git heat data on startup
+  loadGitHeatData();
 
   // Graph depth slider and preset pills
   const depthSlider = qs('#graph-depth-slider');
@@ -1867,7 +1874,6 @@ let gitPollInterval = null;
 
 function initGitControls() {
   const repoInput   = qs('#git-repo-input');
-  const browseBtn   = qs('#git-browse-btn');
   const validateBtn = qs('#git-validate-btn');
   const analyzeBtn  = qs('#git-analyze-btn');
 
@@ -1876,28 +1882,8 @@ function initGitControls() {
     const scanPath = qs('#scan-path-input')?.value?.trim();
     if (scanPath) {
       repoInput.value = scanPath;
+      repoInput.dataset.synced = 'true';
     }
-  }
-
-  if (browseBtn) {
-    browseBtn.addEventListener('click', async () => {
-      const cur = repoInput ? repoInput.value.trim() : '';
-      const originalText = browseBtn.textContent;
-      browseBtn.textContent = 'Opening…';
-      browseBtn.disabled = true;
-      try {
-        const res = await api.browse(cur);
-        if (res && res.path && res.path.trim() !== '') {
-          if (repoInput) repoInput.value = res.path.trim();
-          validateGitRepoPath();
-        }
-      } catch (e) {
-        showError('Browse failed: ' + e.message);
-      } finally {
-        browseBtn.textContent = originalText;
-        browseBtn.disabled = false;
-      }
-    });
   }
 
   if (validateBtn) {
@@ -1909,6 +1895,7 @@ function initGitControls() {
       if (e.key === 'Enter') validateGitRepoPath();
     });
     repoInput.addEventListener('input', () => {
+      repoInput.dataset.synced = 'false';
       updateGitValidationBadge({ idle: true });
     });
   }
@@ -2109,7 +2096,7 @@ async function loadGitSummary() {
     console.warn('Git summary fetch failed:', err);
   }
 }
-/** Load heat data (entityFqn → commitCount) and register it with the graph. */
+/** Load heat data (entityFqn -> commitCount) and register it with the graph. */
 async function loadGitHeatData() {
   try {
     const summary = await api.gitSummary();
@@ -2119,8 +2106,10 @@ async function loadGitHeatData() {
       heatMap[e.entityFqn] = e.commitCount;
     }
     App.graph?.setHeatData(heatMap);
+    return heatMap;
   } catch (_) { /* non-fatal */ }
 }
+window.loadGitHeatData = loadGitHeatData;
 
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

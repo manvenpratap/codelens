@@ -193,6 +193,7 @@ class ForceGraph {
     this._bindEvents();
     this._bindResize();
     this._initHudControls();
+    this._bindNodeCardDrag();
 
     // Start render loop
     this._startLoop();
@@ -323,6 +324,11 @@ class ForceGraph {
     if (btn) {
       btn.classList.toggle('active', this._heatMode);
       btn.setAttribute('aria-pressed', String(this._heatMode));
+    }
+    if (this._heatMode && Object.keys(this._heatData).length === 0) {
+      if (typeof window.loadGitHeatData === 'function') {
+        window.loadGitHeatData();
+      }
     }
     return this._heatMode;
   }
@@ -836,12 +842,20 @@ class ForceGraph {
     let heatRatio = 0;
 
     if (this._heatMode) {
-      const count = this._heatData[node.id] || 0;
-      heatRatio = Math.min(count / this._heatMax, 1);
-      if (heatRatio < 0.5) {
-        mainColor = lerpColor('#38bdf8', '#f59e0b', heatRatio * 2);
+      const count = (this._heatData[node.id] !== undefined)
+        ? this._heatData[node.id]
+        : ((node.label && this._heatData[node.label] !== undefined)
+            ? this._heatData[node.label]
+            : (node.id ? this._heatData[node.id.replace(/\(.*\)/, '')] : 0)) || 0;
+
+      heatRatio = Math.min(count / (this._heatMax || 1), 1);
+
+      if (count === 0) {
+        mainColor = '#475569';
+      } else if (heatRatio < 0.35) {
+        mainColor = lerpColor('#38bdf8', '#f59e0b', heatRatio / 0.35);
       } else {
-        mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.5) * 2);
+        mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.35) / 0.65);
       }
     } else if (node.role === 'root') {
       mainColor = GC.roles.root;
@@ -899,31 +913,43 @@ class ForceGraph {
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, x, y);
 
-    // 5. High-Legibility Label Below Node
+    // 5. High-Legibility Colorful Label Pill Below Node
     const maxChars = 22;
     const fullLabel = node.label || node.id.split('.').pop() || '';
     const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
 
     ctx.font = `${node.role === 'root' || isSelected ? 'bold' : '500'} 11px Space Grotesk, system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
 
-    const lblY = y + r + 6;
+    const lblY = y + r + 14;
 
-    // Label pill background on hover or selection or crisp readable mode
+    // Measure text width + add space for colorful dot indicator
     const textMetrics = ctx.measureText(labelText);
-    const pw = textMetrics.width + 12;
-    const ph = 16;
-    ctx.fillStyle = 'rgba(6, 8, 15, 0.88)';
-    ctx.strokeStyle = isSelected ? '#38bdf8' : (isHovered ? '#ffffff' : hexToRgba(mainColor, 0.4));
-    ctx.lineWidth = 1;
+    const dotRadius = 3;
+    const dotMargin = 6;
+    const pw = textMetrics.width + dotRadius * 2 + dotMargin + 14;
+    const ph = 18;
+    const px = x - pw / 2;
+
+    // Label pill background
+    ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
+    ctx.strokeStyle = isSelected ? '#ffffff' : (isHovered ? mainColor : hexToRgba(mainColor, 0.6));
+    ctx.lineWidth = isSelected ? 1.8 : (isHovered ? 1.4 : 1.0);
     ctx.beginPath();
-    ctx.roundRect(x - pw / 2, lblY - 2, pw, ph, 4);
+    ctx.roundRect(px, lblY - ph / 2, pw, ph, 5);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = isSelected ? '#38bdf8' : (isHovered ? '#ffffff' : '#cbd5e1');
-    ctx.fillText(labelText, x, lblY);
+    // Community color dot inside pill
+    ctx.beginPath();
+    ctx.arc(px + 8 + dotRadius, lblY, dotRadius, 0, Math.PI * 2);
+    ctx.fillStyle = mainColor;
+    ctx.fill();
+
+    // Text label
+    ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#ffffff' : '#e2e8f0');
+    ctx.fillText(labelText, px + 8 + dotRadius * 2 + dotMargin, lblY);
 
     ctx.restore();
   }
@@ -1118,6 +1144,8 @@ class ForceGraph {
     if (!card) return;
 
     card.style.display = 'flex';
+    const accentBar = document.getElementById('node-card-accent-bar');
+    const iconEl = document.getElementById('node-card-icon');
     const nameEl = document.getElementById('node-card-name');
     const commEl = document.getElementById('node-card-community');
     const typeEl = document.getElementById('node-card-type');
@@ -1125,13 +1153,66 @@ class ForceGraph {
     const neighborsList = document.getElementById('node-card-neighbors');
     const countEl = document.getElementById('node-card-neighbor-count');
 
-    if (nameEl) nameEl.textContent = node.label || node.id;
+    const commColor = node.communityColor || '#38bdf8';
+
+    // Type color map
+    const typeColors = {
+      METHOD: '#38bdf8',    // Cyan
+      FIELD: '#f59e0b',     // Amber
+      CLASS: '#818cf8',     // Indigo / Violet
+      INTERFACE: '#34d399', // Emerald
+      ENUM: '#fb7185',      // Rose
+      RECORD: '#e879f9',    // Fuchsia
+    };
+    const typeGlyphs = {
+      METHOD: 'λ',
+      FIELD: 'f',
+      CLASS: 'C',
+      INTERFACE: 'I',
+      ENUM: 'E',
+      RECORD: 'R',
+    };
+    const nodeType = node.type || 'METHOD';
+    const tColor = typeColors[nodeType] || commColor;
+    const tGlyph = typeGlyphs[nodeType] || '◈';
+
+    // Dynamic colorful card shell
+    card.style.borderColor = hexToRgba(commColor, 0.55);
+    card.style.boxShadow = `0 16px 44px rgba(0, 0, 0, 0.7), 0 0 28px ${hexToRgba(commColor, 0.28)}, inset 0 1px 0 rgba(255, 255, 255, 0.12)`;
+
+    if (accentBar) {
+      accentBar.style.background = `linear-gradient(90deg, ${commColor}, ${tColor}, ${lerpColor(commColor, '#ffffff', 0.4)}, transparent)`;
+    }
+
+    if (iconEl) {
+      iconEl.textContent = tGlyph;
+      iconEl.style.background = hexToRgba(commColor, 0.18);
+      iconEl.style.borderColor = hexToRgba(commColor, 0.6);
+      iconEl.style.color = commColor;
+      iconEl.style.boxShadow = `0 0 12px ${hexToRgba(commColor, 0.35)}`;
+    }
+
+    if (nameEl) {
+      nameEl.textContent = node.label || node.id;
+    }
+
     if (commEl) {
       commEl.textContent = node.communityLabel;
-      commEl.style.color = node.communityColor;
+      commEl.style.color = commColor;
+      commEl.style.background = hexToRgba(commColor, 0.14);
+      commEl.style.borderColor = hexToRgba(commColor, 0.4);
     }
-    if (typeEl) typeEl.textContent = node.type || 'METHOD';
-    if (degEl) degEl.textContent = `${node.degree} (In: ${node.inDegree}, Out: ${node.outDegree})`;
+
+    if (typeEl) {
+      typeEl.textContent = nodeType;
+      typeEl.style.color = tColor;
+      typeEl.style.background = hexToRgba(tColor, 0.14);
+      typeEl.style.borderColor = hexToRgba(tColor, 0.4);
+    }
+
+    if (degEl) {
+      degEl.innerHTML = `<span style="color:#38bdf8">${node.inDegree} in</span> · <span style="color:#f43f5e">${node.outDegree} out</span> (<span style="color:#c084fc">${node.degree} total</span>)`;
+    }
 
     // Neighbors list
     const neighborIds = Array.from(this._connectedMap.get(node.id) || []);
@@ -1143,9 +1224,18 @@ class ForceGraph {
       } else {
         neighborsList.innerHTML = neighborIds.map(nid => {
           const nb = this._nodes.find(n => n.id === nid);
-          const color = nb ? nb.communityColor : '#64748b';
-          const label = nb ? nb.label : nid.split('.').pop();
-          return `<button class="neighbor-link" style="border-left-color:${color}" data-nid="${nid}">${label}</button>`;
+          const nColor = nb ? nb.communityColor : '#64748b';
+          const nLabel = nb ? nb.label : nid.split('.').pop();
+          const nType = nb ? nb.type : 'METHOD';
+          const nGlyph = typeGlyphs[nType] || '•';
+          const nTColor = typeColors[nType] || nColor;
+
+          return `
+            <button class="neighbor-link" style="border-left-color:${nColor}; border-color:${hexToRgba(nColor, 0.35)}" data-nid="${nid}">
+              <span class="neighbor-link-label">${nLabel}</span>
+              <span class="neighbor-link-kind" style="background:${hexToRgba(nTColor, 0.18)}; color:${nTColor}; border:1px solid ${hexToRgba(nTColor, 0.45)}">${nGlyph}</span>
+            </button>
+          `;
         }).join('');
 
         neighborsList.querySelectorAll('.neighbor-link').forEach(btn => {
@@ -1153,6 +1243,147 @@ class ForceGraph {
         });
       }
     }
+
+    // Position node card safely within visible container bounds
+    this._positionNodeCard(node);
+  }
+
+  _positionNodeCard(node) {
+    const card = document.getElementById('graph-node-card');
+    if (!card || card.style.display === 'none') return;
+
+    const container = this._container;
+    const cWidth = container.clientWidth || 800;
+    const cHeight = container.clientHeight || 600;
+
+    const pad = 14;
+    const topPad = 64; // HUD clearance
+    const bottomPad = 20;
+
+    if (node) {
+      const sx = node.x * this._sc + this._tx;
+      const sy = node.y * this._sc + this._ty;
+
+      const cardW = card.offsetWidth || 260;
+      const cardH = card.offsetHeight || 280;
+
+      // Position adjacent to the node if room permits
+      let x = sx + (node.radius * this._sc) + 16;
+      if (x + cardW + pad > cWidth) {
+        x = sx - (node.radius * this._sc) - cardW - 16;
+      }
+      if (x < pad) {
+        x = pad;
+      }
+      if (x + cardW > cWidth - pad) {
+        x = Math.max(pad, cWidth - cardW - pad);
+      }
+
+      let y = sy - 24;
+      if (y + cardH + bottomPad > cHeight) {
+        y = cHeight - cardH - bottomPad;
+      }
+      if (y < topPad) {
+        y = topPad;
+      }
+
+      card.style.left = `${Math.round(x)}px`;
+      card.style.top  = `${Math.round(y)}px`;
+    } else {
+      this._clampNodeCardToViewport();
+    }
+  }
+
+  _clampNodeCardToViewport() {
+    const card = document.getElementById('graph-node-card');
+    if (!card || card.style.display === 'none') return;
+
+    const container = this._container;
+    const cWidth = container.clientWidth || 800;
+    const cHeight = container.clientHeight || 600;
+
+    const pad = 14;
+    const topPad = 64;
+    const bottomPad = 20;
+
+    const cardW = card.offsetWidth || 260;
+    const cardH = card.offsetHeight || 280;
+
+    let currLeft = parseInt(card.style.left, 10);
+    if (isNaN(currLeft)) currLeft = pad;
+
+    let currTop = parseInt(card.style.top, 10);
+    if (isNaN(currTop)) currTop = topPad;
+
+    if (currLeft + cardW > cWidth - pad) {
+      currLeft = Math.max(pad, cWidth - cardW - pad);
+    }
+    if (currLeft < pad) {
+      currLeft = pad;
+    }
+
+    if (currTop + cardH > cHeight - bottomPad) {
+      currTop = Math.max(topPad, cHeight - cardH - bottomPad);
+    }
+    if (currTop < topPad) {
+      currTop = topPad;
+    }
+
+    card.style.left = `${Math.round(currLeft)}px`;
+    card.style.top  = `${Math.round(currTop)}px`;
+  }
+
+  _bindNodeCardDrag() {
+    const card = document.getElementById('graph-node-card');
+    if (!card) return;
+    const header = card.querySelector('.node-card-header');
+    if (!header) return;
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node-card-close')) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      initialLeft = parseInt(card.style.left, 10) || 14;
+      initialTop = parseInt(card.style.top, 10) || 70;
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      const container = this._container;
+      const cWidth = container.clientWidth || 800;
+      const cHeight = container.clientHeight || 600;
+      const pad = 14;
+      const topPad = 64;
+      const bottomPad = 20;
+
+      const cardW = card.offsetWidth || 260;
+      const cardH = card.offsetHeight || 280;
+
+      let newLeft = initialLeft + dx;
+      let newTop = initialTop + dy;
+
+      newLeft = Math.max(pad, Math.min(newLeft, cWidth - cardW - pad));
+      newTop = Math.max(topPad, Math.min(newTop, cHeight - cardH - bottomPad));
+
+      card.style.left = `${Math.round(newLeft)}px`;
+      card.style.top  = `${Math.round(newTop)}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+      }
+    });
   }
 
   _hideNodeCard() {
@@ -1261,6 +1492,9 @@ class ForceGraph {
 
     this._canvas.width  = Math.round(w * dpr);
     this._canvas.height = Math.round(h * dpr);
+
+    // Keep floating node card clamped within visible viewport
+    this._clampNodeCardToViewport();
   }
 
   _hitTest(screenX, screenY) {
@@ -1295,8 +1529,28 @@ class ForceGraph {
       <div class="tt-meta">Degree: ${node.degree} (In: ${node.inDegree}, Out: ${node.outDegree})</div>
     `;
     this._tooltip.style.display = 'block';
-    this._tooltip.style.left = `${clientX + 14}px`;
-    this._tooltip.style.top  = `${clientY - 10}px`;
+
+    const tt = this._tooltip;
+    const rect = tt.getBoundingClientRect();
+    const pad = 12;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    let x = clientX + 16;
+    let y = clientY - 12;
+
+    if (x + rect.width + pad > winW) {
+      x = clientX - rect.width - 16;
+    }
+    if (x < pad) x = pad;
+
+    if (y + rect.height + pad > winH) {
+      y = winH - rect.height - pad;
+    }
+    if (y < pad) y = pad;
+
+    tt.style.left = `${Math.round(x)}px`;
+    tt.style.top  = `${Math.round(y)}px`;
   }
 
   _hideTooltip() {

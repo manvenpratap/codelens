@@ -555,7 +555,7 @@ public class CodeLensServer {
     private void getGitSummary(Context ctx) throws Exception {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("topAuthors",  dao.findTopAuthors(10));
-        summary.put("hotEntities", dao.findHottestEntities(20));
+        summary.put("hotEntities", dao.findHottestEntities(500));
         ctx.json(summary);
     }
 

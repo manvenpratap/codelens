@@ -339,6 +339,7 @@
 
       <!-- Graphify Node Quick-Inspector Card (Floating HUD inside graph) -->
       <div id="graph-node-card" class="graph-node-card" style="display:none">
+        <div id="node-card-accent-bar" class="node-card-accent-bar"></div>
         <div class="node-card-header">
           <div class="node-card-title-row">
             <span id="node-card-icon" class="node-card-icon">◈</span>
@@ -349,11 +350,11 @@
         <div class="node-card-body">
           <div class="node-card-row">
             <span class="nc-lbl">Community:</span>
-            <span id="node-card-community" class="nc-val">-</span>
+            <span id="node-card-community" class="nc-val nc-badge">-</span>
           </div>
           <div class="node-card-row">
             <span class="nc-lbl">Type:</span>
-            <span id="node-card-type" class="nc-val">-</span>
+            <span id="node-card-type" class="nc-val nc-badge">-</span>
           </div>
           <div class="node-card-row">
             <span class="nc-lbl">Connections:</span>
@@ -470,9 +471,6 @@
                 placeholder="Enter absolute Git repository root path (e.g. /path/to/repo)…"
                 spellcheck="false"
               />
-              <button id="git-browse-btn" class="btn-ghost git-browse-btn" title="Browse for Git repository folder">
-                Browse
-              </button>
             </div>
             <div class="git-action-row">
               <button id="git-validate-btn" class="btn-ghost git-validate-btn" title="Validate repository path">
