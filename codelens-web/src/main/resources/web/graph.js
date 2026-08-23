@@ -53,14 +53,14 @@ const GC = {
 };
 
 const PHYSICS = {
-  repulsion:      26000,  // strong anti-overlap charge repulsion
-  springLen:      240,    // spacious rest spring length
-  springK:        0.012,  // gentle spring tension (does not crush nodes)
-  clusterK:       0.0015, // gentle community cohesion
-  centerForce:    0.0003, // soft centering pull
+  repulsion:      20000,  // strong anti-overlap charge repulsion
+  springLen:      180,    // compact rest spring length
+  springK:        0.015,  // spring tension
+  clusterK:       0.0018, // community cohesion
+  centerForce:    0.0004, // centering pull
   damping:        0.80,   // velocity damping
   maxTicks:       500,    // auto-cooling ticks
-  nodeBaseRadius: 15,     // base radius
+  nodeBaseRadius: 9,      // compact base radius
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ class ForceGraph {
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
-        radius: PHYSICS.nodeBaseRadius + Math.min(14, Math.sqrt(deg) * 3.2) + (n.role === 'root' ? 4 : 0),
+        radius: PHYSICS.nodeBaseRadius + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 3 : 0),
         x: cx + Math.cos(angle) * rDist,
         y: cy + Math.sin(angle) * rDist,
         vx: 0,
@@ -454,7 +454,7 @@ class ForceGraph {
         const distSq = dx * dx + dy * dy || 0.01;
         const dist = Math.sqrt(distSq);
 
-        const minClearance = ni.radius + nj.radius + 75;
+        const minClearance = ni.radius + nj.radius + 45;
         let rep = 0;
         if (dist < minClearance) {
           rep = (PHYSICS.repulsion * 4.0) / Math.max(dist, 10);
@@ -541,7 +541,7 @@ class ForceGraph {
           const dx = nj.x - ni.x;
           const dy = nj.y - ni.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          const requiredDist = ni.radius + nj.radius + 68;
+          const requiredDist = ni.radius + nj.radius + 38;
 
           if (dist < requiredDist) {
             const overlap = (requiredDist - dist) * 0.5;
@@ -893,7 +893,7 @@ class ForceGraph {
     ctx.strokeStyle = isSelected
       ? '#ffffff'
       : (isHovered ? '#f8fafc' : hexToRgba('#ffffff', 0.25));
-    ctx.lineWidth = isSelected ? 3 : (isHovered ? 2.5 : 1.8);
+    ctx.lineWidth = isSelected ? 2.2 : (isHovered ? 1.8 : 1.2);
     ctx.stroke();
 
     // 4. Type Glyph / Icon inside node (Standard IDE symbols)
@@ -907,7 +907,7 @@ class ForceGraph {
     };
     const glyph = typeIcons[node.type] || 'm';
 
-    ctx.font = `bold ${Math.round(r * 0.62)}px JetBrains Mono, monospace`;
+    ctx.font = `bold ${Math.max(8, Math.round(r * 0.75))}px JetBrains Mono, monospace`;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -922,7 +922,7 @@ class ForceGraph {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
-    const lblY = y + r + 14;
+    const lblY = y + r + 11;
 
     // Measure text width + add space for colorful dot indicator
     const textMetrics = ctx.measureText(labelText);
