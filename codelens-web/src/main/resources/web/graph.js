@@ -1520,6 +1520,16 @@ class ForceGraph {
 
   _showTooltip(node, clientX, clientY) {
     if (!this._tooltip) return;
+
+    const commColor = node.communityColor || '#3b82f6';
+    const typeColors = {
+      METHOD:    '#38bdf8', // Cyan
+      FIELD:     '#f59e0b', // Amber
+      CLASS:     '#3b82f6', // Cobalt
+      INTERFACE: '#10b981', // Emerald
+      ENUM:      '#fb7185', // Rose
+      RECORD:    '#0d9488', // Teal
+    };
     const typeGlyphs = {
       METHOD:    'm',
       FIELD:     'f',
@@ -1528,20 +1538,50 @@ class ForceGraph {
       ENUM:      'E',
       RECORD:    'R',
     };
-    const tGlyph = typeGlyphs[node.type] || 'm';
+    const nodeType = node.type || 'METHOD';
+    const tColor = typeColors[nodeType] || commColor;
+    const tGlyph = typeGlyphs[nodeType] || 'm';
+
     const heatVal = this._heatData[node.id] || 0;
-    const heatSnippet = (this._heatMode && heatVal > 0)
-      ? `<div class="tt-heat" style="margin-top:4px; font-size:11px; color:#fbbf24;">♨ Churn: <strong>${heatVal}</strong> commits</div>`
+    const heatSnippet = (this._heatMode || heatVal > 0)
+      ? `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);">♨ Churn: ${heatVal}</span>`
       : '';
 
+    const roleName = node.role ? node.role.toUpperCase() : 'NODE';
+    const roleColors = {
+      ROOT:       '#3b82f6',
+      CALLER:     '#38bdf8',
+      CALLEE:     '#10b981',
+      PROPAGATOR: '#f59e0b',
+      WRITER:     '#ef4444',
+      READER:     '#14b8a6',
+    };
+    const rColor = roleColors[roleName] || '#64748b';
+
+    this._tooltip.style.borderColor = hexToRgba(commColor, 0.6);
+    this._tooltip.style.boxShadow = `0 16px 40px rgba(0, 0, 0, 0.75), 0 0 24px ${hexToRgba(commColor, 0.25)}, inset 0 1px 0 rgba(255, 255, 255, 0.15)`;
+
     this._tooltip.innerHTML = `
-      <div class="tt-header" style="display:flex; align-items:center; gap:8px;">
-        <span class="tt-glyph-badge" style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; font-family:JetBrains Mono,monospace; font-size:11px; font-weight:700; background:${hexToRgba(node.communityColor, 0.2)}; color:${node.communityColor}; border:1px solid ${hexToRgba(node.communityColor, 0.4)}">${tGlyph}</span>
-        <span class="tt-name" style="font-weight:600; color:#f8fafc;">${node.label}</span>
+      <div class="tt-accent-strip" style="background:linear-gradient(90deg, ${commColor}, ${tColor})"></div>
+      <div class="tt-inner">
+        <div class="tt-header-row">
+          <span class="tt-badge-icon" style="background:${hexToRgba(tColor, 0.2)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.5)}">${tGlyph}</span>
+          <span class="tt-name-text" title="${node.label || node.id}">${node.label || node.id.split('.').pop()}</span>
+        </div>
+        <div class="tt-tags-row">
+          <span class="tt-tag-pill" style="background:${hexToRgba(commColor, 0.16)}; color:${commColor}; border:1px solid ${hexToRgba(commColor, 0.4)}">${node.package || 'default'}</span>
+          <span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.14)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.35)}">${nodeType}</span>
+          <span class="tt-tag-pill" style="background:${hexToRgba(rColor, 0.15)}; color:${rColor}; border:1px solid ${hexToRgba(rColor, 0.4)}">${roleName}</span>
+          ${heatSnippet}
+        </div>
+        <div class="tt-stats-row">
+          <span>Connections: <strong style="color:#f8fafc">${node.degree || 0}</strong></span>
+          <span style="display:flex; gap:6px;">
+            <span style="color:#38bdf8">↓ ${node.inDegree || 0} in</span>
+            <span style="color:#34d399">↑ ${node.outDegree || 0} out</span>
+          </span>
+        </div>
       </div>
-      <div class="tt-sub" style="font-size:11px; color:#94a3b8; margin-top:2px;">${node.package || 'default'} · ${node.type || 'METHOD'}</div>
-      <div class="tt-meta" style="font-size:11px; color:#64748b; margin-top:4px;">Connections: ${node.degree || 0} (In: ${node.inDegree || 0}, Out: ${node.outDegree || 0})</div>
-      ${heatSnippet}
     `;
     this._tooltip.style.display = 'block';
 
