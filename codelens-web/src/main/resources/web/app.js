@@ -419,19 +419,34 @@ function renderPackageTree(nodes, container, depth) {
 async function loadTypesInTree(pkgFqn, container, depth) {
   try {
     const types = await api.typesByPackage(pkgFqn);
+    const activeKind = (App.activeFilter || 'all').toUpperCase();
     const typeEls = types.filter(t => {
-      if (App.activeFilter === 'all') return true;
-      return t.kind === App.activeFilter;
+      if (activeKind === 'ALL') return true;
+      return (t.kind || '').toUpperCase() === activeKind;
     });
+
+    // Remove existing loaded type children and empty messages
+    const existingTypeChildren = [...container.children].filter(c => c.dataset.id || c.classList.contains('tree-item-empty'));
+    existingTypeChildren.forEach(c => c.remove());
+
+    if (typeEls.length === 0 && activeKind !== 'ALL' && types.length > 0) {
+      const noMatch = createElement('div', {
+        class: 'tree-item-empty',
+        style: `padding-left: ${16 + depth * 14}px; font-size: 11px; color: var(--text-muted); font-style: italic; padding-top: 3px; padding-bottom: 3px;`
+      });
+      noMatch.textContent = `No ${activeKind.toLowerCase()}s in package`;
+      container.appendChild(noMatch);
+      return;
+    }
 
     for (const t of typeEls) {
       const item = createElement('div', {
-        class: `tree-item${App.selected.id === t.id ? ' active' : ''}`,
+        class: `tree-item tree-type-item${App.selected.id === t.id ? ' active' : ''}`,
         'data-depth': depth,
         'data-id': t.id,
       });
 
-      const icon = createElement('span', { class: 'tree-icon' });
+      const icon = createElement('span', { class: `tree-icon kind-${(t.kind || '').toLowerCase()}` });
       icon.textContent = kindIcon(t.kind);
       item.appendChild(icon);
 
@@ -525,16 +540,56 @@ function showSearchResults() { qs('#explorer-tree').style.display = 'none'; qs('
 
 /* ── Filter chips ────────────────────────────────────────────────────────────── */
 
-function setFilter(kind) {
-  App.activeFilter = kind;
-  qsa('.chip').forEach(c => c.classList.toggle('active', c.dataset.filter === kind));
-  // Reload open package sub-trees with new filter
-  qsa('.tree-children[data-loaded]').forEach(el => {
-    el.removeAttribute('data-loaded');
-    const childNodes = [...el.children].filter(c => c.dataset.id);
-    childNodes.forEach(c => c.remove());
-    // Will be lazily reloaded on next open
+/** Filter explorer tree and knowledge base by entity kind. */
+async function setFilter(kind) {
+  App.activeFilter = kind || 'all';
+  qsa('.chip').forEach(c => {
+    const isActive = (c.dataset.filter === kind);
+    c.classList.toggle('active', isActive);
+    c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
+
+  // If a search query is active, re-run search with the active filter
+  const searchInput = qs('#search-input');
+  if (searchInput && searchInput.value.trim() !== '') {
+    runSearch(searchInput.value.trim());
+    return;
+  }
+
+  // Reload all currently open packages immediately with the new filter
+  const openPackages = [...App.openPackages];
+  if (openPackages.length > 0) {
+    for (const fqn of openPackages) {
+      const pkgItem = qs(`.tree-item[data-fqn="${CSS.escape(fqn)}"]`);
+      if (pkgItem && pkgItem.nextElementSibling && pkgItem.nextElementSibling.classList.contains('tree-children')) {
+        const childContainer = pkgItem.nextElementSibling;
+        const depth = parseInt(pkgItem.dataset.depth || '0', 10) + 1;
+        childContainer.dataset.loaded = '1';
+        await loadTypesInTree(fqn, childContainer, depth);
+      }
+    }
+  } else {
+    // If no packages are open, auto-expand top-level packages to reveal matching items
+    const topPackages = qsa('#explorer-tree > .tree-item[data-fqn]');
+    for (const pkgItem of topPackages) {
+      const fqn = pkgItem.dataset.fqn;
+      if (fqn && pkgItem.nextElementSibling && pkgItem.nextElementSibling.classList.contains('tree-children')) {
+        const childContainer = pkgItem.nextElementSibling;
+        const toggle = pkgItem.querySelector('.tree-toggle');
+        App.openPackages.add(fqn);
+        childContainer.style.display = '';
+        if (toggle) toggle.classList.add('open');
+        childContainer.dataset.loaded = '1';
+        const depth = parseInt(pkgItem.dataset.depth || '0', 10) + 1;
+        await loadTypesInTree(fqn, childContainer, depth);
+      }
+    }
+  }
+
+  // Also refresh package view if a package is currently selected
+  if (App.selected && App.selected.kind === 'package' && App.selected.id) {
+    loadKnowledgeBase(App.selected.id);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -754,13 +809,21 @@ async function loadKnowledgeBase(pkgFqn) {
 
   try {
     const types = await api.typesByPackage(pkgFqn);
+    const activeKind = (App.activeFilter || 'all').toUpperCase();
+    const filteredTypes = types.filter(t => {
+      if (activeKind === 'ALL') return true;
+      return (t.kind || '').toUpperCase() === activeKind;
+    });
 
-    if (types.length === 0) {
-      view.innerHTML += '<div class="list-empty">No types in this package.</div>';
+    if (filteredTypes.length === 0) {
+      const msg = activeKind === 'ALL'
+        ? 'No types in this package.'
+        : `No ${activeKind.toLowerCase()}s in this package (active filter: ${activeKind}).`;
+      view.innerHTML += `<div class="list-empty">${msg}</div>`;
       return;
     }
 
-    for (const t of types) {
+    for (const t of filteredTypes) {
       const item = createElement('div', { class: 'kb-item fade-in' });
       item.innerHTML = `
         <span class="kb-item-icon">${kindIcon(t.kind)}</span>
@@ -772,7 +835,7 @@ async function loadKnowledgeBase(pkgFqn) {
             ${t.methodCount > 0 ? '· ' + t.methodCount + ' methods' : ''}
           </div>
         </div>
-        <span class="kb-item-badge badge-${t.kind.toLowerCase()}">${t.kind}</span>`;
+        <span class="kb-item-badge badge-${(t.kind || '').toLowerCase()}">${t.kind}</span>`;
 
       item.addEventListener('click', () => selectType(t.id));
       view.appendChild(item);
