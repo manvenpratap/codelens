@@ -1,5 +1,5 @@
 /**
- * graph.js — CodeLens Graphify-Style Knowledge Graph Engine
+ * graph.js - CodeLens Graphify-Style Knowledge Graph Engine
  *
  * Inspired by Graphify (Graphify-Labs):
  * - Community/Package Convex Hulls (Hyperedges) with translucent shaded regions & cluster tags
@@ -698,17 +698,22 @@ class ForceGraph {
   /* ── 2. Curved Directed Edges & Flow Particles ───────────────────────────── */
 
   _drawEdges(ctx) {
+    const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const now = Date.now();
-    // Spawn energy particles periodically
-    if (now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
+    // Spawn energy particles periodically if motion is enabled
+    if (!reducedMotion && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
       this._lastParticleSpawn = now;
       const edgeIdx = Math.floor(Math.random() * this._edges.length);
       this._particles.push({ edgeIdx, t: 0, speed: 0.007 + Math.random() * 0.006 });
     }
 
     // Advance particles
-    this._particles = this._particles.filter(p => p.t <= 1);
-    for (const p of this._particles) p.t += p.speed;
+    if (!reducedMotion) {
+      this._particles = this._particles.filter(p => p.t <= 1);
+      for (const p of this._particles) p.t += p.speed;
+    } else {
+      this._particles = [];
+    }
 
     const activeNode = this._hoveredNode || this._selectedNode;
     const connectedSet = activeNode ? this._connectedMap.get(activeNode.id) : null;

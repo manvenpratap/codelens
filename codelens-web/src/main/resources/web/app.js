@@ -1,5 +1,5 @@
 /**
- * app.js — CodeLens Frontend Application Controller
+ * app.js - CodeLens Frontend Application Controller
  *
  * Manages all UI state, API communication, and panel coordination.
  * Uses vanilla ES2020+ (no framework, no build step).
@@ -8,16 +8,16 @@
  *   1. State management
  *   2. API client
  *   3. Scan workflow
- *   4. Left panel — explorer tree + search
- *   5. Centre panel — tabs and views
- *   6. Right panel — entity detail + notes
+ *   4. Left panel - explorer tree + search
+ *   5. Centre panel - tabs and views
+ *   6. Right panel - entity detail + notes
  *   7. Graph integration
  *   8. Keyboard shortcuts
  *   9. Bootstrapping
  */
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   1. Application state — single source of truth
+   1. Application state - single source of truth
    ───────────────────────────────────────────────────────────────────────────── */
 const App = {
   // Currently selected entity
@@ -51,7 +51,7 @@ const App = {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   2. API client — thin fetch wrapper
+   2. API client - thin fetch wrapper
    ───────────────────────────────────────────────────────────────────────────── */
 const api = {
   /** Make an API request; throws on non-2xx. */
@@ -204,7 +204,7 @@ async function onScanComplete(s) {
   // Check git branch
   updateFooterGitBranch();
 
-  showBanner(`✓ Scan complete — ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields`);
+  showBanner(`Scan complete - ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields`);
 }
 
 /** Toggle scan button and spinner states. */
@@ -237,16 +237,16 @@ async function updateFooterGitBranch() {
       branchEl.textContent = `Branch: ${summary.branchName}`;
       branchEl.style.display = 'inline-block';
     } else {
-      branchEl.textContent = 'Branch: —';
+      branchEl.textContent = 'Branch: -';
     }
   } catch (_) {
-    branchEl.textContent = 'Branch: —';
+    branchEl.textContent = 'Branch: -';
   }
 }
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   4. Left panel — package tree + search
+   4. Left panel - package tree + search
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Fetch all packages and render the tree into #explorer-tree. */
@@ -468,7 +468,7 @@ function selectPackage(pkg, itemEl) {
 
 /* ── Search ─────────────────────────────────────────────────────────────────── */
 
-/** Debounced search — triggers Lucene search after 280 ms of idle. */
+/** Debounced search - triggers Lucene search after 280 ms of idle. */
 let searchDebounce = null;
 function onSearchInput(e) {
   const q = e.target.value.trim();
@@ -538,7 +538,7 @@ function setFilter(kind) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   5. Centre panel — tabs and views
+   5. Centre panel - tabs and views
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Switch the active tab in the centre panel. */
@@ -785,7 +785,7 @@ async function loadKnowledgeBase(pkgFqn) {
 /* ── Inconsistency view ────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   5b. Code Review — on-demand AST-based review engine
+   5b. Code Review - on-demand AST-based review engine
    ───────────────────────────────────────────────────────────────────────────── */
 
 // Active review mode: 'selection' | 'file' | 'snippet'
@@ -959,7 +959,7 @@ function renderReviewFindings(findings, container) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   6. Entity selection — right panel rendering
+   6. Entity selection - right panel rendering
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Select a type by FQN or ID. */
@@ -1225,7 +1225,7 @@ function renderTypeDetail(data) {
   // Header
   renderEntityHeader(type.kind, type.simpleName, type.fqn);
 
-  let sourceElement = '—';
+  let sourceElement = '-';
   if (type.sourceFile) {
     const link = createElement('a', {
       href: '#',
@@ -1242,13 +1242,13 @@ function renderTypeDetail(data) {
 
   // Metadata grid
   body.appendChild(metaGrid([
-    ['Package',   type.packageFqn || '—'],
+    ['Package',   type.packageFqn || '-'],
     ['Kind',      type.kind],
-    ['Modifiers', type.modifiers || '—'],
+    ['Modifiers', type.modifiers || '-'],
     ['Source',    sourceElement],
-    ['Lines',     type.startLine ? `${type.startLine}–${type.endLine} (${type.lineCount})` : '—'],
-    ['Extends',   type.superClass || '—'],
-    ['Implements', (type.interfaces || []).join(', ') || '—'],
+    ['Lines',     type.startLine ? `${type.startLine}-${type.endLine} (${type.lineCount})` : '-'],
+    ['Extends',   type.superClass || '-'],
+    ['Implements', (type.interfaces || []).join(', ') || '-'],
   ]));
 
   // Git Metadata Section
@@ -1262,11 +1262,11 @@ function renderTypeDetail(data) {
           <div class="meta-key">Commits</div>
           <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
           <div class="meta-key">Main Author</div>
-          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-val">${esc(gm.topAuthor || '-')}</div>
           <div class="meta-key">Churn</div>
           <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
           <div class="meta-key">Last Edit</div>
-          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '-'}</div>
         </div>`;
     }
   }).catch(() => {});
@@ -1310,7 +1310,7 @@ function renderKnowledgeBaseForType(data) {
   const { type, fields = [], methods = [] } = data;
   const view = qs('#knowledge-view');
   view.innerHTML = `<div class="kb-section-header">
-    ${kindIcon(type.kind)} ${esc(type.simpleName)} — ${type.kind}
+    <span class="kb-type-pill">${type.kind}</span> ${esc(type.simpleName)}
   </div>`;
 
   if (fields.length > 0) {
@@ -1364,7 +1364,7 @@ function renderMethodDetail(data) {
   const cc = method.cyclomaticComplexity || 1;
   const ccClass = cc <= 4 ? 'low' : cc <= 10 ? 'medium' : 'high';
 
-  let sourceElement = '—';
+  let sourceElement = '-';
   if (data.sourceFile) {
     const link = createElement('a', {
       href: '#',
@@ -1383,10 +1383,10 @@ function renderMethodDetail(data) {
   body.appendChild(metaGrid([
     ['Class',      shortFqn(method.declaringTypeFqn)],
     ['Returns',    method.returnType || 'void'],
-    ['Modifiers',  method.modifiers || '—'],
+    ['Modifiers',  method.modifiers || '-'],
     ['Source',     sourceElement],
     ['Parameters', paramStr || '(none)'],
-    ['Lines',      method.startLine ? `${method.startLine}–${method.endLine}` : '—'],
+    ['Lines',      method.startLine ? `${method.startLine}-${method.endLine}` : '-'],
   ]));
 
   // Git Metadata Section
@@ -1400,11 +1400,11 @@ function renderMethodDetail(data) {
           <div class="meta-key">Commits</div>
           <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
           <div class="meta-key">Main Author</div>
-          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-val">${esc(gm.topAuthor || '-')}</div>
           <div class="meta-key">Churn</div>
           <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
           <div class="meta-key">Last Edit</div>
-          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '-'}</div>
         </div>`;
     }
   }).catch(() => {});
@@ -1440,7 +1440,7 @@ function renderFieldDetail(data) {
 
   renderEntityHeader('FIELD', field.simpleName, field.fqn);
 
-  let sourceElement = '—';
+  let sourceElement = '-';
   if (data.sourceFile) {
     const link = createElement('a', {
       href: '#',
@@ -1457,11 +1457,11 @@ function renderFieldDetail(data) {
 
   body.appendChild(metaGrid([
     ['Declared in', shortFqn(field.declaringTypeFqn)],
-    ['Type',        field.fieldType || '—'],
-    ['Modifiers',   field.modifiers || '—'],
+    ['Type',        field.fieldType || '-'],
+    ['Modifiers',   field.modifiers || '-'],
     ['Source',      sourceElement],
-    ['Init value',  field.initializer || '—'],
-    ['Source line', field.startLine || '—'],
+    ['Init value',  field.initializer || '-'],
+    ['Source line', field.startLine || '-'],
   ]));
 
   // Git Metadata Section
@@ -1475,11 +1475,11 @@ function renderFieldDetail(data) {
           <div class="meta-key">Commits</div>
           <div class="meta-val"><strong style="color:var(--cyan)">${gm.commitCount}</strong></div>
           <div class="meta-key">Main Author</div>
-          <div class="meta-val">${esc(gm.topAuthor || '—')}</div>
+          <div class="meta-val">${esc(gm.topAuthor || '-')}</div>
           <div class="meta-key">Churn</div>
           <div class="meta-val"><span style="color:${gm.commitCount > 10 ? 'var(--red)' : gm.commitCount > 3 ? 'var(--amber)' : 'var(--emerald)'}">${gm.commitCount > 10 ? 'High' : gm.commitCount > 3 ? 'Medium' : 'Low'}</span></div>
           <div class="meta-key">Last Edit</div>
-          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '—'}</div>
+          <div class="meta-val">${gm.lastModified ? formatDate(gm.lastModified * 1000) : '-'}</div>
         </div>`;
     }
   }).catch(() => {});
@@ -1654,7 +1654,7 @@ function bindKeyboard() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   9. Bootstrapping — runs on DOMContentLoaded
+   9. Bootstrapping - runs on DOMContentLoaded
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Detect client OS and adapt keyboard shortcut labels across the UI. */
@@ -2032,11 +2032,11 @@ function pollGitAnalysisStatus() {
 
         if (analyzeBtn) {
           analyzeBtn.disabled = false;
-          analyzeBtn.innerHTML = '⚡ Re-analyze History';
+          analyzeBtn.textContent = 'Analyze History';
         }
 
         setTimeout(() => showGitProgressBox(false), 2000);
-        showBanner(`✓ Git history analyzed — ${status.entitiesAnnotated} entities annotated`);
+        showBanner(`Git history analyzed - ${status.entitiesAnnotated} entities annotated`);
         await loadGitSummary();
         await loadGitHeatData();
         updateFooterGitBranch();
@@ -2129,7 +2129,7 @@ function esc(str) {
 document.addEventListener('DOMContentLoaded', init);
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   UI helpers — shared rendering primitives
+   UI helpers - shared rendering primitives
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Build the entity header in the right panel. */
@@ -2155,7 +2155,7 @@ function metaGrid(pairs) {
     if (v instanceof HTMLElement) {
       val.appendChild(v);
     } else {
-      val.textContent = v || '—';
+      val.textContent = v || '-';
     }
     grid.appendChild(key);
     grid.appendChild(val);
@@ -2239,7 +2239,7 @@ function flashInput(el) {
 /** Show a temporary error toast. */
 function showError(msg) {
   const el = createElement('div', { class: 'error-toast' });
-  el.textContent = '⚠ ' + msg;
+  el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => {
     el.classList.add('fade-out');
@@ -2277,7 +2277,7 @@ function esc(str) {
 
 /** Shorten a FQN for display: "com.example.trading.OrderService" → "OrderService". */
 function shortFqn(fqn) {
-  if (!fqn) return '—';
+  if (!fqn) return '-';
   const paren = fqn.indexOf('(');
   const base  = paren > 0 ? fqn.substring(0, paren) : fqn;
   const dot   = base.lastIndexOf('.');
@@ -2292,9 +2292,9 @@ function formatDate(epochMs) {
   });
 }
 
-/** Map Java type kind to an emoji icon. */
+/** Map Java type kind to a clean label glyph. */
 function kindIcon(kind) {
-  return { CLASS: '🔷', INTERFACE: '🔹', ENUM: '🔸', ANNOTATION: '🔖' }[kind] || '📄';
+  return { CLASS: 'C', INTERFACE: 'I', ENUM: 'E', RECORD: 'R', ANNOTATION: '@' }[kind] || 'T';
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

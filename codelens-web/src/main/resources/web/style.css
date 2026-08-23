@@ -1,11 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 /* =============================================================================
-   CodeLens — Tactile Cyber-Industrial Design System
+   CodeLens - Tactile Cyber-Industrial Design System
    Calibrated for high data density, precision telemetry, and fluid micro-motion.
    ============================================================================= */
 
 :root {
+  /* Systematic Z-Index scale */
+  --z-base:       1;
+  --z-elevated:   10;
+  --z-header:     40;
+  --z-resizer:    50;
+  --z-hud:        60;
+  --z-modal:      100;
+  --z-tooltip:    200;
+
   /* Background substrate & structural surfaces */
   --bg-base:      #06080d;
   --bg-panel:     rgba(10, 14, 23, 0.78);
@@ -89,7 +98,7 @@ button { font-family: inherit; cursor: pointer; border: none; outline: none; tra
 input, textarea { font-family: inherit; font-size: inherit; outline: none; transition: all var(--dur-std) var(--ease); }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   3. Layout shell — CSS Grid three-panel + header
+   3. Layout shell - CSS Grid three-panel + header
    ───────────────────────────────────────────────────────────────────────────── */
 #app {
   display: grid;
@@ -574,7 +583,7 @@ body.resizing .panel-resizer {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   5. Left panel — explorer tree + search
+   5. Left panel - explorer tree + search
    ───────────────────────────────────────────────────────────────────────────── */
 #left-panel {
   grid-area: left;
@@ -760,7 +769,7 @@ body.resizing .panel-resizer {
 .sr-kind.FIELD  { background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.2); }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   6. Centre panel — tabs + graph / list canvas
+   6. Centre panel - tabs + graph / list canvas
    ───────────────────────────────────────────────────────────────────────────── */
 #centre-panel {
   grid-area: centre;
@@ -1592,7 +1601,7 @@ body.resizing .panel-resizer {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   7. Right panel — entity detail + notes
+   7. Right panel - entity detail + notes
    ───────────────────────────────────────────────────────────────────────────── */
 #right-panel {
   grid-area: right;
@@ -2081,7 +2090,7 @@ body.resizing .panel-resizer {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Git view — Tab panel 4
+   Git view - Tab panel 4
    ───────────────────────────────────────────────────────────────────────────── */
 
 .git-view-inner {
@@ -2686,5 +2695,23 @@ body.resizing .panel-resizer {
 
 .sc-row span {
   color: var(--text-secondary);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Accessibility: Prefers-Reduced-Motion Guardrails
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .status-indicator.live,
+  .git-status-dot.active,
+  .scan-spinner {
+    animation: none !important;
+  }
 }
 

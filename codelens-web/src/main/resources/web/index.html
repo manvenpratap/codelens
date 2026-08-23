@@ -1,39 +1,19 @@
 <!DOCTYPE html>
 <!--
-  index.html — CodeLens UI Shell
-  ═══════════════════════════════════════════════════════════════════════════════
+  index.html - CodeLens UI Shell
+  =============================================================================
   This file is the single HTML entry point served by Javalin at http://localhost:7878/
-  It provides:
-    · Semantic landmark elements (header, main, aside, nav)
-    · The three-panel CSS Grid layout scaffold
-    · All interactive DOM targets referenced by app.js
-    · Zero inline styles (all styles live in style.css)
-    · Zero inline scripts (logic lives in graph.js then app.js)
-
-  Panel anatomy
-  ─────────────────────────────────────────────────────────────────────────────
-  ┌──────────────────────────────────────────────────────────────┐
-  │  <header id="header">  — scan controls, stats                │
-  ├───────────────┬───────────────────────────┬──────────────────┤
-  │ <aside        │  <main id="centre-panel"> │  <aside          │
-  │  id="left-    │   Tabs: Graph │ KB │ ⚠    │   id="right-     │
-  │  panel">      │   ┌────────────────────┐  │   panel">        │
-  │  Search       │   │ Canvas / List view │  │   Entity header  │
-  │  Package tree │   └────────────────────┘  │   Metadata       │
-  │               │                           │   Notes          │
-  └───────────────┴───────────────────────────┴──────────────────┘
-
   Script load order:
-    1. graph.js   — ForceGraph class (no deps; must load before app.js)
-    2. app.js     — application controller (uses ForceGraph from graph.js)
-  ═══════════════════════════════════════════════════════════════════════════════
+    1. graph.js   - ForceGraph class (no deps; must load before app.js)
+    2. app.js     - application controller (uses ForceGraph from graph.js)
+  =============================================================================
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CodeLens — offline Java codebase intelligence tool" />
-  <title>CodeLens — Java Intelligence</title>
+  <meta name="description" content="CodeLens - Offline Java codebase intelligence and call graph analyzer" />
+  <title>CodeLens - Java Intelligence</title>
 
   <!-- High-end App Icon & Favicon -->
   <link rel="icon" type="image/png" href="/assets/app-icon.png" />
@@ -44,15 +24,9 @@
 </head>
 
 <body>
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     APP SHELL — outermost grid container
-     data-* attributes used as JS hooks to avoid coupling to class names
-     ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="app" role="application" aria-label="CodeLens Java Codebase Intelligence">
 
-  <!-- ─────────────────────────────────────────────────────────────────────────
-       HEADER — logo, scan controls, live stats
-       ───────────────────────────────────────────────────────────────────────── -->
+  <!-- Header: logo, scan controls, live stats -->
   <header id="header" role="banner">
 
     <!-- Logo mark -->
@@ -67,7 +41,7 @@
       <input
         id="scan-path-input"
         type="text"
-        placeholder="Enter Java source directory path (e.g. C:\workspace\project\src or /home/src)"
+        placeholder="Enter Java source directory path (e.g. /workspace/project/src)"
         autocomplete="off"
         spellcheck="false"
         aria-describedby="scan-hint"
@@ -80,14 +54,14 @@
         Scan
       </button>
       <button id="help-btn" class="btn-ghost" aria-label="Open Feature & User Guide" title="Feature Guide & Documentation (?)">
-        ❓ Guide
+        Guide
       </button>
       <span id="scan-hint" class="visually-hidden">
         Press Enter or click Scan to index the Java source directory
       </span>
     </section>
 
-    <!-- Live entity count statistics — updated by app.js after each scan -->
+    <!-- Live entity count statistics - updated by app.js after each scan -->
     <div class="stats-row" role="status" aria-live="polite" aria-label="Index statistics">
       <div class="stat-pill" title="Total indexed Java classes, interfaces, enums, and records">
         <span class="stat-count" id="stat-types">0</span>
@@ -103,7 +77,7 @@
       </div>
     </div>
 
-    <!-- Scan progress bar — sits flush on the bottom border of the header.
+    <!-- Scan progress bar - sits flush on the bottom border of the header.
          Width is animated from 0% → 100% via app.js during active scans. -->
     <div
       id="scan-progress-bar"
@@ -117,9 +91,9 @@
   </header><!-- /#header -->
 
 
-  <!-- ─────────────────────────────────────────────────────────────────────────
-       LEFT PANEL — package explorer tree + full-text search
-       ───────────────────────────────────────────────────────────────────────── -->
+  <!-- -------------------------------------------------------------------------
+       LEFT PANEL - package explorer tree + full-text search
+       ------------------------------------------------------------------------- -->
   <aside id="left-panel" aria-label="Package explorer">
 
     <!-- Full-text search box (Lucene-backed via /api/search) -->
@@ -138,7 +112,7 @@
       </div>
     </nav>
 
-    <!-- Filter chip row — narrows the explorer to one entity kind -->
+    <!-- Filter chip row - narrows the explorer to one entity kind -->
     <div class="filter-chips" role="toolbar" aria-label="Filter by entity kind">
       <button class="chip active" data-filter="all"       aria-pressed="true"  title="Show all Java types in explorer">All</button>
       <button class="chip"        data-filter="CLASS"     aria-pressed="false" title="Filter to standard Java Classes">Class</button>
@@ -152,7 +126,7 @@
       <button id="btn-collapse-left" class="panel-collapse-btn" aria-label="Collapse Explorer Panel" title="Collapse Explorer Panel ([)">◀</button>
     </div>
 
-    <!-- Package / type tree — populated lazily by app.js loadPackageTree() -->
+    <!-- Package / type tree - populated lazily by app.js loadPackageTree() -->
     <nav
       id="explorer-tree"
       aria-labelledby="explorer-label"
@@ -163,7 +137,7 @@
       </div>
     </nav>
 
-    <!-- Search results pane — shown in place of the tree while a query is active -->
+    <!-- Search results pane - shown in place of the tree while a query is active -->
     <div
       id="search-results"
       role="listbox"
@@ -191,16 +165,16 @@
   </button>
 
 
-  <!-- ─────────────────────────────────────────────────────────────────────────
-       CENTRE PANEL — tabbed workspace
+  <!-- -------------------------------------------------------------------------
+       CENTRE PANEL - tabbed workspace
        Tabs:  Graph | Knowledge Base | Inconsistencies
-       ───────────────────────────────────────────────────────────────────────── -->
+       ------------------------------------------------------------------------- -->
   <main id="centre-panel" role="main" aria-label="Workspace">
 
-    <!-- ── Tab navigation bar ─────────────────────────────────────────────── -->
+    <!-- -- Tab navigation bar ----------------------------------------------- -->
     <nav class="tab-bar" role="tablist" aria-label="Workspace tabs">
 
-      <!-- Graph view tab — call hierarchy & field impact graphs -->
+      <!-- Graph view tab - call hierarchy & field impact graphs -->
       <button
         class="tab active"
         role="tab"
@@ -214,7 +188,7 @@
         Graph
       </button>
 
-      <!-- Knowledge base tab — structured list of all types/methods/fields -->
+      <!-- Knowledge base tab - structured list of all types/methods/fields -->
       <button
         class="tab"
         role="tab"
@@ -228,7 +202,7 @@
         Knowledge Base
       </button>
 
-      <!-- Code Review tab — on-demand AST-based code reviewer -->
+      <!-- Code Review tab - on-demand AST-based code reviewer -->
       <button
         class="tab"
         role="tab"
@@ -243,7 +217,7 @@
         <span class="tab-badge" aria-label="finding count">0</span>
       </button>
 
-      <!-- Git tab — blame annotation, top authors, hot files -->
+      <!-- Git tab - blame annotation, top authors, hot files -->
       <button
         class="tab"
         role="tab"
@@ -257,7 +231,7 @@
         Git
       </button>
 
-      <!-- Source tab — Monaco code editor view -->
+      <!-- Source tab - Monaco code editor view -->
       <button
         class="tab"
         role="tab"
@@ -333,13 +307,13 @@
         <!-- Feature Toggles -->
         <div class="graph-hud-actions">
           <button id="btn-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
-            🌿 <span class="hud-btn-text">Clusters</span>
+            <span class="hud-btn-icon">◈</span> <span class="hud-btn-text">Clusters</span>
           </button>
           <button id="btn-toggle-physics" class="hud-btn active" title="Toggle Live Physics Simulation (Space)">
-            ⚡ <span class="hud-btn-text">Physics</span>
+            <span class="hud-btn-icon">⏻</span> <span class="hud-btn-text">Physics</span>
           </button>
           <button id="btn-heat" class="hud-btn" title="Toggle Commit Churn Heat Overlay">
-            🔥 <span class="hud-btn-text">Heat</span>
+            <span class="hud-btn-icon">♨</span> <span class="hud-btn-text">Heat</span>
           </button>
         </div>
 
@@ -347,8 +321,8 @@
 
         <!-- Camera Controls -->
         <div class="graph-camera-controls">
-          <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">＋</button>
-          <button class="hud-btn icon-only" id="btn-zoom-out" title="Zoom out (-)">－</button>
+          <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">+</button>
+          <button class="hud-btn icon-only" id="btn-zoom-out" title="Zoom out (-)">-</button>
           <button class="hud-btn icon-only" id="btn-fit" title="Fit graph to screen (F)">⊞</button>
           <button class="hud-btn icon-only" id="btn-reset" title="Clear graph">⊠</button>
         </div>
@@ -367,7 +341,7 @@
       <div id="graph-node-card" class="graph-node-card" style="display:none">
         <div class="node-card-header">
           <div class="node-card-title-row">
-            <span id="node-card-icon" class="node-card-icon">🔷</span>
+            <span id="node-card-icon" class="node-card-icon">◈</span>
             <span id="node-card-name" class="node-card-name">MethodName</span>
           </div>
           <button id="btn-node-card-close" class="node-card-close">✕</button>
@@ -375,11 +349,11 @@
         <div class="node-card-body">
           <div class="node-card-row">
             <span class="nc-lbl">Community:</span>
-            <span id="node-card-community" class="nc-val">—</span>
+            <span id="node-card-community" class="nc-val">-</span>
           </div>
           <div class="node-card-row">
             <span class="nc-lbl">Type:</span>
-            <span id="node-card-type" class="nc-val">—</span>
+            <span id="node-card-type" class="nc-val">-</span>
           </div>
           <div class="node-card-row">
             <span class="nc-lbl">Connections:</span>
@@ -408,7 +382,7 @@
     </section><!-- /#graph-view -->
 
 
-    <!-- ── Tab panel 2: Knowledge base — structured type/method/field list ── -->
+    <!-- ── Tab panel 2: Knowledge base - structured type/method/field list ── -->
     <section
       class="tab-content"
       id="knowledge-view"
@@ -437,17 +411,17 @@
         <div class="review-controls">
           <div class="review-mode-selector">
             <button class="review-mode-btn active" data-mode="selection" title="Review the currently selected type/method from the Explorer">
-              📋 Review Selection
+              Review Selection
             </button>
             <button class="review-mode-btn" data-mode="file" title="Review the file currently open in the Source tab">
-              📄 Review Open File
+              Review Open File
             </button>
             <button class="review-mode-btn" data-mode="snippet" title="Paste arbitrary Java code to review">
-              ✏️ Paste & Review
+              Paste &amp; Review
             </button>
           </div>
           <button id="run-review-btn" class="btn-primary review-run-btn" title="Run the code review engine">
-            ⚡ Run Review
+            Run Review
           </button>
         </div>
         <div id="review-snippet-area" class="review-snippet-area" style="display:none">
@@ -458,14 +432,14 @@
           ></textarea>
         </div>
         <div id="review-target-info" class="review-target-info">
-          Select a class or method in the Explorer, then click <strong>⚡ Run Review</strong>.
+          Select a class or method in the Explorer, then click <strong>Run Review</strong>.
         </div>
         <div id="review-results" class="review-results"></div>
       </div>
     </section><!-- /#review-view -->
 
 
-    <!-- ── Tab panel 4: Git — blame annotations, top authors, hot files ─── -->
+    <!-- ── Tab panel 4: Git - blame annotations, top authors, hot files ─── -->
     <section
       class="tab-content"
       id="git-view"
@@ -479,7 +453,7 @@
         <div class="git-connect-card">
           <div class="git-connect-header">
             <div class="git-connect-title">
-              <span class="git-icon">🌿</span>
+              <span class="git-icon">⎇</span>
               <span>Git Repository Connection</span>
             </div>
             <div id="git-validation-status" class="git-validation-status">
@@ -497,15 +471,15 @@
                 spellcheck="false"
               />
               <button id="git-browse-btn" class="btn-ghost git-browse-btn" title="Browse for Git repository folder">
-                📁 Browse
+                Browse
               </button>
             </div>
             <div class="git-action-row">
               <button id="git-validate-btn" class="btn-ghost git-validate-btn" title="Validate repository path">
-                ✓ Validate Repo
+                Validate Repo
               </button>
               <button id="git-analyze-btn" class="btn-primary git-analyze-btn" title="Run background Git blame &amp; churn analysis">
-                ⚡ Analyze Git History
+                Analyze History
               </button>
             </div>
           </div>
@@ -530,7 +504,7 @@
         </div>
         <!-- Hottest Entities -->
         <div class="git-section" id="git-hot-section">
-          <div class="git-section-title">🔥 Hottest Entities</div>
+          <div class="git-section-title">Hottest Entities</div>
           <div id="git-hot-list" class="git-hot-list">
             <div class="list-empty">No churn data available yet.</div>
           </div>
@@ -538,7 +512,7 @@
       </div>
     </section><!-- /#git-view -->
 
-    <!-- ── Tab panel 5: Source — embedded Monaco code editor ──────────────── -->
+    <!-- ── Tab panel 5: Source - embedded Monaco code editor ──────────────── -->
     <section
       class="tab-content"
       id="source-view"
@@ -579,9 +553,7 @@
     <span class="expand-strip-text">Details</span>
   </button>
 
-  <!-- ─────────────────────────────────────────────────────────────────────────
-       RIGHT PANEL — entity detail, metadata, analyst notes, relationships
-       ───────────────────────────────────────────────────────────────────────── -->
+  <!-- Right panel: entity detail, metadata, analyst notes, relationships -->
   <aside
     id="right-panel"
     aria-label="Entity details"
@@ -594,8 +566,7 @@
       <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">▶</button>
     </div>
 
-    <!-- Entity header: kind badge + name + FQN
-         Rendered by renderEntityHeader() in app.js when an entity is selected. -->
+    <!-- Entity header: kind badge + name + FQN -->
     <div id="entity-header" class="entity-header" style="display:none" aria-label="Selected entity"></div>
 
     <!-- Placeholder shown when no entity is selected -->
@@ -604,8 +575,7 @@
       <div class="detail-empty-text">Select a type, method, or field<br>to view its details</div>
     </div>
 
-    <!-- Scrollable body: metadata grid + relationships + notes
-         Content is replaced by the render* functions in app.js. -->
+    <!-- Scrollable body: metadata grid + relationships + notes -->
     <div id="right-body" role="region" aria-label="Entity metadata and notes"></div>
 
   </aside><!-- /#right-panel -->
@@ -620,7 +590,7 @@
   </div>
   <div class="footer-segment footer-info">
     <span class="footer-meta-pill" title="Database status">DB: SQLite (Embedded)</span>
-    <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: —</span>
+    <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: -</span>
   </div>
   <div class="footer-segment footer-shortcuts">
     <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)">◧ Explorer</button>
@@ -629,7 +599,7 @@
     <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
     <span class="shortcut-tip"><kbd>2</kbd> KB</span>
     <span class="shortcut-tip"><kbd>3</kbd> Review</span>
-    <span class="shortcut-tip"><kbd>🔥</kbd> Heat</span>
+    <span class="shortcut-tip"><kbd>H</kbd> Heat</span>
   </div>
 </footer>
 
@@ -648,7 +618,7 @@
     <div class="modal-body">
 
       <section class="help-section">
-        <h3>⚡ Five Core Analysis Capabilities</h3>
+        <h3>Core Analysis Capabilities</h3>
         <div class="help-grid">
           <div class="help-card">
             <h4>1. AST Source Indexing</h4>
@@ -678,7 +648,7 @@
       </section>
 
       <section class="help-section">
-        <h3>🖥️ Screen &amp; Panel Breakdown</h3>
+        <h3>Screen &amp; Panel Breakdown</h3>
         <div class="help-flow">
           <div class="flow-step">
             <strong>Header</strong>: Input absolute source paths, run scans, inspect live type/method/field counters, and check progress.
@@ -703,7 +673,7 @@
       </section>
 
       <section class="help-section">
-        <h3>⌨️ Keyboard Shortcuts</h3>
+        <h3>Keyboard Shortcuts</h3>
         <div class="shortcuts-table">
           <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global full-text search</span></div>
           <div class="sc-row"><kbd>Esc</kbd> <span>Clear search or close modals</span></div>
@@ -720,7 +690,7 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     SCAN STATUS BAR — fixed overlay shown at bottom-centre during active scans
+     SCAN STATUS BAR - fixed overlay shown at bottom-centre during active scans
      Visibility toggled by setScanUI() in app.js
      ═══════════════════════════════════════════════════════════════════════════ -->
 <div
@@ -771,7 +741,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     SCRIPTS — deferred so the DOM is fully parsed before execution
+     SCRIPTS - deferred so the DOM is fully parsed before execution
      Load order is intentional:
        1. graph.js   defines window.ForceGraph (no DOM interaction on load)
        2. app.js     calls window.ForceGraph after DOMContentLoaded fires
