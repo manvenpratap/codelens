@@ -881,7 +881,8 @@ function updateReviewTargetInfo() {
     if (snippetArea) snippetArea.style.display = 'none';
     if (reviewMode === 'selection') {
       if (App.selected) {
-        targetInfo.innerHTML = `Target: <strong>${esc(App.selected.id)}</strong> <span style="font-size:10px; color:var(--text-muted)">(${App.selected.kind.toUpperCase()})</span>`;
+        const kindStr = App.selected.kind ? String(App.selected.kind).toUpperCase() : 'UNKNOWN';
+        targetInfo.innerHTML = `Target: <strong>${esc(App.selected.id)}</strong> <span style="font-size:10px; color:var(--text-muted)">(${kindStr})</span>`;
       } else {
         targetInfo.innerHTML = 'Select a class or method in the Explorer, then click <strong>⚡ Run Review</strong>.';
       }
@@ -941,7 +942,16 @@ async function runCodeReview() {
       showBanner('Select a class or method in the Explorer first', 'warning');
       return;
     }
+    if (App.selected.kind === 'package') {
+      showBanner('Please select a specific class, method, or source file to review', 'warning');
+      return;
+    }
     body = { entityFqn: App.selected.id };
+  }
+
+  if (!body.snippet && !body.filePath && !body.entityFqn) {
+    showBanner('Please select a class or method in Explorer to review', 'warning');
+    return;
   }
 
   // Show loading state
@@ -1741,8 +1751,10 @@ function bindKeyboard() {
 
 /** Detect client OS and adapt keyboard shortcut labels across the UI. */
 function adaptOsShortcuts() {
-  const isMac = navigator.platform.toUpperCase().includes('MAC') ||
-                navigator.userAgent.toUpperCase().includes('MAC');
+  const isMac = (typeof navigator !== 'undefined' && (
+    (navigator.platform && navigator.platform.toUpperCase().includes('MAC')) ||
+    (navigator.userAgent && navigator.userAgent.toUpperCase().includes('MAC'))
+  ));
   const shortcutKey = isMac ? '⌘K' : 'Ctrl+K';
 
   const searchInput = qs('#search-input');
