@@ -101,12 +101,74 @@ html, body {
   background-size: 32px 32px, 32px 32px;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Global Typography & Numeric Telemetry ─────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.stat-count, .stat-pill, .nc-val, .nc-badge, .hud-pill, .status-indicator,
+.settings-val, .footer-meta-pill, .chip-count, .badge, .counter,
+.tree-member-item, .git-blame-line, .review-issue-line, kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Global Tactile Interactivity & Focus States ───────────────────────── */
 a { color: var(--cyan-bright); text-decoration: none; transition: color var(--dur-fast) var(--ease); }
 a:hover { color: var(--primary-hover); text-decoration: none; }
-button { font-family: inherit; cursor: pointer; border: none; outline: none; transition: all var(--dur-std) var(--ease); }
-input, textarea { font-family: inherit; font-size: inherit; outline: none; transition: all var(--dur-std) var(--ease); }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all var(--dur-fast) var(--ease);
+}
+button:active:not(:disabled) {
+  transform: scale(0.97) translateY(1px);
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  transition: all var(--dur-std) var(--ease);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Sleek High-Precision Scrollbars ────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background var(--dur-fast) var(--ease);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+body.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+body.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.30);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    3. Layout shell - CSS Grid three-panel + header
@@ -2623,16 +2685,16 @@ body.resizing .panel-resizer {
   background: var(--bg-panel);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 24px 64px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modalPop 0.25s var(--ease);
+  animation: modalPop 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes modalPop {
-  from { transform: scale(0.96); opacity: 0; }
-  to   { transform: scale(1); opacity: 1; }
+  from { transform: scale(0.96) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -2642,6 +2704,7 @@ body.resizing .panel-resizer {
   padding: 16px 24px;
   background: rgba(14, 19, 32, 0.6);
   border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .modal-title-row {
@@ -2660,7 +2723,8 @@ body.resizing .panel-resizer {
   font-weight: 700;
   color: var(--text-primary);
   font-family: var(--font-display);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
   margin: 0;
 }
 
@@ -2672,13 +2736,17 @@ body.resizing .panel-resizer {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: all var(--dur-std) var(--ease);
+  transition: all var(--dur-fast) var(--ease);
 }
 
 .modal-close-btn:hover {
   color: var(--text-primary);
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.08);
   border-color: var(--border);
+}
+
+.modal-close-btn:active {
+  transform: scale(0.92);
 }
 
 .modal-body {
