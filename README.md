@@ -49,6 +49,8 @@ A high-performance, **offline**, self-contained Java codebase intelligence and a
 | 4 | **Structural Inconsistency Detection** | 3-pass heuristic engine identifying signature divergences, naming drift, and duplicate AST body hashes across classes. | Levenshtein distance + AST Normalizer + SHA-256 body hashing |
 | 5 | **Git Blame & Churn Heatmap** | Computes commit counts, top contributing authors, and churn frequency per entity, rendering commit heat directly on graph nodes. | JGit 6.9 engine + Dynamic Canvas Color Shaders |
 | 6 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
+| 7 | **Export Reports Hub** | Export comprehensive Architecture, Security/Quality Audit, and Inventory/Metrics reports in Markdown, standalone HTML, structured JSON, and tabular CSV with print-to-PDF support. | ReportService + REST export endpoints + Standalone HTML templates |
+| 8 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
 
 ---
 
@@ -501,11 +503,20 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 - `GET /api/types` — List all types (supports `?q=` search)
 - `GET /api/types/{fqn}` — Detail for a type including member fields and methods
 
-### Methods & Call Graphs
+### Methods, Call Graphs & Architectural Views
 - `GET /api/methods/{fqn}` — Method details, parameters, lines, and cyclomatic complexity
 - `GET /api/methods/{fqn}/graph?depth=3` — Call hierarchy graph view (`nodes` + `edges`) up to `depth` hops
 - `GET /api/methods/{fqn}/callers?depth=4` — Upstream caller hierarchy
 - `GET /api/methods/{fqn}/callees?depth=4` — Downstream callee hierarchy
+- `GET /api/graph/architecture?scope=module|package|class` — Quotient architecture graph view aggregated at module, package, or class level
+- `GET /api/graph/dsm?scope=module|package|class` — Sparse Dependency Structure Matrix payload with fast cell lookup array
+- `GET /api/graph/treemap?scope=module|package|class` — Hierarchical treemap payload aggregated by lines of code and complexity
+
+### Reports & Export Hub
+- `GET /api/reports/architecture?format=markdown|html|json|csv` — Architecture & Coupling metrics summary report
+- `GET /api/reports/review?format=markdown|html|json|csv` — Code Quality & Security Audit report
+- `GET /api/reports/metrics?format=markdown|html|json|csv` — Codebase Inventory & Metrics report
+- `GET /api/reports/download?type=architecture|review|metrics&format=markdown|html|json|csv` — Direct file download endpoint for offline reports and PDF printing
 
 ### Fields & Impact Analysis
 - `GET /api/fields/{fqn}` — Field metadata and initializer expression
