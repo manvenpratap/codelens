@@ -141,17 +141,45 @@ class SunburstRenderer {
     return max;
   }
 
-  _buildSegments(node, startAngle, endAngle, depth, innerR, ringW) {
+  _buildSegments(node, startAngle, endAngle, depth, innerR, ringW, parentColor, childIndex) {
     if (!node.children || node.children.length === 0) return;
 
     const totalSize = node.children.reduce((s, c) => s + Math.max(c.size, 1), 0);
     if (totalSize <= 0) return;
 
+    const PALETTE = [
+      '#3b82f6', // Blue
+      '#10b981', // Emerald
+      '#8b5cf6', // Violet
+      '#f59e0b', // Amber
+      '#ec4899', // Pink
+      '#06b6d4', // Cyan
+      '#f97316', // Orange
+      '#14b8a6', // Teal
+      '#a855f7', // Purple
+      '#ef4444', // Red
+      '#84cc16', // Lime
+      '#6366f1', // Indigo
+      '#0ea5e9', // Sky
+      '#d946ef', // Fuchsia
+      '#eab308', // Gold
+      '#22c55e', // Green
+    ];
+
     let angle = startAngle;
-    for (const child of node.children) {
+    node.children.forEach((child, idx) => {
       const fraction = Math.max(child.size, 1) / totalSize;
       const childAngle = (endAngle - startAngle) * fraction;
       const gap = 0.005;
+
+      let segColor;
+      if (depth === 0) {
+        segColor = PALETTE[idx % PALETTE.length];
+      } else if (depth === 1) {
+        segColor = PALETTE[(idx + (childIndex || 0) * 3) % PALETTE.length];
+      } else {
+        segColor = this._tintColor(parentColor || PALETTE[idx % PALETTE.length], idx);
+      }
 
       if (childAngle > gap * 2) {
         this._segments.push({
@@ -161,24 +189,46 @@ class SunburstRenderer {
           innerRadius: innerR,
           outerRadius: innerR + ringW,
           depth,
+          color: segColor,
         });
 
         // Recurse for children
         if (child.children && child.children.length > 0) {
-          this._buildSegments(child, angle + gap, angle + childAngle - gap, depth + 1, innerR + ringW, ringW);
+          this._buildSegments(child, angle + gap, angle + childAngle - gap, depth + 1, innerR + ringW, ringW, segColor, idx);
         }
       }
 
       angle += childAngle;
-    }
+    });
   }
 
-  _complexityColor(complexity) {
-    if (complexity <= 1) return '#2563eb';
-    if (complexity <= 3) return '#10b981';
-    if (complexity <= 6) return '#f59e0b';
-    if (complexity <= 10) return '#f97316';
-    return '#ef4444';
+  _tintColor(hex, index) {
+    if (!hex || !hex.startsWith('#')) return hex || '#3b82f6';
+    const c = parseInt(hex.replace('#', ''), 16);
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+
+    const rNorm = r / 255, gNorm = g / 255, bNorm = b / 255;
+    const max = Math.max(rNorm, gNorm, bNorm), min = Math.min(rNorm, gNorm, bNorm);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case rNorm: h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0); break;
+        case gNorm: h = (bNorm - rNorm) / d + 2; break;
+        case bNorm: h = (rNorm - gNorm) / d + 4; break;
+      }
+      h /= 6;
+    }
+
+    const lightnessOffsets = [0.10, -0.08, 0.16, -0.14, 0.05, -0.10, 0.12];
+    const lOffset = lightnessOffsets[index % lightnessOffsets.length];
+    const newL = Math.max(0.28, Math.min(0.82, l + lOffset));
+
+    return `hsl(${Math.round(h * 360)}, ${Math.round(Math.min(s * 1.1, 1) * 100)}%, ${Math.round(newL * 100)}%)`;
   }
 
   _draw() {
@@ -199,16 +249,16 @@ class SunburstRenderer {
     // Draw center circle
     ctx.beginPath();
     ctx.arc(cx, cy, this._innerRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(22, 27, 34, 0.9)';
+    ctx.fillStyle = 'rgba(22, 27, 34, 0.95)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
     // Draw segments
     for (const seg of this._segments) {
       const node = seg.node;
-      const color = this._complexityColor(node.complexity || 0);
+      const color = seg.color || '#3b82f6';
       const isHovered = hovered === seg;
       const isAncestor = hovered && this._isAncestor(seg.node, hovered.node);
       const dimmed = hovered && !isHovered && !isAncestor && !this._isAncestor(hovered.node, seg.node);
@@ -219,11 +269,11 @@ class SunburstRenderer {
       ctx.closePath();
 
       ctx.fillStyle = color;
-      ctx.globalAlpha = dimmed ? 0.15 : (isHovered ? 1.0 : 0.7);
+      ctx.globalAlpha = dimmed ? 0.18 : (isHovered ? 1.0 : 0.88);
       ctx.fill();
 
-      ctx.strokeStyle = isHovered ? '#f8fafc' : 'rgba(13,17,23,0.6)';
-      ctx.lineWidth = isHovered ? 2 : 0.5;
+      ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(10, 15, 25, 0.7)';
+      ctx.lineWidth = isHovered ? 2.5 : 0.75;
       ctx.globalAlpha = 1;
       ctx.stroke();
 
