@@ -470,8 +470,8 @@ class TreemapRenderer {
       ctx.lineWidth = isHovered ? 2 : 0.75;
       ctx.stroke();
 
-      // Label (only if rect is big enough)
-      if (rect.w > 36 && rect.h > 18) {
+      // Label (only if rect is big enough - LOD culling threshold: w > 45 && h > 18)
+      if (rect.w > 45 && rect.h > 18) {
         ctx.fillStyle = '#ffffff';
         ctx.globalAlpha = 1;
         const fontSize = Math.max(10, Math.min(13, rect.w / 9));

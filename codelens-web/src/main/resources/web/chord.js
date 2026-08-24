@@ -187,10 +187,19 @@ class ChordRenderer {
     const aw = this._arcWidth;
     const hovered = this._hovered;
 
-    // Draw chords
+    // Draw chords (with bundling / low-weight culling for high-density networks)
+    const minChordWeight = this._chords.length > 100 ? 2 : 1;
     for (const chord of this._chords) {
+      if (chord.value < minChordWeight && hovered < 0) continue; // Chord weight culling / bundling
+
       const srcArc = this._arcs[chord.source];
       const tgtArc = this._arcs[chord.target];
+      if (!srcArc || !tgtArc) continue;
+
+      // Arc thresholding: skip drawing chords connecting tiny culled arcs (< 0.005 rad)
+      if ((srcArc.endAngle - srcArc.startAngle < 0.005 || tgtArc.endAngle - tgtArc.startAngle < 0.005) && hovered < 0) {
+        continue;
+      }
 
       const srcMid = (srcArc.startAngle + srcArc.endAngle) / 2;
       const tgtMid = (tgtArc.startAngle + tgtArc.endAngle) / 2;

@@ -147,7 +147,7 @@ class SunburstRenderer {
     const totalSize = node.children.reduce((s, c) => s + Math.max(c.size, 1), 0);
     if (totalSize <= 0) return;
 
-    const minThresholdAngle = 0.008; // below this, aggregate into "Other"
+    const minThresholdAngle = 0.003; // below 0.003 rad, aggregate into "Other" wedge rollup
     const prominentChildren = [];
     const smallChildren = [];
 

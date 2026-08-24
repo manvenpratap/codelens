@@ -1132,9 +1132,23 @@ class ForceGraph {
     const connectedSet = activeNode ? this._connectedMap.get(activeNode.id) : null;
     const isDenseGraph = this._nodes.length > 25;
     const isZoomedIn = this._sc >= 1.25;
+    const isZoomedOutLOD = this._sc < 0.6; // LOD zoom threshold
+
+    // Viewport bounds calculation (World coordinates)
+    const canvasW = this._canvas.width / this._dpr;
+    const canvasH = this._canvas.height / this._dpr;
+    const vxMin = (0 - this._tx) / this._sc - 60;
+    const vyMin = (0 - this._ty) / this._sc - 60;
+    const vxMax = (canvasW - this._tx) / this._sc + 60;
+    const vyMax = (canvasH - this._ty) / this._sc + 60;
 
     for (const node of this._nodes) {
       if (this._hiddenCommunities.has(node.community)) continue;
+
+      // Canvas Viewport Culling
+      if (node.x < vxMin || node.x > vxMax || node.y < vyMin || node.y > vyMax) {
+        continue;
+      }
 
       let opacity = 1.0;
       if (activeNode) {
@@ -1147,9 +1161,9 @@ class ForceGraph {
       const isSelected = (node === this._selectedNode);
       const isConnected = connectedSet && connectedSet.has(node.id);
 
-      // Semantic LOD: in dense graphs, only draw text label for active/neighbor/focal nodes unless zoomed in
-      let shouldDrawLabel = this._showLabels;
-      if (shouldDrawLabel && isDenseGraph && !isZoomedIn) {
+      // Semantic LOD: when zoomed out (zoom < 0.6), hide labels unless active/hovered
+      let shouldDrawLabel = this._showLabels && !isZoomedOutLOD;
+      if (this._showLabels && isDenseGraph && !isZoomedIn) {
         shouldDrawLabel = isHovered || isSelected || isConnected || node.role === 'root' || node.role === 'class' || (node.degree >= 5);
       }
 

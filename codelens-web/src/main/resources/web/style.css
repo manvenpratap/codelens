@@ -3460,6 +3460,7 @@ body[data-theme="ember"] .tab.active {
 body[data-theme="ember"] .logo-text {
   background: linear-gradient(135deg, #fef3c7, #f59e0b);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 body[data-theme="ember"] .node-card {

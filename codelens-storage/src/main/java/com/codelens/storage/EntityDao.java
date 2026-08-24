@@ -656,6 +656,114 @@ public class EntityDao {
 
 
     // =========================================================================
+    // SQL AGGREGATION QUERY METHODS FOR HIGH SCALABILITY
+    // =========================================================================
+
+    public static class ModuleSummary {
+        public final String moduleName;
+        public final int packageCount;
+        public final int classCount;
+        public final int methodCount;
+        public final int fieldCount;
+        public final int lineCount;
+
+        public ModuleSummary(String moduleName, int packageCount, int classCount, int methodCount, int fieldCount, int lineCount) {
+            this.moduleName = moduleName;
+            this.packageCount = packageCount;
+            this.classCount = classCount;
+            this.methodCount = methodCount;
+            this.fieldCount = fieldCount;
+            this.lineCount = lineCount;
+        }
+    }
+
+    public static class PackageSummary {
+        public final String packageFqn;
+        public final String moduleName;
+        public final int classCount;
+        public final int methodCount;
+        public final int fieldCount;
+        public final int lineCount;
+
+        public PackageSummary(String packageFqn, String moduleName, int classCount, int methodCount, int fieldCount, int lineCount) {
+            this.packageFqn = packageFqn;
+            this.moduleName = moduleName;
+            this.classCount = classCount;
+            this.methodCount = methodCount;
+            this.fieldCount = fieldCount;
+            this.lineCount = lineCount;
+        }
+    }
+
+    public List<PackageSummary> getPackageSummaries(String moduleFilter) throws SQLException {
+        List<PackageSummary> list = new ArrayList<>();
+        String sql = "SELECT COALESCE(package_fqn, '(default)') AS pkg, " +
+                     "       COUNT(id) AS class_cnt, " +
+                     "       SUM(COALESCE(method_count, 0)) AS method_cnt, " +
+                     "       SUM(COALESCE(field_count, 0)) AS field_cnt, " +
+                     "       SUM(COALESCE(line_count, 0)) AS line_cnt " +
+                     "FROM types GROUP BY package_fqn ORDER BY pkg";
+
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String pkg = rs.getString("pkg");
+                String mod = extractModuleNameFromPackage(pkg);
+                if (moduleFilter != null && !moduleFilter.isBlank() && !mod.equalsIgnoreCase(moduleFilter)) {
+                    continue;
+                }
+                list.add(new PackageSummary(
+                    pkg,
+                    mod,
+                    rs.getInt("class_cnt"),
+                    rs.getInt("method_cnt"),
+                    rs.getInt("field_cnt"),
+                    rs.getInt("line_cnt")
+                ));
+            }
+        }
+        return list;
+    }
+
+    public List<ModuleSummary> getModuleSummaries() throws SQLException {
+        Map<String, int[]> modStats = new LinkedHashMap<>(); // [pkgCnt, classCnt, methodCnt, fieldCnt, lineCnt]
+        Set<String> pkgsSeenPerMod = new HashMap<>();
+
+        List<PackageSummary> pkgs = getPackageSummaries(null);
+        for (PackageSummary p : pkgs) {
+            String mod = p.moduleName;
+            int[] stats = modStats.computeIfAbsent(mod, k -> new int[5]);
+            stats[0]++; // package count
+            stats[1] += p.classCount;
+            stats[2] += p.methodCount;
+            stats[3] += p.fieldCount;
+            stats[4] += p.lineCount;
+        }
+
+        List<ModuleSummary> summaries = new ArrayList<>();
+        for (Map.Entry<String, int[]> entry : modStats.entrySet()) {
+            int[] s = entry.getValue();
+            summaries.add(new ModuleSummary(entry.getKey(), s[0], s[1], s[2], s[3], s[4]));
+        }
+        return summaries;
+    }
+
+    public static String extractModuleNameFromPackage(String packageFqn) {
+        if (packageFqn == null || packageFqn.isBlank()) return "default";
+        String[] parts = packageFqn.split("\\.");
+        if (parts.length >= 3) {
+            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net")) {
+                return (parts.length >= 4) ? parts[2] : parts[parts.length - 2];
+            }
+            return parts[0];
+        } else if (parts.length == 2) {
+            return parts[0];
+        }
+        return packageFqn;
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

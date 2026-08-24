@@ -63,9 +63,19 @@ class DSMRenderer {
     if (!this._data || !this._data.classes || this._data.classes.length === 0) return;
 
     const rawClasses = this._data.classes;
-    const rawMatrix = this._data.matrix;
+    let rawMatrix = this._data.matrix;
     const packages = this._data.packages || {};
     const n = rawClasses.length;
+
+    // Fast sparse matrix support: reconstruct grid from sparse cells payload if matrix is sparse/omitted
+    if ((!rawMatrix || rawMatrix.length === 0) && this._data.cells && Array.isArray(this._data.cells)) {
+      rawMatrix = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (const cell of this._data.cells) {
+        if (cell.r < n && cell.c < n) {
+          rawMatrix[cell.r][cell.c] = cell.v;
+        }
+      }
+    }
 
     // Detect cycles in original matrix: cells where both (i,j) and (j,i) > 0 and i !== j
     const cycles = new Set();

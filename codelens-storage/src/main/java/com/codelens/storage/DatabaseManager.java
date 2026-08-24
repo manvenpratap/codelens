@@ -175,12 +175,16 @@ public class DatabaseManager {
                 ")");
 
             // Indices for fast lookups ───────────────────────────────────────
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg  ON types(package_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type ON fields(declaring_type_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type ON methods(declaring_type_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from  ON relationships(from_entity_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to    ON relationships(to_entity_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent  ON analyst_notes(entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
 
             conn.commit();
         }

@@ -734,18 +734,39 @@ public class CallGraphAnalyzer {
         return new DSMPayload(classList, matrix, classPackages, "classes");
     }
 
+    public static class DSMSparseCell {
+        public final int r;
+        public final int c;
+        public final int v;
+
+        public DSMSparseCell(int r, int c, int v) {
+            this.r = r; this.c = c; this.v = v;
+        }
+    }
+
     /** DSM response payload. */
     public static class DSMPayload {
         public final List<String> classes;
         public final int[][]      matrix;
         public final Map<String, String> packages;
         public final String scope;
+        public final List<DSMSparseCell> cells;
 
         public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages, String scope) {
             this.classes = classes;
             this.matrix  = matrix;
             this.packages = packages;
             this.scope = scope;
+            this.cells = new ArrayList<>();
+            if (matrix != null) {
+                for (int r = 0; r < matrix.length; r++) {
+                    for (int c = 0; c < matrix[r].length; c++) {
+                        if (matrix[r][c] > 0) {
+                            this.cells.add(new DSMSparseCell(r, c, matrix[r][c]));
+                        }
+                    }
+                }
+            }
         }
 
         public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages) {
