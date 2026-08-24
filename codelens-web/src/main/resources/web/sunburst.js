@@ -147,25 +147,6 @@ class SunburstRenderer {
     const totalSize = node.children.reduce((s, c) => s + Math.max(c.size, 1), 0);
     if (totalSize <= 0) return;
 
-    const PALETTE = [
-      '#3b82f6', // Blue
-      '#10b981', // Emerald
-      '#8b5cf6', // Violet
-      '#f59e0b', // Amber
-      '#ec4899', // Pink
-      '#06b6d4', // Cyan
-      '#f97316', // Orange
-      '#14b8a6', // Teal
-      '#a855f7', // Purple
-      '#ef4444', // Red
-      '#84cc16', // Lime
-      '#6366f1', // Indigo
-      '#0ea5e9', // Sky
-      '#d946ef', // Fuchsia
-      '#eab308', // Gold
-      '#22c55e', // Green
-    ];
-
     const minThresholdAngle = 0.008; // below this, aggregate into "Other"
     const prominentChildren = [];
     const smallChildren = [];
@@ -206,15 +187,15 @@ class SunburstRenderer {
       } else if (depth === 0) {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
           ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
-          : PALETTE[idx % PALETTE.length];
+          : '#3b82f6';
       } else if (depth === 1) {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
           ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
-          : PALETTE[(idx + (childIndex || 0) * 3) % PALETTE.length];
+          : '#3b82f6';
       } else {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.tintColor)
           ? window.CodeLensPalette.tintColor(parentColor || '#3b82f6', idx)
-          : this._tintColor(parentColor || PALETTE[idx % PALETTE.length], idx);
+          : this._tintColor(parentColor || '#3b82f6', idx);
       }
 
       if (childAngle > gap * 1.5) {
