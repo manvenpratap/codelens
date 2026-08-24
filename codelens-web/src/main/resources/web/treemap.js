@@ -1,9 +1,11 @@
 /**
- * treemap.js - Zoomable Squarified Treemap Renderer
+ * treemap.js - Nested Squarified Treemap Renderer
  *
- * Renders a hierarchical Package > Class > Method treemap on canvas.
- * Rectangle size = lines of code. Color = cyclomatic complexity.
- * Click to zoom into a subtree; breadcrumb trail for navigation.
+ * Renders a nested hierarchical Package > Class > Method treemap.
+ * - Packages render as container frames with header bars.
+ * - Classes render as complexity-colored tiles inside package containers.
+ * - Methods render inside classes or when zoomed into a class.
+ * - Zoom into any package or class by clicking; navigate with breadcrumb bar.
  */
 
 class TreemapRenderer {
@@ -17,12 +19,10 @@ class TreemapRenderer {
     this._current = null;
     this._breadcrumb = [];
     this._rects = [];
+    this._containers = [];
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
-    this._animProgress = 1;
-    this._animFrom = null;
-    this._animFrame = null;
     this._bound = {
       onMouseMove: this._onMouseMove.bind(this),
       onMouseLeave: this._onMouseLeave.bind(this),
@@ -42,7 +42,6 @@ class TreemapRenderer {
   }
 
   destroy() {
-    if (this._animFrame) cancelAnimationFrame(this._animFrame);
     if (this._canvas) {
       this._canvas.removeEventListener('mousemove', this._bound.onMouseMove);
       this._canvas.removeEventListener('mouseleave', this._bound.onMouseLeave);
@@ -106,29 +105,112 @@ class TreemapRenderer {
     const w = this._canvas.width / this._dpr;
     const h = this._canvas.height / this._dpr;
     this._rects = [];
-    this._squarify(this._current.children || [], 0, 0, w, h, 0);
+    this._containers = [];
+
+    const padding = 10;
+    const availW = w - padding * 2;
+    const availH = h - padding * 2;
+
+    if (this._current === this._root) {
+      // Top-level: Packages containing their classes
+      const packages = this._root.children || [];
+      const pkgRects = this._calcSquarify(packages, padding, padding, availW, availH);
+
+      for (const pr of pkgRects) {
+        const pkgNode = pr.node;
+        const headerH = 26;
+        this._containers.push({
+          x: pr.x, y: pr.y, w: pr.w, h: pr.h,
+          name: pkgNode.name, size: pkgNode.size, node: pkgNode,
+          type: 'package'
+        });
+
+        // Inside package: lay out its classes
+        const innerX = pr.x + 6;
+        const innerY = pr.y + headerH + 2;
+        const innerW = pr.w - 12;
+        const innerH = pr.h - headerH - 8;
+
+        if (innerW > 10 && innerH > 10 && pkgNode.children && pkgNode.children.length > 0) {
+          const classRects = this._calcSquarify(pkgNode.children, innerX, innerY, innerW, innerH);
+          for (const cr of classRects) {
+            this._rects.push({
+              x: cr.x, y: cr.y, w: cr.w, h: cr.h,
+              node: cr.node, parentNode: pkgNode, depth: 1, type: 'class'
+            });
+          }
+        }
+      }
+
+    } else if (this._current.children && this._current.children.length > 0) {
+      const firstChild = this._current.children[0];
+      const hasGrandchildren = firstChild.children && firstChild.children.length > 0;
+
+      if (hasGrandchildren) {
+        // Viewing a Package: container per Class with Methods inside
+        const classRects = this._calcSquarify(this._current.children, padding, padding, availW, availH);
+        for (const cr of classRects) {
+          const classNode = cr.node;
+          const headerH = 24;
+          this._containers.push({
+            x: cr.x, y: cr.y, w: cr.w, h: cr.h,
+            name: classNode.name, size: classNode.size, node: classNode,
+            type: 'class'
+          });
+
+          const innerX = cr.x + 4;
+          const innerY = cr.y + headerH + 2;
+          const innerW = cr.w - 8;
+          const innerH = cr.h - headerH - 6;
+
+          if (innerW > 10 && innerH > 10 && classNode.children && classNode.children.length > 0) {
+            const methodRects = this._calcSquarify(classNode.children, innerX, innerY, innerW, innerH);
+            for (const mr of methodRects) {
+              this._rects.push({
+                x: mr.x, y: mr.y, w: mr.w, h: mr.h,
+                node: mr.node, parentNode: classNode, depth: 2, type: 'method'
+              });
+            }
+          } else {
+            this._rects.push({
+              x: cr.x, y: cr.y, w: cr.w, h: cr.h,
+              node: classNode, parentNode: this._current, depth: 1, type: 'class'
+            });
+          }
+        }
+      } else {
+        // Viewing a Class (showing its Methods directly)
+        const methodRects = this._calcSquarify(this._current.children, padding, padding, availW, availH);
+        for (const mr of methodRects) {
+          this._rects.push({
+            x: mr.x, y: mr.y, w: mr.w, h: mr.h,
+            node: mr.node, parentNode: this._current, depth: 2, type: 'method'
+          });
+        }
+      }
+    }
+
     this._renderBreadcrumb();
   }
 
-  /** Squarified treemap algorithm. */
-  _squarify(nodes, x, y, w, h, depth) {
-    if (!nodes || nodes.length === 0 || w <= 0 || h <= 0) return;
+  /** Calculate squarified rect positions for a list of nodes. */
+  _calcSquarify(nodes, x, y, w, h) {
+    const result = [];
+    if (!nodes || nodes.length === 0 || w <= 0 || h <= 0) return result;
 
     const totalSize = nodes.reduce((s, n) => s + Math.max(n.size, 1), 0);
-    if (totalSize <= 0) return;
+    if (totalSize <= 0) return result;
 
-    // Sort descending by size
     const sorted = [...nodes].sort((a, b) => b.size - a.size);
 
     let cx = x, cy = y, cw = w, ch = h;
-
     let i = 0;
+
     while (i < sorted.length) {
       const isVertical = ch > cw;
       const side = isVertical ? ch : cw;
       const remaining = sorted.slice(i).reduce((s, n) => s + Math.max(n.size, 1), 0);
 
-      // Find the best row
       let row = [];
       let rowSize = 0;
       let bestAspect = Infinity;
@@ -159,7 +241,6 @@ class TreemapRenderer {
         }
       }
 
-      // Lay out the row
       const rowFraction = rowSize / remaining;
       const rowSpan = side * rowFraction;
       let offset = 0;
@@ -183,18 +264,15 @@ class TreemapRenderer {
           offset += rh;
         }
 
-        const padding = 2;
-        const rect = {
-          x: rx + padding, y: ry + padding,
-          w: Math.max(rw - padding * 2, 0), h: Math.max(rh - padding * 2, 0),
-          node: item, depth
-        };
-        this._rects.push(rect);
-
+        const pad = 2;
+        result.push({
+          x: rx + pad, y: ry + pad,
+          w: Math.max(rw - pad * 2, 0), h: Math.max(rh - pad * 2, 0),
+          node: item
+        });
         i++;
       }
 
-      // Shrink remaining area
       if (isVertical) {
         cy += rowSpan;
         ch -= rowSpan;
@@ -203,6 +281,8 @@ class TreemapRenderer {
         cw -= rowSpan;
       }
     }
+
+    return result;
   }
 
   _complexityColor(complexity) {
@@ -224,8 +304,61 @@ class TreemapRenderer {
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w / dpr, h / dpr);
 
+    // 1. Draw container frames (packages or classes)
+    for (const c of this._containers) {
+      if (c.w < 2 || c.h < 2) continue;
+
+      // Container background
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+      ctx.beginPath();
+      this._roundRect(ctx, c.x, c.y, c.w, c.h, 6);
+      ctx.fill();
+
+      // Container border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Container header bar
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+      ctx.beginPath();
+      this._roundRectTop(ctx, c.x, c.y, c.w, 24, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.stroke();
+
+      // Header label
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '600 11px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+
+      const icon = c.type === 'package' ? '📦 ' : '🏛️ ';
+      const label = icon + (c.name || '');
+      const maxW = c.w - 70;
+      let displayLabel = label;
+      if (ctx.measureText(label).width > maxW && maxW > 20) {
+        while (displayLabel.length > 3 && ctx.measureText(displayLabel + '...').width > maxW) {
+          displayLabel = displayLabel.slice(0, -1);
+        }
+        displayLabel += '...';
+      }
+      if (maxW > 10) {
+        ctx.fillText(displayLabel, c.x + 8, c.y + 12);
+      }
+
+      // Total LOC badge
+      if (c.w > 120) {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.font = '400 10px "JetBrains Mono", monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${c.size} loc`, c.x + c.w - 8, c.y + 12);
+      }
+    }
+
+    // 2. Draw leaf item tiles (classes or methods)
     for (const rect of this._rects) {
-      if (rect.w < 1 || rect.h < 1) continue;
+      if (rect.w < 2 || rect.h < 2) continue;
 
       const node = rect.node;
       const color = this._complexityColor(node.complexity || 0);
@@ -233,28 +366,28 @@ class TreemapRenderer {
 
       // Fill
       ctx.fillStyle = color;
-      ctx.globalAlpha = isHovered ? 1.0 : 0.75;
+      ctx.globalAlpha = isHovered ? 1.0 : 0.85;
       ctx.beginPath();
-      this._roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 3);
+      this._roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 4);
       ctx.fill();
 
       // Border
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = isHovered ? '#f8fafc' : 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = isHovered ? 2 : 0.5;
+      ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(0, 0, 0, 0.35)';
+      ctx.lineWidth = isHovered ? 2 : 0.75;
       ctx.stroke();
 
       // Label (only if rect is big enough)
-      if (rect.w > 40 && rect.h > 16) {
-        ctx.fillStyle = '#f8fafc';
+      if (rect.w > 36 && rect.h > 18) {
+        ctx.fillStyle = '#ffffff';
         ctx.globalAlpha = 1;
-        const fontSize = Math.max(9, Math.min(14, rect.w / 8));
-        ctx.font = `500 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
+        const fontSize = Math.max(10, Math.min(13, rect.w / 9));
+        ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
 
         const label = node.name || '';
-        const maxWidth = rect.w - 8;
+        const maxWidth = rect.w - 10;
         let displayLabel = label;
         if (ctx.measureText(label).width > maxWidth) {
           while (displayLabel.length > 2 && ctx.measureText(displayLabel + '...').width > maxWidth) {
@@ -262,13 +395,13 @@ class TreemapRenderer {
           }
           displayLabel += '...';
         }
-        ctx.fillText(displayLabel, rect.x + 4, rect.y + 4);
+        ctx.fillText(displayLabel, rect.x + 6, rect.y + 6);
 
-        // Size indicator
-        if (rect.h > 32 && rect.w > 50) {
-          ctx.fillStyle = 'rgba(248,250,252,0.6)';
-          ctx.font = `400 ${Math.max(8, fontSize - 2)}px "JetBrains Mono", monospace`;
-          ctx.fillText(`${node.size} loc`, rect.x + 4, rect.y + 4 + fontSize + 2);
+        // Size and complexity line
+        if (rect.h > 36 && rect.w > 50) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.font = `400 ${Math.max(9, fontSize - 2)}px "JetBrains Mono", monospace`;
+          ctx.fillText(`${node.size} loc • C:${node.complexity || 1}`, rect.x + 6, rect.y + 6 + fontSize + 3);
         }
       }
     }
@@ -290,13 +423,25 @@ class TreemapRenderer {
     ctx.closePath();
   }
 
+  _roundRectTop(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   _onMouseMove(e) {
     const rect = this._canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
     let found = null;
-    // Iterate in reverse to find topmost (last drawn)
+    // Check innermost rects first (reverse order)
     for (let i = this._rects.length - 1; i >= 0; i--) {
       const r = this._rects[i];
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
@@ -318,8 +463,9 @@ class TreemapRenderer {
       const hasChildren = node.children && node.children.length > 0;
       this._tooltip.innerHTML = `
         <div class="treemap-tip-name">${this._escHtml(node.name)}</div>
+        <div class="treemap-tip-row"><span>Type:</span> <span>${found.type ? found.type.toUpperCase() : 'NODE'}</span></div>
         <div class="treemap-tip-row"><span>Size:</span> <span>${node.size} lines</span></div>
-        <div class="treemap-tip-row"><span>Complexity:</span> <span>${node.complexity || '-'}</span></div>
+        <div class="treemap-tip-row"><span>Complexity:</span> <span>${node.complexity || 1}</span></div>
         ${node.fqn ? `<div class="treemap-tip-row"><span>FQN:</span> <span class="treemap-tip-mono">${this._escHtml(node.fqn)}</span></div>` : ''}
         ${hasChildren ? '<div class="treemap-tip-hint">Click to zoom in</div>' : ''}
       `;
@@ -364,7 +510,7 @@ class TreemapRenderer {
 
       const btn = document.createElement('button');
       btn.className = 'treemap-bc-btn';
-      btn.textContent = node === this._root ? 'Root' : (node.name || '?');
+      btn.textContent = node === this._root ? 'Root (All Packages)' : (node.name || '?');
       if (i === this._breadcrumb.length - 1) {
         btn.classList.add('active');
       } else {
@@ -383,7 +529,7 @@ class TreemapRenderer {
 
   _escHtml(s) {
     const el = document.createElement('span');
-    el.textContent = s;
+    el.textContent = s || '';
     return el.innerHTML;
   }
 }
