@@ -241,6 +241,89 @@ public class CallGraphAnalyzer {
         return new GraphView(rootFqn, allNodes, edges);
     }
 
+    /**
+     * Complete global view of the entire codebase call graph.
+     * Emits all indexed vertices and relationships.
+     */
+    public GraphView fullGraphView() {
+        Graph<String, DefaultEdge> g = callGraph;
+        List<GraphNode> allNodes = new ArrayList<>();
+        List<GraphEdge> edges    = new ArrayList<>();
+
+        for (String v : g.vertexSet()) {
+            int inDeg  = g.inDegreeOf(v);
+            int outDeg = g.outDegreeOf(v);
+            String role;
+            if (inDeg == 0 && outDeg > 0) {
+                role = "root";
+            } else if (inDeg > 0 && outDeg == 0) {
+                role = "callee";
+            } else if (inDeg > 0 && outDeg > 0) {
+                role = "propagator";
+            } else {
+                role = "default";
+            }
+            allNodes.add(new GraphNode(v, label(v), role, "METHOD"));
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                edges.add(new GraphEdge(v, tgt, "CALLS"));
+            }
+        }
+
+        return new GraphView("GLOBAL", allNodes, edges);
+    }
+
+    /**
+     * Architecture-level view aggregating call relationships to Class / Component level.
+     */
+    public GraphView architectureGraphView() {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Integer> classMethodCounts = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> classCalls = new LinkedHashMap<>();
+
+        for (String v : g.vertexSet()) {
+            String c = extractClassFqn(v);
+            classMethodCounts.put(c, classMethodCounts.getOrDefault(c, 0) + 1);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                String tgtClass = extractClassFqn(tgt);
+                if (!c.equals(tgtClass)) {
+                    classCalls.computeIfAbsent(c, k -> new LinkedHashMap<>())
+                              .merge(tgtClass, 1, Integer::sum);
+                }
+            }
+        }
+
+        List<GraphNode> allNodes = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : classMethodCounts.entrySet()) {
+            String cFqn = entry.getKey();
+            int dot = cFqn.lastIndexOf('.');
+            String simpleName = (dot >= 0) ? cFqn.substring(dot + 1) : cFqn;
+            allNodes.add(new GraphNode(cFqn, simpleName, "class", "CLASS"));
+        }
+
+        List<GraphEdge> edges = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : classCalls.entrySet()) {
+            String src = srcEntry.getKey();
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                String tgt = tgtEntry.getKey();
+                int count = tgtEntry.getValue();
+                edges.add(new GraphEdge(src, tgt, count > 1 ? "CALLS (" + count + ")" : "CALLS"));
+            }
+        }
+
+        return new GraphView("ARCHITECTURE", allNodes, edges);
+    }
+
+    private String extractClassFqn(String methodFqn) {
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        int dot = base.lastIndexOf('.');
+        return (dot >= 0) ? base.substring(0, dot) : base;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────────

@@ -141,6 +141,8 @@ public class CodeLensServer {
         app.get("/api/methods/{id}/callers", this::getCallers);
         app.get("/api/methods/{id}/callees", this::getCallees);
         app.get("/api/methods/{id}/graph",   this::getCallGraph);
+        app.get("/api/graph/all",            this::getFullGraph);
+        app.get("/api/graph/architecture",   this::getArchitectureGraph);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -380,6 +382,14 @@ public class CodeLensServer {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 3);
         ctx.json(callGraph.callHierarchyView(id, depth));
+    }
+
+    private void getFullGraph(Context ctx) throws Exception {
+        ctx.json(callGraph.fullGraphView());
+    }
+
+    private void getArchitectureGraph(Context ctx) throws Exception {
+        ctx.json(callGraph.architectureGraphView());
     }
 
     // ─────────────────────────────────────────────────────────────────────────

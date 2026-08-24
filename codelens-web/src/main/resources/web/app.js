@@ -80,6 +80,8 @@ const api = {
   callers:            (id, d=4)   => api.get(`/methods/${enc(id)}/callers?depth=${d}`),
   callees:            (id, d=4)   => api.get(`/methods/${enc(id)}/callees?depth=${d}`),
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
+  fullGraph:          ()          => api.get('/graph/all'),
+  architectureGraph:  ()          => api.get('/graph/architecture'),
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
@@ -1090,18 +1092,132 @@ function ensureGraph() {
     const container = qs('#graph-view');
     const tooltip   = qs('#graph-tooltip');
     App.graph       = new window.ForceGraph(container, tooltip);
+    applyAllSettings(loadSettings());
 
     App.graph.onNodeClick = async node => {
-      if      (node.type === 'METHOD') await selectMethod(node.id);
-      else if (node.type === 'FIELD')  await selectField(node.id);
+      if (App.activeGraphMode === 'fullCodebase') {
+        if (node.type === 'CLASS') {
+          try {
+            const data = await api.type(node.id);
+            renderTypeDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        } else if (node.type === 'METHOD') {
+          try {
+            const data = await api.method(node.id);
+            renderMethodDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        } else if (node.type === 'FIELD') {
+          try {
+            const data = await api.field(node.id);
+            renderFieldDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        }
+      } else {
+        if      (node.type === 'METHOD') await selectMethod(node.id);
+        else if (node.type === 'FIELD')  await selectField(node.id);
+        else if (node.type === 'CLASS')  await selectType(node.id);
+      }
     };
   }
 }
 
+/** Load and render the full codebase graph in either Architecture or Methods view. */
+async function loadWholeCodebaseGraph(level = null) {
+  switchTab('graph');
+  App.activeGraphMode = 'fullCodebase';
+  if (level) App.codebaseGraphLevel = level;
+  else if (!App.codebaseGraphLevel) App.codebaseGraphLevel = 'arch';
+
+  App.selected = null;
+  ensureGraph();
+  App.graph.clear();
+
+  // Highlight Whole Codebase button and clear depth pills
+  qsa('.depth-pill').forEach(btn => btn.classList.remove('active'));
+  const fullBtn = qs('#btn-full-codebase');
+  if (fullBtn) fullBtn.classList.add('active');
+
+  // Show Level Selector in HUD
+  const levelSel = qs('#graph-level-selector');
+  const levelDiv = qs('#graph-level-divider');
+  if (levelSel) levelSel.style.display = 'flex';
+  if (levelDiv) levelDiv.style.display = 'block';
+
+  const archBtn = qs('#btn-level-arch');
+  const methodsBtn = qs('#btn-level-methods');
+  if (archBtn && methodsBtn) {
+    archBtn.classList.toggle('active', App.codebaseGraphLevel === 'arch');
+    methodsBtn.classList.toggle('active', App.codebaseGraphLevel === 'methods');
+  }
+
+  try {
+    const isArch = (App.codebaseGraphLevel === 'arch');
+    showBanner(isArch ? 'Loading codebase architecture graph…' : 'Loading detailed method graph…');
+
+    const view = isArch ? await api.architectureGraph() : await api.fullGraph();
+
+    if (!view.nodes || view.nodes.length === 0) {
+      showGraphEmpty('No code relationships indexed yet. Run a scan first.');
+      return;
+    }
+
+    hideGraphEmpty();
+    App.graph.setData(view.nodes, view.edges);
+
+    // Update inspector view
+    renderWholeCodebaseInspector(view, isArch ? 'Architecture' : 'Detailed');
+
+    showBanner(`✓ ${isArch ? 'Architecture' : 'Detailed'} codebase graph loaded: ${view.nodes.length} nodes, ${view.edges.length} relationships`);
+  } catch (e) {
+    showGraphEmpty('Failed to load codebase graph: ' + e.message);
+  }
+}
+
+function renderWholeCodebaseInspector(view, levelName = 'Architecture') {
+  const body = qs('#right-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  const isArch = (levelName === 'Architecture');
+  renderEntityHeader('CODEBASE', isArch ? 'System Architecture' : 'Detailed Call Topology', isArch ? 'Class and Component Dependencies' : 'All Indexed Packages and Methods');
+
+  const pkgs = new Set((view.nodes || []).map(n => n.package || n.id.split('.').slice(0, -1).join('.')));
+
+  body.appendChild(metaGrid([
+    [isArch ? 'Components / Classes' : 'Total Methods', String(view.nodes ? view.nodes.length : 0)],
+    [isArch ? 'Inter-Class Calls' : 'Total Calls',       String(view.edges ? view.edges.length : 0)],
+    ['Packages / Modules',                               String(pkgs.size)],
+    ['View Level',                                       levelName],
+  ]));
+
+  const hint = createElement('div', { class: 'inspector-hint-box' });
+  hint.innerHTML = `
+    <div style="font-size:12px; color:var(--text-secondary); line-height:1.5; padding:8px 0;">
+      ${isArch
+        ? 'Displaying high-level architecture across all ' + (view.nodes ? view.nodes.length : 0) + ' classes. Click any class to view its member methods and fields in the inspector.'
+        : 'Displaying detailed method-level call graph with adaptive LOD label decluttering and intra-class constellation physics. Hover or zoom in to inspect.'}
+    </div>
+  `;
+  body.appendChild(hint);
+}
+
 /** Reload whichever graph is currently active with the current App.graphDepth. */
 async function reloadActiveGraph() {
+  if (App.activeGraphMode === 'fullCodebase') {
+    await loadWholeCodebaseGraph(App.codebaseGraphLevel);
+    return;
+  }
+  const levelSel = qs('#graph-level-selector');
+  const levelDiv = qs('#graph-level-divider');
+  if (levelSel) levelSel.style.display = 'none';
+  if (levelDiv) levelDiv.style.display = 'none';
   if (!App.selected || !App.selected.id) return;
   const id = App.selected.id;
+  const fullBtn = qs('#btn-full-codebase');
+  if (fullBtn) fullBtn.classList.remove('active');
   if (App.selected.kind === 'method') {
     if (App.activeGraphMode === 'callers')      await loadCallersGraph(id, App.graphDepth);
     else if (App.activeGraphMode === 'callees') await loadCalleesGraph(id, App.graphDepth);
@@ -1203,6 +1319,39 @@ async function loadCalleesGraph(methodId, depth = App.graphDepth) {
   } catch (e) {
     showGraphEmpty('Failed to load callees graph: ' + e.message);
   }
+}
+
+/** Format package FQN into clean module name taking into account prefix strip settings. */
+function formatModuleFromPackage(pkg) {
+  if (!pkg) return 'Core';
+  const settings = loadSettings();
+  const prefixStr = settings.packagePrefixStrip || '';
+  let res = pkg;
+  // If pkg is a full type or method FQN, extract the package part
+  const parenIdx = res.indexOf('(');
+  if (parenIdx !== -1) res = res.substring(0, parenIdx);
+  const parts = res.split('.');
+  for (let i = 0; i < parts.length; i++) {
+    if (/^[A-Z]/.test(parts[i])) {
+      res = parts.slice(0, i).join('.') || 'default';
+      break;
+    }
+  }
+  if (prefixStr) {
+    const prefixes = prefixStr.split(',').map(s => s.trim()).filter(Boolean);
+    for (const p of prefixes) {
+      if (res.startsWith(p)) {
+        const stripped = res.substring(p.length);
+        res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
+        break;
+      }
+    }
+  }
+  if (!res || res === 'default') return 'Core';
+  if (/^[a-z]+$/i.test(res)) {
+    return res.charAt(0).toUpperCase() + res.slice(1);
+  }
+  return res;
 }
 
 /** Load and render direct field impact. */
@@ -1315,6 +1464,7 @@ function renderTypeDetail(data) {
 
   // Metadata grid
   body.appendChild(metaGrid([
+    ['Module',    formatModuleFromPackage(type.packageFqn)],
     ['Package',   type.packageFqn || '-'],
     ['Kind',      type.kind],
     ['Modifiers', type.modifiers || '-'],
@@ -1468,6 +1618,7 @@ function renderMethodDetail(data) {
 
   // Metadata grid
   body.appendChild(metaGrid([
+    ['Module',     formatModuleFromPackage(method.packageFqn || method.declaringTypeFqn)],
     ['Class',      shortFqn(method.declaringTypeFqn)],
     ['Returns',    method.returnType || 'void'],
     ['Modifiers',  method.modifiers || '-'],
@@ -1961,6 +2112,28 @@ async function init() {
 
   // Pre-load git branch metadata in the status footer
   updateFooterGitBranch();
+
+  // Whole codebase graph button
+  const fullCodebaseBtn = qs('#btn-full-codebase');
+  if (fullCodebaseBtn) {
+    fullCodebaseBtn.addEventListener('click', () => loadWholeCodebaseGraph(App.codebaseGraphLevel || 'arch'));
+  }
+
+  // Level selector buttons
+  const archLevelBtn = qs('#btn-level-arch');
+  if (archLevelBtn) {
+    archLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('arch'));
+  }
+  const methodsLevelBtn = qs('#btn-level-methods');
+  if (methodsLevelBtn) {
+    methodsLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('methods'));
+  }
+
+  // Expose global handles for testing and automation
+  window.App = App;
+  window.selectMethod = selectMethod;
+  window.loadWholeCodebaseGraph = loadWholeCodebaseGraph;
+  window.api = api;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2808,6 +2981,7 @@ const SETTINGS_DEFAULTS = {
   defaultDepth: 3,
   autoFit: true,
   showHulls: true,
+  packagePrefixStrip: '',
 };
 
 const SETTINGS_STORAGE_KEY = 'codelens_settings';
@@ -2865,6 +3039,7 @@ function applyAllSettings(settings) {
       showLabels: settings.showLabels,
       showGrid: settings.showGrid,
       showHulls: settings.showHulls,
+      packagePrefixStrip: settings.packagePrefixStrip || '',
     });
   }
 
@@ -2901,6 +3076,10 @@ function syncSettingsUI(settings) {
   // Depth dropdown
   const depthSel = qs('#set-default-depth');
   if (depthSel) depthSel.value = settings.defaultDepth;
+
+  // Package prefix strip input
+  const prefixInput = qs('#set-package-prefix-strip');
+  if (prefixInput) prefixInput.value = settings.packagePrefixStrip || '';
 }
 
 function openSettings() {
@@ -2995,6 +3174,17 @@ function initSettings() {
   wireToggle('set-grid', 'showGrid');
   wireToggle('set-auto-fit', 'autoFit');
   wireToggle('set-hulls', 'showHulls');
+
+  // Wire package prefix strip input
+  const prefixInput = qs('#set-package-prefix-strip');
+  if (prefixInput) {
+    prefixInput.addEventListener('input', () => {
+      const s = loadSettings();
+      s.packagePrefixStrip = prefixInput.value.trim();
+      saveSettings(s);
+      applyAllSettings(s);
+    });
+  }
 
   // Wire depth dropdown
   const depthSel = qs('#set-default-depth');

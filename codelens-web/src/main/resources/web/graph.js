@@ -110,13 +110,14 @@ function expandHull(hullPoints, pad = 32) {
 }
 
 function hexToRgba(hex, alpha = 1) {
-  let c = hex.replace('#', '');
+  let c = String(hex || '#ffffff').replace('#', '');
   if (c.length === 3) c = c.split('').map(x => x + x).join('');
   const num = parseInt(c, 16);
+  if (isNaN(num)) return `rgba(255, 255, 255, ${alpha})`;
   const r = (num >> 16) & 255;
   const g = (num >> 8) & 255;
   const b = num & 255;
-  return `rgba(${r}, ${g}, ${b})`;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function lerpColor(c1, c2, factor) {
@@ -172,6 +173,7 @@ class ForceGraph {
     this._showMinimap   = true;
     this._showLabels    = true;
     this._showGrid      = true;
+    this._packagePrefixStrip = '';
 
     // Selection & Highlight
     this._hoveredNode   = null;
@@ -205,6 +207,77 @@ class ForceGraph {
     this._startLoop();
   }
 
+  /** Extract package/module, declaring class, and member name from a Java FQN. */
+  _extractPackageAndClass(fqn, nodeType) {
+    if (!fqn) return { pkg: 'default', className: '', memberName: '' };
+
+    const parenIdx = fqn.indexOf('(');
+    const sigPart = parenIdx !== -1 ? fqn.substring(0, parenIdx) : fqn;
+    const parts = sigPart.split('.');
+
+    if (parts.length <= 1) {
+      return { pkg: 'default', className: parts[0] || '', memberName: '' };
+    }
+
+    // Find class segment (first segment starting with uppercase letter)
+    let classIdx = -1;
+    for (let i = 0; i < parts.length; i++) {
+      if (/^[A-Z]/.test(parts[i])) {
+        classIdx = i;
+        break;
+      }
+    }
+
+    let pkg = 'default';
+    let className = '';
+    let memberName = '';
+
+    if (classIdx !== -1) {
+      pkg = parts.slice(0, classIdx).join('.') || 'default';
+      className = parts[classIdx];
+      memberName = parts.slice(classIdx + 1).join('.');
+    } else {
+      if (nodeType === 'METHOD' || parenIdx !== -1) {
+        if (parts.length >= 3) {
+          pkg = parts.slice(0, -2).join('.');
+          className = parts[parts.length - 2];
+          memberName = parts[parts.length - 1];
+        } else if (parts.length === 2) {
+          pkg = 'default';
+          className = parts[0];
+          memberName = parts[1];
+        }
+      } else {
+        pkg = parts.slice(0, -1).join('.') || 'default';
+        className = parts[parts.length - 1];
+      }
+    }
+
+    return { pkg, className, memberName };
+  }
+
+  /** Format a package name by stripping configured prefix (e.g. "com.example.") into a clean Module name. */
+  _formatPackageLabel(pkg) {
+    if (!pkg || pkg === 'default') return 'Core';
+    const prefixStr = this._packagePrefixStrip || '';
+    let res = pkg;
+    if (prefixStr) {
+      const prefixes = prefixStr.split(',').map(s => s.trim()).filter(Boolean);
+      for (const p of prefixes) {
+        if (res.startsWith(p)) {
+          const stripped = res.substring(p.length);
+          res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
+          break;
+        }
+      }
+    }
+    if (!res) return 'Core';
+    if (/^[a-z]+$/i.test(res)) {
+      return res.charAt(0).toUpperCase() + res.slice(1);
+    }
+    return res;
+  }
+
   /* ── Public Data & Control API ───────────────────────────────────────────── */
 
   setData(nodes, edges) {
@@ -230,18 +303,13 @@ class ForceGraph {
       if (this._connectedMap.has(e.target)) this._connectedMap.get(e.target).add(e.source);
     }
 
-    // 2. Detect & assign Graphify communities (by Java package)
+    // 2. Detect & assign Graphify communities (by Java package / module)
     this._communityMap.clear();
     const pkgCounts = {};
     for (const n of nodes) {
-      let pkg = n.package || '';
-      if (!pkg && n.id) {
-        const parts = n.id.split('.');
-        if (parts.length > 1) parts.pop();
-        pkg = parts.join('.');
-      }
-      if (!pkg) pkg = 'default';
-      pkgCounts[pkg] = (pkgCounts[pkg] || 0) + 1;
+      const { pkg } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
+      const finalPkg = n.package || pkg || 'default';
+      pkgCounts[finalPkg] = (pkgCounts[finalPkg] || 0) + 1;
     }
 
     const sortedPkgs = Object.keys(pkgCounts).sort((a, b) => pkgCounts[b] - pkgCounts[a]);
@@ -249,7 +317,8 @@ class ForceGraph {
       const color = GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
       const comm = {
         cid: idx,
-        label: pkg === 'default' ? 'Core' : pkg,
+        rawLabel: pkg,
+        label: this._formatPackageLabel(pkg),
         color,
         count: pkgCounts[pkg],
         nodes: new Set(),
@@ -259,36 +328,50 @@ class ForceGraph {
       return comm;
     });
 
-    // 3. Initialize nodes with positions spread generously in space
-    const spread = Math.max(cx, cy) * 0.75 + Math.sqrt(nodes.length) * 55;
+    // 3. Initialize nodes with positions spread by class constellations
+    const uniqueClasses = Array.from(new Set(nodes.map(n => {
+      const { className } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
+      return className || 'default';
+    })));
+    const classAngles = {};
+    uniqueClasses.forEach((c, idx) => {
+      classAngles[c] = (idx / Math.max(uniqueClasses.length, 1)) * Math.PI * 2;
+    });
+
+    const isLargeSet = nodes.length > 25;
+    const spread = Math.max(cx, cy) * (isLargeSet ? 0.95 : 0.75) + Math.sqrt(nodes.length) * (isLargeSet ? 70 : 55);
 
     this._nodes = nodes.map((n, i) => {
-      let pkg = n.package || '';
-      if (!pkg && n.id) {
-        const parts = n.id.split('.');
-        if (parts.length > 1) parts.pop();
-        pkg = parts.join('.');
-      }
-      if (!pkg) pkg = 'default';
-      const comm = this._communityMap.get(pkg) || this._communities[0];
+      const { pkg, className, memberName } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
+      const finalPkg = n.package || pkg || 'default';
+      const comm = this._communityMap.get(finalPkg) || this._communities[0];
       comm.nodes.add(n.id);
 
       const deg = (inDegrees[n.id] || 0) + (outDegrees[n.id] || 0);
-      const angle = (i / Math.max(nodes.length, 1)) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-      const rDist = (spread * 0.5) + (Math.random() * spread * 0.5);
+      const cAngle = classAngles[className || 'default'] !== undefined
+        ? classAngles[className || 'default']
+        : ((i / Math.max(nodes.length, 1)) * Math.PI * 2);
+      const cCenterDist = isLargeSet ? spread * 0.55 : spread * 0.35;
+      const cX = cx + Math.cos(cAngle) * cCenterDist;
+      const cY = cy + Math.sin(cAngle) * cCenterDist;
+
+      const subAngle = Math.random() * Math.PI * 2;
+      const subDist = (Math.random() * (isLargeSet ? 120 : 60));
 
       return {
         ...n,
-        package: pkg,
+        package: finalPkg,
+        className: className,
+        memberName: memberName,
         community: comm.cid,
         communityLabel: comm.label,
         communityColor: comm.color,
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
-        radius: PHYSICS.nodeBaseRadius + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 3 : 0),
-        x: cx + Math.cos(angle) * rDist,
-        y: cy + Math.sin(angle) * rDist,
+        radius: (isLargeSet && n.type !== 'CLASS' ? PHYSICS.nodeBaseRadius - 1 : PHYSICS.nodeBaseRadius) + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 3 : 0) + (n.type === 'CLASS' ? 5 : 0),
+        x: cX + Math.cos(subAngle) * subDist,
+        y: cY + Math.sin(subAngle) * subDist,
         vx: 0,
         vy: 0,
         _fx: 0,
@@ -497,19 +580,31 @@ class ForceGraph {
       tgt._fx -= fx; tgt._fy -= fy;
     }
 
-    // 3. Subtle community cohesion force
+    // 3. Subtle community cohesion force + Class Constellation Cohesion
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        if (nodes[i].community !== nodes[j].community) continue;
-        const dx = nodes[j].x - nodes[i].x;
-        const dy = nodes[j].y - nodes[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-        if (dist > PHYSICS.springLen * 1.6) {
-          const f = (dist - PHYSICS.springLen) * PHYSICS.clusterK;
-          const fx = (dx / dist) * f;
-          const fy = (dy / dist) * f;
-          nodes[i]._fx += fx; nodes[i]._fy += fy;
-          nodes[j]._fx -= fx; nodes[j]._fy -= fy;
+        const ni = nodes[i], nj = nodes[j];
+        if (ni.community === nj.community) {
+          const dx = nj.x - ni.x;
+          const dy = nj.y - ni.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+
+          // Intra-class constellation cohesion
+          if (ni.className && ni.className === nj.className) {
+            if (dist > PHYSICS.springLen * 0.7) {
+              const f = (dist - PHYSICS.springLen * 0.7) * (PHYSICS.springK * 0.45);
+              const fx = (dx / dist) * f;
+              const fy = (dy / dist) * f;
+              ni._fx += fx; ni._fy += fy;
+              nj._fx -= fx; nj._fy -= fy;
+            }
+          } else if (dist > PHYSICS.springLen * 1.6) {
+            const f = (dist - PHYSICS.springLen) * PHYSICS.clusterK;
+            const fx = (dx / dist) * f;
+            const fy = (dy / dist) * f;
+            ni._fx += fx; ni._fy += fy;
+            nj._fx -= fx; nj._fy -= fy;
+          }
         }
       }
     }
@@ -1035,6 +1130,8 @@ class ForceGraph {
   _drawNodes(ctx) {
     const activeNode = this._hoveredNode || this._selectedNode;
     const connectedSet = activeNode ? this._connectedMap.get(activeNode.id) : null;
+    const isDenseGraph = this._nodes.length > 25;
+    const isZoomedIn = this._sc >= 1.25;
 
     for (const node of this._nodes) {
       if (this._hiddenCommunities.has(node.community)) continue;
@@ -1046,11 +1143,21 @@ class ForceGraph {
         opacity = (isSelf || isNeighbor) ? 1.0 : 0.18;
       }
 
-      this._drawSingleNode(ctx, node, opacity, node === this._hoveredNode, node === this._selectedNode);
+      const isHovered = (node === this._hoveredNode);
+      const isSelected = (node === this._selectedNode);
+      const isConnected = connectedSet && connectedSet.has(node.id);
+
+      // Semantic LOD: in dense graphs, only draw text label for active/neighbor/focal nodes unless zoomed in
+      let shouldDrawLabel = this._showLabels;
+      if (shouldDrawLabel && isDenseGraph && !isZoomedIn) {
+        shouldDrawLabel = isHovered || isSelected || isConnected || node.role === 'root' || node.role === 'class' || (node.degree >= 5);
+      }
+
+      this._drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel);
     }
   }
 
-  _drawSingleNode(ctx, node, opacity, isHovered, isSelected) {
+  _drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel = true) {
     const r = node.radius;
     const x = node.x;
     const y = node.y;
@@ -1131,8 +1238,8 @@ class ForceGraph {
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, x, y);
 
-    // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels)
-    if (!this._showLabels) { ctx.restore(); return; }
+    // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels & shouldDrawLabel)
+    if (!this._showLabels || !shouldDrawLabel) { ctx.restore(); return; }
     const maxChars = 22;
     const fullLabel = node.label || node.id.split('.').pop() || '';
     const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
@@ -1464,21 +1571,38 @@ class ForceGraph {
     }
 
     if (commEl) {
-      commEl.textContent = node.communityLabel;
+      commEl.textContent = this._formatPackageLabel(node.package || node.communityLabel);
       commEl.style.color = commColor;
-      commEl.style.background = hexToRgba(commColor, 0.12);
-      commEl.style.borderColor = hexToRgba(commColor, 0.35);
+      commEl.style.background = hexToRgba(commColor, 0.22);
+      commEl.style.borderColor = hexToRgba(commColor, 0.55);
+      commEl.style.fontWeight = '700';
+    }
+
+    const classEl = document.getElementById('node-card-class');
+    const classRow = document.getElementById('node-card-class-row');
+    if (classEl && classRow) {
+      if (node.className) {
+        classEl.textContent = node.className;
+        classEl.style.color = tColor;
+        classEl.style.background = hexToRgba(tColor, 0.22);
+        classEl.style.borderColor = hexToRgba(tColor, 0.55);
+        classEl.style.fontWeight = '700';
+        classRow.style.display = 'flex';
+      } else {
+        classRow.style.display = 'none';
+      }
     }
 
     if (typeEl) {
       typeEl.textContent = nodeType;
       typeEl.style.color = tColor;
-      typeEl.style.background = hexToRgba(tColor, 0.12);
-      typeEl.style.borderColor = hexToRgba(tColor, 0.35);
+      typeEl.style.background = hexToRgba(tColor, 0.22);
+      typeEl.style.borderColor = hexToRgba(tColor, 0.55);
+      typeEl.style.fontWeight = '700';
     }
 
     if (degEl) {
-      degEl.innerHTML = `<span style="color:#38bdf8">${node.inDegree} in</span> · <span style="color:#f43f5e">${node.outDegree} out</span> (<span style="color:#94a3b8">${node.degree} total</span>)`;
+      degEl.innerHTML = `<span style="color:#0284c7; font-weight:700">${node.inDegree} in</span> · <span style="color:#dc2626; font-weight:700">${node.outDegree} out</span> (<span style="color:var(--text-secondary); font-weight:600">${node.degree} total</span>)`;
     }
 
     // Neighbors list
@@ -1498,9 +1622,9 @@ class ForceGraph {
           const nTColor = typeColors[nType] || nColor;
 
           return `
-            <button class="neighbor-link" style="border-left-color:${nColor}; border-color:${hexToRgba(nColor, 0.35)}" data-nid="${nid}">
+            <button class="neighbor-link" style="border-left-color:${nColor}; border-color:${hexToRgba(nColor, 0.45)}" data-nid="${nid}">
               <span class="neighbor-link-label">${nLabel}</span>
-              <span class="neighbor-link-kind" style="background:${hexToRgba(nTColor, 0.18)}; color:${nTColor}; border:1px solid ${hexToRgba(nTColor, 0.45)}">${nGlyph}</span>
+              <span class="neighbor-link-kind" style="background:${hexToRgba(nTColor, 0.22)}; color:${nTColor}; border:1px solid ${hexToRgba(nTColor, 0.55)}">${nGlyph}</span>
             </button>
           `;
         }).join('');
@@ -1814,14 +1938,14 @@ class ForceGraph {
       ? `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);">♨ Churn: ${heatVal}</span>`
       : '';
 
-    const roleName = node.role ? node.role.toUpperCase() : 'NODE';
+    const roleName = node.role ? String(node.role).toUpperCase() : 'NODE';
     const roleColors = {
       ROOT:       '#3b82f6',
-      CALLER:     '#38bdf8',
-      CALLEE:     '#10b981',
-      PROPAGATOR: '#f59e0b',
-      WRITER:     '#ef4444',
-      READER:     '#14b8a6',
+      CALLER:     '#0284c7',
+      CALLEE:     '#059669',
+      PROPAGATOR: '#d97706',
+      WRITER:     '#dc2626',
+      READER:     '#0891b2',
     };
     const rColor = roleColors[roleName] || '#64748b';
 
@@ -1832,20 +1956,21 @@ class ForceGraph {
       <div class="tt-accent-strip" style="background:linear-gradient(90deg, ${commColor}, ${tColor})"></div>
       <div class="tt-inner">
         <div class="tt-header-row">
-          <span class="tt-badge-icon" style="background:${hexToRgba(tColor, 0.2)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.5)}">${tGlyph}</span>
+          <span class="tt-badge-icon" style="background:${hexToRgba(tColor, 0.22)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.55)}">${tGlyph}</span>
           <span class="tt-name-text" title="${node.label || node.id}">${node.label || node.id.split('.').pop()}</span>
         </div>
         <div class="tt-tags-row">
-          <span class="tt-tag-pill" style="background:${hexToRgba(commColor, 0.16)}; color:${commColor}; border:1px solid ${hexToRgba(commColor, 0.4)}">${node.package || 'default'}</span>
-          <span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.14)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.35)}">${nodeType}</span>
-          <span class="tt-tag-pill" style="background:${hexToRgba(rColor, 0.15)}; color:${rColor}; border:1px solid ${hexToRgba(rColor, 0.4)}">${roleName}</span>
+          <span class="tt-tag-pill" style="background:${hexToRgba(commColor, 0.22)}; color:${commColor}; border:1px solid ${hexToRgba(commColor, 0.55)}; font-weight:700" title="Module: ${this._formatPackageLabel(node.package || 'default')}">📦 ${this._formatPackageLabel(node.package || 'default')}</span>
+          ${node.className ? `<span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.22)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.55)}; font-weight:700" title="Class: ${node.className}">🏷️ ${node.className}</span>` : ''}
+          <span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.2)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.5)}">${nodeType}</span>
+          <span class="tt-tag-pill" style="background:${hexToRgba(rColor, 0.2)}; color:${rColor}; border:1px solid ${hexToRgba(rColor, 0.5)}">${roleName}</span>
           ${heatSnippet}
         </div>
         <div class="tt-stats-row">
-          <span>Connections: <strong style="color:#f8fafc">${node.degree || 0}</strong></span>
-          <span style="display:flex; gap:6px;">
-            <span style="color:#38bdf8">↓ ${node.inDegree || 0} in</span>
-            <span style="color:#34d399">↑ ${node.outDegree || 0} out</span>
+          <span>Connections: <strong style="color:var(--text-primary); font-weight:700">${node.degree || 0}</strong></span>
+          <span style="display:flex; gap:8px;">
+            <span style="color:#0284c7; font-weight:700">↓ ${node.inDegree || 0} in</span>
+            <span style="color:#059669; font-weight:700">↑ ${node.outDegree || 0} out</span>
           </span>
         </div>
       </div>
@@ -1911,6 +2036,22 @@ class ForceGraph {
     if (s.showLabels !== undefined)      this._showLabels       = s.showLabels;
     if (s.showGrid !== undefined)        this._showGrid         = s.showGrid;
     if (s.showHulls !== undefined)       this._showHulls        = s.showHulls;
+    if (s.packagePrefixStrip !== undefined) {
+      const changed = this._packagePrefixStrip !== s.packagePrefixStrip;
+      this._packagePrefixStrip = s.packagePrefixStrip;
+      if (changed && this._communities && this._communities.length > 0) {
+        for (const comm of this._communities) {
+          comm.label = this._formatPackageLabel(comm.rawLabel || comm.label);
+        }
+        for (const node of this._nodes) {
+          const comm = this._communityMap.get(node.package) || this._communities[node.community || 0];
+          if (comm) {
+            node.communityLabel = comm.label;
+          }
+        }
+        this._renderCommunityLegend();
+      }
+    }
   }
 }
 
