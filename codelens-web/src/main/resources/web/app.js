@@ -2341,6 +2341,9 @@ async function init() {
   // Initialize settings & themes
   initSettings();
 
+  // Initialize report export hub
+  initExportHub();
+
   // Initialize code review controls
   initReviewControls();
 
@@ -3450,3 +3453,158 @@ function initSettings() {
     });
   }
 }
+
+// ── Export Reports Hub ───────────────────────────────────────────────────────
+const ExportHub = {
+  activeType: 'architecture',
+  activeFormat: 'markdown',
+  cachedContent: '',
+  loading: false,
+
+  open(defaultType = 'architecture', defaultFormat = 'markdown') {
+    const modal = qs('#export-modal');
+    if (!modal) return;
+
+    ExportHub.activeType = defaultType;
+    ExportHub.activeFormat = defaultFormat;
+    ExportHub.syncUI();
+    ExportHub.fetchPreview();
+
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  },
+
+  close() {
+    const modal = qs('#export-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  },
+
+  syncUI() {
+    // Highlight active report card
+    qsa('.export-type-card').forEach(c => {
+      c.classList.toggle('active', c.dataset.report === ExportHub.activeType);
+    });
+
+    // Update format pills
+    qsa('.export-format-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.format === ExportHub.activeFormat);
+    });
+  },
+
+  async fetchPreview() {
+    const codeEl = qs('#export-preview-code');
+    const frameEl = qs('#export-preview-frame');
+    const statusEl = qs('#export-preview-status');
+    if (!codeEl || !frameEl) return;
+
+    if (statusEl) statusEl.textContent = 'Generating report…';
+
+    try {
+      ExportHub.loading = true;
+      const res = await fetch(`/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`);
+      const text = await res.text();
+      ExportHub.cachedContent = text;
+
+      if (ExportHub.activeFormat === 'html') {
+        codeEl.style.display = 'none';
+        frameEl.style.display = 'block';
+        frameEl.srcdoc = text;
+      } else {
+        frameEl.style.display = 'none';
+        codeEl.style.display = 'block';
+        codeEl.textContent = text;
+      }
+
+      if (statusEl) statusEl.textContent = `Generated (${(text.length / 1024).toFixed(1)} KB)`;
+    } catch (err) {
+      if (codeEl) {
+        frameEl.style.display = 'none';
+        codeEl.style.display = 'block';
+        codeEl.textContent = 'Error generating report: ' + err.message;
+      }
+      if (statusEl) statusEl.textContent = 'Error';
+    } finally {
+      ExportHub.loading = false;
+    }
+  },
+
+  download() {
+    const ext = ExportHub.activeFormat === 'markdown' ? 'md' : ExportHub.activeFormat;
+    const url = `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `codelens-${ExportHub.activeType}-report.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showBanner(`Downloading codelens-${ExportHub.activeType}-report.${ext}…`);
+  },
+
+  copy() {
+    if (!ExportHub.cachedContent) return;
+    navigator.clipboard.writeText(ExportHub.cachedContent).then(() => {
+      const copyBtn = qs('#btn-export-copy');
+      if (copyBtn) {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✔ Copied!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 2000);
+      }
+      showBanner('Report copied to clipboard!');
+    }).catch(err => {
+      showBanner('Failed to copy: ' + err.message);
+    });
+  },
+
+  openTab() {
+    const url = `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
+    window.open(url, '_blank');
+  }
+};
+
+function initExportHub() {
+  const exportBtn = qs('#export-btn');
+  if (exportBtn) exportBtn.addEventListener('click', () => ExportHub.open('architecture', 'markdown'));
+
+  const exportReviewBtn = qs('#export-review-report-btn');
+  if (exportReviewBtn) exportReviewBtn.addEventListener('click', () => ExportHub.open('review', 'markdown'));
+
+  const closeBtn = qs('#export-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', () => ExportHub.close());
+
+  const modal = qs('#export-modal');
+  if (modal) {
+    modal.addEventListener('click', e => { if (e.target === modal) ExportHub.close(); });
+  }
+
+  qsa('.export-type-card').forEach(card => {
+    card.addEventListener('click', () => {
+      ExportHub.activeType = card.dataset.report;
+      // Default to csv if metrics, otherwise keep or switch to markdown
+      if (ExportHub.activeType === 'metrics' && ExportHub.activeFormat === 'html') {
+        ExportHub.activeFormat = 'csv';
+      }
+      ExportHub.syncUI();
+      ExportHub.fetchPreview();
+    });
+  });
+
+  qsa('.export-format-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ExportHub.activeFormat = btn.dataset.format;
+      ExportHub.syncUI();
+      ExportHub.fetchPreview();
+    });
+  });
+
+  const downloadBtn = qs('#btn-export-download');
+  if (downloadBtn) downloadBtn.addEventListener('click', () => ExportHub.download());
+
+  const copyBtn = qs('#btn-export-copy');
+  if (copyBtn) copyBtn.addEventListener('click', () => ExportHub.copy());
+
+  const openBtn = qs('#btn-export-open');
+  if (openBtn) openBtn.addEventListener('click', () => ExportHub.openTab());
+}
+

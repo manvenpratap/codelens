@@ -70,6 +70,7 @@ public class CodeLensServer {
     private final CallGraphAnalyzer  callGraph;
     private final FieldImpactAnalyzer fieldImpact;
     private final CodeReviewEngine   codeReviewEngine;
+    private final ReportService      reportService;
     private final GitBlameService    gitBlameService;
     private final int                port;
 
@@ -98,6 +99,7 @@ public class CodeLensServer {
         this.callGraph             = new CallGraphAnalyzer();
         this.fieldImpact           = new FieldImpactAnalyzer();
         this.codeReviewEngine      = new CodeReviewEngine();
+        this.reportService         = new ReportService(this.callGraph, this.fieldImpact, this.codeReviewEngine);
         this.gitBlameService       = new GitBlameService();
         this.port                  = port;
     }
@@ -171,6 +173,12 @@ public class CodeLensServer {
         app.post("/api/git/validate",        this::validateGitRepo);
         app.post("/api/git/analyze",         this::analyzeGit);
         app.get("/api/git/status",           this::getGitStatus);
+
+        // ── Reports & Exports ─────────────────────────────────────────────────
+        app.get("/api/reports/architecture", this::getArchitectureReport);
+        app.get("/api/reports/review",       this::getReviewReport);
+        app.get("/api/reports/metrics",      this::getMetricsReport);
+        app.get("/api/reports/download",     this::downloadReport);
 
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
@@ -857,6 +865,97 @@ public class CodeLensServer {
             ctx.json(Map.of("success", true, "path", path));
         } catch (Exception e) {
             ctx.status(500).json(Map.of("error", "Failed to write file: " + e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Reports & Exports
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void getArchitectureReport(Context ctx) {
+        try {
+            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.ArchitectureReportData data = reportService.buildArchitectureData(types, methods, fields, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderArchitectureHtml(data));
+            } else if ("json".equals(format)) {
+                ctx.json(data);
+            } else {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderArchitectureMarkdown(data));
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate architecture report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate architecture report: " + e.getMessage()));
+        }
+    }
+
+    private void getReviewReport(Context ctx) {
+        try {
+            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+            List<CodeType> types = dao.findAllTypes();
+            ReportService.ReviewReportData data = reportService.buildReviewReportData(types);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderReviewHtml(data));
+            } else if ("json".equals(format)) {
+                ctx.json(data);
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderReviewCsv(data));
+            } else {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderReviewMarkdown(data));
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate review report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate review report: " + e.getMessage()));
+        }
+    }
+
+    private void getMetricsReport(Context ctx) {
+        try {
+            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("csv").toLowerCase();
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            ReportService.MetricsReportData data = reportService.buildMetricsData(types, methods, fields);
+
+            if ("json".equals(format)) {
+                ctx.json(data);
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderMetricsMarkdown(data));
+            } else {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderMetricsCsv(data));
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate metrics report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate metrics report: " + e.getMessage()));
+        }
+    }
+
+    private void downloadReport(Context ctx) {
+        try {
+            String type = ctx.queryParamAsClass("type", String.class).getOrDefault("architecture").toLowerCase();
+            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+
+            String ext = format.equals("markdown") ? "md" : format;
+            String filename = "codelens-" + type + "-report." + ext;
+            ctx.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+
+            if ("review".equals(type)) {
+                getReviewReport(ctx);
+            } else if ("metrics".equals(type)) {
+                getMetricsReport(ctx);
+            } else {
+                getArchitectureReport(ctx);
+            }
+        } catch (Exception e) {
+            log.error("Failed to download report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to download report: " + e.getMessage()));
         }
     }
 }

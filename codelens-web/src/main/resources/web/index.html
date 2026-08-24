@@ -53,6 +53,9 @@
       <button id="scan-btn" class="btn-primary" aria-label="Start source scan" title="Start AST parsing and repository indexation">
         Scan
       </button>
+      <button id="export-btn" class="btn-ghost" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
+        📥 Export
+      </button>
       <button id="help-btn" class="btn-ghost" aria-label="Open Feature & User Guide" title="Feature Guide & Documentation (?)">
         Guide
       </button>
@@ -448,6 +451,9 @@
           <button id="run-review-btn" class="btn-primary review-run-btn" title="Run the code review engine">
             Run Review
           </button>
+          <button id="export-review-report-btn" class="btn-ghost" title="Export full codebase review audit report" style="margin-left:auto;">
+            📥 Export Report
+          </button>
         </div>
         <div id="review-snippet-area" class="review-snippet-area" style="display:none">
           <textarea id="review-snippet-input" class="review-snippet-input"
@@ -837,6 +843,88 @@
         <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     EXPORT REPORTS MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="export-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="export-modal-title">
+  <div class="modal-dialog export-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon">📥</span>
+        <div>
+          <h2 id="export-modal-title">Codebase Reports &amp; Export Hub</h2>
+          <p class="modal-subtitle">Generate and export comprehensive architecture, code quality, and inventory reports</p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="export-modal-close" aria-label="Close Export Hub">✕</button>
+    </div>
+    <div class="modal-body export-body">
+
+      <!-- Report Type Selector -->
+      <section class="export-section">
+        <label class="export-label">1. Select Report Type</label>
+        <div class="export-type-grid">
+          <div class="export-type-card active" data-report="architecture">
+            <div class="export-type-icon">🏛️</div>
+            <div class="export-type-meta">
+              <div class="export-type-title">Architecture &amp; Coupling</div>
+              <div class="export-type-desc">Coupling metrics ($Ca/Ce/I$), circular cycles, high blast-radius methods &amp; health score.</div>
+            </div>
+          </div>
+          <div class="export-type-card" data-report="review">
+            <div class="export-type-icon">🛡️</div>
+            <div class="export-type-meta">
+              <div class="export-type-title">Code Quality &amp; Security Audit</div>
+              <div class="export-type-desc">Comprehensive review of 32 AST &amp; graph rules across all indexed classes with remediation notes.</div>
+            </div>
+          </div>
+          <div class="export-type-card" data-report="metrics">
+            <div class="export-type-icon">📊</div>
+            <div class="export-type-meta">
+              <div class="export-type-title">Codebase Inventory &amp; Metrics</div>
+              <div class="export-type-desc">Full metrics breakdown of all classes, methods, fields, lines of code &amp; cyclomatic complexity.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Format Selector -->
+      <section class="export-section">
+        <label class="export-label">2. Select Export Format</label>
+        <div class="export-format-pills" id="export-format-pills">
+          <button class="export-format-btn active" data-format="markdown">Markdown (.md)</button>
+          <button class="export-format-btn" data-format="html">Standalone HTML (.html)</button>
+          <button class="export-format-btn" data-format="json">Structured JSON (.json)</button>
+          <button class="export-format-btn" data-format="csv">Tabular CSV (.csv)</button>
+        </div>
+      </section>
+
+      <!-- Live Preview -->
+      <section class="export-section">
+        <div class="export-preview-header">
+          <label class="export-label">3. Live Report Preview</label>
+          <span class="export-preview-status" id="export-preview-status">Ready</span>
+        </div>
+        <div class="export-preview-container">
+          <pre id="export-preview-code" class="export-preview-code">Loading preview…</pre>
+          <iframe id="export-preview-frame" class="export-preview-frame" style="display:none;" title="HTML Report Preview"></iframe>
+        </div>
+      </section>
+
+    </div>
+    <div class="modal-footer export-footer">
+      <div class="export-footer-left">
+        <span class="export-hint-text">💡 HTML reports are standalone with dark mode &amp; print styling for PDF generation.</span>
+      </div>
+      <div class="export-footer-actions">
+        <button class="btn btn-ghost" id="btn-export-copy">📋 Copy to Clipboard</button>
+        <button class="btn btn-ghost" id="btn-export-open">↗ Open in Tab / Print</button>
+        <button class="btn btn-primary" id="btn-export-download">📥 Download Report</button>
+      </div>
     </div>
   </div>
 </div>
