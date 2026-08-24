@@ -92,19 +92,23 @@ class DSMRenderer {
       return dot >= 0 ? c.substring(dot + 1) : c;
     });
 
-    // Header row with rotated column labels
+    // Header row with vertical column labels
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    headerRow.appendChild(document.createElement('th')); // corner cell
+    const cornerCell = document.createElement('th');
+    cornerCell.className = 'dsm-corner-cell';
+    headerRow.appendChild(cornerCell);
+
     for (let j = 0; j < n; j++) {
       const th = document.createElement('th');
       th.className = 'dsm-col-header';
       th.dataset.col = j;
-      const span = document.createElement('span');
-      span.className = 'dsm-col-label';
-      span.textContent = shortLabels[j];
-      span.title = classes[j];
-      th.appendChild(span);
+      th.title = `[${j + 1}] ${classes[j]}`;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'dsm-col-text-wrap';
+      wrap.innerHTML = `<span class="dsm-idx">${j + 1}</span><span class="dsm-col-label">${this._escHtml(shortLabels[j])}</span>`;
+      th.appendChild(wrap);
       headerRow.appendChild(th);
     }
     thead.appendChild(headerRow);
@@ -133,8 +137,8 @@ class DSMRenderer {
       // Row header
       const rowHeader = document.createElement('td');
       rowHeader.className = 'dsm-row-header';
-      rowHeader.textContent = shortLabels[i];
-      rowHeader.title = classes[i];
+      rowHeader.title = `[${i + 1}] ${classes[i]}`;
+      rowHeader.innerHTML = `<span class="dsm-idx">${i + 1}</span><span class="dsm-row-label">${this._escHtml(shortLabels[i])}</span>`;
       tr.appendChild(rowHeader);
 
       // Data cells
@@ -218,6 +222,12 @@ class DSMRenderer {
 
   _clearCrosshair(table) {
     table.querySelectorAll('.dsm-crosshair').forEach(el => el.classList.remove('dsm-crosshair'));
+  }
+
+  _escHtml(s) {
+    const el = document.createElement('span');
+    el.textContent = s || '';
+    return el.innerHTML;
   }
 }
 

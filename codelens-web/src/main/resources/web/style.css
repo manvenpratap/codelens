@@ -3641,7 +3641,17 @@ body[data-theme="midnight"] .btn-primary:hover {
   border-collapse: separate;
   border-spacing: 1px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
+}
+
+.dsm-corner-cell {
+  position: sticky;
+  top: 0;
+  left: 0;
+  background: var(--bg-panel);
+  z-index: 3;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .dsm-col-header {
@@ -3649,25 +3659,52 @@ body[data-theme="midnight"] .btn-primary:hover {
   top: 0;
   background: var(--bg-panel);
   z-index: 2;
-  min-width: 24px;
-  max-width: 24px;
-  height: 100px;
+  min-width: 28px;
+  max-width: 28px;
+  width: 28px;
+  height: 150px;
   vertical-align: bottom;
-  padding: 4px 2px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.dsm-col-text-wrap {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  max-height: 140px;
+}
+
+.dsm-idx {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.14);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .dsm-col-label {
-  display: block;
-  transform: rotate(-55deg);
-  transform-origin: left bottom;
-  white-space: nowrap;
-  font-size: 9px;
+  font-size: 11px;
   font-family: var(--font-ui);
   font-weight: 500;
   color: var(--text-secondary);
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsm-col-header:hover .dsm-col-label,
+.dsm-col-header.dsm-crosshair .dsm-col-label {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .dsm-row-header {
@@ -3676,24 +3713,39 @@ body[data-theme="midnight"] .btn-primary:hover {
   background: var(--bg-panel);
   z-index: 1;
   white-space: nowrap;
-  padding: 2px 8px 2px 4px;
-  font-size: 10px;
+  padding: 3px 12px 3px 6px;
+  font-size: 11px;
   font-family: var(--font-ui);
   font-weight: 500;
   color: var(--text-secondary);
-  max-width: 140px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   border-right: 1px solid var(--border);
+  cursor: default;
+}
+
+.dsm-row-header .dsm-idx {
+  margin-right: 6px;
+}
+
+.dsm-row-label {
+  color: var(--text-secondary);
+}
+
+.dsm-row-header:hover .dsm-row-label,
+.dsm-row-header.dsm-crosshair .dsm-row-label {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .dsm-cell {
-  width: 24px;
-  height: 22px;
-  min-width: 24px;
+  width: 28px;
+  height: 26px;
+  min-width: 28px;
   text-align: center;
   vertical-align: middle;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-primary);
   background: var(--bg-surface);
@@ -3718,8 +3770,8 @@ body[data-theme="midnight"] .btn-primary:hover {
 }
 
 .dsm-crosshair {
-  outline: 1px solid rgba(59, 130, 246, 0.5) !important;
-  background-color: rgba(59, 130, 246, 0.08) !important;
+  outline: 1px solid rgba(59, 130, 246, 0.6) !important;
+  background-color: rgba(59, 130, 246, 0.12) !important;
 }
 
 .dsm-pkg-separator td {
