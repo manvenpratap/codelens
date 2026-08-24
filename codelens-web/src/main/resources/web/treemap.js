@@ -1,12 +1,73 @@
 /**
- * treemap.js - Nested Squarified Treemap Renderer
- *
- * Renders a nested hierarchical Package > Class > Method treemap.
- * - Packages render as container frames with header bars.
- * - Classes render as complexity-colored tiles inside package containers.
- * - Methods render inside classes or when zoomed into a class.
- * - Zoom into any package or class by clicking; navigate with breadcrumb bar.
+ * Global CodeLens Canonical Palette & Deterministic Entity Color Resolver
+ * Shared consistently across Sunburst, Treemap, Chord Diagram, and Graphify views.
  */
+if (!window.CodeLensPalette) {
+  const PALETTE = [
+    '#3b82f6', // 0: Precision Blue
+    '#10b981', // 1: Emerald
+    '#8b5cf6', // 2: Violet
+    '#f59e0b', // 3: Amber
+    '#ec4899', // 4: Pink
+    '#06b6d4', // 5: Cyan
+    '#f97316', // 6: Orange
+    '#14b8a6', // 7: Teal
+    '#a855f7', // 8: Purple
+    '#ef4444', // 9: Red
+    '#84cc16', // 10: Lime
+    '#6366f1', // 11: Indigo
+    '#0ea5e9', // 12: Sky
+    '#d946ef', // 13: Fuchsia
+    '#eab308', // 14: Gold
+    '#22c55e', // 15: Green
+  ];
+
+  function getEntityColor(nameOrFqn, fallbackIndex = 0) {
+    if (!nameOrFqn) return PALETTE[fallbackIndex % PALETTE.length];
+    const clean = nameOrFqn.split('(')[0].trim();
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+      hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+      hash |= 0;
+    }
+    return PALETTE[Math.abs(hash) % PALETTE.length];
+  }
+
+  function tintColor(hex, index = 0) {
+    if (!hex || !hex.startsWith('#')) return hex || '#3b82f6';
+    const c = parseInt(hex.replace('#', ''), 16);
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+
+    const rNorm = r / 255, gNorm = g / 255, bNorm = b / 255;
+    const max = Math.max(rNorm, gNorm, bNorm), min = Math.min(rNorm, gNorm, bNorm);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case rNorm: h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0); break;
+        case gNorm: h = (bNorm - rNorm) / d + 2; break;
+        case bNorm: h = (rNorm - gNorm) / d + 4; break;
+      }
+      h /= 6;
+    }
+
+    const lightnessOffsets = [0.10, -0.08, 0.16, -0.14, 0.05, -0.10, 0.12];
+    const lOffset = lightnessOffsets[index % lightnessOffsets.length];
+    const newL = Math.max(0.28, Math.min(0.82, l + lOffset));
+
+    return `hsl(${Math.round(h * 360)}, ${Math.round(Math.min(s * 1.1, 1) * 100)}%, ${Math.round(newL * 100)}%)`;
+  }
+
+  window.CodeLensPalette = {
+    PALETTE,
+    getColor: getEntityColor,
+    tintColor: tintColor,
+  };
+}
 
 class TreemapRenderer {
   constructor(container) {
@@ -116,13 +177,16 @@ class TreemapRenderer {
       const packages = this._root.children || [];
       const pkgRects = this._calcSquarify(packages, padding, padding, availW, availH);
 
-      for (const pr of pkgRects) {
+      for (let pIdx = 0; pIdx < pkgRects.length; pIdx++) {
+        const pr = pkgRects[pIdx];
         const pkgNode = pr.node;
         const headerH = 26;
+        const pkgColor = window.CodeLensPalette ? window.CodeLensPalette.getColor(pkgNode.fqn || pkgNode.name, pIdx) : '#3b82f6';
+
         this._containers.push({
           x: pr.x, y: pr.y, w: pr.w, h: pr.h,
           name: pkgNode.name, size: pkgNode.size, node: pkgNode,
-          type: 'package'
+          type: 'package', color: pkgColor
         });
 
         // Inside package: lay out its classes
@@ -133,12 +197,16 @@ class TreemapRenderer {
 
         if (innerW > 10 && innerH > 10 && pkgNode.children && pkgNode.children.length > 0) {
           const classRects = this._calcSquarify(pkgNode.children, innerX, innerY, innerW, innerH);
-          for (const cr of classRects) {
+          classRects.forEach((cr, cIdx) => {
+            const classColor = window.CodeLensPalette 
+              ? window.CodeLensPalette.getColor(cr.node.fqn || cr.node.name, cIdx)
+              : '#3b82f6';
             this._rects.push({
               x: cr.x, y: cr.y, w: cr.w, h: cr.h,
-              node: cr.node, parentNode: pkgNode, depth: 1, type: 'class'
+              node: cr.node, parentNode: pkgNode, depth: 1, type: 'class',
+              color: classColor
             });
-          }
+          });
         }
       }
 
@@ -149,13 +217,17 @@ class TreemapRenderer {
       if (hasGrandchildren) {
         // Viewing a Package: container per Class with Methods inside
         const classRects = this._calcSquarify(this._current.children, padding, padding, availW, availH);
-        for (const cr of classRects) {
+        classRects.forEach((cr, cIdx) => {
           const classNode = cr.node;
           const headerH = 24;
+          const classColor = window.CodeLensPalette 
+            ? window.CodeLensPalette.getColor(classNode.fqn || classNode.name, cIdx)
+            : '#3b82f6';
+
           this._containers.push({
             x: cr.x, y: cr.y, w: cr.w, h: cr.h,
             name: classNode.name, size: classNode.size, node: classNode,
-            type: 'class'
+            type: 'class', color: classColor
           });
 
           const innerX = cr.x + 4;
@@ -165,28 +237,41 @@ class TreemapRenderer {
 
           if (innerW > 10 && innerH > 10 && classNode.children && classNode.children.length > 0) {
             const methodRects = this._calcSquarify(classNode.children, innerX, innerY, innerW, innerH);
-            for (const mr of methodRects) {
+            methodRects.forEach((mr, mIdx) => {
+              const methodColor = window.CodeLensPalette
+                ? window.CodeLensPalette.tintColor(classColor, mIdx)
+                : classColor;
               this._rects.push({
                 x: mr.x, y: mr.y, w: mr.w, h: mr.h,
-                node: mr.node, parentNode: classNode, depth: 2, type: 'method'
+                node: mr.node, parentNode: classNode, depth: 2, type: 'method',
+                color: methodColor
               });
-            }
+            });
           } else {
             this._rects.push({
               x: cr.x, y: cr.y, w: cr.w, h: cr.h,
-              node: classNode, parentNode: this._current, depth: 1, type: 'class'
+              node: classNode, parentNode: this._current, depth: 1, type: 'class',
+              color: classColor
             });
           }
-        }
+        });
       } else {
         // Viewing a Class (showing its Methods directly)
+        const parentClassColor = window.CodeLensPalette 
+          ? window.CodeLensPalette.getColor(this._current.fqn || this._current.name, 0)
+          : '#3b82f6';
+
         const methodRects = this._calcSquarify(this._current.children, padding, padding, availW, availH);
-        for (const mr of methodRects) {
+        methodRects.forEach((mr, mIdx) => {
+          const methodColor = window.CodeLensPalette 
+            ? window.CodeLensPalette.tintColor(parentClassColor, mIdx)
+            : parentClassColor;
           this._rects.push({
             x: mr.x, y: mr.y, w: mr.w, h: mr.h,
-            node: mr.node, parentNode: this._current, depth: 2, type: 'method'
+            node: mr.node, parentNode: this._current, depth: 2, type: 'method',
+            color: methodColor
           });
-        }
+        });
       }
     }
 
@@ -327,8 +412,16 @@ class TreemapRenderer {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       ctx.stroke();
 
+      // Left accent bar on container header
+      if (c.color) {
+        ctx.fillStyle = c.color;
+        ctx.beginPath();
+        this._roundRect(ctx, c.x + 4, c.y + 6, 3, 12, 1.5);
+        ctx.fill();
+      }
+
       // Header label
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#cbd5e1';
       ctx.font = '600 11px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
@@ -344,7 +437,7 @@ class TreemapRenderer {
         displayLabel += '...';
       }
       if (maxW > 10) {
-        ctx.fillText(displayLabel, c.x + 8, c.y + 12);
+        ctx.fillText(displayLabel, c.x + 12, c.y + 12);
       }
 
       // Total LOC badge
@@ -361,7 +454,7 @@ class TreemapRenderer {
       if (rect.w < 2 || rect.h < 2) continue;
 
       const node = rect.node;
-      const color = this._complexityColor(node.complexity || 0);
+      const color = rect.color || this._complexityColor(node.complexity || 0);
       const isHovered = this._hovered === rect;
 
       // Fill

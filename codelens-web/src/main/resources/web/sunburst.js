@@ -204,11 +204,17 @@ class SunburstRenderer {
       if (child.kind === 'OTHER') {
         segColor = '#64748b'; // subtle slate for aggregated items
       } else if (depth === 0) {
-        segColor = PALETTE[idx % PALETTE.length];
+        segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
+          : PALETTE[idx % PALETTE.length];
       } else if (depth === 1) {
-        segColor = PALETTE[(idx + (childIndex || 0) * 3) % PALETTE.length];
+        segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
+          : PALETTE[(idx + (childIndex || 0) * 3) % PALETTE.length];
       } else {
-        segColor = this._tintColor(parentColor || PALETTE[idx % PALETTE.length], idx);
+        segColor = (window.CodeLensPalette && window.CodeLensPalette.tintColor)
+          ? window.CodeLensPalette.tintColor(parentColor || '#3b82f6', idx)
+          : this._tintColor(parentColor || PALETTE[idx % PALETTE.length], idx);
       }
 
       if (childAngle > gap * 1.5) {

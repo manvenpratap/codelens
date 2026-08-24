@@ -135,12 +135,15 @@ class ChordRenderer {
     this._arcs = nodes.map((nd, i) => {
       const fraction = totals[i] / grandTotal;
       const arcAngle = totalAngle * fraction;
+      const arcColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(nd.id || nd.label, i)
+        : colors[i % colors.length];
       const arc = {
         index: i,
         startAngle: angle,
         endAngle: angle + arcAngle,
         node: nd,
-        color: colors[i % colors.length],
+        color: arcColor,
         total: totals[i],
       };
       angle += arcAngle + gap;

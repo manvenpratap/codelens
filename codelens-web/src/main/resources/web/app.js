@@ -1344,7 +1344,7 @@ function renderAltVizInspector(vizName, nodeCount, sizeOrEdges) {
   const hint = createElement('div', { class: 'inspector-hint-box' });
   const tips = {
     'DSM': 'Rows = source classes, columns = target classes. Blue = dependency, red = cycle. Hover for crosshair.',
-    'Treemap': 'Rectangle size = lines of code. Color = cyclomatic complexity (blue=low, red=high). Click to zoom.',
+    'Treemap': 'Rectangle size = lines of code. Colors = categorical palette consistent with Sunburst & Chord. Click to zoom in.',
     'Chord': 'Arc size = connection volume. Chords = inter-class calls. Hover an arc to isolate its connections.',
     'Sunburst': 'Ring segments = packages/classes/methods. Angle = proportion of code size. Click to zoom in.',
   };
