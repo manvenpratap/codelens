@@ -1225,6 +1225,12 @@ async function loadWholeCodebaseGraph(level = null) {
             showBanner('Error changing DSM scope: ' + err.message);
           }
         });
+        renderer.onSelectCell((cellInfo) => {
+          renderDSMCellInspector(cellInfo);
+        });
+        renderer.onSelectEntity((entityFqn) => {
+          selectEntity(entityFqn);
+        });
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector('DSM', data.classes.length, 0);
@@ -1343,13 +1349,68 @@ function renderAltVizInspector(vizName, nodeCount, sizeOrEdges) {
 
   const hint = createElement('div', { class: 'inspector-hint-box' });
   const tips = {
-    'DSM': 'Rows = source classes, columns = target classes. Blue = dependency, red = cycle. Hover for crosshair.',
+    'DSM': 'Rows = source classes, columns = target classes. Order: Cluster / Layered / Cycles / A-Z. Hover for crosshair, click to inspect call relationship.',
     'Treemap': 'Rectangle size = lines of code. Colors = categorical palette consistent with Sunburst & Chord. Click to zoom in.',
     'Chord': 'Arc size = connection volume. Chords = inter-class calls. Hover an arc to isolate its connections.',
     'Sunburst': 'Ring segments = packages/classes/methods. Angle = proportion of code size. Click to zoom in.',
   };
   hint.innerHTML = '<div style="font-size:12px; color:var(--text-secondary); line-height:1.5; padding:8px 0;">' + (tips[vizName] || '') + '</div>';
   body.appendChild(hint);
+}
+
+/** Render detailed relationship breakdown when clicking a DSM cell. */
+function renderDSMCellInspector(info) {
+  const body = qs('#right-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  const callerColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+    ? window.CodeLensPalette.getColor(info.caller, 0)
+    : '#3b82f6';
+  const calleeColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+    ? window.CodeLensPalette.getColor(info.callee, 1)
+    : '#10b981';
+
+  const shortName = (s) => s.includes('.') ? s.split('.').pop() : s;
+
+  renderEntityHeader(info.isCycle ? 'CIRCULAR CYCLE' : 'DEPENDENCY PAIR', 'DSM Cell Analysis', info.isCycle ? 'Bidirectional Coupling Warning' : 'Direct Inter-Component Call');
+
+  const card = createElement('div', { class: 'inspector-dsm-card' });
+  card.innerHTML = `
+    <div style="padding: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); display:flex; flex-direction:column; gap:10px; margin-bottom: 12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:10.5px; color:var(--text-muted); text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Caller</span>
+        <span style="display:flex; align-items:center; gap:6px; font-weight:600; font-family:var(--font-mono); font-size:12px; color:var(--text-primary);">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${callerColor}; box-shadow: 0 0 6px ${callerColor}66;"></span>
+          ${shortName(info.caller)}
+        </span>
+      </div>
+
+      <div style="text-align:center; color:${info.isCycle ? '#f87171' : 'var(--primary)'}; font-weight:700; font-size:12px; font-family:var(--font-mono); padding: 6px; background:var(--bg-base); border-radius:4px; border: 1px solid ${info.isCycle ? 'rgba(239,68,68,0.3)' : 'var(--border)'};">
+        ${info.isCycle ? '⚠️ CIRCULAR FEEDBACK' : '⬇ CALLS'} (${info.weight} call${info.weight > 1 ? 's' : ''})
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:10.5px; color:var(--text-muted); text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Callee</span>
+        <span style="display:flex; align-items:center; gap:6px; font-weight:600; font-family:var(--font-mono); font-size:12px; color:var(--text-primary);">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${calleeColor}; box-shadow: 0 0 6px ${calleeColor}66;"></span>
+          ${shortName(info.callee)}
+        </span>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <button class="btn btn-ghost btn-sm" id="btn-dsm-inspect-caller" style="width:100%; justify-content:center;">Inspect ${shortName(info.caller)}</button>
+      <button class="btn btn-ghost btn-sm" id="btn-dsm-inspect-callee" style="width:100%; justify-content:center;">Inspect ${shortName(info.callee)}</button>
+    </div>
+  `;
+
+  body.appendChild(card);
+
+  const btnCaller = card.querySelector('#btn-dsm-inspect-caller');
+  if (btnCaller) btnCaller.addEventListener('click', () => selectEntity(info.caller));
+  const btnCallee = card.querySelector('#btn-dsm-inspect-callee');
+  if (btnCallee) btnCallee.addEventListener('click', () => selectEntity(info.callee));
 }
 
 function renderWholeCodebaseInspector(view, levelName = 'Architecture') {
