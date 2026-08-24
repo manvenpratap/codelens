@@ -14,6 +14,11 @@ class DSMRenderer {
     this._hoverRow = -1;
     this._hoverCol = -1;
     this._sortMode = 'alpha'; // 'alpha' | 'package'
+    this._onScopeChange = null;
+  }
+
+  onScopeChange(callback) {
+    this._onScopeChange = callback;
   }
 
   setData(payload) {
@@ -67,16 +72,32 @@ class DSMRenderer {
     wrap.setAttribute('role', 'region');
     wrap.setAttribute('aria-label', 'Dependency Structure Matrix');
 
-    // Stats bar
+    // Stats bar with scope switcher
+    const currentScope = this._data.scope || 'classes';
     const stats = document.createElement('div');
     stats.className = 'dsm-stats';
     const totalDeps = matrix.flat().reduce((s, v) => s + (v > 0 ? 1 : 0), 0) - n; // exclude diagonal
     const cycleCount = cycles.size / 2;
+    const scopeLabel = currentScope === 'modules' ? 'Modules' : (currentScope === 'packages' ? 'Packages' : 'Classes');
+
     stats.innerHTML = `
-      <span class="dsm-stat"><span class="dsm-stat-num">${n}</span> Classes</span>
+      <div class="dsm-scope-pills" role="tablist">
+        <button class="dsm-scope-btn ${currentScope === 'modules' ? 'active' : ''}" data-scope="modules">Modules</button>
+        <button class="dsm-scope-btn ${currentScope === 'packages' ? 'active' : ''}" data-scope="packages">Packages</button>
+        <button class="dsm-scope-btn ${currentScope === 'classes' ? 'active' : ''}" data-scope="classes">Classes</button>
+      </div>
+      <span class="dsm-stat"><span class="dsm-stat-num">${n}</span> ${scopeLabel}</span>
       <span class="dsm-stat"><span class="dsm-stat-num">${totalDeps < 0 ? 0 : totalDeps}</span> Dependencies</span>
       <span class="dsm-stat ${cycleCount > 0 ? 'dsm-stat-warn' : ''}"><span class="dsm-stat-num">${cycleCount}</span> Cycles</span>
     `;
+
+    stats.querySelectorAll('.dsm-scope-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const scope = e.currentTarget.dataset.scope;
+        if (this._onScopeChange) this._onScopeChange(scope);
+      });
+    });
+
     wrap.appendChild(stats);
 
     // Scrollable matrix area

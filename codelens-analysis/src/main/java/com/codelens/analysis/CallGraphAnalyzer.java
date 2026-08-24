@@ -275,19 +275,144 @@ public class CallGraphAnalyzer {
     }
 
     /**
-     * Architecture-level view aggregating call relationships to Class / Component level.
+     * Architecture-level view aggregating call relationships to Module, Package, or Class level.
+     * @param scope "modules", "packages", or "classes" (null = auto-detect based on size)
+     * @param filter optional module or package filter
      */
+    public GraphView architectureGraphView(String scope, String filter) {
+        Graph<String, DefaultEdge> g = callGraph;
+        Set<String> allClasses = new TreeSet<>();
+        for (String v : g.vertexSet()) {
+            allClasses.add(extractClassFqn(v));
+        }
+
+        // Auto-select scope: if > 120 classes and scope is null, default to "modules"
+        String effectiveScope = scope;
+        if (effectiveScope == null || effectiveScope.isEmpty() || "auto".equalsIgnoreCase(effectiveScope)) {
+            effectiveScope = (allClasses.size() > 120) ? "modules" : "classes";
+        }
+
+        if ("modules".equalsIgnoreCase(effectiveScope)) {
+            return moduleArchitectureGraphView();
+        } else if ("packages".equalsIgnoreCase(effectiveScope)) {
+            return packageArchitectureGraphView(filter);
+        } else {
+            return classArchitectureGraphView(filter);
+        }
+    }
+
     public GraphView architectureGraphView() {
+        return architectureGraphView(null, null);
+    }
+
+    /** Module-level aggregated graph view (e.g. 50 modules). */
+    private GraphView moduleArchitectureGraphView() {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Integer> moduleClassCounts = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> moduleCalls = new LinkedHashMap<>();
+
+        for (String v : g.vertexSet()) {
+            String mod = extractModuleName(v);
+            moduleClassCounts.put(mod, moduleClassCounts.getOrDefault(mod, 0) + 1);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                String tgtMod = extractModuleName(tgt);
+                if (!mod.equals(tgtMod)) {
+                    moduleCalls.computeIfAbsent(mod, k -> new LinkedHashMap<>())
+                               .merge(tgtMod, 1, Integer::sum);
+                }
+            }
+        }
+
+        List<GraphNode> nodes = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : moduleClassCounts.entrySet()) {
+            String mod = entry.getKey();
+            nodes.add(new GraphNode(mod, mod, "module", "MODULE"));
+        }
+
+        List<GraphEdge> edges = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : moduleCalls.entrySet()) {
+            String src = srcEntry.getKey();
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                String tgt = tgtEntry.getKey();
+                int count = tgtEntry.getValue();
+                edges.add(new GraphEdge(src, tgt, count > 1 ? "CALLS (" + count + ")" : "CALLS"));
+            }
+        }
+
+        return new GraphView("MODULE_ARCHITECTURE", nodes, edges);
+    }
+
+    /** Package-level aggregated graph view. */
+    private GraphView packageArchitectureGraphView(String moduleFilter) {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Integer> pkgClassCounts = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> pkgCalls = new LinkedHashMap<>();
+
+        for (String v : g.vertexSet()) {
+            if (moduleFilter != null && !moduleFilter.isEmpty() && !extractModuleName(v).equalsIgnoreCase(moduleFilter)) {
+                continue;
+            }
+            String pkg = extractPackageFqn(v);
+            pkgClassCounts.put(pkg, pkgClassCounts.getOrDefault(pkg, 0) + 1);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (moduleFilter != null && !moduleFilter.isEmpty() && !extractModuleName(tgt).equalsIgnoreCase(moduleFilter)) {
+                    continue;
+                }
+                String tgtPkg = extractPackageFqn(tgt);
+                if (!pkg.equals(tgtPkg)) {
+                    pkgCalls.computeIfAbsent(pkg, k -> new LinkedHashMap<>())
+                            .merge(tgtPkg, 1, Integer::sum);
+                }
+            }
+        }
+
+        List<GraphNode> nodes = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : pkgClassCounts.entrySet()) {
+            String pkg = entry.getKey();
+            int dot = pkg.lastIndexOf('.');
+            String label = (dot >= 0) ? pkg.substring(dot + 1) : pkg;
+            nodes.add(new GraphNode(pkg, label, "package", "PACKAGE"));
+        }
+
+        List<GraphEdge> edges = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : pkgCalls.entrySet()) {
+            String src = srcEntry.getKey();
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                String tgt = tgtEntry.getKey();
+                int count = tgtEntry.getValue();
+                edges.add(new GraphEdge(src, tgt, count > 1 ? "CALLS (" + count + ")" : "CALLS"));
+            }
+        }
+
+        return new GraphView("PACKAGE_ARCHITECTURE", nodes, edges);
+    }
+
+    /** Class-level aggregated graph view. */
+    private GraphView classArchitectureGraphView(String filter) {
         Graph<String, DefaultEdge> g = callGraph;
         Map<String, Integer> classMethodCounts = new LinkedHashMap<>();
         Map<String, Map<String, Integer>> classCalls = new LinkedHashMap<>();
 
         for (String v : g.vertexSet()) {
+            if (filter != null && !filter.isEmpty()) {
+                String mod = extractModuleName(v);
+                String pkg = extractPackageFqn(v);
+                if (!mod.equalsIgnoreCase(filter) && !pkg.equalsIgnoreCase(filter)) continue;
+            }
             String c = extractClassFqn(v);
             classMethodCounts.put(c, classMethodCounts.getOrDefault(c, 0) + 1);
 
             for (DefaultEdge e : g.outgoingEdgesOf(v)) {
                 String tgt = g.getEdgeTarget(e);
+                if (filter != null && !filter.isEmpty()) {
+                    String tgtMod = extractModuleName(tgt);
+                    String tgtPkg = extractPackageFqn(tgt);
+                    if (!tgtMod.equalsIgnoreCase(filter) && !tgtPkg.equalsIgnoreCase(filter)) continue;
+                }
                 String tgtClass = extractClassFqn(tgt);
                 if (!c.equals(tgtClass)) {
                     classCalls.computeIfAbsent(c, k -> new LinkedHashMap<>())
@@ -315,6 +440,32 @@ public class CallGraphAnalyzer {
         }
 
         return new GraphView("ARCHITECTURE", allNodes, edges);
+    }
+
+    public static String extractModuleName(String fqn) {
+        if (fqn == null || fqn.isEmpty()) return "default";
+        int paren = fqn.indexOf('(');
+        String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
+        String[] parts = base.split("\\.");
+        if (parts.length >= 3) {
+            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net")) {
+                return (parts.length >= 4) ? parts[2] : parts[parts.length - 2];
+            }
+            return parts[0];
+        } else if (parts.length == 2) {
+            return parts[0];
+        }
+        return "default";
+    }
+
+    private static String extractPackageFqn(String fqn) {
+        int paren = fqn.indexOf('(');
+        String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
+        int dot = base.lastIndexOf('.');
+        if (dot < 0) return "(default)";
+        String classOrPkg = base.substring(0, dot);
+        int dot2 = classOrPkg.lastIndexOf('.');
+        return (dot2 >= 0) ? classOrPkg.substring(0, dot2) : classOrPkg;
     }
 
     private String extractClassFqn(String methodFqn) {
@@ -346,13 +497,7 @@ public class CallGraphAnalyzer {
         return result;
     }
 
-    /**
-     * Heuristic resolution of an unresolved call reference.
-     * "~repository.save" → looks for any known method with simple name "save".
-     * Prefers a candidate whose declaring type name matches the scope token.
-     */
     private String resolve(String unresolved, Map<String, List<String>> byName) {
-        // "~repository.save" → methodName = "save", scopeHint = "repository"
         String stripped = unresolved.substring(1); // remove "~"
         int dot = stripped.lastIndexOf('.');
         if (dot < 0) return null;
@@ -363,14 +508,12 @@ public class CallGraphAnalyzer {
         if (candidates.isEmpty()) return null;
         if (candidates.size() == 1) return candidates.get(0);
 
-        // Multiple candidates — prefer one whose type name contains the scope hint
         return candidates.stream()
             .filter(c -> c.toLowerCase().contains(scopeHint))
             .findFirst()
             .orElse(candidates.get(0));
     }
 
-    /** Extract method simple name from FQN "com.example.Foo.bar(String,int)" → "bar". */
     private String simpleMethodName(String fqn) {
         int paren = fqn.indexOf('(');
         String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
@@ -378,7 +521,6 @@ public class CallGraphAnalyzer {
         return (dot >= 0) ? base.substring(dot + 1) : base;
     }
 
-    /** Short display label: "OrderService.placeOrder" from full FQN. */
     private String label(String fqn) {
         int paren = fqn.indexOf('(');
         String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
@@ -393,8 +535,8 @@ public class CallGraphAnalyzer {
     public static class GraphNode {
         public final String id;
         public final String label;
-        public final String role;   // root | caller | callee
-        public final String type;   // METHOD | FIELD | TYPE
+        public final String role;   // root | caller | callee | module | package | class
+        public final String type;   // METHOD | FIELD | TYPE | MODULE | PACKAGE | CLASS
 
         public GraphNode(String id, String label, String role, String type) {
             this.id = id; this.label = label; this.role = role; this.type = type;
@@ -428,20 +570,138 @@ public class CallGraphAnalyzer {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns a Dependency Structure Matrix (adjacency matrix) at the class level.
-     * Classes are sorted alphabetically; matrix[i][j] = number of method calls from class i to class j.
+     * Returns a Dependency Structure Matrix at Module, Package, or Class scope.
      */
+    public DSMPayload dsmView(String scope, String filter) {
+        Graph<String, DefaultEdge> g = callGraph;
+        Set<String> allClasses = new TreeSet<>();
+        for (String v : g.vertexSet()) allClasses.add(extractClassFqn(v));
+
+        String effectiveScope = scope;
+        if (effectiveScope == null || effectiveScope.isEmpty() || "auto".equalsIgnoreCase(effectiveScope)) {
+            effectiveScope = (allClasses.size() > 100) ? "modules" : "classes";
+        }
+
+        if ("modules".equalsIgnoreCase(effectiveScope)) {
+            return moduleDsmView();
+        } else if ("packages".equalsIgnoreCase(effectiveScope)) {
+            return packageDsmView(filter);
+        } else {
+            return classDsmView(filter);
+        }
+    }
+
     public DSMPayload dsmView() {
+        return dsmView(null, null);
+    }
+
+    private DSMPayload moduleDsmView() {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Map<String, Integer>> modCalls = new LinkedHashMap<>();
+        Set<String> allModules = new TreeSet<>();
+
+        for (String v : g.vertexSet()) {
+            String m = extractModuleName(v);
+            allModules.add(m);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                String tgtMod = extractModuleName(tgt);
+                allModules.add(tgtMod);
+                modCalls.computeIfAbsent(m, k -> new LinkedHashMap<>())
+                        .merge(tgtMod, 1, Integer::sum);
+            }
+        }
+
+        List<String> modList = new ArrayList<>(allModules);
+        Map<String, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < modList.size(); i++) indexMap.put(modList.get(i), i);
+
+        int n = modList.size();
+        int[][] matrix = new int[n][n];
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : modCalls.entrySet()) {
+            Integer si = indexMap.get(srcEntry.getKey());
+            if (si == null) continue;
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                Integer ti = indexMap.get(tgtEntry.getKey());
+                if (ti == null) continue;
+                matrix[si][ti] = tgtEntry.getValue();
+            }
+        }
+
+        Map<String, String> groups = new LinkedHashMap<>();
+        for (String m : modList) groups.put(m, "Modules");
+
+        return new DSMPayload(modList, matrix, groups, "modules");
+    }
+
+    private DSMPayload packageDsmView(String moduleFilter) {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Map<String, Integer>> pkgCalls = new LinkedHashMap<>();
+        Set<String> allPkgs = new TreeSet<>();
+
+        for (String v : g.vertexSet()) {
+            if (moduleFilter != null && !moduleFilter.isEmpty() && !extractModuleName(v).equalsIgnoreCase(moduleFilter)) {
+                continue;
+            }
+            String p = extractPackageFqn(v);
+            allPkgs.add(p);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (moduleFilter != null && !moduleFilter.isEmpty() && !extractModuleName(tgt).equalsIgnoreCase(moduleFilter)) {
+                    continue;
+                }
+                String tgtPkg = extractPackageFqn(tgt);
+                allPkgs.add(tgtPkg);
+                pkgCalls.computeIfAbsent(p, k -> new LinkedHashMap<>())
+                        .merge(tgtPkg, 1, Integer::sum);
+            }
+        }
+
+        List<String> pkgList = new ArrayList<>(allPkgs);
+        Map<String, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < pkgList.size(); i++) indexMap.put(pkgList.get(i), i);
+
+        int n = pkgList.size();
+        int[][] matrix = new int[n][n];
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : pkgCalls.entrySet()) {
+            Integer si = indexMap.get(srcEntry.getKey());
+            if (si == null) continue;
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                Integer ti = indexMap.get(tgtEntry.getKey());
+                if (ti == null) continue;
+                matrix[si][ti] = tgtEntry.getValue();
+            }
+        }
+
+        Map<String, String> groups = new LinkedHashMap<>();
+        for (String p : pkgList) groups.put(p, extractModuleName(p));
+
+        return new DSMPayload(pkgList, matrix, groups, "packages");
+    }
+
+    private DSMPayload classDsmView(String filter) {
         Graph<String, DefaultEdge> g = callGraph;
         Map<String, Map<String, Integer>> classCalls = new LinkedHashMap<>();
         Set<String> allClasses = new TreeSet<>();
 
         for (String v : g.vertexSet()) {
+            if (filter != null && !filter.isEmpty()) {
+                String mod = extractModuleName(v);
+                String pkg = extractPackageFqn(v);
+                if (!mod.equalsIgnoreCase(filter) && !pkg.equalsIgnoreCase(filter)) continue;
+            }
             String c = extractClassFqn(v);
             allClasses.add(c);
 
             for (DefaultEdge e : g.outgoingEdgesOf(v)) {
                 String tgt = g.getEdgeTarget(e);
+                if (filter != null && !filter.isEmpty()) {
+                    String tgtMod = extractModuleName(tgt);
+                    String tgtPkg = extractPackageFqn(tgt);
+                    if (!tgtMod.equalsIgnoreCase(filter) && !tgtPkg.equalsIgnoreCase(filter)) continue;
+                }
                 String tgtClass = extractClassFqn(tgt);
                 allClasses.add(tgtClass);
                 classCalls.computeIfAbsent(c, k -> new LinkedHashMap<>())
@@ -451,9 +711,7 @@ public class CallGraphAnalyzer {
 
         List<String> classList = new ArrayList<>(allClasses);
         Map<String, Integer> indexMap = new HashMap<>();
-        for (int i = 0; i < classList.size(); i++) {
-            indexMap.put(classList.get(i), i);
-        }
+        for (int i = 0; i < classList.size(); i++) indexMap.put(classList.get(i), i);
 
         int n = classList.size();
         int[][] matrix = new int[n][n];
@@ -467,14 +725,13 @@ public class CallGraphAnalyzer {
             }
         }
 
-        // Build package grouping info
         Map<String, String> classPackages = new LinkedHashMap<>();
         for (String c : classList) {
             int dot = c.lastIndexOf('.');
             classPackages.put(c, dot >= 0 ? c.substring(0, dot) : "(default)");
         }
 
-        return new DSMPayload(classList, matrix, classPackages);
+        return new DSMPayload(classList, matrix, classPackages, "classes");
     }
 
     /** DSM response payload. */
@@ -482,11 +739,17 @@ public class CallGraphAnalyzer {
         public final List<String> classes;
         public final int[][]      matrix;
         public final Map<String, String> packages;
+        public final String scope;
 
-        public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages) {
+        public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages, String scope) {
             this.classes = classes;
             this.matrix  = matrix;
             this.packages = packages;
+            this.scope = scope;
+        }
+
+        public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages) {
+            this(classes, matrix, packages, "classes");
         }
     }
 
@@ -495,61 +758,91 @@ public class CallGraphAnalyzer {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Builds a hierarchical treemap payload from the indexed types and methods.
-     * Hierarchy: root -> packages -> classes -> methods.
-     * Builds a hierarchical treemap payload.
-     * Hierarchy: root -> packages -> classes -> methods.
-     * Accepts pre-built records to avoid coupling with model layer.
+     * Builds a hierarchical treemap payload from indexed types and methods.
+     * Hierarchy: root -> modules -> packages -> classes -> methods.
      */
     public static TreemapNode treemapView(List<TreemapTypeRecord> types,
-                                          List<TreemapMethodRecord> methods) {
-        // Group methods by declaring type
+                                          List<TreemapMethodRecord> methods,
+                                          String scope,
+                                          String filter) {
         Map<String, List<TreemapMethodRecord>> methodsByType = new LinkedHashMap<>();
         for (TreemapMethodRecord m : methods) {
             methodsByType.computeIfAbsent(m.declaringTypeFqn, k -> new ArrayList<>()).add(m);
         }
 
-        // Group types by package
-        Map<String, List<TreemapTypeRecord>> typesByPkg = new LinkedHashMap<>();
+        // Group types by Module -> Package
+        Map<String, Map<String, List<TreemapTypeRecord>>> typesByModulePkg = new LinkedHashMap<>();
         for (TreemapTypeRecord t : types) {
+            String mod = extractModuleName(t.fqn);
+            if (filter != null && !filter.isEmpty() && !mod.equalsIgnoreCase(filter) && !t.packageFqn.equalsIgnoreCase(filter)) {
+                continue;
+            }
             String pkg = t.packageFqn != null ? t.packageFqn : "(default)";
-            typesByPkg.computeIfAbsent(pkg, k -> new ArrayList<>()).add(t);
+            typesByModulePkg.computeIfAbsent(mod, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(pkg, k -> new ArrayList<>())
+                            .add(t);
         }
 
-        // Build tree
         TreemapNode root = new TreemapNode("root", 0, 0);
-        for (Map.Entry<String, List<TreemapTypeRecord>> pkgEntry : typesByPkg.entrySet()) {
-            TreemapNode pkgNode = new TreemapNode(pkgEntry.getKey(), 0, 0);
-            for (TreemapTypeRecord t : pkgEntry.getValue()) {
-                int lineCount = Math.max(t.lineCount, 1);
-                TreemapNode classNode = new TreemapNode(t.simpleName, lineCount, 0);
-                classNode.fqn = t.fqn;
-                classNode.kind = t.kind;
+        boolean singleModule = typesByModulePkg.size() <= 1;
 
-                List<TreemapMethodRecord> classMethods = methodsByType.get(t.fqn);
-                if (classMethods != null && !classMethods.isEmpty()) {
-                    int maxComplexity = 0;
-                    for (TreemapMethodRecord m : classMethods) {
-                        int mLines = Math.max(m.endLine - m.startLine + 1, 1);
-                        int mComplexity = Math.max(m.cyclomaticComplexity, 1);
-                        TreemapNode methodNode = new TreemapNode(m.simpleName, mLines, mComplexity);
-                        methodNode.fqn = m.fqn;
-                        classNode.children.add(methodNode);
-                        maxComplexity = Math.max(maxComplexity, mComplexity);
+        for (Map.Entry<String, Map<String, List<TreemapTypeRecord>>> modEntry : typesByModulePkg.entrySet()) {
+            String modName = modEntry.getKey();
+            TreemapNode modNode = singleModule ? root : new TreemapNode(modName, 0, 0);
+            modNode.kind = "MODULE";
+
+            for (Map.Entry<String, List<TreemapTypeRecord>> pkgEntry : modEntry.getValue().entrySet()) {
+                TreemapNode pkgNode = new TreemapNode(pkgEntry.getKey(), 0, 0);
+                pkgNode.kind = "PACKAGE";
+
+                for (TreemapTypeRecord t : pkgEntry.getValue()) {
+                    int lineCount = Math.max(t.lineCount, 1);
+                    TreemapNode classNode = new TreemapNode(t.simpleName, lineCount, 0);
+                    classNode.fqn = t.fqn;
+                    classNode.kind = t.kind;
+
+                    List<TreemapMethodRecord> classMethods = methodsByType.get(t.fqn);
+                    if (classMethods != null && !classMethods.isEmpty()) {
+                        int maxComplexity = 0;
+                        for (TreemapMethodRecord m : classMethods) {
+                            int mLines = Math.max(m.endLine - m.startLine + 1, 1);
+                            int mComplexity = Math.max(m.cyclomaticComplexity, 1);
+                            TreemapNode methodNode = new TreemapNode(m.simpleName, mLines, mComplexity);
+                            methodNode.fqn = m.fqn;
+                            methodNode.kind = "METHOD";
+                            classNode.children.add(methodNode);
+                            maxComplexity = Math.max(maxComplexity, mComplexity);
+                        }
+                        classNode.complexity = maxComplexity;
+                        int methodSum = classNode.children.stream().mapToInt(c -> c.size).sum();
+                        if (methodSum > 0) classNode.size = methodSum;
                     }
-                    classNode.complexity = maxComplexity;
-                    int methodSum = classNode.children.stream().mapToInt(c -> c.size).sum();
-                    if (methodSum > 0) classNode.size = methodSum;
+
+                    pkgNode.children.add(classNode);
+                    pkgNode.size += classNode.size;
                 }
 
-                pkgNode.children.add(classNode);
-                pkgNode.size += classNode.size;
+                if (pkgNode.children.isEmpty()) continue;
+                modNode.children.add(pkgNode);
+                modNode.size += pkgNode.size;
             }
-            if (pkgNode.children.isEmpty()) continue;
-            root.children.add(pkgNode);
-            root.size += pkgNode.size;
+
+            if (!singleModule && !modNode.children.isEmpty()) {
+                root.children.add(modNode);
+                root.size += modNode.size;
+            }
         }
+
+        if (singleModule) {
+            root.size = root.children.stream().mapToInt(c -> c.size).sum();
+        }
+
         return root;
+    }
+
+    public static TreemapNode treemapView(List<TreemapTypeRecord> types,
+                                          List<TreemapMethodRecord> methods) {
+        return treemapView(types, methods, null, null);
     }
 
     /** Lightweight record for type data passed into treemapView(). */

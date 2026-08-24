@@ -391,14 +391,20 @@ public class CodeLensServer {
     }
 
     private void getArchitectureGraph(Context ctx) throws Exception {
-        ctx.json(callGraph.architectureGraphView());
+        String scope  = ctx.queryParam("scope");
+        String filter = ctx.queryParam("filter");
+        ctx.json(callGraph.architectureGraphView(scope, filter));
     }
 
     private void getDSM(Context ctx) throws Exception {
-        ctx.json(callGraph.dsmView());
+        String scope  = ctx.queryParam("scope");
+        String filter = ctx.queryParam("filter");
+        ctx.json(callGraph.dsmView(scope, filter));
     }
 
     private void getTreemap(Context ctx) throws Exception {
+        String scope  = ctx.queryParam("scope");
+        String filter = ctx.queryParam("filter");
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
 
@@ -415,7 +421,7 @@ public class CodeLensServer {
                 m.getStartLine(), m.getEndLine(), m.getCyclomaticComplexity()));
         }
 
-        ctx.json(CallGraphAnalyzer.treemapView(typeRecs, methodRecs));
+        ctx.json(CallGraphAnalyzer.treemapView(typeRecs, methodRecs, scope, filter));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

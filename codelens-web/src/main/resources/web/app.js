@@ -85,9 +85,9 @@ const api = {
   callees:            (id, d=4)   => api.get(`/methods/${enc(id)}/callees?depth=${d}`),
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
   fullGraph:          ()          => api.get('/graph/all'),
-  architectureGraph:  ()          => api.get('/graph/architecture'),
-  dsmData:            ()          => api.get('/graph/dsm'),
-  treemapData:        ()          => api.get('/graph/treemap'),
+  architectureGraph:  (scope, filter) => api.get(`/graph/architecture${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
+  dsmData:            (scope, filter) => api.get(`/graph/dsm${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
+  treemapData:        (scope, filter) => api.get(`/graph/treemap${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
@@ -1214,10 +1214,21 @@ async function loadWholeCodebaseGraph(level = null) {
           return;
         }
         const renderer = new window.DSMRenderer(qs('#graph-view'));
+        renderer.onScopeChange(async (newScope) => {
+          try {
+            showBanner(`Loading DSM (${newScope})...`);
+            const scopedData = await api.dsmData(newScope);
+            renderer.setData(scopedData);
+            renderAltVizInspector('DSM', scopedData.classes.length, 0);
+            showBanner(`DSM loaded: ${scopedData.classes.length} ${newScope}`);
+          } catch (err) {
+            showBanner('Error changing DSM scope: ' + err.message);
+          }
+        });
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector('DSM', data.classes.length, 0);
-        showBanner('DSM loaded: ' + data.classes.length + ' classes');
+        showBanner('DSM loaded: ' + data.classes.length + ' ' + (data.scope || 'classes'));
 
       } else if (App.codebaseGraphLevel === 'treemap') {
         showBanner('Loading Treemap...');

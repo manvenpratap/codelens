@@ -166,14 +166,44 @@ class SunburstRenderer {
       '#22c55e', // Green
     ];
 
-    let angle = startAngle;
-    node.children.forEach((child, idx) => {
+    const minThresholdAngle = 0.008; // below this, aggregate into "Other"
+    const prominentChildren = [];
+    const smallChildren = [];
+
+    node.children.forEach((child) => {
       const fraction = Math.max(child.size, 1) / totalSize;
       const childAngle = (endAngle - startAngle) * fraction;
-      const gap = 0.005;
+      if (childAngle >= minThresholdAngle || node.children.length <= 15) {
+        prominentChildren.push(child);
+      } else {
+        smallChildren.push(child);
+      }
+    });
+
+    // If there are small children, aggregate them into a single node
+    const finalChildren = [...prominentChildren];
+    if (smallChildren.length > 0) {
+      const smallSizeSum = smallChildren.reduce((s, c) => s + Math.max(c.size, 1), 0);
+      const otherNode = {
+        name: `Other (+${smallChildren.length} items)`,
+        size: smallSizeSum,
+        complexity: 1,
+        kind: 'OTHER',
+        children: smallChildren // kept for zoom-in!
+      };
+      finalChildren.push(otherNode);
+    }
+
+    let angle = startAngle;
+    finalChildren.forEach((child, idx) => {
+      const fraction = Math.max(child.size, 1) / totalSize;
+      const childAngle = (endAngle - startAngle) * fraction;
+      const gap = 0.004;
 
       let segColor;
-      if (depth === 0) {
+      if (child.kind === 'OTHER') {
+        segColor = '#64748b'; // subtle slate for aggregated items
+      } else if (depth === 0) {
         segColor = PALETTE[idx % PALETTE.length];
       } else if (depth === 1) {
         segColor = PALETTE[(idx + (childIndex || 0) * 3) % PALETTE.length];
@@ -181,7 +211,7 @@ class SunburstRenderer {
         segColor = this._tintColor(parentColor || PALETTE[idx % PALETTE.length], idx);
       }
 
-      if (childAngle > gap * 2) {
+      if (childAngle > gap * 1.5) {
         this._segments.push({
           node: child,
           startAngle: angle + gap,
@@ -192,8 +222,8 @@ class SunburstRenderer {
           color: segColor,
         });
 
-        // Recurse for children
-        if (child.children && child.children.length > 0) {
+        // Recurse for children (only if prominent)
+        if (child.kind !== 'OTHER' && child.children && child.children.length > 0) {
           this._buildSegments(child, angle + gap, angle + childAngle - gap, depth + 1, innerR + ringW, ringW, segColor, idx);
         }
       }
