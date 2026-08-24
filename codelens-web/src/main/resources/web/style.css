@@ -3578,3 +3578,362 @@ body[data-theme="midnight"] .btn-primary {
 body[data-theme="midnight"] .btn-primary:hover {
   background: #1d4ed8;
 }
+
+/* =============================================================================
+   Multi-Visualization Engine Styles
+   DSM, Treemap, Chord, Sunburst
+   ============================================================================= */
+
+/* ── Level Pill Divider ─────────────────────────────────────────────────────── */
+.level-pill-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── DSM (Dependency Structure Matrix) ──────────────────────────────────────── */
+.dsm-container {
+  position: absolute;
+  inset: 50px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  z-index: var(--z-elevated);
+}
+
+.dsm-stats {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dsm-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsm-stat-num {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dsm-stat-warn .dsm-stat-num {
+  color: var(--red);
+}
+
+.dsm-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.dsm-table {
+  border-collapse: separate;
+  border-spacing: 1px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.dsm-col-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 2;
+  min-width: 24px;
+  max-width: 24px;
+  height: 100px;
+  vertical-align: bottom;
+  padding: 4px 2px;
+}
+
+.dsm-col-label {
+  display: block;
+  transform: rotate(-55deg);
+  transform-origin: left bottom;
+  white-space: nowrap;
+  font-size: 9px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--text-secondary);
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dsm-row-header {
+  position: sticky;
+  left: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+  white-space: nowrap;
+  padding: 2px 8px 2px 4px;
+  font-size: 10px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--text-secondary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--border);
+}
+
+.dsm-cell {
+  width: 24px;
+  height: 22px;
+  min-width: 24px;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-radius: 2px;
+  cursor: default;
+  transition: outline var(--dur-fast) var(--ease);
+}
+
+.dsm-cell.dsm-diagonal {
+  background: rgba(255, 255, 255, 0.04);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.03) 3px,
+    rgba(255, 255, 255, 0.03) 5px
+  );
+}
+
+.dsm-cell.dsm-cycle {
+  font-weight: 700;
+}
+
+.dsm-crosshair {
+  outline: 1px solid rgba(59, 130, 246, 0.5) !important;
+  background-color: rgba(59, 130, 246, 0.08) !important;
+}
+
+.dsm-pkg-separator td {
+  height: 3px;
+  background: var(--border);
+  padding: 0;
+}
+
+.dsm-legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dsm-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsm-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.dsm-legend-diag {
+  background: var(--bg-surface);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.08) 2px,
+    rgba(255, 255, 255, 0.08) 4px
+  );
+  border: 1px solid var(--border);
+}
+
+/* ── Treemap ────────────────────────────────────────────────────────────────── */
+.treemap-container {
+  position: absolute;
+  inset: 50px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  z-index: var(--z-elevated);
+}
+
+.treemap-breadcrumb,
+.sunburst-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  height: 36px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.treemap-bc-btn,
+.sunburst-bc-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.treemap-bc-btn:hover,
+.sunburst-bc-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.treemap-bc-btn.active,
+.sunburst-bc-btn.active {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: default;
+}
+
+.treemap-bc-sep,
+.sunburst-bc-sep {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.treemap-canvas {
+  flex: 1;
+  display: block;
+}
+
+.treemap-tooltip,
+.chord-tooltip,
+.sunburst-tooltip {
+  position: absolute;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-primary);
+  pointer-events: none;
+  z-index: var(--z-tooltip);
+  max-width: 300px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  line-height: 1.5;
+}
+
+.treemap-tip-name,
+.chord-tip-name,
+.sunburst-tip-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.treemap-tip-row,
+.chord-tip-row,
+.sunburst-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.treemap-tip-row span:first-child,
+.chord-tip-row span:first-child,
+.sunburst-tip-row span:first-child {
+  color: var(--text-muted);
+}
+
+.treemap-tip-mono,
+.chord-tip-mono,
+.sunburst-tip-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.treemap-tip-hint,
+.sunburst-tip-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--primary);
+  font-style: italic;
+}
+
+/* ── Chord Diagram ──────────────────────────────────────────────────────────── */
+.chord-container {
+  position: absolute;
+  inset: 50px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  z-index: var(--z-elevated);
+}
+
+.chord-canvas {
+  flex: 1;
+  display: block;
+}
+
+/* ── Sunburst ───────────────────────────────────────────────────────────────── */
+.sunburst-container {
+  position: absolute;
+  inset: 50px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  z-index: var(--z-elevated);
+}
+
+.sunburst-canvas {
+  flex: 1;
+  display: block;
+}
+
+.sunburst-center {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: calc(var(--z-elevated) + 1);
+}
+
+.sunburst-center-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.sunburst-center-size {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+

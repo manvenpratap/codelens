@@ -143,6 +143,8 @@ public class CodeLensServer {
         app.get("/api/methods/{id}/graph",   this::getCallGraph);
         app.get("/api/graph/all",            this::getFullGraph);
         app.get("/api/graph/architecture",   this::getArchitectureGraph);
+        app.get("/api/graph/dsm",            this::getDSM);
+        app.get("/api/graph/treemap",        this::getTreemap);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -390,6 +392,30 @@ public class CodeLensServer {
 
     private void getArchitectureGraph(Context ctx) throws Exception {
         ctx.json(callGraph.architectureGraphView());
+    }
+
+    private void getDSM(Context ctx) throws Exception {
+        ctx.json(callGraph.dsmView());
+    }
+
+    private void getTreemap(Context ctx) throws Exception {
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+
+        List<CallGraphAnalyzer.TreemapTypeRecord> typeRecs = new java.util.ArrayList<>();
+        for (CodeType t : types) {
+            typeRecs.add(new CallGraphAnalyzer.TreemapTypeRecord(
+                t.getFqn(), t.getSimpleName(), t.getPackageFqn(), t.getKind(), t.getLineCount()));
+        }
+
+        List<CallGraphAnalyzer.TreemapMethodRecord> methodRecs = new java.util.ArrayList<>();
+        for (CodeMethod m : methods) {
+            methodRecs.add(new CallGraphAnalyzer.TreemapMethodRecord(
+                m.getFqn(), m.getSimpleName(), m.getDeclaringTypeFqn(),
+                m.getStartLine(), m.getEndLine(), m.getCyclomaticComplexity()));
+        }
+
+        ctx.json(CallGraphAnalyzer.treemapView(typeRecs, methodRecs));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

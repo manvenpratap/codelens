@@ -48,6 +48,10 @@ const App = {
   currentFilePath: null,
   editor: null,
   editorPromise: null,
+  // Active alternate renderer (DSM, Treemap, Chord, Sunburst)
+  activeAltRenderer: null,
+  // Current codebase graph level
+  codebaseGraphLevel: 'arch',
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +86,8 @@ const api = {
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
   fullGraph:          ()          => api.get('/graph/all'),
   architectureGraph:  ()          => api.get('/graph/architecture'),
+  dsmData:            ()          => api.get('/graph/dsm'),
+  treemapData:        ()          => api.get('/graph/treemap'),
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
@@ -1088,6 +1094,28 @@ async function selectField(id) {
 
 /** Initialise (or reuse) the ForceGraph instance. */
 function ensureGraph() {
+  if (App.activeAltRenderer) {
+    App.activeAltRenderer.destroy();
+    App.activeAltRenderer = null;
+  }
+  const graphCanvas = qs('#graph-canvas');
+  if (graphCanvas) graphCanvas.style.display = '';
+  const hudActions = qs('.graph-hud-actions');
+  if (hudActions) hudActions.style.display = '';
+  const cameraControls = qs('.graph-camera-controls');
+  if (cameraControls) cameraControls.style.display = '';
+  const graphMinimap = qs('#graph-minimap-wrap');
+  if (graphMinimap) graphMinimap.style.display = '';
+  const depthPills = qs('.graph-depth-pills');
+  if (depthPills) depthPills.style.display = '';
+
+  if (App.activeGraphMode !== 'fullCodebase') {
+    const levelSel = qs('#graph-level-selector');
+    const levelDiv = qs('#graph-level-divider');
+    if (levelSel) levelSel.style.display = 'none';
+    if (levelDiv) levelDiv.style.display = 'none';
+  }
+
   if (!App.graph) {
     const container = qs('#graph-view');
     const tooltip   = qs('#graph-tooltip');
@@ -1132,8 +1160,6 @@ async function loadWholeCodebaseGraph(level = null) {
   else if (!App.codebaseGraphLevel) App.codebaseGraphLevel = 'arch';
 
   App.selected = null;
-  ensureGraph();
-  App.graph.clear();
 
   // Highlight Whole Codebase button and clear depth pills
   qsa('.depth-pill').forEach(btn => btn.classList.remove('active'));
@@ -1146,34 +1172,173 @@ async function loadWholeCodebaseGraph(level = null) {
   if (levelSel) levelSel.style.display = 'flex';
   if (levelDiv) levelDiv.style.display = 'block';
 
-  const archBtn = qs('#btn-level-arch');
-  const methodsBtn = qs('#btn-level-methods');
-  if (archBtn && methodsBtn) {
-    archBtn.classList.toggle('active', App.codebaseGraphLevel === 'arch');
-    methodsBtn.classList.toggle('active', App.codebaseGraphLevel === 'methods');
+  // Update pill active states
+  qsa('.level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === App.codebaseGraphLevel));
+
+  const isAltViz = ['dsm', 'treemap', 'chord', 'sunburst'].includes(App.codebaseGraphLevel);
+
+  // Destroy any previous alternate renderer
+  if (App.activeAltRenderer) {
+    App.activeAltRenderer.destroy();
+    App.activeAltRenderer = null;
   }
 
-  try {
-    const isArch = (App.codebaseGraphLevel === 'arch');
-    showBanner(isArch ? 'Loading codebase architecture graph…' : 'Loading detailed method graph…');
-
-    const view = isArch ? await api.architectureGraph() : await api.fullGraph();
-
-    if (!view.nodes || view.nodes.length === 0) {
-      showGraphEmpty('No code relationships indexed yet. Run a scan first.');
-      return;
-    }
+  if (isAltViz) {
+    // Hide ForceGraph canvas but do not destroy it
+    const graphCanvas = qs('#graph-canvas');
+    if (graphCanvas) graphCanvas.style.display = 'none';
+    // Hide graph-specific HUD elements
+    const hudActions = qs('.graph-hud-actions');
+    if (hudActions) hudActions.style.display = 'none';
+    const cameraControls = qs('.graph-camera-controls');
+    if (cameraControls) cameraControls.style.display = 'none';
+    const depthPills = qs('.graph-depth-pills');
+    if (depthPills) depthPills.style.display = 'none';
+    const graphLegend = qs('#graph-legend');
+    if (graphLegend) graphLegend.style.display = 'none';
+    const communityLegend = qs('#graph-community-legend');
+    if (communityLegend) communityLegend.style.display = 'none';
+    const graphMinimap = qs('#graph-minimap-wrap');
+    if (graphMinimap) graphMinimap.style.display = 'none';
+    const nodeCard = qs('#graph-node-card');
+    if (nodeCard) nodeCard.style.display = 'none';
 
     hideGraphEmpty();
-    App.graph.setData(view.nodes, view.edges);
 
-    // Update inspector view
-    renderWholeCodebaseInspector(view, isArch ? 'Architecture' : 'Detailed');
+    try {
+      if (App.codebaseGraphLevel === 'dsm') {
+        showBanner('Loading Dependency Structure Matrix...');
+        const data = await api.dsmData();
+        if (!data.classes || data.classes.length === 0) {
+          showGraphEmpty('No class data available for DSM. Run a scan first.');
+          return;
+        }
+        const renderer = new window.DSMRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('DSM', data.classes.length, 0);
+        showBanner('DSM loaded: ' + data.classes.length + ' classes');
 
-    showBanner(`✓ ${isArch ? 'Architecture' : 'Detailed'} codebase graph loaded: ${view.nodes.length} nodes, ${view.edges.length} relationships`);
-  } catch (e) {
-    showGraphEmpty('Failed to load codebase graph: ' + e.message);
+      } else if (App.codebaseGraphLevel === 'treemap') {
+        showBanner('Loading Treemap...');
+        const data = await api.treemapData();
+        if (!data.children || data.children.length === 0) {
+          showGraphEmpty('No hierarchy data available for Treemap. Run a scan first.');
+          return;
+        }
+        const renderer = new window.TreemapRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('Treemap', countTreemapNodes(data), data.size);
+        showBanner('Treemap loaded: ' + countTreemapNodes(data) + ' nodes, ' + data.size + ' total lines');
+
+      } else if (App.codebaseGraphLevel === 'chord') {
+        showBanner('Loading Chord Diagram...');
+        const data = await api.architectureGraph();
+        if (!data.nodes || data.nodes.length === 0) {
+          showGraphEmpty('No architecture data available for Chord diagram. Run a scan first.');
+          return;
+        }
+        const renderer = new window.ChordRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('Chord', data.nodes.length, data.edges.length);
+        showBanner('Chord diagram loaded: ' + data.nodes.length + ' classes, ' + data.edges.length + ' relationships');
+
+      } else if (App.codebaseGraphLevel === 'sunburst') {
+        showBanner('Loading Sunburst...');
+        const data = await api.treemapData();
+        if (!data.children || data.children.length === 0) {
+          showGraphEmpty('No hierarchy data available for Sunburst. Run a scan first.');
+          return;
+        }
+        const renderer = new window.SunburstRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('Sunburst', countTreemapNodes(data), data.size);
+        showBanner('Sunburst loaded: ' + countTreemapNodes(data) + ' nodes');
+      }
+    } catch (e) {
+      showGraphEmpty('Failed to load visualization: ' + e.message);
+    }
+
+  } else {
+    // Force graph modes (arch / methods)
+    // Restore ForceGraph canvas and HUD elements
+    const graphCanvas = qs('#graph-canvas');
+    if (graphCanvas) graphCanvas.style.display = '';
+    const hudActions = qs('.graph-hud-actions');
+    if (hudActions) hudActions.style.display = '';
+    const cameraControls = qs('.graph-camera-controls');
+    if (cameraControls) cameraControls.style.display = '';
+    const depthPills = qs('.graph-depth-pills');
+    if (depthPills) depthPills.style.display = '';
+    const graphMinimap = qs('#graph-minimap-wrap');
+    if (graphMinimap) graphMinimap.style.display = '';
+
+    ensureGraph();
+    App.graph.clear();
+
+    try {
+      const isArch = (App.codebaseGraphLevel === 'arch');
+      showBanner(isArch ? 'Loading codebase architecture graph...' : 'Loading detailed method graph...');
+
+      const view = isArch ? await api.architectureGraph() : await api.fullGraph();
+
+      if (!view.nodes || view.nodes.length === 0) {
+        showGraphEmpty('No code relationships indexed yet. Run a scan first.');
+        return;
+      }
+
+      hideGraphEmpty();
+      App.graph.setData(view.nodes, view.edges);
+
+      // Update inspector view
+      renderWholeCodebaseInspector(view, isArch ? 'Architecture' : 'Detailed');
+
+      showBanner('Done: ' + (isArch ? 'Architecture' : 'Detailed') + ' codebase graph loaded: ' + view.nodes.length + ' nodes, ' + view.edges.length + ' relationships');
+    } catch (e) {
+      showGraphEmpty('Failed to load codebase graph: ' + e.message);
+    }
   }
+}
+
+/** Count total nodes in a treemap tree (recursive). */
+function countTreemapNodes(node) {
+  if (!node) return 0;
+  let count = 1;
+  if (node.children) {
+    for (const child of node.children) count += countTreemapNodes(child);
+  }
+  return count;
+}
+
+/** Render inspector panel for alt-viz modes. */
+function renderAltVizInspector(vizName, nodeCount, sizeOrEdges) {
+  const body = qs('#right-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  renderEntityHeader('VISUALIZATION', vizName, 'Alternative visualization of the codebase');
+
+  const labels = {
+    'DSM': [['Classes', String(nodeCount)], ['View', 'Dependency Structure Matrix']],
+    'Treemap': [['Nodes', String(nodeCount)], ['Total Lines', String(sizeOrEdges)], ['View', 'Zoomable Treemap']],
+    'Chord': [['Classes', String(nodeCount)], ['Relationships', String(sizeOrEdges)], ['View', 'Chord Diagram']],
+    'Sunburst': [['Nodes', String(nodeCount)], ['Total Lines', String(sizeOrEdges)], ['View', 'Sunburst']],
+  };
+
+  body.appendChild(metaGrid(labels[vizName] || [['Nodes', String(nodeCount)]]));
+
+  const hint = createElement('div', { class: 'inspector-hint-box' });
+  const tips = {
+    'DSM': 'Rows = source classes, columns = target classes. Blue = dependency, red = cycle. Hover for crosshair.',
+    'Treemap': 'Rectangle size = lines of code. Color = cyclomatic complexity (blue=low, red=high). Click to zoom.',
+    'Chord': 'Arc size = connection volume. Chords = inter-class calls. Hover an arc to isolate its connections.',
+    'Sunburst': 'Ring segments = packages/classes/methods. Angle = proportion of code size. Click to zoom in.',
+  };
+  hint.innerHTML = '<div style="font-size:12px; color:var(--text-secondary); line-height:1.5; padding:8px 0;">' + (tips[vizName] || '') + '</div>';
+  body.appendChild(hint);
 }
 
 function renderWholeCodebaseInspector(view, levelName = 'Architecture') {
@@ -2127,6 +2292,22 @@ async function init() {
   const methodsLevelBtn = qs('#btn-level-methods');
   if (methodsLevelBtn) {
     methodsLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('methods'));
+  }
+  const dsmLevelBtn = qs('#btn-level-dsm');
+  if (dsmLevelBtn) {
+    dsmLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('dsm'));
+  }
+  const treemapLevelBtn = qs('#btn-level-treemap');
+  if (treemapLevelBtn) {
+    treemapLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('treemap'));
+  }
+  const chordLevelBtn = qs('#btn-level-chord');
+  if (chordLevelBtn) {
+    chordLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('chord'));
+  }
+  const sunburstLevelBtn = qs('#btn-level-sunburst');
+  if (sunburstLevelBtn) {
+    sunburstLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('sunburst'));
   }
 
   // Expose global handles for testing and automation

@@ -422,4 +422,180 @@ public class CallGraphAnalyzer {
             this.rootId = rootId; this.nodes = nodes; this.edges = edges;
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DSM (Dependency Structure Matrix) view
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns a Dependency Structure Matrix (adjacency matrix) at the class level.
+     * Classes are sorted alphabetically; matrix[i][j] = number of method calls from class i to class j.
+     */
+    public DSMPayload dsmView() {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Map<String, Integer>> classCalls = new LinkedHashMap<>();
+        Set<String> allClasses = new TreeSet<>();
+
+        for (String v : g.vertexSet()) {
+            String c = extractClassFqn(v);
+            allClasses.add(c);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                String tgtClass = extractClassFqn(tgt);
+                allClasses.add(tgtClass);
+                classCalls.computeIfAbsent(c, k -> new LinkedHashMap<>())
+                          .merge(tgtClass, 1, Integer::sum);
+            }
+        }
+
+        List<String> classList = new ArrayList<>(allClasses);
+        Map<String, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < classList.size(); i++) {
+            indexMap.put(classList.get(i), i);
+        }
+
+        int n = classList.size();
+        int[][] matrix = new int[n][n];
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : classCalls.entrySet()) {
+            Integer si = indexMap.get(srcEntry.getKey());
+            if (si == null) continue;
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                Integer ti = indexMap.get(tgtEntry.getKey());
+                if (ti == null) continue;
+                matrix[si][ti] = tgtEntry.getValue();
+            }
+        }
+
+        // Build package grouping info
+        Map<String, String> classPackages = new LinkedHashMap<>();
+        for (String c : classList) {
+            int dot = c.lastIndexOf('.');
+            classPackages.put(c, dot >= 0 ? c.substring(0, dot) : "(default)");
+        }
+
+        return new DSMPayload(classList, matrix, classPackages);
+    }
+
+    /** DSM response payload. */
+    public static class DSMPayload {
+        public final List<String> classes;
+        public final int[][]      matrix;
+        public final Map<String, String> packages;
+
+        public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages) {
+            this.classes = classes;
+            this.matrix  = matrix;
+            this.packages = packages;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Treemap (Hierarchical size/complexity) view
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a hierarchical treemap payload from the indexed types and methods.
+     * Hierarchy: root -> packages -> classes -> methods.
+     * Builds a hierarchical treemap payload.
+     * Hierarchy: root -> packages -> classes -> methods.
+     * Accepts pre-built records to avoid coupling with model layer.
+     */
+    public static TreemapNode treemapView(List<TreemapTypeRecord> types,
+                                          List<TreemapMethodRecord> methods) {
+        // Group methods by declaring type
+        Map<String, List<TreemapMethodRecord>> methodsByType = new LinkedHashMap<>();
+        for (TreemapMethodRecord m : methods) {
+            methodsByType.computeIfAbsent(m.declaringTypeFqn, k -> new ArrayList<>()).add(m);
+        }
+
+        // Group types by package
+        Map<String, List<TreemapTypeRecord>> typesByPkg = new LinkedHashMap<>();
+        for (TreemapTypeRecord t : types) {
+            String pkg = t.packageFqn != null ? t.packageFqn : "(default)";
+            typesByPkg.computeIfAbsent(pkg, k -> new ArrayList<>()).add(t);
+        }
+
+        // Build tree
+        TreemapNode root = new TreemapNode("root", 0, 0);
+        for (Map.Entry<String, List<TreemapTypeRecord>> pkgEntry : typesByPkg.entrySet()) {
+            TreemapNode pkgNode = new TreemapNode(pkgEntry.getKey(), 0, 0);
+            for (TreemapTypeRecord t : pkgEntry.getValue()) {
+                int lineCount = Math.max(t.lineCount, 1);
+                TreemapNode classNode = new TreemapNode(t.simpleName, lineCount, 0);
+                classNode.fqn = t.fqn;
+                classNode.kind = t.kind;
+
+                List<TreemapMethodRecord> classMethods = methodsByType.get(t.fqn);
+                if (classMethods != null && !classMethods.isEmpty()) {
+                    int maxComplexity = 0;
+                    for (TreemapMethodRecord m : classMethods) {
+                        int mLines = Math.max(m.endLine - m.startLine + 1, 1);
+                        int mComplexity = Math.max(m.cyclomaticComplexity, 1);
+                        TreemapNode methodNode = new TreemapNode(m.simpleName, mLines, mComplexity);
+                        methodNode.fqn = m.fqn;
+                        classNode.children.add(methodNode);
+                        maxComplexity = Math.max(maxComplexity, mComplexity);
+                    }
+                    classNode.complexity = maxComplexity;
+                    int methodSum = classNode.children.stream().mapToInt(c -> c.size).sum();
+                    if (methodSum > 0) classNode.size = methodSum;
+                }
+
+                pkgNode.children.add(classNode);
+                pkgNode.size += classNode.size;
+            }
+            if (pkgNode.children.isEmpty()) continue;
+            root.children.add(pkgNode);
+            root.size += pkgNode.size;
+        }
+        return root;
+    }
+
+    /** Lightweight record for type data passed into treemapView(). */
+    public static class TreemapTypeRecord {
+        public final String fqn;
+        public final String simpleName;
+        public final String packageFqn;
+        public final String kind;
+        public final int    lineCount;
+
+        public TreemapTypeRecord(String fqn, String simpleName, String packageFqn, String kind, int lineCount) {
+            this.fqn = fqn; this.simpleName = simpleName; this.packageFqn = packageFqn;
+            this.kind = kind; this.lineCount = lineCount;
+        }
+    }
+
+    /** Lightweight record for method data passed into treemapView(). */
+    public static class TreemapMethodRecord {
+        public final String fqn;
+        public final String simpleName;
+        public final String declaringTypeFqn;
+        public final int    startLine;
+        public final int    endLine;
+        public final int    cyclomaticComplexity;
+
+        public TreemapMethodRecord(String fqn, String simpleName, String declaringTypeFqn,
+                                   int startLine, int endLine, int cyclomaticComplexity) {
+            this.fqn = fqn; this.simpleName = simpleName; this.declaringTypeFqn = declaringTypeFqn;
+            this.startLine = startLine; this.endLine = endLine; this.cyclomaticComplexity = cyclomaticComplexity;
+        }
+    }
+
+    /** A node in the treemap hierarchy. */
+    public static class TreemapNode {
+        public String name;
+        public int    size;
+        public int    complexity;
+        public String fqn;
+        public String kind;
+        public List<TreemapNode> children = new ArrayList<>();
+
+        public TreemapNode(String name, int size, int complexity) {
+            this.name = name;
+            this.size = size;
+            this.complexity = complexity;
+        }
+    }
 }
+
