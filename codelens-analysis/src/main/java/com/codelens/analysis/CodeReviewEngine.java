@@ -6,7 +6,6 @@ import com.github.javaparser.ast.*;
 import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
-import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,7 +130,7 @@ public class CodeReviewEngine {
                 .map(pd -> pd.getNameAsString()).orElse("");
 
             // Run all checks
-            cu.accept(new ReviewVisitor(findings, packageName, filePath, callGraph, fieldImpact), null);
+            cu.accept(new ReviewVisitor(findings, packageName, callGraph, fieldImpact), null);
 
             // Sort by severity: CRITICAL first, then WARNING, then INFO
             findings.sort(Comparator.comparingInt(f -> severityOrder(f.getSeverity())));
@@ -172,7 +171,6 @@ public class CodeReviewEngine {
 
         private final List<ReviewFinding> findings;
         private final String packageName;
-        private final String filePath;
         private final CallGraphAnalyzer callGraph;
         private final FieldImpactAnalyzer fieldImpact;
 
@@ -186,11 +184,10 @@ public class CodeReviewEngine {
         private int methodCount = 0;
         private int fieldCount = 0;
 
-        ReviewVisitor(List<ReviewFinding> findings, String packageName, String filePath,
+        ReviewVisitor(List<ReviewFinding> findings, String packageName,
                       CallGraphAnalyzer callGraph, FieldImpactAnalyzer fieldImpact) {
             this.findings    = findings;
             this.packageName = packageName;
-            this.filePath    = filePath;
             this.callGraph   = callGraph;
             this.fieldImpact = fieldImpact;
         }
@@ -419,6 +416,23 @@ public class CodeReviewEngine {
                             String.format("Calls %d other methods. This method orchestrates too much.", fanOut),
                             "Extract orchestration into smaller composed methods or use a mediator pattern.",
                             startLine));
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Check 32: Field blast radius (high cross-cutting impact)
+            if (fieldImpact != null && currentTypeFqn != null && !currentTypeFqn.isBlank()) {
+                try {
+                    for (String fieldName : typeFieldNames) {
+                        String fieldFqn = currentTypeFqn + "." + fieldName;
+                        FieldImpactAnalyzer.ImpactView impact = fieldImpact.analyse(fieldFqn);
+                        if (impact != null && impact.writers.contains(methodFqn) && impact.readers.size() >= 5) {
+                            findings.add(finding("IMPACT", "INFO", "HIGH_FIELD_BLAST_RADIUS",
+                                methodFqn, "METHOD",
+                                String.format("Mutates field '%s' which is read by %d other methods.", fieldName, impact.readers.size()),
+                                "State changes to this field propagate widely. Guard with synchronization or encapsulation.",
+                                startLine));
+                        }
                     }
                 } catch (Exception ignored) {}
             }
