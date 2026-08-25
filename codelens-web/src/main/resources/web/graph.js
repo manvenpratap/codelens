@@ -457,37 +457,29 @@ class ForceGraph {
       return comm;
     });
 
-    // 3. Initialize nodes with positions spread by class constellations
-    const uniqueClasses = Array.from(new Set(nodes.map(n => {
-      const { className } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
-      return className || 'default';
-    })));
-    const classAngles = {};
-    uniqueClasses.forEach((c, idx) => {
-      classAngles[c] = (idx / Math.max(uniqueClasses.length, 1)) * Math.PI * 2;
-    });
-
-    const isLargeSet = nodes.length > 25;
-    const spread = Math.max(cx, cy) * (isLargeSet ? 0.95 : 0.75) + Math.sqrt(nodes.length) * (isLargeSet ? 70 : 55);
-
-    this._nodes = nodes.map((n, i) => {
+    // 3. Initialize nodes in a Blooming Tree structure
+    // Group nodes by branch (package / module)
+    const branchMap = new Map();
+    for (const n of nodes) {
       const { pkg, className, memberName } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
       const finalPkg = n.package || pkg || 'default';
       const comm = this._communityMap.get(finalPkg) || this._communities[0];
       comm.nodes.add(n.id);
 
       const deg = (inDegrees[n.id] || 0) + (outDegrees[n.id] || 0);
-      const cAngle = classAngles[className || 'default'] !== undefined
-        ? classAngles[className || 'default']
-        : ((i / Math.max(nodes.length, 1)) * Math.PI * 2);
-      const cCenterDist = isLargeSet ? spread * 0.55 : spread * 0.35;
-      const cX = cx + Math.cos(cAngle) * cCenterDist;
-      const cY = cy + Math.sin(cAngle) * cCenterDist;
 
-      const subAngle = Math.random() * Math.PI * 2;
-      const subDist = (Math.random() * (isLargeSet ? 120 : 60));
+      // Compute activity/heat score for core center ranking
+      let heatVal = 0;
+      if (this._heatData) {
+        heatVal = (this._heatData[n.id] !== undefined)
+          ? this._heatData[n.id]
+          : ((n.label && this._heatData[n.label] !== undefined)
+              ? this._heatData[n.label]
+              : (n.id ? this._heatData[n.id.replace(/\(.*\)/, '')] : 0)) || 0;
+      }
+      const hotScore = deg * 3 + (n.role === 'root' ? 25 : 0) + (n.type === 'CLASS' ? 12 : 0) + heatVal * 2;
 
-      return {
+      const nodeObj = {
         ...n,
         package: finalPkg,
         className: className,
@@ -498,16 +490,63 @@ class ForceGraph {
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
-        radius: (isLargeSet && n.type !== 'CLASS' ? PHYSICS.nodeBaseRadius - 1 : PHYSICS.nodeBaseRadius) + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 3 : 0) + (n.type === 'CLASS' ? 5 : 0),
-        x: cX + Math.cos(subAngle) * subDist,
-        y: cY + Math.sin(subAngle) * subDist,
+        hotScore: hotScore,
+        radius: (isLargeSet && n.type !== 'CLASS' ? PHYSICS.nodeBaseRadius - 1 : PHYSICS.nodeBaseRadius) + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 4 : 0) + (n.type === 'CLASS' ? 5 : 0),
         vx: 0,
         vy: 0,
         _fx: 0,
         _fy: 0,
         pinned: false,
       };
+
+      if (!branchMap.has(finalPkg)) branchMap.set(finalPkg, []);
+      branchMap.get(finalPkg).push(nodeObj);
+    }
+
+    // Position branches blooming outward like a floral fractal tree from trunk/center
+    const branchKeys = Array.from(branchMap.keys());
+    const totalBranches = branchKeys.length;
+    const allProcessedNodes = [];
+
+    // Calculate trunk center distance and angular spacing
+    const branchSpread = Math.max(cx, cy) * (isLargeSet ? 0.92 : 0.75) + Math.sqrt(nodes.length) * 45;
+
+    branchKeys.forEach((bKey, bIdx) => {
+      const bNodes = branchMap.get(bKey);
+      // Sort nodes in branch descending by hotScore (hottest node at the exact center of the branch)
+      bNodes.sort((a, b) => b.hotScore - a.hotScore);
+
+      const branchAngle = (bIdx / Math.max(totalBranches, 1)) * Math.PI * 2 + (bIdx % 2 ? 0.15 : -0.15);
+      const branchDist = totalBranches === 1 ? 0 : (branchSpread * 0.55 + (bIdx % 3) * 35);
+      const branchCenterX = cx + Math.cos(branchAngle) * branchDist;
+      const branchCenterY = cy + Math.sin(branchAngle) * branchDist;
+
+      // Hottest node placed at branch center
+      const coreNode = bNodes[0];
+      coreNode.x = branchCenterX;
+      coreNode.y = branchCenterY;
+      coreNode.branchCenterX = branchCenterX;
+      coreNode.branchCenterY = branchCenterY;
+      coreNode.isBranchCore = true;
+      allProcessedNodes.push(coreNode);
+
+      // Remaining nodes bloom outward in golden ratio / sunflower spiral rings around the core
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
+      for (let k = 1; k < bNodes.length; k++) {
+        const nd = bNodes[k];
+        const ringAngle = branchAngle + k * goldenAngle;
+        const ringDist = 38 + Math.sqrt(k) * 42;
+
+        nd.x = branchCenterX + Math.cos(ringAngle) * ringDist;
+        nd.y = branchCenterY + Math.sin(ringAngle) * ringDist;
+        nd.branchCenterX = branchCenterX;
+        nd.branchCenterY = branchCenterY;
+        nd.isBranchCore = false;
+        allProcessedNodes.push(nd);
+      }
     });
+
+    this._nodes = allProcessedNodes;
 
     this._edges = edges.map(e => ({ ...e }));
     this._ticks = 0;
@@ -709,8 +748,22 @@ class ForceGraph {
       tgt._fx -= fx; tgt._fy -= fy;
     }
 
-    // 3. Subtle community cohesion force + Class Constellation Cohesion
+    // 3. Blooming Branch & Core Cohesion force
     for (let i = 0; i < n; i++) {
+      const nd = nodes[i];
+      if (this._hiddenCommunities.has(nd.community)) continue;
+
+      // Leaf nodes are drawn in a gentle radial bloom toward their branch core
+      if (!nd.isBranchCore && nd.branchCenterX !== undefined && nd.branchCenterY !== undefined) {
+        const dx = nd.branchCenterX - nd.x;
+        const dy = nd.branchCenterY - nd.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const idealDist = 45 + Math.sqrt(nd.degree || 1) * 35;
+        const f = (dist - idealDist) * (PHYSICS.clusterK * 1.5);
+        nd._fx += (dx / dist) * f;
+        nd._fy += (dy / dist) * f;
+      }
+
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
         if (ni.community === nj.community) {
@@ -1332,17 +1385,29 @@ class ForceGraph {
     ctx.save();
     ctx.globalAlpha = opacity;
 
-    // 1. Ambient Bloom Glow (Hovered / Selected / Root)
-    if (isHovered || isSelected || node.role === 'root' || (this._heatMode && heatRatio > 0.15)) {
-      const glowRadius = r + (isSelected ? 16 : 10) + heatRatio * 12;
+    // 1. Ambient Bloom Glow (Branch Core / Hovered / Selected / Root)
+    if (node.isBranchCore || isHovered || isSelected || node.role === 'root' || (this._heatMode && heatRatio > 0.15)) {
+      const glowRadius = r + (isSelected ? 18 : (node.isBranchCore ? 14 : 10)) + heatRatio * 12;
       const glowGrad = ctx.createRadialGradient(x, y, r * 0.8, x, y, glowRadius);
-      glowGrad.addColorStop(0, hexToRgba(mainColor, 0.45));
+      glowGrad.addColorStop(0, hexToRgba(mainColor, node.isBranchCore ? 0.55 : 0.45));
+      glowGrad.addColorStop(0.6, hexToRgba(mainColor, node.isBranchCore ? 0.2 : 0.1));
       glowGrad.addColorStop(1, 'transparent');
 
       ctx.beginPath();
       ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
       ctx.fillStyle = glowGrad;
       ctx.fill();
+
+      // Core pulsating corona ring for hottest branch node
+      if (node.isBranchCore) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = hexToRgba(mainColor, 0.6);
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
 
     // 2. Node Circle Fill with 3D Specular Highlight
