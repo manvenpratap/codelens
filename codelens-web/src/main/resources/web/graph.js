@@ -1741,19 +1741,32 @@ class ForceGraph {
     });
   }
 
+  _getNodeCard() {
+    if (this._container) {
+      const scopedCard = this._container.querySelector('.graph-node-card');
+      if (scopedCard) return scopedCard;
+      const parentView = this._container.closest('#codebase-view, #graph-view, .app-viewport');
+      if (parentView) {
+        const viewCard = parentView.querySelector('.graph-node-card');
+        if (viewCard) return viewCard;
+      }
+    }
+    return document.getElementById('codebase-node-card') || document.getElementById('graph-node-card');
+  }
+
   _showNodeCard(node) {
-    const card = document.getElementById('graph-node-card');
+    const card = this._getNodeCard();
     if (!card) return;
 
     card.style.display = 'flex';
-    const accentBar = document.getElementById('node-card-accent-bar');
-    const iconEl = document.getElementById('node-card-icon');
-    const nameEl = document.getElementById('node-card-name');
-    const commEl = document.getElementById('node-card-community');
-    const typeEl = document.getElementById('node-card-type');
-    const degEl  = document.getElementById('node-card-degree');
-    const neighborsList = document.getElementById('node-card-neighbors');
-    const countEl = document.getElementById('node-card-neighbor-count');
+    const accentBar = card.querySelector('.node-card-accent-bar') || document.getElementById('node-card-accent-bar');
+    const iconEl = card.querySelector('.node-card-icon') || document.getElementById('node-card-icon');
+    const nameEl = card.querySelector('.node-card-name') || document.getElementById('node-card-name');
+    const commEl = card.querySelector('.node-card-community') || document.getElementById('node-card-community');
+    const typeEl = card.querySelector('.node-card-type') || document.getElementById('node-card-type');
+    const degEl  = card.querySelector('.node-card-degree') || document.getElementById('node-card-degree');
+    const neighborsList = card.querySelector('.node-card-neighbors') || document.getElementById('node-card-neighbors');
+    const countEl = card.querySelector('.node-card-neighbor-count') || document.getElementById('node-card-neighbor-count');
 
     const commColor = node.communityColor || '#2563eb';
 
@@ -1806,8 +1819,8 @@ class ForceGraph {
       commEl.style.fontWeight = '700';
     }
 
-    const classEl = document.getElementById('node-card-class');
-    const classRow = document.getElementById('node-card-class-row');
+    const classEl = card.querySelector('.node-card-class') || document.getElementById('node-card-class');
+    const classRow = card.querySelector('.node-card-class-row') || document.getElementById('node-card-class-row');
     if (classEl && classRow) {
       if (node.className) {
         classEl.textContent = node.className;
@@ -1868,7 +1881,7 @@ class ForceGraph {
   }
 
   _positionNodeCard(node) {
-    const card = document.getElementById('graph-node-card');
+    const card = this._getNodeCard();
     if (!card || card.style.display === 'none') return;
 
     const container = this._container;
@@ -1914,7 +1927,7 @@ class ForceGraph {
   }
 
   _clampNodeCardToViewport() {
-    const card = document.getElementById('graph-node-card');
+    const card = this._getNodeCard();
     if (!card || card.style.display === 'none') return;
 
     const container = this._container;
@@ -1953,10 +1966,15 @@ class ForceGraph {
   }
 
   _bindNodeCardDrag() {
-    const card = document.getElementById('graph-node-card');
+    const card = this._getNodeCard();
     if (!card) return;
     const header = card.querySelector('.node-card-header');
     if (!header) return;
+
+    const closeBtn = card.querySelector('.node-card-close');
+    if (closeBtn) {
+      closeBtn.onclick = () => this._hideNodeCard();
+    }
 
     let isDragging = false;
     let startX = 0, startY = 0;
@@ -2006,7 +2024,7 @@ class ForceGraph {
   }
 
   _hideNodeCard() {
-    const card = document.getElementById('graph-node-card');
+    const card = this._getNodeCard();
     if (card) card.style.display = 'none';
   }
 

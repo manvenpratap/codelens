@@ -538,6 +538,48 @@
         <div id="codebase-legend-list" class="legend-list"></div>
       </div>
 
+      <!-- Graphify Node Quick-Inspector Card for Codebase Viz (Floating HUD inside 2D graph) -->
+      <div id="codebase-node-card" class="graph-node-card" style="display:none">
+        <div class="node-card-accent-bar"></div>
+        <div class="node-card-header">
+          <div class="node-card-title-row">
+            <span class="node-card-icon">◈</span>
+            <span class="node-card-name">MethodName</span>
+          </div>
+          <button class="node-card-close">✕</button>
+        </div>
+        <div class="node-card-body">
+          <div class="node-card-row">
+            <span class="nc-lbl">Module:</span>
+            <span class="nc-val nc-badge node-card-community">-</span>
+          </div>
+          <div class="node-card-row node-card-class-row">
+            <span class="nc-lbl">Class:</span>
+            <span class="nc-val nc-badge node-card-class">-</span>
+          </div>
+          <div class="node-card-row">
+            <span class="nc-lbl">Kind:</span>
+            <span class="nc-val nc-badge node-card-type">-</span>
+          </div>
+          <div class="node-card-row">
+            <span class="nc-lbl">Connections:</span>
+            <span class="nc-val node-card-degree">0 (in: 0, out: 0)</span>
+          </div>
+          <div class="node-card-neighbors-sec">
+            <div class="nc-neighbors-title">Connected Neighbors (<span class="node-card-neighbor-count">0</span>)</div>
+            <div class="nc-neighbors-list node-card-neighbors"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tooltip shown on node hover for Codebase Viz -->
+      <div
+        id="codebase-tooltip"
+        class="graph-tooltip"
+        role="tooltip"
+        aria-live="polite"
+      ></div>
+
       <!-- Mount container for codebase visualizers -->
       <div id="codebase-canvas-wrap" style="width:100%; height:100%; position:relative; overflow:hidden;"></div>
     </section><!-- /#codebase-view -->

@@ -1379,9 +1379,31 @@ async function loadWholeCodebaseGraph(level, granularity) {
           return;
         }
 
-        const tooltip = qs('#graph-tooltip');
+        const tooltip = qs('#codebase-tooltip') || qs('#graph-tooltip');
         const fg = new window.ForceGraph(mountContainer, tooltip);
         fg.setData(data.nodes, data.edges);
+
+        fg.onNodeClick = async (node) => {
+          if (node.type === 'CLASS') {
+            try {
+              const typeData = await api.type(node.id);
+              renderTypeDetail(typeData);
+              updateReviewTargetInfo();
+            } catch (e) { console.warn(e); }
+          } else if (node.type === 'METHOD') {
+            try {
+              const methodData = await api.method(node.id);
+              renderMethodDetail(methodData);
+              updateReviewTargetInfo();
+            } catch (e) { console.warn(e); }
+          } else if (node.type === 'FIELD') {
+            try {
+              const fieldData = await api.field(node.id);
+              renderFieldDetail(fieldData);
+              updateReviewTargetInfo();
+            } catch (e) { console.warn(e); }
+          }
+        };
 
         App.activeAltRenderer = fg;
         renderAltVizInspector(`2D Bloom (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
