@@ -548,6 +548,72 @@ body.resizing .panel-resizer {
   color: var(--text-primary);
 }
 
+/* Header Project & Scan Bar */
+.header-project-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  max-width: 480px;
+  transition: all var(--dur-fast) var(--ease);
+}
+.project-pill:hover {
+  background: var(--bg-elevated);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+.project-pill-icon {
+  font-size: 13px;
+}
+.project-pill-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.project-pill-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-header-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn-header-pill:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
 /* Scan controls section */
 .scan-section {
   display: flex;
@@ -622,6 +688,51 @@ body.resizing .panel-resizer {
 }
 .btn-ghost:active { background: var(--bg-surface); }
 .btn-ghost:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Top-Right Dedicated Action Group */
+.header-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+  white-space: nowrap;
+}
+.header-action-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.header-action-btn.export-action-btn {
+  background: var(--primary-subtle);
+  border-color: var(--primary-border);
+  color: var(--text-primary);
+}
+.header-action-btn.export-action-btn:hover {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 0 12px var(--primary-glow);
+}
+.header-action-btn .action-btn-icon {
+  font-size: 12px;
+}
+.header-action-btn .action-btn-text {
+  letter-spacing: 0.2px;
+}
 
 /* Live stats indicators */
 .stats-row {
@@ -3308,336 +3419,312 @@ body.resizing .panel-resizer {
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   ARCTIC LIGHT MODE OVERRIDES
-   Applied when body has class 'theme-light'
+   2 CORE THEMES: DARK (MIDNIGHT OBSIDIAN) & LIGHT (PURE DAYLIGHT)
    ───────────────────────────────────────────────────────────────────────────── */
 
-body.theme-light {
-  color: var(--text-primary);
+/* 🌑 DARK THEME (Default) */
+body[data-theme="dark"], body:not(.theme-light) {
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+}
+
+/* ☀️ LIGHT THEME (Pure Daylight) - Crystal Clear WCAG AAA Contrast */
+body.theme-light, body[data-theme="light"] {
+  color: #0f172a;
+  background-color: #f1f5f9;
 }
 
 body.theme-light .logo-text {
-  color: var(--text-primary);
+  color: #0f172a;
+  font-weight: 800;
+}
+
+body.theme-light #header {
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light .project-pill {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+body.theme-light .project-pill:hover {
+  background: #f1f5f9;
+  border-color: #0284c7;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.15);
+}
+body.theme-light .project-pill-name {
+  color: #0f172a;
+}
+body.theme-light .project-pill-path {
+  color: #475569;
+}
+body.theme-light .btn-header-pill {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+body.theme-light .btn-header-pill:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+body.theme-light .header-action-btn {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+body.theme-light .header-action-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+body.theme-light .header-action-btn.export-action-btn {
+  background: rgba(2, 132, 199, 0.10);
+  border-color: rgba(2, 132, 199, 0.35);
+  color: #0284c7;
+}
+body.theme-light .header-action-btn.export-action-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
 }
 
 body.theme-light #scan-path-input,
 body.theme-light .search-input-wrap input {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-color: var(--border);
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+body.theme-light #scan-path-input:focus,
+body.theme-light .search-input-wrap input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.20);
+  background: #ffffff;
 }
 
 body.theme-light .chip {
-  color: var(--text-secondary);
-  border-color: var(--border);
+  color: #334155;
+  border-color: #cbd5e1;
+  background: #f8fafc;
 }
-
+body.theme-light .chip:hover {
+  border-color: #94a3b8;
+  color: #0f172a;
+}
 body.theme-light .chip.active {
-  color: var(--primary);
-  background: var(--primary-subtle);
-  border-color: var(--primary-border);
+  color: #ffffff;
+  background: #0284c7;
+  border-color: #0284c7;
 }
 
+body.theme-light .stat-pill {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
 body.theme-light .stat-count {
-  color: var(--text-primary);
+  color: #0f172a;
+  font-weight: 700;
 }
 
+body.theme-light .tab-bar {
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
+}
 body.theme-light .tab {
-  color: var(--text-secondary);
+  color: #334155;
+  font-weight: 600;
 }
-
+body.theme-light .tab:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
 body.theme-light .tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: #ffffff;
+  background: #0284c7;
+  border-color: #0284c7;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
 }
 
-body.theme-light .section-label {
-  color: var(--text-secondary);
+body.theme-light .section-label,
+body.theme-light #explorer-label {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.8px;
+}
+
+body.theme-light .right-panel-toolbar {
+  background: #f8fafc;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+body.theme-light .right-panel-title {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.12em;
 }
 
 body.theme-light .tree-type-item,
 body.theme-light .tree-member-item {
-  color: var(--text-primary);
+  color: #0f172a;
 }
-
 body.theme-light .tree-type-item:hover,
 body.theme-light .tree-member-item:hover {
-  background: var(--primary-subtle);
+  background: #e2e8f0;
+}
+body.theme-light .tree-type-item.active,
+body.theme-light .tree-member-item.active {
+  background: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
+  font-weight: 700;
 }
 
 body.theme-light .detail-empty-text,
 body.theme-light .graph-empty-text {
-  color: var(--text-secondary);
-}
-
-body.theme-light .nc-lbl {
-  color: var(--text-muted);
-}
-
-body.theme-light .nc-val {
-  color: var(--text-primary);
-}
-
-body.theme-light .review-results,
-body.theme-light .git-view-inner {
-  color: var(--text-primary);
-}
-
-body.theme-light .modal-header {
-  background: var(--bg-surface);
-}
-
-body.theme-light .settings-row > label:first-child {
-  color: var(--text-secondary);
-}
-
-body.theme-light .theme-tagline {
-  color: var(--text-muted);
-}
-
-body.theme-light .toggle-track {
-  background: var(--bg-surface);
-}
-
-body.theme-light .settings-select {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-body.theme-light #app-footer {
-  background: var(--bg-panel);
-  border-top-color: var(--border);
-  color: var(--text-secondary);
-}
-
-body.theme-light .footer-meta-pill {
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-}
-
-body.theme-light .scan-status-bar {
-  background: var(--bg-panel);
-  color: var(--text-primary);
-}
-
-body.theme-light .btn-primary {
-  background: var(--primary);
-  color: #ffffff;
-}
-
-body.theme-light .btn-ghost {
-  color: var(--text-secondary);
-  border-color: var(--border);
-}
-
-body.theme-light .btn-ghost:hover {
-  color: var(--text-primary);
-  background: var(--primary-subtle);
-}
-
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   THEME PERSONALITIES & DISTINCT CHARACTERS
-   ───────────────────────────────────────────────────────────────────────────── */
-
-/* 🟣 1. CYBERPUNK - Synthwave / Neon HUD / Retrowave Terminal */
-body[data-theme="cyberpunk"] {
-  --radius-xs: 1px;
-  --radius-sm: 2px;
-  --radius-md: 4px;
-}
-body[data-theme="cyberpunk"] #app-header {
-  border-bottom: 1px solid rgba(224, 64, 251, 0.35);
-  box-shadow: 0 4px 20px rgba(224, 64, 251, 0.12);
-}
-body[data-theme="cyberpunk"] .btn-primary {
-  background: linear-gradient(135deg, #e040fb, #7c4dff);
-  color: #ffffff;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  font-size: 11px;
-  box-shadow: 0 0 14px rgba(224, 64, 251, 0.45);
-  border: 1px solid #e040fb;
-}
-body[data-theme="cyberpunk"] .btn-primary:hover {
-  box-shadow: 0 0 22px rgba(224, 64, 251, 0.7);
-  transform: translateY(-1px);
-}
-body[data-theme="cyberpunk"] .chip.active {
-  box-shadow: 0 0 8px rgba(224, 64, 251, 0.3);
-  border-color: #e040fb;
-  color: #00e5ff;
-}
-body[data-theme="cyberpunk"] .tab.active {
-  color: #00e5ff;
-  border-bottom-color: #00e5ff;
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
-}
-body[data-theme="cyberpunk"] .panel-header {
-  border-bottom: 1px solid rgba(224, 64, 251, 0.2);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-}
-body[data-theme="cyberpunk"] .logo-text {
-  text-shadow: 0 0 10px rgba(224, 64, 251, 0.6), 0 0 20px rgba(0, 229, 255, 0.4);
-}
-body[data-theme="cyberpunk"] .node-card {
-  box-shadow: 0 0 24px rgba(224, 64, 251, 0.25), 0 8px 32px rgba(0, 0, 0, 0.8);
-  border-color: rgba(224, 64, 251, 0.4);
-}
-
-/* 🔥 2. EMBER - Molten Forge / Warm Engineering / Steampunk Brass */
-body[data-theme="ember"] {
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-}
-body[data-theme="ember"] #app-header {
-  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
-  box-shadow: 0 4px 20px rgba(232, 127, 23, 0.08);
-}
-body[data-theme="ember"] .btn-primary {
-  background: linear-gradient(135deg, #e87f17, #b45309);
-  color: #fef3c7;
+  color: #334155;
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(232, 127, 23, 0.35);
-  border: 1px solid rgba(251, 191, 36, 0.4);
 }
-body[data-theme="ember"] .btn-primary:hover {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
-}
-body[data-theme="ember"] .chip.active {
-  background: rgba(232, 127, 23, 0.16);
-  border-color: #f59e0b;
-  color: #fbbf24;
-}
-body[data-theme="ember"] .tab.active {
-  color: #fbbf24;
-  border-bottom-color: #e87f17;
-}
-body[data-theme="ember"] .logo-text {
-  background: linear-gradient(135deg, #fef3c7, #f59e0b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-body[data-theme="ember"] .node-card {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(232, 127, 23, 0.15);
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-/* ❄️ 3. ARCTIC - Crisp Architectural Daylight / Scandinavian Minimalist */
-body[data-theme="arctic"] {
-  --radius-xs: 3px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-}
-body[data-theme="arctic"] #app-header {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
-}
-body[data-theme="arctic"] .panel {
-  background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
-}
-body[data-theme="arctic"] .panel-header {
-  background: #f8fafc;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-body[data-theme="arctic"] .btn-primary {
-  background: linear-gradient(135deg, #1e6bb8, #144f8a);
-  color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 2px 10px rgba(30, 107, 184, 0.25);
-  border: 1px solid #1e6bb8;
-}
-body[data-theme="arctic"] .btn-primary:hover {
-  background: linear-gradient(135deg, #2579cc, #1e6bb8);
-  box-shadow: 0 4px 14px rgba(30, 107, 184, 0.35);
-}
-body[data-theme="arctic"] .node-card {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.12);
-}
-body[data-theme="arctic"] .node-card-title {
-  color: #0f172a;
-}
-body[data-theme="arctic"] .node-card-sub {
+body.theme-light .detail-empty-sub,
+body.theme-light .graph-empty-sub {
   color: #475569;
 }
-body[data-theme="arctic"] .hud-btn {
-  background: rgba(255, 255, 255, 0.9);
-  color: #334155;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+
+body.theme-light .graph-hud-bar {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
 }
-body[data-theme="arctic"] .hud-btn:hover {
-  background: #ffffff;
-  color: #1e6bb8;
-  border-color: #1e6bb8;
+body.theme-light .hud-btn {
+  background: #f8fafc;
+  color: #1e293b;
+  border-color: #cbd5e1;
 }
-body[data-theme="arctic"] .graph-minimap-wrap {
-  border: 1px solid rgba(0, 0, 0, 0.12);
+body.theme-light .hud-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+body.theme-light .hud-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+}
+
+body.theme-light .depth-pill {
+  background: #f8fafc;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+body.theme-light .depth-pill:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+body.theme-light .depth-pill.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+}
+
+body.theme-light .graph-minimap-wrap {
+  border-color: #cbd5e1;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
 }
 
-/* 🌲 4. FOREST - Tactical Bio-Radar / Deep Canopy Intelligence */
-body[data-theme="forest"] {
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-}
-body[data-theme="forest"] #app-header {
-  border-bottom: 1px solid rgba(34, 197, 94, 0.25);
-  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
-}
-body[data-theme="forest"] .btn-primary {
-  background: linear-gradient(135deg, #22c55e, #15803d);
-  color: #ffffff;
+body.theme-light .nc-lbl {
+  color: #475569;
   font-weight: 600;
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.35);
-  border: 1px solid rgba(74, 222, 128, 0.4);
 }
-body[data-theme="forest"] .btn-primary:hover {
-  background: linear-gradient(135deg, #4ade80, #16a34a);
-  box-shadow: 0 0 22px rgba(34, 197, 94, 0.5);
-}
-body[data-theme="forest"] .chip.active {
-  background: rgba(34, 197, 94, 0.14);
-  border-color: #22c55e;
-  color: #4ade80;
-}
-body[data-theme="forest"] .tab.active {
-  color: #4ade80;
-  border-bottom-color: #22c55e;
-  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
-}
-body[data-theme="forest"] .logo-text {
-  text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
-}
-body[data-theme="forest"] .node-card {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(34, 197, 94, 0.15);
-  border-color: rgba(34, 197, 94, 0.35);
+body.theme-light .nc-val {
+  color: #0f172a;
+  font-weight: 600;
 }
 
-/* 🌑 5. MIDNIGHT - Precision Industrial Aerospace / Neutral Charcoal */
-body[data-theme="midnight"] #app-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+body.theme-light .review-results,
+body.theme-light .git-view-inner,
+body.theme-light .kb-view-inner {
+  color: #0f172a;
+  background: #f1f5f9;
 }
-body[data-theme="midnight"] .btn-primary {
-  background: #2563eb;
+
+body.theme-light .modal-dialog {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+}
+body.theme-light .modal-header {
+  background: #f8fafc;
+  border-bottom-color: #cbd5e1;
+  color: #0f172a;
+}
+body.theme-light .modal-header h2 {
+  color: #0f172a;
+}
+
+body.theme-light .settings-group-title {
+  color: #0f172a;
+  border-bottom-color: #e2e8f0;
+}
+body.theme-light .settings-row > label:first-child {
+  color: #1e293b;
+  font-weight: 600;
+}
+body.theme-light .theme-name {
+  color: #0f172a;
+}
+body.theme-light .theme-tagline {
+  color: #475569;
+}
+body.theme-light .theme-card {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+body.theme-light .theme-card:hover {
+  border-color: #0284c7;
+  background: #ffffff;
+}
+body.theme-light .theme-card.active {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.35);
+}
+
+body.theme-light .toggle-track {
+  background: #cbd5e1;
+}
+body.theme-light .settings-select {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+body.theme-light #app-footer {
+  background: #ffffff;
+  border-top-color: #cbd5e1;
+  color: #334155;
+}
+body.theme-light .footer-meta-pill {
+  color: #334155;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+body.theme-light .btn-primary {
+  background: #0284c7;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
-body[data-theme="midnight"] .btn-primary:hover {
-  background: #1d4ed8;
+body.theme-light .btn-primary:hover {
+  background: #0369a1;
+}
+body.theme-light .btn-ghost {
+  color: #1e293b;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+body.theme-light .btn-ghost:hover {
+  color: #0f172a;
+  background: #e2e8f0;
 }
 
 /* =============================================================================

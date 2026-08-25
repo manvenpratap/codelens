@@ -27,6 +27,7 @@
 <div id="app" role="application" aria-label="CodeLens Java Codebase Intelligence">
 
   <!-- Header: logo, scan controls, live stats -->
+  <!-- Header: logo, project bar / scan controls, live stats, and actions -->
   <header id="header" role="banner">
 
     <!-- Logo mark -->
@@ -35,8 +36,25 @@
       <span class="logo-text">CodeLens</span>
     </div>
 
+    <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
+    <div id="header-project-bar" class="header-project-bar" style="display:none;">
+      <div class="project-pill" id="project-pill" title="Click to view full path / switch project">
+        <span class="project-pill-icon">📦</span>
+        <span class="project-pill-name" id="project-name-display">sample-project</span>
+        <span class="project-pill-path" id="project-path-display">/workspace/src</span>
+      </div>
+      <button id="btn-rescan" class="btn-header-pill" title="Rescan current directory (Cmd+R / F5)">
+        <span class="btn-pill-icon">🔄</span>
+        <span class="btn-pill-label">Rescan</span>
+      </button>
+      <button id="btn-open-project" class="btn-header-pill" title="Open or switch Java project directory">
+        <span class="btn-pill-icon">📂</span>
+        <span class="btn-pill-label">Open Project…</span>
+      </button>
+    </div>
+
     <!-- Scan source path input + action button -->
-    <section class="scan-section" aria-label="Scan controls">
+    <section id="header-scan-bar" class="scan-section" aria-label="Scan controls">
       <label for="scan-path-input" class="visually-hidden">Java source directory path</label>
       <input
         id="scan-path-input"
@@ -53,14 +71,8 @@
       <button id="scan-btn" class="btn-primary" aria-label="Start source scan" title="Start AST parsing and repository indexation">
         Scan
       </button>
-      <button id="export-btn" class="btn-ghost" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
-        📥 Export
-      </button>
-      <button id="help-btn" class="btn-ghost" aria-label="Open Feature & User Guide" title="Feature Guide & Documentation (?)">
-        Guide
-      </button>
-      <button id="settings-btn" class="btn-ghost settings-gear-btn" aria-label="Open Settings" title="App Settings & Themes">
-        ⚙
+      <button id="scan-cancel-btn" class="btn-ghost" style="display:none;" title="Close scan bar">
+        Cancel
       </button>
       <span id="scan-hint" class="visually-hidden">
         Press Enter or click Scan to index the Java source directory
@@ -81,6 +93,26 @@
         <span class="stat-count" id="stat-fields">0</span>
         <span class="stat-label">fields</span>
       </div>
+    </div>
+
+    <!-- Top-Right Actions Group (Export, Theme Toggle, Settings, Guide) -->
+    <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
+      <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
+        <span class="action-btn-icon">📊</span>
+        <span class="action-btn-text">Export</span>
+      </button>
+      <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Toggle Dark / Light Theme" title="Toggle Theme (Dark / Light)">
+        <span id="theme-toggle-icon" class="action-btn-icon">☀️</span>
+        <span id="theme-toggle-label" class="action-btn-text">Light</span>
+      </button>
+      <button id="settings-btn" class="header-action-btn" aria-label="Open Settings" title="App Settings &amp; Themes">
+        <span class="action-btn-icon">⚙</span>
+        <span class="action-btn-text">Settings</span>
+      </button>
+      <button id="help-btn" class="header-action-btn" aria-label="Open Feature &amp; User Guide" title="Feature Guide &amp; Documentation (?)">
+        <span class="action-btn-icon">❓</span>
+        <span class="action-btn-text">Guide</span>
+      </button>
     </div>
 
     <!-- Scan progress bar - sits flush on the bottom border of the header.
@@ -769,27 +801,15 @@
 
       <!-- ── Theme Picker ─────────────────────────────────────────────── -->
       <section class="settings-group">
-        <h3 class="settings-group-title">🎨 Theme</h3>
-        <div class="theme-picker">
-          <div class="theme-card active" data-theme="midnight">
-            <div class="theme-preview"><span style="background:#0d1117"></span><span style="background:#2563eb"></span><span style="background:#38bdf8"></span><span style="background:#10b981"></span><span style="background:#f59e0b"></span></div>
-            <div class="theme-meta"><span class="theme-name">🌑 Midnight</span><span class="theme-tagline">Cold precision</span></div>
+        <h3 class="settings-group-title">🎨 Theme (High Contrast Dark &amp; Light)</h3>
+        <div class="theme-picker two-theme-picker">
+          <div class="theme-card active" data-theme="dark">
+            <div class="theme-preview"><span style="background:#090d16"></span><span style="background:#0f172a"></span><span style="background:#38bdf8"></span><span style="background:#10b981"></span><span style="background:#f59e0b"></span></div>
+            <div class="theme-meta"><span class="theme-name">🌑 Dark (Midnight Obsidian)</span><span class="theme-tagline">Deep slate &amp; glowing contrast</span></div>
           </div>
-          <div class="theme-card" data-theme="cyberpunk">
-            <div class="theme-preview"><span style="background:#05000a"></span><span style="background:#e040fb"></span><span style="background:#00e5ff"></span><span style="background:#39ff14"></span><span style="background:#ffea00"></span></div>
-            <div class="theme-meta"><span class="theme-name">🟣 Cyberpunk</span><span class="theme-tagline">Neon terminals</span></div>
-          </div>
-          <div class="theme-card" data-theme="ember">
-            <div class="theme-preview"><span style="background:#110e0a"></span><span style="background:#e87f17"></span><span style="background:#fbbf24"></span><span style="background:#d97706"></span><span style="background:#ef4444"></span></div>
-            <div class="theme-meta"><span class="theme-name">🔥 Ember</span><span class="theme-tagline">Forge heat</span></div>
-          </div>
-          <div class="theme-card" data-theme="arctic">
-            <div class="theme-preview"><span style="background:#f0f4f8"></span><span style="background:#1e6bb8"></span><span style="background:#0284c7"></span><span style="background:#059669"></span><span style="background:#d97706"></span></div>
-            <div class="theme-meta"><span class="theme-name">❄️ Arctic</span><span class="theme-tagline">Light clarity</span></div>
-          </div>
-          <div class="theme-card" data-theme="forest">
-            <div class="theme-preview"><span style="background:#070d08"></span><span style="background:#22c55e"></span><span style="background:#4ade80"></span><span style="background:#a3e635"></span><span style="background:#84cc16"></span></div>
-            <div class="theme-meta"><span class="theme-name">🌲 Forest</span><span class="theme-tagline">Organic canopy</span></div>
+          <div class="theme-card" data-theme="light">
+            <div class="theme-preview"><span style="background:#f1f5f9"></span><span style="background:#ffffff"></span><span style="background:#0284c7"></span><span style="background:#059669"></span><span style="background:#d97706"></span></div>
+            <div class="theme-meta"><span class="theme-name">☀️ Light (Pure Daylight)</span><span class="theme-tagline">Crisp, ultra-readable daylight</span></div>
           </div>
         </div>
       </section>

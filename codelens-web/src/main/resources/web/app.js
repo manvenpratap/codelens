@@ -204,6 +204,9 @@ async function onScanComplete(s) {
   qs('#scan-progress-bar').style.width = '100%';
   setTimeout(() => qs('#scan-progress-bar').style.width = '0%', 600);
 
+  // Update header bar into loaded project view
+  updateHeaderProjectBar(s.sourcePath || qs('#scan-path-input')?.value?.trim());
+
   // Refresh stats and tree
   await loadStats();
   await loadPackageTree();
@@ -2169,8 +2172,52 @@ async function loadStats() {
     animateCounter(qs('#stat-types'),   s.types   || 0);
     animateCounter(qs('#stat-methods'), s.methods || 0);
     animateCounter(qs('#stat-fields'),  s.fields  || 0);
+
+    if (s.types > 0) {
+      updateHeaderProjectBar();
+    }
   } catch (e) {
     console.warn('Stats load failed:', e);
+  }
+}
+
+/** Update the loaded project header bar display and toggle off scan input */
+function updateHeaderProjectBar(path) {
+  if (!path) {
+    path = qs('#scan-path-input')?.value?.trim() || App.currentPath || localStorage.getItem('codelens_last_path') || '';
+  }
+  if (!path) return;
+
+  App.currentPath = path;
+  localStorage.setItem('codelens_last_path', path);
+
+  const cleanPath = path.replace(/[\\\/]+$/, '');
+  const parts = cleanPath.split(/[\\\/]/);
+  const projectName = parts[parts.length - 1] || 'Codebase';
+
+  const nameEl = qs('#project-name-display');
+  const pathEl = qs('#project-path-display');
+  if (nameEl) nameEl.textContent = projectName;
+  if (pathEl) pathEl.textContent = path;
+
+  const projectBar = qs('#header-project-bar');
+  const scanBar = qs('#header-scan-bar');
+  const cancelBtn = qs('#scan-cancel-btn');
+  if (projectBar) projectBar.style.display = 'flex';
+  if (scanBar) scanBar.style.display = 'none';
+  if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+}
+
+/** Reveal the scan input bar to switch or open a different project */
+function showHeaderScanBar() {
+  const projectBar = qs('#header-project-bar');
+  const scanBar = qs('#header-scan-bar');
+  if (projectBar) projectBar.style.display = 'none';
+  if (scanBar) scanBar.style.display = 'flex';
+  const input = qs('#scan-path-input');
+  if (input) {
+    input.focus();
+    input.select();
   }
 }
 
@@ -2264,7 +2311,29 @@ async function init() {
   adaptOsShortcuts();
 
   // Wire up scan button and Enter key
-  qs('#scan-btn').addEventListener('click', startScan);
+  qs('#scan-btn')?.addEventListener('click', startScan);
+
+  // Wire up header project bar controls
+  qs('#btn-rescan')?.addEventListener('click', startScan);
+  qs('#btn-open-project')?.addEventListener('click', showHeaderScanBar);
+  qs('#project-pill')?.addEventListener('click', showHeaderScanBar);
+  qs('#scan-cancel-btn')?.addEventListener('click', () => {
+    if (App.stats && App.stats.types > 0) {
+      updateHeaderProjectBar();
+    }
+  });
+
+  // Wire up quick theme toggle in header toolbar
+  qs('#theme-toggle-btn')?.addEventListener('click', () => {
+    const s = loadSettings();
+    const isCurrentlyLight = s.theme === 'light' || document.body.classList.contains('theme-light');
+    const newTheme = isCurrentlyLight ? 'dark' : 'light';
+    s.theme = newTheme;
+    saveSettings(s);
+    applyAllSettings(s);
+    syncSettingsUI(s);
+    showBanner(`Theme switched to ${newTheme === 'light' ? '☀️ Light (Pure Daylight)' : '🌑 Dark (Midnight Obsidian)'}`);
+  });
 
   const browseBtn = qs('#browse-btn');
   const folderPicker = qs('#folder-picker');
@@ -3267,116 +3336,54 @@ function triggerRelayout() {
    ───────────────────────────────────────────────────────────────────────────── */
 
 const THEMES = {
-  midnight: {
-    label: 'Midnight', icon: '🌑', tagline: 'Cold precision. Clean engineering.',
+  dark: {
+    label: 'Dark', icon: '🌑', tagline: 'Midnight Obsidian. Deep slate & glowing neon contrast.',
     css: {
-      '--bg-base': '#0d1117', '--bg-panel': '#161b22', '--bg-surface': '#1c2128',
-      '--bg-elevated': '#21262d', '--bg-modal': '#161b22', '--bg-glass': 'rgba(22,27,34,0.85)',
-      '--border': 'rgba(255,255,255,0.08)', '--border-hover': 'rgba(255,255,255,0.16)',
-      '--border-light': 'rgba(255,255,255,0.12)', '--border-focus': '#3b82f6',
-      '--primary': '#2563eb', '--primary-hover': '#1d4ed8', '--primary-active': '#1e40af',
-      '--primary-subtle': 'rgba(37,99,235,0.14)', '--primary-glow': 'rgba(37,99,235,0.28)',
-      '--primary-border': 'rgba(59,130,246,0.40)',
+      '--bg-base': '#090d16', '--bg-panel': '#0f172a', '--bg-surface': '#1e293b',
+      '--bg-elevated': '#283548', '--bg-modal': '#0f172a', '--bg-glass': 'rgba(15,23,42,0.92)',
+      '--border': 'rgba(255,255,255,0.09)', '--border-hover': 'rgba(255,255,255,0.18)',
+      '--border-light': 'rgba(255,255,255,0.12)', '--border-focus': '#38bdf8',
+      '--primary': '#38bdf8', '--primary-hover': '#0ea5e9', '--primary-active': '#0284c7',
+      '--primary-subtle': 'rgba(56,189,248,0.14)', '--primary-glow': 'rgba(56,189,248,0.28)',
+      '--primary-border': 'rgba(56,189,248,0.40)',
       '--cyan-bright': '#38bdf8', '--emerald': '#10b981', '--amber': '#f59e0b', '--red': '#ef4444',
-      '--text-primary': '#f0f6fc', '--text-secondary': '#9ca3af', '--text-muted': '#6b7280',
+      '--text-primary': '#f8fafc', '--text-secondary': '#cbd5e1', '--text-muted': '#94a3b8',
     },
     graph: {
-      bg: '#0d1117', grid: 'rgba(255,255,255,0.02)',
-      roles: { root:'#2563eb',caller:'#38bdf8',callee:'#34d399',propagator:'#fbbf24',field:'#fb923c',reader:'#38bdf8',writer:'#f87171',default:'#3b82f6' },
+      bg: '#090d16', grid: 'rgba(255,255,255,0.03)',
+      roles: { root:'#38bdf8',caller:'#0ea5e9',callee:'#10b981',propagator:'#f59e0b',field:'#fb923c',reader:'#38bdf8',writer:'#ef4444',default:'#38bdf8' },
       edgeKind: { CALLS:'#38bdf8',READS_FIELD:'#2dd4bf',WRITES_FIELD:'#f59e0b',EXTENDS:'#94a3b8',IMPLEMENTS:'#94a3b8',default:'#64748b' },
-      nodeColors: ['#3B82F6','#10B981','#F59E0B','#0EA5E9','#EF4444','#14B8A6','#06B6D4','#F97316','#84CC16','#64748B'],
+      nodeColors: ['#38bdf8','#10b981','#f59e0b','#818cf8','#ef4444','#14b8a6','#06b6d4','#f97316','#84cc16','#94a3b8'],
+      lightMode: false,
     },
-    preview: ['#0d1117','#2563eb','#38bdf8','#10b981','#f59e0b'],
+    preview: ['#090d16','#0f172a','#38bdf8','#10b981','#f59e0b'],
   },
-  cyberpunk: {
-    label: 'Cyberpunk', icon: '🟣', tagline: 'Neon-soaked. Blade Runner terminals.',
+  light: {
+    label: 'Light', icon: '☀️', tagline: 'Pure Daylight. Crisp contrast, ultra-readable typography.',
     css: {
-      '--bg-base': '#05000a', '--bg-panel': '#0c0614', '--bg-surface': '#120a1e',
-      '--bg-elevated': '#1a0f2e', '--bg-modal': '#0c0614', '--bg-glass': 'rgba(12,6,20,0.88)',
-      '--border': 'rgba(224,64,251,0.12)', '--border-hover': 'rgba(224,64,251,0.28)',
-      '--border-light': 'rgba(224,64,251,0.16)', '--border-focus': '#e040fb',
-      '--primary': '#e040fb', '--primary-hover': '#d500f9', '--primary-active': '#aa00ff',
-      '--primary-subtle': 'rgba(224,64,251,0.14)', '--primary-glow': 'rgba(224,64,251,0.30)',
-      '--primary-border': 'rgba(224,64,251,0.40)',
-      '--cyan-bright': '#00e5ff', '--emerald': '#39ff14', '--amber': '#ffea00', '--red': '#ff1744',
-      '--text-primary': '#e8e0f0', '--text-secondary': '#a78bba', '--text-muted': '#7c5e99',
-    },
-    graph: {
-      bg: '#05000a', grid: 'rgba(224,64,251,0.04)',
-      roles: { root:'#e040fb',caller:'#00e5ff',callee:'#39ff14',propagator:'#ffea00',field:'#ff6e40',reader:'#00e5ff',writer:'#ff1744',default:'#e040fb' },
-      edgeKind: { CALLS:'#00e5ff',READS_FIELD:'#39ff14',WRITES_FIELD:'#ffea00',EXTENDS:'#7c4dff',IMPLEMENTS:'#7c4dff',default:'#b388ff' },
-      nodeColors: ['#e040fb','#00e5ff','#39ff14','#7c4dff','#ff1744','#00bfa5','#ffea00','#ff6e40','#b2ff59','#e0e0e0'],
-    },
-    preview: ['#05000a','#e040fb','#00e5ff','#39ff14','#ffea00'],
-  },
-  ember: {
-    label: 'Ember', icon: '🔥', tagline: 'Forge heat. Warm engineering.',
-    css: {
-      '--bg-base': '#110e0a', '--bg-panel': '#1a1510', '--bg-surface': '#221c14',
-      '--bg-elevated': '#2a231a', '--bg-modal': '#1a1510', '--bg-glass': 'rgba(26,21,16,0.88)',
-      '--border': 'rgba(245,158,11,0.10)', '--border-hover': 'rgba(245,158,11,0.22)',
-      '--border-light': 'rgba(245,158,11,0.14)', '--border-focus': '#e87f17',
-      '--primary': '#e87f17', '--primary-hover': '#ca6c0e', '--primary-active': '#b45309',
-      '--primary-subtle': 'rgba(232,127,23,0.14)', '--primary-glow': 'rgba(232,127,23,0.28)',
-      '--primary-border': 'rgba(232,127,23,0.40)',
-      '--cyan-bright': '#fbbf24', '--emerald': '#d97706', '--amber': '#f59e0b', '--red': '#dc2626',
-      '--text-primary': '#fef3c7', '--text-secondary': '#c4a46e', '--text-muted': '#92774a',
-    },
-    graph: {
-      bg: '#110e0a', grid: 'rgba(245,158,11,0.04)',
-      roles: { root:'#e87f17',caller:'#fbbf24',callee:'#d97706',propagator:'#f59e0b',field:'#ea580c',reader:'#fbbf24',writer:'#dc2626',default:'#e87f17' },
-      edgeKind: { CALLS:'#fbbf24',READS_FIELD:'#d97706',WRITES_FIELD:'#f59e0b',EXTENDS:'#92400e',IMPLEMENTS:'#92400e',default:'#78350f' },
-      nodeColors: ['#f59e0b','#d97706','#ef4444','#fbbf24','#b45309','#fb923c','#a16207','#c2410c','#ca8a04','#78716c'],
-    },
-    preview: ['#110e0a','#e87f17','#fbbf24','#d97706','#ef4444'],
-  },
-  arctic: {
-    label: 'Arctic', icon: '❄️', tagline: 'Ice clarity. Surgical precision.',
-    css: {
-      '--bg-base': '#f0f4f8', '--bg-panel': '#ffffff', '--bg-surface': '#e8edf2',
-      '--bg-elevated': '#dde3ea', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(240,244,248,0.92)',
-      '--border': 'rgba(0,0,0,0.10)', '--border-hover': 'rgba(0,0,0,0.18)',
-      '--border-light': 'rgba(0,0,0,0.08)', '--border-focus': '#1e6bb8',
-      '--primary': '#1e6bb8', '--primary-hover': '#165a9e', '--primary-active': '#10498a',
-      '--primary-subtle': 'rgba(30,107,184,0.10)', '--primary-glow': 'rgba(30,107,184,0.18)',
-      '--primary-border': 'rgba(30,107,184,0.35)',
+      '--bg-base': '#f1f5f9', '--bg-panel': '#ffffff', '--bg-surface': '#f8fafc',
+      '--bg-elevated': '#e2e8f0', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(241,245,249,0.95)',
+      '--border': '#cbd5e1', '--border-hover': '#94a3b8',
+      '--border-light': '#e2e8f0', '--border-focus': '#0284c7',
+      '--primary': '#0284c7', '--primary-hover': '#0369a1', '--primary-active': '#075985',
+      '--primary-subtle': 'rgba(2,132,199,0.12)', '--primary-glow': 'rgba(2,132,199,0.25)',
+      '--primary-border': 'rgba(2,132,199,0.45)',
       '--cyan-bright': '#0284c7', '--emerald': '#059669', '--amber': '#d97706', '--red': '#dc2626',
-      '--text-primary': '#1a2233', '--text-secondary': '#4a5568', '--text-muted': '#718096',
+      '--text-primary': '#0f172a', '--text-secondary': '#334155', '--text-muted': '#475569',
     },
     graph: {
-      bg: '#f0f4f8', grid: 'rgba(0,0,0,0.06)',
-      roles: { root:'#1e6bb8',caller:'#0284c7',callee:'#059669',propagator:'#d97706',field:'#c2410c',reader:'#0284c7',writer:'#dc2626',default:'#1e6bb8' },
-      edgeKind: { CALLS:'#0284c7',READS_FIELD:'#059669',WRITES_FIELD:'#d97706',EXTENDS:'#64748b',IMPLEMENTS:'#64748b',default:'#94a3b8' },
-      nodeColors: ['#1e6bb8','#059669','#6d28d9','#0f766e','#e11d48','#166534','#9333ea','#374151','#475569','#0891b2'],
+      bg: '#f1f5f9', grid: 'rgba(0,0,0,0.06)',
+      roles: { root:'#0284c7',caller:'#0369a1',callee:'#059669',propagator:'#d97706',field:'#c2410c',reader:'#0284c7',writer:'#dc2626',default:'#0284c7' },
+      edgeKind: { CALLS:'#0284c7',READS_FIELD:'#059669',WRITES_FIELD:'#d97706',EXTENDS:'#475569',IMPLEMENTS:'#475569',default:'#64748b' },
+      nodeColors: ['#0284c7','#059669','#7c3aed','#0d9488','#e11d48','#15803d','#9333ea','#1e293b','#475569','#0891b2'],
       lightMode: true,
     },
-    preview: ['#f0f4f8','#1e6bb8','#0284c7','#059669','#d97706'],
-  },
-  forest: {
-    label: 'Forest', icon: '🌲', tagline: 'Deep canopy. Organic intelligence.',
-    css: {
-      '--bg-base': '#070d08', '--bg-panel': '#0e1a10', '--bg-surface': '#142016',
-      '--bg-elevated': '#1a281c', '--bg-modal': '#0e1a10', '--bg-glass': 'rgba(14,26,16,0.88)',
-      '--border': 'rgba(34,197,94,0.10)', '--border-hover': 'rgba(34,197,94,0.22)',
-      '--border-light': 'rgba(34,197,94,0.14)', '--border-focus': '#22c55e',
-      '--primary': '#22c55e', '--primary-hover': '#16a34a', '--primary-active': '#15803d',
-      '--primary-subtle': 'rgba(34,197,94,0.14)', '--primary-glow': 'rgba(34,197,94,0.28)',
-      '--primary-border': 'rgba(34,197,94,0.40)',
-      '--cyan-bright': '#4ade80', '--emerald': '#22c55e', '--amber': '#a3e635', '--red': '#f87171',
-      '--text-primary': '#dcfce7', '--text-secondary': '#86efac', '--text-muted': '#4ade80',
-    },
-    graph: {
-      bg: '#070d08', grid: 'rgba(34,197,94,0.04)',
-      roles: { root:'#22c55e',caller:'#4ade80',callee:'#a3e635',propagator:'#84cc16',field:'#65a30d',reader:'#4ade80',writer:'#f87171',default:'#22c55e' },
-      edgeKind: { CALLS:'#4ade80',READS_FIELD:'#a3e635',WRITES_FIELD:'#84cc16',EXTENDS:'#166534',IMPLEMENTS:'#166534',default:'#14532d' },
-      nodeColors: ['#22c55e','#4ade80','#166534','#15803d','#65a30d','#a3e635','#0d9488','#059669','#84cc16','#6b7280'],
-    },
-    preview: ['#070d08','#22c55e','#4ade80','#a3e635','#84cc16'],
+    preview: ['#f1f5f9','#ffffff','#0284c7','#059669','#d97706'],
   },
 };
 
 const SETTINGS_DEFAULTS = {
-  theme: 'midnight',
+  theme: 'dark',
   nodeBaseRadius: 9,
   repulsion: 20000,
   springLen: 180,
@@ -3407,8 +3414,12 @@ function saveSettings(settings) {
 }
 
 function applyTheme(themeKey) {
+  // Normalize legacy theme keys if present in localStorage
+  if (themeKey === 'arctic') themeKey = 'light';
+  if (themeKey === 'midnight' || themeKey === 'cyberpunk' || themeKey === 'ember' || themeKey === 'forest') themeKey = 'dark';
+  if (!THEMES[themeKey]) themeKey = 'dark';
+
   const theme = THEMES[themeKey];
-  if (!theme) return;
 
   // Apply CSS custom properties
   const root = document.documentElement;
@@ -3416,9 +3427,16 @@ function applyTheme(themeKey) {
     root.style.setProperty(prop, val);
   }
 
-  // Toggle light mode class for Arctic
-  document.body.classList.toggle('theme-light', !!theme.graph.lightMode);
+  // Toggle light mode class
+  const isLight = themeKey === 'light';
+  document.body.classList.toggle('theme-light', isLight);
   document.body.dataset.theme = themeKey;
+
+  // Update top-bar theme toggle button
+  const toggleIcon = qs('#theme-toggle-icon');
+  const toggleLabel = qs('#theme-toggle-label');
+  if (toggleIcon) toggleIcon.textContent = isLight ? '🌙' : '☀️';
+  if (toggleLabel) toggleLabel.textContent = isLight ? 'Dark' : 'Light';
 
   // Apply graph canvas theme
   if (App.graph) {
