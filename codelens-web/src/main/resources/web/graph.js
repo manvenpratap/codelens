@@ -1319,7 +1319,7 @@ class ForceGraph {
       if (count === 0) {
         mainColor = '#475569';
       } else if (heatRatio < 0.35) {
-        mainColor = lerpColor('#60a5fa', '#f59e0b', heatRatio / 0.35);
+        mainColor = lerpColor('#34d399', '#f59e0b', heatRatio / 0.35);
       } else {
         mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.35) / 0.65);
       }
