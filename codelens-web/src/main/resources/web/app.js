@@ -1879,16 +1879,18 @@ function renderKnowledgeBaseForType(data) {
   const view = qs('#knowledge-view');
   view.innerHTML = '';
 
+  const isRecord = (type.kind || '').toUpperCase() === 'RECORD';
+
   const header = createElement('div', { class: 'kb-section-header' });
-  header.innerHTML = `<span class="kb-type-pill">${esc(type.kind)}</span> ${esc(type.simpleName)}`;
+  header.innerHTML = `<span class="kb-type-pill badge-${(type.kind || '').toLowerCase()}">${esc(type.kind)}</span> ${esc(type.simpleName)} <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px;">(${esc(type.packageFqn || 'default package')})</span>`;
   view.appendChild(header);
 
   if (fields.length > 0) {
     const fieldsHeader = createElement('div', {
       class: 'kb-section-header',
-      style: 'font-size:10px;padding-left:16px'
+      style: 'font-size:11px;padding:10px 16px 4px;font-weight:700;'
     });
-    fieldsHeader.textContent = 'Fields';
+    fieldsHeader.textContent = isRecord ? 'Record Components / Fields' : 'Fields';
     view.appendChild(fieldsHeader);
 
     for (const f of fields) {
@@ -1897,7 +1899,7 @@ function renderKnowledgeBaseForType(data) {
         <span class="kb-item-icon">■</span>
         <div class="kb-item-body">
           <div class="kb-item-name">${esc(f.simpleName)}</div>
-          <div class="kb-item-meta">${esc(f.fieldType || '')} · ${esc(f.modifiers || '')} · line ${f.startLine}</div>
+          <div class="kb-item-meta">${esc(f.fieldType || '')} · ${esc(f.modifiers || '')} ${f.startLine ? '· line ' + f.startLine : ''}</div>
         </div>
         <span class="kb-item-badge badge-enum">${esc(f.fieldType || '')}</span>`;
       item.addEventListener('click', () => selectField(f.id || f.fqn));
@@ -1908,9 +1910,9 @@ function renderKnowledgeBaseForType(data) {
   if (methods.length > 0) {
     const methodsHeader = createElement('div', {
       class: 'kb-section-header',
-      style: 'font-size:10px;padding-left:16px'
+      style: 'font-size:11px;padding:10px 16px 4px;font-weight:700;'
     });
-    methodsHeader.textContent = 'Methods';
+    methodsHeader.textContent = isRecord ? 'Methods & Accessors' : 'Methods';
     view.appendChild(methodsHeader);
 
     for (const m of methods) {
@@ -1924,7 +1926,7 @@ function renderKnowledgeBaseForType(data) {
           <div class="kb-item-name">${esc(m.simpleName)}</div>
           <div class="kb-item-meta">${esc(m.returnType || 'void')} · CC:
             <span style="color:${ccColour};font-weight:700">${cc}</span>
-            · line ${m.startLine}
+            ${m.startLine ? '· line ' + m.startLine : ''}
           </div>
           <div class="kb-item-meta" style="color:var(--text-muted)">(${esc(paramStr)})</div>
         </div>
@@ -1932,6 +1934,12 @@ function renderKnowledgeBaseForType(data) {
       item.addEventListener('click', () => selectMethod(m.id || m.fqn));
       view.appendChild(item);
     }
+  }
+
+  if (fields.length === 0 && methods.length === 0) {
+    const emptyEl = createElement('div', { class: 'list-empty' });
+    emptyEl.textContent = `No members declared in this ${esc((type.kind || 'type').toLowerCase())}.`;
+    view.appendChild(emptyEl);
   }
 }
 

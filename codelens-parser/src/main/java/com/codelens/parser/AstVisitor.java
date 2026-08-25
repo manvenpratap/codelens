@@ -156,6 +156,95 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         ctx.currentTypeFqn        = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
 
+        // Register record components (parameters) as fields and accessor methods
+        for (Parameter p : n.getParameters()) {
+            String paramName = p.getNameAsString();
+            String paramType = p.getType().asString();
+            ctx.currentTypeFieldNames.add(paramName);
+
+            // Record Component Field
+            CodeField field = new CodeField();
+            String fieldFqn = fqn + "." + paramName;
+            field.setId(fieldFqn);
+            field.setFqn(fieldFqn);
+            field.setSimpleName(paramName);
+            field.setDeclaringTypeFqn(fqn);
+            field.setFieldType(paramType);
+            field.setModifiers("private final");
+            p.getRange().ifPresent(r -> field.setStartLine(r.begin.line));
+            ctx.fields.add(field);
+
+            // Implicit Accessor Method if not explicitly declared in record body
+            boolean hasExplicitAccessor = n.getMethods().stream()
+                .anyMatch(m -> m.getNameAsString().equals(paramName) && m.getParameters().isEmpty());
+            if (!hasExplicitAccessor) {
+                CodeMethod getter = new CodeMethod();
+                String getterFqn = fqn + "." + paramName + "()";
+                getter.setId(getterFqn);
+                getter.setFqn(getterFqn);
+                getter.setSimpleName(paramName);
+                getter.setDeclaringTypeFqn(fqn);
+                getter.setReturnType(paramType);
+                getter.setModifiers("public");
+                getter.setSignature(paramName + "()");
+                getter.setCyclomaticComplexity(1);
+                getter.setLineCount(1);
+                p.getRange().ifPresent(r -> {
+                    getter.setStartLine(r.begin.line);
+                    getter.setEndLine(r.end.line);
+                });
+                ctx.methods.add(getter);
+
+                // Register READS_FIELD relationship from accessor to component field
+                CodeRelationship rel = new CodeRelationship();
+                rel.setId(getterFqn + "->READS_FIELD->" + fieldFqn);
+                rel.setFromFqn(getterFqn);
+                rel.setToFqn(fieldFqn);
+                rel.setKind("READS_FIELD");
+                ctx.relationships.add(rel);
+            }
+        }
+
+        // Implicit Canonical Constructor if no explicit constructor is declared
+        boolean hasExplicitConstructor = n.getConstructors().stream()
+            .anyMatch(c -> c.getParameters().size() == n.getParameters().size())
+            || n.getCompactConstructors().size() > 0;
+        if (!hasExplicitConstructor && !n.getParameters().isEmpty()) {
+            String paramSig = n.getParameters().stream()
+                .map(p -> p.getType().asString())
+                .collect(Collectors.joining(","));
+            String initFqn = fqn + ".<init>(" + paramSig + ")";
+            CodeMethod initMethod = new CodeMethod();
+            initMethod.setId(initFqn);
+            initMethod.setFqn(initFqn);
+            initMethod.setSimpleName("<init>");
+            initMethod.setDeclaringTypeFqn(fqn);
+            initMethod.setReturnType("void");
+            initMethod.setModifiers("public");
+            initMethod.setParameters(
+                n.getParameters().stream()
+                    .map(p -> new MethodParam(p.getType().asString(), p.getNameAsString()))
+                    .collect(Collectors.toList()));
+            n.getRange().ifPresent(r -> {
+                initMethod.setStartLine(r.begin.line);
+                initMethod.setEndLine(r.begin.line);
+            });
+            initMethod.setCyclomaticComplexity(1);
+            initMethod.setLineCount(1);
+            ctx.methods.add(initMethod);
+
+            // Register WRITES_FIELD relationship for each component
+            for (Parameter p : n.getParameters()) {
+                String fieldFqn = fqn + "." + p.getNameAsString();
+                CodeRelationship writeRel = new CodeRelationship();
+                writeRel.setId(initFqn + "->WRITES_FIELD->" + fieldFqn);
+                writeRel.setFromFqn(initFqn);
+                writeRel.setToFqn(fieldFqn);
+                writeRel.setKind("WRITES_FIELD");
+                ctx.relationships.add(writeRel);
+            }
+        }
+
         CodeType type = new CodeType();
         type.setId(fqn);  type.setFqn(fqn);
         type.setSimpleName(simpleName);
@@ -163,8 +252,19 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         type.setKind("RECORD");
         type.setModifiers(modifierString(n.getModifiers()));
         type.setSourceFile(ctx.sourceFile);
+        type.setSuperClass("java.lang.Record");
+
+        if (n.getImplementedTypes() != null) {
+            List<String> ifaces = n.getImplementedTypes().stream()
+                .map(it -> it.getNameAsString())
+                .collect(Collectors.toList());
+            type.setInterfaces(ifaces);
+            ifaces.forEach(iface ->
+                ctx.relationships.add(rel(fqn, iface, "IMPLEMENTS", 0)));
+        }
+
         type.setFieldCount(n.getFields().size() + n.getParameters().size());
-        type.setMethodCount(n.getMethods().size() + n.getConstructors().size());
+        type.setMethodCount(n.getMethods().size() + n.getConstructors().size() + n.getCompactConstructors().size() + (hasExplicitConstructor ? 0 : 1) + n.getParameters().size());
         n.getRange().ifPresent(r -> {
             type.setStartLine(r.begin.line);
             type.setEndLine(r.end.line);
@@ -175,6 +275,36 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.currentTypeFqn        = prevTypeFqn;
         ctx.currentTypeFieldNames = prevFields;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Compact Constructor (Java Records)
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void visit(CompactConstructorDeclaration n, VisitContext ctx) {
+        if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
+        String prevMethod = ctx.currentMethodFqn;
+
+        String fqn = ctx.currentTypeFqn + ".<init>()";
+        ctx.currentMethodFqn = fqn;
+
+        CodeMethod method = new CodeMethod();
+        method.setId(fqn);
+        method.setFqn(fqn);
+        method.setSimpleName("<init>");
+        method.setDeclaringTypeFqn(ctx.currentTypeFqn);
+        method.setReturnType("void");
+        method.setModifiers(modifierString(n.getModifiers()));
+        n.getRange().ifPresent(r -> {
+            method.setStartLine(r.begin.line);
+            method.setEndLine(r.end.line);
+        });
+        method.setCyclomaticComplexity(computeComplexity(n));
+        method.setBodyHash(hashBody(n.getBody().toString()));
+
+        ctx.methods.add(method);
+        super.visit(n, ctx);
+        ctx.currentMethodFqn = prevMethod;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
