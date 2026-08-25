@@ -458,6 +458,7 @@ class ForceGraph {
     });
 
     // 3. Initialize nodes in a Blooming Tree structure
+    const isLargeSet = nodes.length > 25;
     // Group nodes by branch (package / module)
     const branchMap = new Map();
     for (const n of nodes) {

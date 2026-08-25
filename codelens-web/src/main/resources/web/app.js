@@ -2566,6 +2566,9 @@ async function init() {
 
   bindKeyboard();
 
+  // Eagerly initialize graph canvas instance
+  ensureGraph();
+
   // Check if server already has data (e.g. re-open after prior scan)
   try {
     const status = await api.scanStatus();
