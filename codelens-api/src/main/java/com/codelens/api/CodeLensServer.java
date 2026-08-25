@@ -110,8 +110,13 @@ public class CodeLensServer {
 
     public void start() {
         app = Javalin.create(cfg -> {
-            // Serve static frontend files from the JAR classpath under /web/
-            cfg.staticFiles.add("/web", Location.CLASSPATH);
+            // Serve static frontend files (live from disk in dev workspace, fallback to JAR classpath)
+            java.io.File localWeb = new java.io.File("codelens-web/src/main/resources/web");
+            if (localWeb.isDirectory()) {
+                cfg.staticFiles.add(localWeb.getAbsolutePath(), Location.EXTERNAL);
+            } else {
+                cfg.staticFiles.add("/web", Location.CLASSPATH);
+            }
             cfg.jsonMapper(new JavalinJackson());
             // Allow all origins during local use (no cross-origin issues)
             cfg.bundledPlugins.enableCors(cors ->
