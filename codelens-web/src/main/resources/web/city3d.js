@@ -204,10 +204,7 @@
 
           const buildingGeo = new THREE.BoxGeometry(width, height, depth);
           
-          const classColorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-            ? window.CodeLensPalette.getColor(cls.id || cls.label || cls.simpleName, cIndex)
-            : pkgColorStr;
-          const colorHex = parseInt(classColorStr.replace('#', ''), 16) || 0x34d399;
+          const colorHex = pkgColorHex;
 
           const buildingMat = new THREE.MeshStandardMaterial({
             color: colorHex,
@@ -221,7 +218,7 @@
           mesh.position.set(bx, 3 + height / 2, bz);
           mesh.castShadow = true;
           mesh.receiveShadow = true;
-          mesh.userData = { entity: cls, origColor: colorHex, height: height, colorStr: classColorStr, pkg: pkgName };
+          mesh.userData = { entity: cls, origColor: colorHex, height: height, colorStr: pkgColorStr, pkg: pkgName };
 
           this._scene.add(mesh);
           this._buildings.push(mesh);

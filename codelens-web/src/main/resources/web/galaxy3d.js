@@ -195,8 +195,9 @@
       const sphereGeo = new THREE.SphereGeometry(6, 16, 16);
 
       this._nodes.forEach((n, idx) => {
+        const pkgName = n.raw.package || n.id.split('.').slice(0, -1).join('.') || 'default';
         const colorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-          ? window.CodeLensPalette.getColor(n.id || n.label, idx)
+          ? window.CodeLensPalette.getColor(pkgName, idx)
           : '#34d399';
         const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
 
@@ -210,7 +211,7 @@
 
         const mesh = new THREE.Mesh(sphereGeo, mat);
         mesh.position.set(n.x, n.y, n.z);
-        mesh.userData = { node: n, origColor: colorHex, colorStr: colorStr };
+        mesh.userData = { node: n, origColor: colorHex, colorStr: colorStr, pkg: pkgName };
 
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
@@ -222,9 +223,8 @@
         const tgt = nodeIndexMap.get(e.target || e.callee);
         if (!src || !tgt) return;
 
-        const srcColorHex = (src && src.raw)
-          ? (parseInt(((window.CodeLensPalette && window.CodeLensPalette.getColor) ? window.CodeLensPalette.getColor(src.id, 0) : '#34d399').replace('#', ''), 16) || 0x34d399)
-          : 0x34d399;
+        const srcPkg = (src && src.raw && src.raw.package) ? src.raw.package : (src ? src.id.split('.').slice(0, -1).join('.') : 'default');
+        const srcColorHex = (parseInt(((window.CodeLensPalette && window.CodeLensPalette.getColor) ? window.CodeLensPalette.getColor(srcPkg, 0) : '#34d399').replace('#', ''), 16) || 0x34d399);
 
         const p1 = new THREE.Vector3(src.x, src.y, src.z);
         const p2 = new THREE.Vector3(tgt.x, tgt.y, tgt.z);

@@ -487,10 +487,6 @@ class ForceGraph {
       const subAngle = Math.random() * Math.PI * 2;
       const subDist = (Math.random() * (isLargeSet ? 120 : 60));
 
-      const classColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(className || n.id, i)
-        : comm.color;
-
       return {
         ...n,
         package: finalPkg,
@@ -498,8 +494,7 @@ class ForceGraph {
         memberName: memberName,
         community: comm.cid,
         communityLabel: comm.label,
-        communityColor: classColor,
-        pkgColor: comm.color,
+        communityColor: comm.color,
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
