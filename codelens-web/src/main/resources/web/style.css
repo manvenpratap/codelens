@@ -916,7 +916,7 @@ body.resizing .panel-resizer {
 }
 .tree-item.active {
   background: var(--primary-subtle);
-  border-left-color: var(--primary-bg);
+  border-left-color: var(--primary);
   color: var(--text-primary);
   font-weight: 600;
 }
@@ -1047,14 +1047,15 @@ body.resizing .panel-resizer {
   font-family: var(--font-display);
   border-bottom: 2px solid transparent;
   background: transparent;
-  transition: all var(--dur-std) var(--ease);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
   white-space: nowrap;
   user-select: none;
+  position: relative;
 }
 .tab:hover  { color: var(--text-primary); }
 .tab.active {
   color: var(--text-primary);
-  border-bottom-color: var(--primary-bg);
+  border-bottom-color: var(--primary);
   font-weight: 600;
 }
 .tab .tab-badge {
@@ -1065,7 +1066,7 @@ body.resizing .panel-resizer {
   padding: 1px 6px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-  transition: all var(--dur-std) var(--ease);
+  transition: all var(--dur-fast) var(--ease);
 }
 .tab.active .tab-badge {
   background: var(--primary-subtle);
@@ -1084,6 +1085,12 @@ body.resizing .panel-resizer {
 .tab-content.active {
   display: flex !important;
   flex-direction: column;
+  animation: tabFadeIn var(--dur-std) var(--ease);
+}
+
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Graph view ───────────────────────────────────────────────────────────── */
