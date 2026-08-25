@@ -2037,7 +2037,7 @@ class ForceGraph {
     let lastPoint = null;
     let clickStart = null;
 
-    cv.addEventListener('mousedown', e => {
+    this._onMouseDown = e => {
       if (e.button !== 0) return;
       const hit = this._hitTest(e.offsetX, e.offsetY);
       clickStart = { x: e.offsetX, y: e.offsetY };
@@ -2051,9 +2051,10 @@ class ForceGraph {
         lastPoint = { x: e.offsetX, y: e.offsetY };
         cv.style.cursor = 'grabbing';
       }
-    });
+    };
 
-    window.addEventListener('mousemove', e => {
+    this._onMouseMove = e => {
+      if (!this._canvas) return;
       const rect = cv.getBoundingClientRect();
       const ox = e.clientX - rect.left;
       const oy = e.clientY - rect.top;
@@ -2074,10 +2075,12 @@ class ForceGraph {
         cv.style.cursor = hit ? 'pointer' : 'grab';
         if (hit) this._showTooltip(hit, e.clientX, e.clientY);
         else this._hideTooltip();
+      } else {
+        this._hideTooltip();
       }
-    });
+    };
 
-    window.addEventListener('mouseup', e => {
+    this._onMouseUp = e => {
       if (draggingNode) {
         const rect = cv.getBoundingClientRect();
         const ox = e.clientX - rect.left;
@@ -2096,14 +2099,14 @@ class ForceGraph {
       isPanning = false;
       lastPoint = null;
       cv.style.cursor = 'grab';
-    });
+    };
 
-    cv.addEventListener('mouseleave', () => {
+    this._onMouseLeave = () => {
       this._hoveredNode = null;
       this._hideTooltip();
-    });
+    };
 
-    cv.addEventListener('wheel', e => {
+    this._onWheel = e => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.88 : 1.14;
       const ox = e.offsetX;
@@ -2114,7 +2117,15 @@ class ForceGraph {
       this._tx = ox - (ox - this._tx) * (newSc / oldSc);
       this._ty = oy - (oy - this._ty) * (newSc / oldSc);
       this._sc = newSc;
-    }, { passive: false });
+    };
+
+    cv.addEventListener('mousedown', this._onMouseDown);
+    cv.addEventListener('mousemove', this._onMouseMove);
+    cv.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup', this._onMouseUp);
+    cv.addEventListener('mouseleave', this._onMouseLeave);
+    cv.addEventListener('wheel', this._onWheel, { passive: false });
   }
 
   _bindResize() {
@@ -2297,6 +2308,14 @@ class ForceGraph {
   }
 
   destroy() {
+    if (this._onMouseMove) {
+      window.removeEventListener('mousemove', this._onMouseMove);
+    }
+    if (this._onMouseUp) {
+      window.removeEventListener('mouseup', this._onMouseUp);
+    }
+    this._hideTooltip();
+    this._hideNodeCard();
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;

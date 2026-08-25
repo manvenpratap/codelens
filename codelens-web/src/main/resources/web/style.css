@@ -1680,8 +1680,10 @@ body.resizing .panel-resizer {
 }
 
 /* Tooltip for hovered graph node (Colourful Glassmorphic Surface) */
-#graph-tooltip {
-  position: absolute;
+#graph-tooltip,
+#codebase-tooltip,
+.graph-tooltip {
+  position: fixed;
   pointer-events: none;
   background: var(--bg-panel);
   backdrop-filter: blur(20px);
@@ -1699,7 +1701,9 @@ body.resizing .panel-resizer {
   color: var(--text-primary);
   transition: opacity 120ms ease;
 }
-#graph-tooltip.visible { display: block; }
+#graph-tooltip.visible,
+#codebase-tooltip.visible,
+.graph-tooltip.visible { display: block; }
 
 .tt-accent-strip {
   height: 3px;
