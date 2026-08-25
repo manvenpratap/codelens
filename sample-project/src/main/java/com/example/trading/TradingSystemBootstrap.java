@@ -1,82 +1,89 @@
 package com.example.trading;
 
+import com.example.trading.api.ExecutionReport;
+import com.example.trading.audit.AuditLogger;
+import com.example.trading.engine.MarketDataFeed;
+import com.example.trading.engine.MatchingEngine;
+import com.example.trading.engine.PricingEngine;
+import com.example.trading.engine.RiskEngine;
+import com.example.trading.model.Portfolio;
+import com.example.trading.service.ExecutionService;
+import com.example.trading.service.NotificationService;
+import com.example.trading.service.OrderService;
+import com.example.trading.service.PortfolioManager;
+
 /**
- * Wires together all trading system components and runs a short demo.
- * This is the entry point for the sample project.
- *
- * Running this class demonstrates the call graph that CodeLens will index:
- *
- *   main()
- *     → bootstrap()
- *         → new MarketDataFeed()
- *         → feed.onTick() × 3
- *         → new Portfolio()
- *         → new RiskEngine()
- *         → new TradeProcessor()
- *         → new OrderService()
- *         → service.placeOrder() × 2
- *         → service.placeMarketOrder() × 1
- *         → service.printStats()
- *         → portfolio.getSummary()
+ * System bootstrap orchestrator and simulation driver.
+ * Main entry point for the sample electronic trading platform.
  */
 public class TradingSystemBootstrap {
 
-    public static void main(String[] args) {
-        System.out.println("=== CodeLens Sample: Trading System Demo ===");
+    private final MarketDataFeed marketDataFeed;
+    private final PricingEngine pricingEngine;
+    private final MatchingEngine matchingEngine;
+    private final RiskEngine riskEngine;
+    private final PortfolioManager portfolioManager;
+    private final ExecutionService executionService;
+    private final NotificationService notificationService;
+    private final AuditLogger auditLogger;
+    private final OrderService orderService;
+
+    public TradingSystemBootstrap() {
+        System.out.println("Initializing CodeLens Quantitative Trading Platform...");
+
+        // 1. Core Market & Pricing Engines
+        this.marketDataFeed = new MarketDataFeed();
+        this.pricingEngine = new PricingEngine();
+        this.matchingEngine = new MatchingEngine(marketDataFeed, pricingEngine);
+
+        // 2. Risk & Surveillance Engine: $500k max notional, 35% concentration limit, 4x leverage
+        this.riskEngine = new RiskEngine(500_000.0, 0.35, 4.0);
+
+        // 3. Portfolios & Account Balances
+        this.portfolioManager = new PortfolioManager(marketDataFeed);
+        Portfolio mainAccount = portfolioManager.registerAccount("ACC-QUANT-001", 1_000_000.0, 15.0);
+        portfolioManager.registerAccount("ACC-RETAIL-002", 50_000.0, 20.0);
+
+        // 4. Execution & Notification Services
+        this.executionService = new ExecutionService(matchingEngine);
+        this.notificationService = new NotificationService();
+        this.auditLogger = new AuditLogger();
+
+        // 5. Order Management Service Nexus
+        this.orderService = new OrderService(
+            portfolioManager,
+            riskEngine,
+            executionService,
+            marketDataFeed,
+            notificationService,
+            auditLogger
+        );
+    }
+
+    public void startSimulation() {
+        System.out.println("\n--- Executing Algorithmic Trading Simulation ---");
+
+        // Submit initial order batch
         try {
-            bootstrap();
+            ExecutionReport r1 = orderService.submitLimitOrder("ACC-QUANT-001", "AAPL", 100, 185.00);
+            ExecutionReport r2 = orderService.submitLimitOrder("ACC-QUANT-001", "NVDA", 250, 124.50);
+            ExecutionReport r3 = orderService.submitMarketOrder("ACC-QUANT-001", "MSFT", 50);
+
+            System.out.printf("Simulation complete. Orders submitted: %d, Executions: %d%n",
+                orderService.getSubmittedOrderCount(), orderService.getFilledOrderCount());
+
+            portfolioManager.updateAllValuations();
+            Portfolio p = portfolioManager.getPortfolio("ACC-QUANT-001");
+            System.out.printf("Portfolio ACC-QUANT-001 Total Equity: $%.2f | Margin Used: $%.2f%n",
+                p.getTotalEquity(), p.getMarginUsed());
+
         } catch (Exception e) {
-            System.err.println("Demo error: " + e.getMessage());
+            System.err.println("Simulation error: " + e.getMessage());
         }
     }
 
-    private static void bootstrap() {
-        // ── 1. Market data feed ───────────────────────────────────────────────
-        MarketDataFeed feed = new MarketDataFeed();
-        feed.onTick("AAPL",  174.50, 174.55);
-        feed.onTick("MSFT",  412.80, 412.90);
-        feed.onTick("GOOGL", 175.20, 175.30);
-        System.out.println("Feed initialised: " + feed.getTickCount() + " ticks");
-
-        // ── 2. Portfolio ──────────────────────────────────────────────────────
-        Portfolio portfolio = new Portfolio(
-            "DEMO-001",
-            100_000.00,   // $100k starting cash
-            5000          // max 5000 shares per symbol
-        );
-
-        // ── 3. Risk engine ────────────────────────────────────────────────────
-        RiskEngine risk = new RiskEngine(
-            500_000,    // max $500k notional per order
-            0.30,       // max 30% portfolio in one symbol
-            -20_000     // halt if PnL < -$20k
-        );
-
-        // ── 4. Trade processor ────────────────────────────────────────────────
-        TradeProcessor processor = new TradeProcessor();
-
-        // ── 5. Order service ──────────────────────────────────────────────────
-        OrderService service = new OrderService(portfolio, risk, feed, processor);
-
-        // ── 6. Place some trades ──────────────────────────────────────────────
-        try {
-            TradeProcessor.TradeRecord t1 = service.placeOrder("AAPL", 100, 174.55);
-            System.out.println("Filled: " + t1);
-
-            TradeProcessor.TradeRecord t2 = service.placeOrder("MSFT", 50, 412.90);
-            System.out.println("Filled: " + t2);
-
-            TradeProcessor.TradeRecord t3 = service.placeMarketOrder("GOOGL", 25);
-            System.out.println("Filled: " + t3);
-
-        } catch (Exception e) {
-            System.err.println("Order error: " + e.getMessage());
-        }
-
-        // ── 7. Print final state ──────────────────────────────────────────────
-        service.printStats();
-        System.out.println(portfolio.getSummary());
-        System.out.printf("Total portfolio value: $%.2f%n",
-            portfolio.getValue(feed.getAllMidPrices()));
+    public static void main(String[] args) {
+        TradingSystemBootstrap bootstrap = new TradingSystemBootstrap();
+        bootstrap.startSimulation();
     }
 }
