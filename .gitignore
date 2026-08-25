@@ -16,3 +16,6 @@ codelens-data/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Tooling and local audit state
+.impeccable/
