@@ -728,7 +728,6 @@ public class EntityDao {
 
     public List<ModuleSummary> getModuleSummaries() throws SQLException {
         Map<String, int[]> modStats = new LinkedHashMap<>(); // [pkgCnt, classCnt, methodCnt, fieldCnt, lineCnt]
-        Set<String> pkgsSeenPerMod = new HashSet<>();
 
         List<PackageSummary> pkgs = getPackageSummaries(null);
         for (PackageSummary p : pkgs) {
