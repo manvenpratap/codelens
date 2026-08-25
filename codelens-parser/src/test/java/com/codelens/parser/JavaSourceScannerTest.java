@@ -84,6 +84,35 @@ public class JavaSourceScannerTest {
         assertFalse(res2.types.stream().anyMatch(t -> t.getSimpleName().equals("AppServiceTest")), "AppServiceTest excluded");
     }
 
+    public void testRecordParsing(Path tempDir) throws IOException {
+        Path pkg = tempDir.resolve("src/main/java/com/example");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("OrderRecord.java"),
+            "package com.example;\n" +
+            "public record OrderRecord(String orderId, double price, int qty) {\n" +
+            "    public boolean isValid() { return price > 0; }\n" +
+            "}\n");
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        JavaSourceScanner.ScanResult res = scanner.scan(tempDir.toString(), null, (d, t, f) -> {
+            System.out.println("Progress: " + d + "/" + t + " " + f);
+        });
+
+        assertEquals(1, res.totalFiles, "1 file scanned");
+        assertTrue(res.types.stream().anyMatch(t -> t.getSimpleName().equals("OrderRecord") && "RECORD".equals(t.getKind())), "OrderRecord type found");
+        
+        // Verify fields extracted
+        assertTrue(res.fields.stream().anyMatch(f -> f.getSimpleName().equals("orderId") && f.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "orderId field found");
+        assertTrue(res.fields.stream().anyMatch(f -> f.getSimpleName().equals("price") && f.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "price field found");
+        assertTrue(res.fields.stream().anyMatch(f -> f.getSimpleName().equals("qty") && f.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "qty field found");
+
+        // Verify methods extracted (accessors + isValid + constructor)
+        assertTrue(res.methods.stream().anyMatch(m -> m.getSimpleName().equals("orderId") && m.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "orderId() method found");
+        assertTrue(res.methods.stream().anyMatch(m -> m.getSimpleName().equals("price") && m.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "price() method found");
+        assertTrue(res.methods.stream().anyMatch(m -> m.getSimpleName().equals("qty") && m.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "qty() method found");
+        assertTrue(res.methods.stream().anyMatch(m -> m.getSimpleName().equals("isValid") && m.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "isValid() method found");
+    }
+
     public static void main(String[] args) throws Exception {
         JavaSourceScannerTest test = new JavaSourceScannerTest();
         System.out.println("Running testIsExcludedWithFolderNames...");
@@ -109,6 +138,26 @@ public class JavaSourceScannerTest {
                 }
             });
         }
-        System.out.println("ALL JAVA SOURCE SCANNER EXCLUSION TESTS PASSED SUCCESSFULLY!");
+        
+        System.out.println("Running testRecordParsing...");
+        Path tempDir2 = Files.createTempDirectory("codelens_record_test");
+        try {
+            test.testRecordParsing(tempDir2);
+        } finally {
+            Files.walkFileTree(tempDir2, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        System.out.println("ALL JAVA SOURCE SCANNER AND RECORD TESTS PASSED SUCCESSFULLY!");
     }
 }

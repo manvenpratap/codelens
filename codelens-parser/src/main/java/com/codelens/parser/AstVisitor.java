@@ -186,9 +186,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
                 getter.setDeclaringTypeFqn(fqn);
                 getter.setReturnType(paramType);
                 getter.setModifiers("public");
-                getter.setSignature(paramName + "()");
                 getter.setCyclomaticComplexity(1);
-                getter.setLineCount(1);
                 p.getRange().ifPresent(r -> {
                     getter.setStartLine(r.begin.line);
                     getter.setEndLine(r.end.line);
@@ -196,12 +194,8 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
                 ctx.methods.add(getter);
 
                 // Register READS_FIELD relationship from accessor to component field
-                CodeRelationship rel = new CodeRelationship();
-                rel.setId(getterFqn + "->READS_FIELD->" + fieldFqn);
-                rel.setFromFqn(getterFqn);
-                rel.setToFqn(fieldFqn);
-                rel.setKind("READS_FIELD");
-                ctx.relationships.add(rel);
+                int line = p.getRange().map(r -> r.begin.line).orElse(0);
+                ctx.relationships.add(rel(getterFqn, fieldFqn, "READS_FIELD", line));
             }
         }
 
@@ -230,18 +224,13 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
                 initMethod.setEndLine(r.begin.line);
             });
             initMethod.setCyclomaticComplexity(1);
-            initMethod.setLineCount(1);
             ctx.methods.add(initMethod);
 
             // Register WRITES_FIELD relationship for each component
+            int line = n.getRange().map(r -> r.begin.line).orElse(0);
             for (Parameter p : n.getParameters()) {
                 String fieldFqn = fqn + "." + p.getNameAsString();
-                CodeRelationship writeRel = new CodeRelationship();
-                writeRel.setId(initFqn + "->WRITES_FIELD->" + fieldFqn);
-                writeRel.setFromFqn(initFqn);
-                writeRel.setToFqn(fieldFqn);
-                writeRel.setKind("WRITES_FIELD");
-                ctx.relationships.add(writeRel);
+                ctx.relationships.add(rel(initFqn, fieldFqn, "WRITES_FIELD", line));
             }
         }
 
