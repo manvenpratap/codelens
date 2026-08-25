@@ -24,7 +24,7 @@
 </head>
 
 <body>
-<div id="app" role="application" aria-label="CodeLens Java Codebase Intelligence">
+<div id="app" class="app-viewport" role="application" aria-roledescription="viewport" aria-label="CodeLens Java Codebase Intelligence">
 
   <!-- Header: logo, scan controls, live stats -->
   <!-- Header: logo, project bar / scan controls, live stats, and actions -->
@@ -214,7 +214,7 @@
        CENTRE PANEL - tabbed workspace
        Tabs:  Graph | Knowledge Base | Inconsistencies
        ------------------------------------------------------------------------- -->
-  <main id="centre-panel" role="main" aria-label="Workspace">
+  <main id="centre-panel" class="app-viewport" role="main" aria-roledescription="viewport" aria-label="Workspace">
 
     <!-- -- Tab navigation bar ----------------------------------------------- -->
     <nav class="tab-bar" role="tablist" aria-label="Workspace tabs">
@@ -301,9 +301,10 @@
 
     <!-- ── Tab panel 1: Force-directed graph canvas ─────────────────────── -->
     <section
-      class="tab-content active"
+      class="tab-content app-viewport active"
       id="graph-view"
       role="tabpanel"
+      aria-roledescription="viewport"
       aria-labelledby="tab-graph"
       tabindex="0"
     >
@@ -1039,8 +1040,5 @@
 <script src="/sunburst.js?v=4.1.1" defer></script>
 <script src="/app.js?v=4.1.1"    defer></script>
 
-<!-- impeccable-live-start -->
-<script src="http://localhost:8400/live.js?token=f4c1ec9e-32ad-436b-a8cb-3e6a2e1a5395"></script>
-<!-- impeccable-live-end -->
 </body>
 </html>
