@@ -95,10 +95,6 @@ html, body {
   font-family: var(--font-ui);
   font-size: 13px;
   background-color: var(--bg-base);
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-  background-size: 32px 32px, 32px 32px;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -772,7 +768,6 @@ body.resizing .panel-resizer {
   height: 2px;
   background: var(--primary);
   box-shadow: 0 0 10px var(--primary-glow);
-  transition: width var(--dur-std) var(--ease);
   width: 0%;
 }
 
@@ -898,7 +893,7 @@ body.resizing .panel-resizer {
   width: 12px; height: 12px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-muted);
-  font-size: 8px;
+  font-size: 9px;
   flex-shrink: 0;
   transition: transform var(--dur-fast);
 }
@@ -1513,7 +1508,7 @@ body.resizing .panel-resizer {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--radius-xs);
   font-size: 11px;
   font-weight: 700;
   font-family: var(--font-mono);
@@ -1561,7 +1556,6 @@ body.resizing .panel-resizer {
   gap: 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-left-width: 3px;
   border-radius: var(--radius-xs);
   padding: 5px 9px;
   font-size: 11.5px;
@@ -1918,7 +1912,6 @@ body.resizing .panel-resizer {
   padding: 14px 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border-light);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
@@ -1932,25 +1925,25 @@ body.resizing .panel-resizer {
   transform: translateY(-1px);
 }
 .review-finding-card.sev-critical {
-  border-left-color: var(--red);
+  border-color: rgba(239, 68, 68, 0.4);
   background: rgba(239, 68, 68, 0.04);
 }
 .review-finding-card.sev-critical:hover {
   background: rgba(239, 68, 68, 0.08);
 }
 .review-finding-card.sev-warning {
-  border-left-color: var(--amber);
+  border-color: rgba(245, 158, 11, 0.4);
   background: rgba(245, 158, 11, 0.04);
 }
 .review-finding-card.sev-warning:hover {
   background: rgba(245, 158, 11, 0.08);
 }
 .review-finding-card.sev-info {
-  border-left-color: var(--cyan);
-  background: rgba(2, 132, 199, 0.04);
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.04);
 }
 .review-finding-card.sev-info:hover {
-  background: rgba(2, 132, 199, 0.08);
+  background: rgba(56, 189, 248, 0.08);
 }
 .finding-header {
   display: flex;
@@ -2143,7 +2136,6 @@ body.resizing .panel-resizer {
 .complexity-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width var(--dur-slow) var(--ease);
 }
 .complexity-fill.low    { background: var(--emerald); }
 .complexity-fill.medium { background: var(--amber); }
@@ -2616,7 +2608,6 @@ body.resizing .panel-resizer {
 .git-progress-fill {
   height: 100%;
   background: var(--primary);
-  transition: width 200ms ease;
 }
 
 .git-section {
@@ -2738,7 +2729,6 @@ body.resizing .panel-resizer {
   height: 100%;
   background: linear-gradient(90deg, var(--cyan-bright) 0%, var(--amber) 70%, var(--red) 100%);
   border-radius: 4px;
-  transition: width var(--dur-slow) var(--ease);
 }
 
 .git-hot-count {
@@ -3042,10 +3032,10 @@ body.resizing .panel-resizer {
 }
 
 .flow-step {
-  background: rgba(255,255,255,0.02);
-  border-left: 3px solid var(--primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   padding: 10px 14px;
-  border-radius: 0 4px 4px 0;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -3770,7 +3760,7 @@ body.theme-light .btn-ghost:hover {
   display: inline-flex;
   background: var(--bg-surface-2, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   padding: 2px;
   gap: 2px;
   margin-right: 8px;

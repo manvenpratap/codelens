@@ -25,6 +25,27 @@ colors:
   red: "#ef4444"
   red-dim: "#dc2626"
   red-subtle: "rgba(239, 68, 68, 0.14)"
+  red-light: "#f87171"
+  rose: "#fb7185"
+  rose-subtle: "rgba(244, 63, 94, 0.15)"
+  rose-subtle-2: "rgba(244, 63, 94, 0.12)"
+  rose-subtle-3: "rgba(244, 63, 94, 0.22)"
+  teal: "#0d9488"
+  purple: "#a855f7"
+  purple-light: "#c084fc"
+  purple-subtle: "rgba(168, 85, 247, 0.2)"
+  purple-border: "rgba(168, 85, 247, 0.4)"
+  pink: "#ec4899"
+  pink-light: "#f472b6"
+  pink-subtle: "rgba(236, 72, 153, 0.2)"
+  pink-border: "rgba(236, 72, 153, 0.4)"
+  blue-light: "#60a5fa"
+  amber-light: "#fbbf24"
+  emerald-light: "#34d399"
+  dark-code: "#1e1e1e"
+  overlay-dark: "rgba(14, 19, 32, 0.4)"
+  overlay-mid: "rgba(14, 19, 32, 0.6)"
+  overlay-deep: "rgba(4, 6, 12, 0.85)"
   
   neutral-bg-dark: "#0d1117"
   neutral-panel-dark: "#161b22"
@@ -43,14 +64,58 @@ colors:
   neutral-text-secondary-light: "#334155"
   neutral-text-muted-light: "#64748b"
   neutral-border-light: "rgba(0, 0, 0, 0.12)"
+  slate-light: "#cbd5e1"
+  slate-dark: "#1e293b"
+  slate-mid: "#475569"
+  sky-deep: "#0369a1"
 
 typography:
+  display-hero:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "40px"
+    fontWeight: 700
+    lineHeight: 1.1
+  display-headline:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "32px"
+    fontWeight: 700
+    lineHeight: 1.15
+  display-xl:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 700
+    lineHeight: 1.2
+  title-lg:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "20px"
+    fontWeight: 600
+    lineHeight: 1.25
+  display-lg:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 700
+    lineHeight: 1.2
+  title-md:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "17px"
+    fontWeight: 600
+    lineHeight: 1.3
+  title-sm:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: 1.3
   display:
     fontFamily: "Space Grotesk, system-ui, sans-serif"
     fontSize: "15px"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.02em"
+  title:
+    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 600
+    lineHeight: 1.3
   ui:
     fontFamily: "Plus Jakarta Sans, system-ui, -apple-system, sans-serif"
     fontSize: "13px"
@@ -63,12 +128,42 @@ typography:
     fontWeight: 500
     lineHeight: 1.4
     letterSpacing: "0"
+  caption:
+    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontSize: "11px"
+    fontWeight: 500
+    lineHeight: 1.4
+  caption-mono:
+    fontFamily: "JetBrains Mono, monospace"
+    fontSize: "10.5px"
+    fontWeight: 500
+    lineHeight: 1.4
+  badge:
+    fontFamily: "JetBrains Mono, monospace"
+    fontSize: "10px"
+    fontWeight: 600
+    lineHeight: 1.2
+  micro:
+    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontSize: "9px"
+    fontWeight: 700
+    lineHeight: 1.2
+  micro-mono:
+    fontFamily: "JetBrains Mono, monospace"
+    fontSize: "9.5px"
+    fontWeight: 700
+    lineHeight: 1.2
 
 rounded:
+  xxs: "2px"
+  subtle: "3px"
   xs: "4px"
+  sm-5: "5px"
   sm: "6px"
   md: "10px"
+  md-12: "12px"
   lg: "16px"
+  xl: "20px"
   full: "9999px"
 
 spacing:

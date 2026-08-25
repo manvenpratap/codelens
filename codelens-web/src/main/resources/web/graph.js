@@ -1639,8 +1639,8 @@ class ForceGraph {
       matches.forEach(n => {
         const row = document.createElement('div');
         row.className = 'graph-search-item';
-        row.style.borderLeft = `3px solid ${n.communityColor}`;
         row.innerHTML = `
+          <span class="gsi-dot" style="width:7px;height:7px;border-radius:50%;background:${n.communityColor};display:inline-block;margin-right:8px;flex-shrink:0;"></span>
           <span class="gsi-label">${n.label}</span>
           <span class="gsi-pkg">${n.package}</span>
         `;
