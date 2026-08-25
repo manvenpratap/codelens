@@ -426,10 +426,15 @@ function renderPackageTree(nodes, container, depth) {
     const canExpand = hasSubPackages || node.typeCount > 0;
     const isOpen = App.openPackages.has(node.fqn);
 
+    const pkgColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+      ? window.CodeLensPalette.getColor(node.fqn, depth)
+      : '#10b981';
+
     const item = createElement('div', {
       class: `tree-item${App.selected.id === node.fqn ? ' active' : ''}`,
       'data-depth': depth,
       'data-fqn': node.fqn,
+      style: `border-left-color: ${pkgColor};`,
     });
 
     // Toggle arrow
@@ -437,8 +442,8 @@ function renderPackageTree(nodes, container, depth) {
     toggle.textContent = canExpand ? '▶' : '';
     item.appendChild(toggle);
 
-    // Icon
-    const icon = createElement('span', { class: 'tree-icon' });
+    // Icon with package color badge
+    const icon = createElement('span', { class: 'tree-icon', style: `color: ${pkgColor};` });
     icon.textContent = '📦';
     item.appendChild(icon);
 
@@ -450,7 +455,10 @@ function renderPackageTree(nodes, container, depth) {
 
     // Count badge
     if (node.typeCount > 0) {
-      const count = createElement('span', { class: 'tree-count' });
+      const count = createElement('span', {
+        class: 'tree-count',
+        style: `border: 1px solid ${pkgColor}44; color: ${pkgColor}; background: ${pkgColor}11; border-radius: 10px; padding: 0 5px;`,
+      });
       count.textContent = node.typeCount;
       item.appendChild(count);
     }
@@ -529,11 +537,16 @@ async function loadTypesInTree(pkgFqn, container, depth) {
       return;
     }
 
+    const pkgColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+      ? window.CodeLensPalette.getColor(pkgFqn, depth)
+      : '#10b981';
+
     for (const t of typeEls) {
       const item = createElement('div', {
         class: `tree-item tree-type-item${App.selected.id === t.id ? ' active' : ''}`,
         'data-depth': depth,
         'data-id': t.id,
+        style: `border-left-color: ${pkgColor}88;`,
       });
 
       const icon = createElement('span', { class: `tree-icon kind-${(t.kind || 'class').toLowerCase()}` });
