@@ -24,10 +24,15 @@
       this._animId = null;
       this._data = null;
       this._buildings = [];
+      this._districts = [];
+      this._filterQuery = '';
+      this._hiddenPackages = new Set();
+      this._showWireframe = false;
       this._raycaster = null;
       this._mouse = null;
       this._hoveredMesh = null;
       this._tooltip = null;
+      this._toolbar = null;
       this._resizeObserver = null;
       this._onSelectEntity = null;
     }
@@ -45,6 +50,50 @@
       }
       this._initScene();
       this._buildCity();
+    }
+
+    setFilter(query) {
+      this._filterQuery = (query || '').toLowerCase().trim();
+      this._applyFilters();
+    }
+
+    togglePackage(pkgName, visible) {
+      if (visible === undefined) {
+        if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+        else this._hiddenPackages.add(pkgName);
+      } else if (visible) {
+        this._hiddenPackages.delete(pkgName);
+      } else {
+        this._hiddenPackages.add(pkgName);
+      }
+      this._applyFilters();
+    }
+
+    toggleWireframe() {
+      this._showWireframe = !this._showWireframe;
+      this._buildings.forEach(b => {
+        if (b.material) b.material.wireframe = this._showWireframe;
+      });
+    }
+
+    _applyFilters() {
+      this._buildings.forEach(b => {
+        const d = b.userData;
+        const name = (d.entity.label || d.entity.simpleName || d.entity.id || '').toLowerCase();
+        const pkg = (d.pkg || '').toLowerCase();
+        const matchesSearch = !this._filterQuery || name.includes(this._filterQuery) || pkg.includes(this._filterQuery);
+        const matchesPkg = !this._hiddenPackages.has(d.pkg);
+        const visible = matchesSearch && matchesPkg;
+
+        b.visible = visible;
+        if (b.userData.edgeLine) b.userData.edgeLine.visible = visible;
+      });
+
+      this._districts.forEach(dist => {
+        const visible = !this._hiddenPackages.has(dist.userData.pkg);
+        dist.visible = visible;
+        if (dist.userData.edgeLine) dist.userData.edgeLine.visible = visible;
+      });
     }
 
     _indexTreeMetrics(node) {
@@ -206,9 +255,12 @@
 
         // District Platform Border Edge
         const edges = new THREE.EdgesGeometry(platformGeo);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: pkgColorHex, transparent: true, opacity: 0.55 }));
-        line.position.copy(platform.position);
-        this._scene.add(line);
+        const distLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: pkgColorHex, transparent: true, opacity: 0.55 }));
+        distLine.position.copy(platform.position);
+        this._scene.add(distLine);
+
+        platform.userData = { pkg: pkgName, edgeLine: distLine };
+        this._districts.push(platform);
 
         // Build Skyscrapers inside district
         pkgClasses.forEach((cls, cIndex) => {
@@ -235,12 +287,20 @@
             metalness: 0.75,
             emissive: colorHex,
             emissiveIntensity: 0.18,
+            wireframe: this._showWireframe,
           });
 
           const mesh = new THREE.Mesh(buildingGeo, buildingMat);
           mesh.position.set(bx, 3 + height / 2, bz);
           mesh.castShadow = true;
           mesh.receiveShadow = true;
+
+          // Skyscraper Edge Wireframe
+          const bEdges = new THREE.EdgesGeometry(buildingGeo);
+          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+          bLine.position.copy(mesh.position);
+          this._scene.add(bLine);
+
           mesh.userData = {
             entity: cls,
             origColor: colorHex,
@@ -248,19 +308,71 @@
             colorStr: pkgColorStr,
             pkg: pkgName,
             loc: loc,
-            methodCount: methodCount
+            methodCount: methodCount,
+            edgeLine: bLine
           };
 
           this._scene.add(mesh);
           this._buildings.push(mesh);
-
-          // Skyscraper Edge Wireframe
-          const bEdges = new THREE.EdgesGeometry(buildingGeo);
-          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
-          bLine.position.copy(mesh.position);
-          this._scene.add(bLine);
         });
       });
+
+      this._buildOverlayControls(pkgs);
+    }
+
+    _buildOverlayControls(pkgs = []) {
+      if (this._toolbar) this._toolbar.remove();
+
+      this._toolbar = document.createElement('div');
+      this._toolbar.className = 'city3d-hud-overlay';
+      this._toolbar.style.position = 'absolute';
+      this._toolbar.style.top = '14px';
+      this._toolbar.style.right = '14px';
+      this._toolbar.style.display = 'flex';
+      this._toolbar.style.alignItems = 'center';
+      this._toolbar.style.gap = '8px';
+      this._toolbar.style.zIndex = '120';
+
+      // Search input filter
+      const searchBox = document.createElement('input');
+      searchBox.type = 'text';
+      searchBox.placeholder = 'Filter buildings...';
+      searchBox.className = 'city3d-search-box';
+      searchBox.value = this._filterQuery;
+      searchBox.style.background = 'rgba(10, 13, 18, 0.9)';
+      searchBox.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+      searchBox.style.color = '#f8fafc';
+      searchBox.style.borderRadius = '6px';
+      searchBox.style.padding = '4px 10px';
+      searchBox.style.fontSize = '11px';
+      searchBox.style.width = '140px';
+      searchBox.style.outline = 'none';
+      searchBox.addEventListener('input', (e) => {
+        this.setFilter(e.target.value);
+      });
+      this._toolbar.appendChild(searchBox);
+
+      // Wireframe toggle
+      const wireBtn = document.createElement('button');
+      wireBtn.className = 'hud-btn' + (this._showWireframe ? ' active' : '');
+      wireBtn.innerHTML = '<span class="hud-btn-icon">⬡</span> <span class="hud-btn-text">Wireframe</span>';
+      wireBtn.style.background = '#0a0d12';
+      wireBtn.style.border = '1px solid ' + (this._showWireframe ? '#10b981' : 'rgba(255,255,255,0.15)');
+      wireBtn.style.color = this._showWireframe ? '#f8fafc' : '#94a3b8';
+      wireBtn.style.borderRadius = '6px';
+      wireBtn.style.padding = '5px 10px';
+      wireBtn.style.fontSize = '11px';
+      wireBtn.style.cursor = 'pointer';
+
+      wireBtn.addEventListener('click', () => {
+        this.toggleWireframe();
+        wireBtn.classList.toggle('active', this._showWireframe);
+        wireBtn.style.borderColor = this._showWireframe ? '#10b981' : 'rgba(255,255,255,0.15)';
+        wireBtn.style.color = this._showWireframe ? '#f8fafc' : '#94a3b8';
+      });
+      this._toolbar.appendChild(wireBtn);
+
+      this._el.appendChild(this._toolbar);
     }
 
     _onMouseMove(event) {

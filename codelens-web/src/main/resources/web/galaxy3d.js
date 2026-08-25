@@ -27,6 +27,8 @@
       this._edgeLines = [];
       this._planeMeshes = [];
       this._showPlanes = true;
+      this._filterQuery = '';
+      this._hiddenPackages = new Set();
       this._particleGroup = null;
       this._particles = [];
       this._raycaster = null;
@@ -42,6 +44,49 @@
       if (visible !== undefined) this._showPlanes = visible;
       else this._showPlanes = !this._showPlanes;
       this._planeMeshes.forEach(p => { p.visible = this._showPlanes; });
+    }
+
+    setFilter(query) {
+      this._filterQuery = (query || '').toLowerCase().trim();
+      this._applyFilters();
+    }
+
+    togglePackage(pkgName, visible) {
+      if (visible === undefined) {
+        if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+        else this._hiddenPackages.add(pkgName);
+      } else if (visible) {
+        this._hiddenPackages.delete(pkgName);
+      } else {
+        this._hiddenPackages.add(pkgName);
+      }
+      this._applyFilters();
+    }
+
+    _applyFilters() {
+      const visibleNodeIds = new Set();
+      this._nodeMeshes.forEach(m => {
+        const d = m.userData;
+        const name = (d.node.raw.label || d.node.raw.simpleName || d.node.id || '').toLowerCase();
+        const pkg = (d.pkg || '').toLowerCase();
+        const matchesSearch = !this._filterQuery || name.includes(this._filterQuery) || pkg.includes(this._filterQuery);
+        const matchesPkg = !this._hiddenPackages.has(d.pkg);
+        const visible = matchesSearch && matchesPkg;
+
+        m.visible = visible;
+        if (visible) visibleNodeIds.add(d.node.id);
+      });
+
+      this._edgeLines.forEach(l => {
+        if (l.userData && l.userData.src && l.userData.tgt) {
+          l.visible = visibleNodeIds.has(l.userData.src) && visibleNodeIds.has(l.userData.tgt);
+        }
+      });
+
+      this._planeMeshes.forEach(p => {
+        const pkgVisible = !p.userData || !this._hiddenPackages.has(p.userData.pkg);
+        p.visible = this._showPlanes && pkgVisible;
+      });
     }
 
     onSelectEntity(callback) {
@@ -245,6 +290,7 @@
         const geo = new THREE.BufferGeometry().setFromPoints(points);
         const lineMat = new THREE.LineBasicMaterial({ color: srcColorHex, transparent: true, opacity: 0.45 });
         const line = new THREE.Line(geo, lineMat);
+        line.userData = { src: src.id, tgt: tgt.id };
 
         this._scene.add(line);
         this._edgeLines.push(line);
@@ -299,6 +345,7 @@
         const planeMesh = new THREE.Mesh(diskGeo, diskMat);
         planeMesh.position.set(avgX, avgY, avgZ);
         planeMesh.rotation.x = Math.PI / 2; // Lie on plane
+        planeMesh.userData = { pkg: pkgName };
         this._scene.add(planeMesh);
         this._planeMeshes.push(planeMesh);
 
@@ -312,6 +359,7 @@
         });
         const ringMesh = new THREE.Mesh(ringGeo, ringMat);
         ringMesh.position.set(avgX, avgY, avgZ);
+        ringMesh.userData = { pkg: pkgName };
         this._scene.add(ringMesh);
         this._planeMeshes.push(ringMesh);
       });
@@ -340,6 +388,25 @@
       this._toolbar.style.alignItems = 'center';
       this._toolbar.style.gap = '8px';
       this._toolbar.style.zIndex = '120';
+
+      // Search input filter
+      const searchBox = document.createElement('input');
+      searchBox.type = 'text';
+      searchBox.placeholder = 'Filter nodes...';
+      searchBox.className = 'galaxy3d-search-box';
+      searchBox.value = this._filterQuery;
+      searchBox.style.background = 'rgba(10, 13, 18, 0.9)';
+      searchBox.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+      searchBox.style.color = '#f8fafc';
+      searchBox.style.borderRadius = '6px';
+      searchBox.style.padding = '4px 10px';
+      searchBox.style.fontSize = '11px';
+      searchBox.style.width = '140px';
+      searchBox.style.outline = 'none';
+      searchBox.addEventListener('input', (e) => {
+        this.setFilter(e.target.value);
+      });
+      this._toolbar.appendChild(searchBox);
 
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'hud-btn active';
