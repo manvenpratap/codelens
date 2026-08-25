@@ -487,6 +487,20 @@
         </div>
       </div>
 
+      <!-- Empty/placeholder state shown if no scan is loaded -->
+      <div
+        id="codebase-empty"
+        class="graph-empty"
+        style="display:none"
+        aria-label="No codebase data loaded"
+      >
+        <div class="graph-empty-icon" aria-hidden="true">🪐</div>
+        <div class="graph-empty-text">Codebase Visualization</div>
+        <div class="graph-empty-sub" id="codebase-empty-sub">
+          Run a project scan to generate 3D Software City, 3D Galaxy, Treemap, and Matrix models.
+        </div>
+      </div>
+
       <!-- Mount container for codebase visualizers -->
       <div id="codebase-canvas-wrap" style="width:100%; height:100%; position:relative; overflow:hidden;"></div>
     </section><!-- /#codebase-view -->

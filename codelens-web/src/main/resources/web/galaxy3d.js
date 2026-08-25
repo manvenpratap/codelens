@@ -144,8 +144,7 @@
 
       // Three.js Scene
       this._scene = new THREE.Scene();
-      this._scene.background = new THREE.Color(0x000000);
-      this._scene.fog = new THREE.FogExp2(0x000000, 0.0012);
+      this._scene.background = new THREE.Color(0x05080f);
 
       // Camera
       this._camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
@@ -155,6 +154,8 @@
       this._renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       this._renderer.setSize(width, height);
       this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this._renderer.toneMappingExposure = 1.4;
       this._el.appendChild(this._renderer.domElement);
 
       // Controls
@@ -166,13 +167,20 @@
         this._controls.maxDistance = 1500;
       }
 
-      // Lights
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      // Lights - High Brightness Rig
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
       this._scene.add(ambientLight);
 
-      const pointLight = new THREE.PointLight(0x10b981, 1.2, 800);
-      pointLight.position.set(0, 50, 0);
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 1.1);
+      this._scene.add(hemiLight);
+
+      const pointLight = new THREE.PointLight(0xffffff, 1.8, 1200);
+      pointLight.position.set(0, 80, 0);
       this._scene.add(pointLight);
+
+      const dirLight = new THREE.DirectionalLight(0x34d399, 1.0);
+      dirLight.position.set(150, 200, 150);
+      this._scene.add(dirLight);
 
       // Stars background particle field
       const starGeo = new THREE.BufferGeometry();
@@ -332,15 +340,15 @@
       });
 
       // Sphere Geometry for Nodes
-      const sphereGeo = new THREE.SphereGeometry(5.5, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(6.5, 18, 18);
 
       this._nodes.forEach((n) => {
         const mat = new THREE.MeshStandardMaterial({
           color: n.colorHex,
           emissive: n.colorHex,
-          emissiveIntensity: 0.35,
-          roughness: 0.3,
-          metalness: 0.7,
+          emissiveIntensity: 0.65,
+          roughness: 0.15,
+          metalness: 0.45,
         });
 
         const mesh = new THREE.Mesh(sphereGeo, mat);

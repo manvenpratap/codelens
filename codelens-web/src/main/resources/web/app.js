@@ -716,7 +716,14 @@ function switchTab(tabName) {
     updateReviewTargetInfo();
   }
   if (tabName === 'codebase') {
-    loadWholeCodebaseGraph(App.codebaseGraphLevel || 'city3d');
+    const macroLevel = App.codebaseMacroLevel || 'city3d';
+    loadWholeCodebaseGraph(macroLevel);
+  }
+  if (tabName === 'graph') {
+    if (App.activeAltRenderer) {
+      App.activeAltRenderer.destroy();
+      App.activeAltRenderer = null;
+    }
   }
   if (tabName === 'source' && App.editor) {
     setTimeout(() => {
@@ -1259,21 +1266,27 @@ function ensureGraph() {
 }
 
 /** Load the whole codebase graph (either high-level Architecture or detailed Method call graph). */
-async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d') {
-  App.codebaseGraphLevel = level;
+async function loadWholeCodebaseGraph(level) {
+  const isAltViz = ['city3d', 'galaxy3d', 'treemap', 'sunburst', 'dsm', 'chord'].includes(level);
+  if (isAltViz) {
+    App.codebaseMacroLevel = level;
+  } else {
+    App.codebaseGraphLevel = level || 'arch';
+  }
+  const effectiveLevel = isAltViz ? App.codebaseMacroLevel : App.codebaseGraphLevel;
   App.activeGraphMode = 'wholeCodebase';
   App.selected = null;
-
-  const isAltViz = ['city3d', 'galaxy3d', 'treemap', 'sunburst', 'dsm', 'chord'].includes(level);
 
   // If in Macro Codebase Viz mode, ensure Codebase Viz tab is active
   if (isAltViz && App.activeTab !== 'codebase') {
     switchTab('codebase');
+  } else if (!isAltViz && App.activeTab !== 'graph') {
+    switchTab('graph');
   }
 
   // Update pill active states in both selectors
-  qsa('#codebase-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === level));
-  qsa('#graph-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === level));
+  qsa('#codebase-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === effectiveLevel));
+  qsa('#graph-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === effectiveLevel));
 
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
@@ -1284,15 +1297,16 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
   const mountContainer = isAltViz ? qs('#codebase-canvas-wrap') : qs('#graph-view');
 
   if (isAltViz) {
+    hideCodebaseEmpty();
     try {
-      if (level === 'city3d') {
+      if (effectiveLevel === 'city3d') {
         showBanner('Building 3D Software City...');
         const [archData, treeData] = await Promise.all([
           api.architectureGraph(),
           api.treemapData()
         ]);
         if (!archData.nodes || archData.nodes.length === 0) {
-          showGraphEmpty('No architecture data available for 3D City. Run a scan first.');
+          showCodebaseEmpty('No architecture data available for 3D City. Run a scan first.');
           return;
         }
         const renderer = new window.CodeCity3DRenderer(mountContainer);
@@ -1301,11 +1315,11 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         renderAltVizInspector('3D City', archData.nodes.length, archData.edges.length);
         showBanner('3D Software City loaded: ' + archData.nodes.length + ' buildings');
 
-      } else if (level === 'galaxy3d') {
+      } else if (effectiveLevel === 'galaxy3d') {
         showBanner('Generating 3D Force Galaxy...');
         const data = await api.architectureGraph();
         if (!data.nodes || data.nodes.length === 0) {
-          showGraphEmpty('No architecture data available for 3D Galaxy. Run a scan first.');
+          showCodebaseEmpty('No architecture data available for 3D Galaxy. Run a scan first.');
           return;
         }
         const renderer = new window.Galaxy3DRenderer(mountContainer);
@@ -1314,11 +1328,11 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         renderAltVizInspector('3D Galaxy', data.nodes.length, data.edges.length);
         showBanner('3D Force Galaxy loaded: ' + data.nodes.length + ' orbital nodes');
 
-      } else if (level === 'treemap') {
+      } else if (effectiveLevel === 'treemap') {
         showBanner('Loading Treemap...');
         const data = await api.treemapData();
         if (!data.children || data.children.length === 0) {
-          showGraphEmpty('No hierarchy data available for Treemap. Run a scan first.');
+          showCodebaseEmpty('No hierarchy data available for Treemap. Run a scan first.');
           return;
         }
         const renderer = new window.TreemapRenderer(mountContainer);
@@ -1327,11 +1341,11 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         renderAltVizInspector('Treemap', countTreemapNodes(data), data.size);
         showBanner('Treemap loaded: ' + countTreemapNodes(data) + ' nodes, ' + data.size + ' total lines');
 
-      } else if (level === 'sunburst') {
+      } else if (effectiveLevel === 'sunburst') {
         showBanner('Loading Sunburst...');
         const data = await api.treemapData();
         if (!data.children || data.children.length === 0) {
-          showGraphEmpty('No hierarchy data available for Sunburst. Run a scan first.');
+          showCodebaseEmpty('No hierarchy data available for Sunburst. Run a scan first.');
           return;
         }
         const renderer = new window.SunburstRenderer(mountContainer);
@@ -1340,11 +1354,11 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         renderAltVizInspector('Sunburst', countTreemapNodes(data), data.size);
         showBanner('Sunburst loaded: ' + countTreemapNodes(data) + ' nodes');
 
-      } else if (level === 'dsm') {
+      } else if (effectiveLevel === 'dsm') {
         showBanner('Loading Dependency Structure Matrix...');
         const data = await api.dsmData();
         if (!data.classes || data.classes.length === 0) {
-          showGraphEmpty('No class data available for DSM. Run a scan first.');
+          showCodebaseEmpty('No class data available for DSM. Run a scan first.');
           return;
         }
         const renderer = new window.DSMRenderer(mountContainer);
@@ -1370,11 +1384,11 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         renderAltVizInspector('DSM', data.classes.length, 0);
         showBanner('DSM loaded: ' + data.classes.length + ' ' + (data.scope || 'classes'));
 
-      } else if (level === 'chord') {
+      } else if (effectiveLevel === 'chord') {
         showBanner('Loading Chord Diagram...');
         const data = await api.architectureGraph();
         if (!data.nodes || data.nodes.length === 0) {
-          showGraphEmpty('No architecture data available for Chord diagram. Run a scan first.');
+          showCodebaseEmpty('No architecture data available for Chord diagram. Run a scan first.');
           return;
         }
         const renderer = new window.ChordRenderer(mountContainer);
@@ -1384,7 +1398,7 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
         showBanner('Chord diagram loaded: ' + data.nodes.length + ' classes, ' + data.edges.length + ' relationships');
       }
     } catch (e) {
-      showGraphEmpty('Failed to load visualization: ' + e.message);
+      showCodebaseEmpty('Failed to load visualization: ' + e.message);
     }
 
   } else {
@@ -1792,6 +1806,19 @@ function showGraphEmpty(msg) {
 }
 function hideGraphEmpty() {
   const el = qs('#graph-empty');
+  if (el) el.style.display = 'none';
+}
+
+function showCodebaseEmpty(msg) {
+  const el = qs('#codebase-empty');
+  if (el) {
+    const sub = el.querySelector('#codebase-empty-sub') || el.querySelector('.graph-empty-sub');
+    if (sub) sub.textContent = msg;
+    el.style.display = 'flex';
+  }
+}
+function hideCodebaseEmpty() {
+  const el = qs('#codebase-empty');
   if (el) el.style.display = 'none';
 }
 

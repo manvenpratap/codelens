@@ -164,8 +164,8 @@
 
       // Three.js Scene
       this._scene = new THREE.Scene();
-      this._scene.background = new THREE.Color(0x000000);
-      this._scene.fog = new THREE.FogExp2(0x000000, 0.0018);
+      this._scene.background = new THREE.Color(0x05080f);
+      this._scene.fog = new THREE.FogExp2(0x05080f, 0.0009);
 
       // Perspective Camera
       this._camera = new THREE.PerspectiveCamera(45, width / height, 1, 4000);
@@ -177,6 +177,8 @@
       this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       this._renderer.shadowMap.enabled = true;
       this._renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this._renderer.toneMappingExposure = 1.35;
       this._el.appendChild(this._renderer.domElement);
 
       // OrbitControls
@@ -189,23 +191,26 @@
         this._controls.maxDistance = 1800;
       }
 
-      // Lights
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      // Lights - High Brightness Rig
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
       this._scene.add(ambientLight);
 
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
-      dirLight.position.set(200, 400, 200);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+      dirLight.position.set(250, 450, 250);
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.width = 2048;
       dirLight.shadow.mapSize.height = 2048;
       this._scene.add(dirLight);
 
-      const dirLight2 = new THREE.DirectionalLight(0x10b981, 0.45);
-      dirLight2.position.set(-200, 300, -200);
+      const dirLight2 = new THREE.DirectionalLight(0x34d399, 0.85);
+      dirLight2.position.set(-250, 350, -250);
       this._scene.add(dirLight2);
 
+      const topLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.9);
+      this._scene.add(topLight);
+
       // Grid Floor
-      const gridHelper = new THREE.GridHelper(1200, 60, 0x10b981, 0x18202c);
+      const gridHelper = new THREE.GridHelper(1400, 70, 0x10b981, 0x334155);
       gridHelper.position.y = -0.1;
       this._scene.add(gridHelper);
 
@@ -310,10 +315,10 @@
 
           const buildingMat = new THREE.MeshStandardMaterial({
             color: colorHex,
-            roughness: 0.25,
-            metalness: 0.75,
+            roughness: 0.15,
+            metalness: 0.55,
             emissive: colorHex,
-            emissiveIntensity: 0.18,
+            emissiveIntensity: 0.42,
             wireframe: this._showWireframe,
           });
 
@@ -324,7 +329,7 @@
 
           // Skyscraper Edge Wireframe
           const bEdges = new THREE.EdgesGeometry(buildingGeo);
-          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }));
           bLine.position.copy(mesh.position);
           this._scene.add(bLine);
 

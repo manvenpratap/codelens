@@ -1410,13 +1410,13 @@ class ForceGraph {
       }
     }
 
-    // 2. Node Circle Fill with 3D Specular Highlight
+    // 2. Node Circle Fill with 3D Specular Highlight (Luminous & Crisp)
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     const fillGrad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
-    fillGrad.addColorStop(0, lerpColor(mainColor, '#ffffff', 0.35));
-    fillGrad.addColorStop(0.7, mainColor);
-    fillGrad.addColorStop(1, lerpColor(mainColor, '#000000', 0.45));
+    fillGrad.addColorStop(0, lerpColor(mainColor, '#ffffff', 0.55));
+    fillGrad.addColorStop(0.65, mainColor);
+    fillGrad.addColorStop(1, lerpColor(mainColor, '#000000', 0.20));
     ctx.fillStyle = fillGrad;
     ctx.fill();
 
@@ -1425,8 +1425,8 @@ class ForceGraph {
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.strokeStyle = isSelected
       ? '#ffffff'
-      : (isHovered ? '#f8fafc' : hexToRgba('#ffffff', 0.25));
-    ctx.lineWidth = isSelected ? 2.2 : (isHovered ? 1.8 : 1.2);
+      : (isHovered ? '#ffffff' : hexToRgba('#ffffff', 0.45));
+    ctx.lineWidth = isSelected ? 2.4 : (isHovered ? 2.0 : 1.4);
     ctx.stroke();
 
     // 4. Type Glyph / Icon inside node (Standard IDE symbols)
