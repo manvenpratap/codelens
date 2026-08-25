@@ -263,11 +263,45 @@ body.resizing .panel-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px 4px;
+  padding: 8px 14px 6px;
+  gap: 6px;
 }
 
 .section-label-row .section-label {
   padding: 0;
+  font-size: 11px;
+}
+
+.explorer-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.explorer-action-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.explorer-action-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.explorer-action-btn.active {
+  background: var(--primary-subtle);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .right-panel-toolbar {
@@ -779,6 +813,32 @@ body.resizing .panel-resizer {
 .tree-item[data-depth="4"] { padding-left: 62px; }
 .tree-item[data-depth="5"] { padding-left: 74px; }
 .tree-item[data-depth="6"] { padding-left: 86px; }
+
+.tree-type-item .tree-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--font-display);
+}
+.tree-type-item .kind-class      { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+.tree-type-item .kind-interface  { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.tree-type-item .kind-enum       { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.tree-type-item .kind-record     { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+.tree-type-item .kind-annotation { background: rgba(236, 72, 153, 0.2); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); }
+
+.tree-type-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-left: auto;
+  opacity: 0.8;
+}
 
 /* Search results in left panel */
 #search-results {

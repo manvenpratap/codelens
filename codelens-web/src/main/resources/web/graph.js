@@ -173,7 +173,8 @@ class ForceGraph {
     this._showMinimap   = true;
     this._showLabels    = true;
     this._showGrid      = true;
-    this._packagePrefixStrip = '';
+    this._packageMode   = 'auto'; // 'auto' | 'compact' | 'fqn'
+    this._autoCommonPrefix = '';
 
     // Selection & Highlight
     this._hoveredNode   = null;
@@ -205,6 +206,40 @@ class ForceGraph {
 
     // Start render loop
     this._startLoop();
+  }
+
+  /**
+   * Automatically detect the common base package prefix across the active graph dataset.
+   */
+  _detectCommonPrefix(packages) {
+    if (!packages || packages.length === 0) return '';
+    const valid = packages.filter(p => p && p !== 'default' && p !== '(default)' && p.includes('.'));
+    if (valid.length === 0) return '';
+    if (valid.length === 1) {
+      const parts = valid[0].split('.');
+      if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(parts[0])) {
+        return parts.slice(0, 2).join('.') + '.';
+      }
+      return '';
+    }
+
+    const splitPkgs = valid.map(p => p.split('.'));
+    const commonParts = [];
+    const minLen = Math.min(...splitPkgs.map(p => p.length));
+
+    for (let i = 0; i < minLen - 1; i++) {
+      const part = splitPkgs[0][i];
+      if (splitPkgs.every(p => p[i] === part)) {
+        commonParts.push(part);
+      } else {
+        break;
+      }
+    }
+    if (commonParts.length > 0) return commonParts.join('.') + '.';
+    if (splitPkgs.every(p => p[0] === splitPkgs[0][0]) && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(splitPkgs[0][0])) {
+      return splitPkgs[0][0] + '.';
+    }
+    return '';
   }
 
   /** Extract package/module, declaring class, and member name from a Java FQN. */
@@ -256,24 +291,39 @@ class ForceGraph {
     return { pkg, className, memberName };
   }
 
-  /** Format a package name by stripping configured prefix (e.g. "com.example.") into a clean Module name. */
+  /** Format a package name automatically into a clean, human-friendly Module/Package name. */
   _formatPackageLabel(pkg) {
-    if (!pkg || pkg === 'default') return 'Core';
-    const prefixStr = this._packagePrefixStrip || '';
+    if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
+    const mode = this._packageMode || 'auto';
     let res = pkg;
-    if (prefixStr) {
-      const prefixes = prefixStr.split(',').map(s => s.trim()).filter(Boolean);
-      for (const p of prefixes) {
-        if (res.startsWith(p)) {
-          const stripped = res.substring(p.length);
-          res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
-          break;
-        }
+
+    if (mode === 'fqn') return res;
+
+    if (mode === 'compact') {
+      const p = res.split('.');
+      if (p.length <= 2) return res;
+      return p.map((seg, idx) => idx >= p.length - 2 ? seg : seg.charAt(0)).join('.');
+    }
+
+    // Auto mode:
+    // Auto-strip detected common package prefix across current graph dataset
+    if (this._autoCommonPrefix && res.startsWith(this._autoCommonPrefix)) {
+      const stripped = res.substring(this._autoCommonPrefix.length);
+      if (stripped) res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
+    } else {
+      // Auto-strip standard organizational domain (com.foo.*, org.bar.*)
+      const parts = res.split('.');
+      if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(parts[0])) {
+        res = (parts.length >= 4) ? parts.slice(2).join('.') : parts[parts.length - 1];
       }
     }
-    if (!res) return 'Core';
-    if (/^[a-z]+$/i.test(res)) {
-      return res.charAt(0).toUpperCase() + res.slice(1);
+
+    if (!res || res === 'default') return 'Core';
+    const subParts = res.split('.').filter(Boolean);
+    if (subParts.length === 1) {
+      return subParts[0].charAt(0).toUpperCase() + subParts[0].slice(1);
+    } else if (subParts.length > 1) {
+      return subParts.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' › ');
     }
     return res;
   }
@@ -306,11 +356,14 @@ class ForceGraph {
     // 2. Detect & assign Graphify communities (by Java package / module)
     this._communityMap.clear();
     const pkgCounts = {};
+    const allNodePkgs = [];
     for (const n of nodes) {
       const { pkg } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
       const finalPkg = n.package || pkg || 'default';
       pkgCounts[finalPkg] = (pkgCounts[finalPkg] || 0) + 1;
+      if (finalPkg && finalPkg !== 'default') allNodePkgs.push(finalPkg);
     }
+    this._autoCommonPrefix = this._detectCommonPrefix(allNodePkgs);
 
     const sortedPkgs = Object.keys(pkgCounts).sort((a, b) => pkgCounts[b] - pkgCounts[a]);
     this._communities = sortedPkgs.map((pkg, idx) => {
@@ -2050,9 +2103,10 @@ class ForceGraph {
     if (s.showLabels !== undefined)      this._showLabels       = s.showLabels;
     if (s.showGrid !== undefined)        this._showGrid         = s.showGrid;
     if (s.showHulls !== undefined)       this._showHulls        = s.showHulls;
-    if (s.packagePrefixStrip !== undefined) {
-      const changed = this._packagePrefixStrip !== s.packagePrefixStrip;
-      this._packagePrefixStrip = s.packagePrefixStrip;
+    if (s.packageMode !== undefined || s.packagePrefixStrip !== undefined) {
+      const newMode = s.packageMode || (s.packagePrefixStrip ? 'auto' : this._packageMode);
+      const changed = this._packageMode !== newMode;
+      this._packageMode = newMode;
       if (changed && this._communities && this._communities.length > 0) {
         for (const comm of this._communities) {
           comm.label = this._formatPackageLabel(comm.rawLabel || comm.label);
@@ -2064,6 +2118,7 @@ class ForceGraph {
           }
         }
         this._renderCommunityLegend();
+        this._draw();
       }
     }
   }

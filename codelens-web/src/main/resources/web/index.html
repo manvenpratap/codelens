@@ -129,7 +129,13 @@
 
     <!-- Section heading for the tree -->
     <div class="section-label-row">
-      <div class="section-label" id="explorer-label" title="Hierarchical package and class tree structure">Explorer</div>
+      <div class="section-label" id="explorer-label" title="Package Explorer">Explorer</div>
+      <div class="explorer-toolbar-actions" role="toolbar" aria-label="Explorer presentation options">
+        <button id="btn-pkg-mode-flat" class="explorer-action-btn active" title="Eclipse Flat Package Presentation (com.example.trading)">📦 Flat</button>
+        <button id="btn-pkg-mode-tree" class="explorer-action-btn" title="Hierarchical Tree Presentation">🌲 Tree</button>
+        <button id="btn-tree-expand-all" class="explorer-action-btn" title="Expand All Packages">⊞</button>
+        <button id="btn-tree-collapse-all" class="explorer-action-btn" title="Collapse All Packages">⊟</button>
+      </div>
       <button id="btn-collapse-left" class="panel-collapse-btn" aria-label="Collapse Explorer Panel" title="Collapse Explorer Panel ([)">◀</button>
     </div>
 
@@ -823,18 +829,31 @@
         <div class="settings-row"><label>Community Hulls</label><label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label></div>
       </section>
 
+      <!-- ── Scan & Folder Filtering ───────────────────────────────────── -->
+      <section class="settings-group">
+        <h3 class="settings-group-title">🔍 Scan &amp; Folder Filtering</h3>
+        <div class="settings-row">
+          <label for="set-exclude-patterns">Exclude Patterns</label>
+          <input
+            type="text"
+            id="set-exclude-patterns"
+            class="settings-input"
+            placeholder="target, build, .mvn, .git, **/test/**"
+            title="Folder names, paths, or glob patterns to ignore during codebase scans (comma-separated)"
+          />
+        </div>
+      </section>
+
       <!-- ── Package & Community Labels ──────────────────────────────── -->
       <section class="settings-group">
         <h3 class="settings-group-title">🏷️ Package &amp; Community Labels</h3>
         <div class="settings-row">
-          <label for="set-package-prefix-strip">Strip Package Prefix</label>
-          <input
-            type="text"
-            id="set-package-prefix-strip"
-            class="settings-input"
-            placeholder="e.g. com.example."
-            title="Prefix to remove from package names in graph clusters and legend (comma-separated for multiple)"
-          />
+          <label for="set-package-mode">Package Auto-Handling</label>
+          <select id="set-package-mode" class="settings-select" title="How package and module names are automatically formatted and displayed">
+            <option value="auto" selected>Auto-Detect &amp; Clean (Recommended)</option>
+            <option value="compact">Abbreviated (e.g. c.e.trading)</option>
+            <option value="fqn">Full Qualified Name (FQN)</option>
+          </select>
         </div>
       </section>
 

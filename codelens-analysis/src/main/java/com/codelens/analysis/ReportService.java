@@ -670,6 +670,67 @@ public class ReportService {
         return sb.toString();
     }
 
+    public String renderMetricsHtml(MetricsReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Codebase Inventory & Metrics Report</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --green: #10b981; --purple: #a855f7; --yellow: #f59e0b; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 28px; font-weight: 700; font-family: monospace; color: var(--accent); }\n");
+        sb.append(".card-lbl { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }\n");
+        sb.append(".badge-class { background: rgba(59,130,246,0.15); color: #60a5fa; }\n");
+        sb.append(".badge-interface { background: rgba(16,185,129,0.15); color: #34d399; }\n");
+        sb.append(".badge-enum { background: rgba(245,158,11,0.15); color: #fbbf24; }\n");
+        sb.append(".badge-record { background: rgba(168,85,247,0.15); color: #c084fc; }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>📊 CodeLens Codebase Inventory & Metrics</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Generated on <strong>").append(d.generatedAt).append("</strong></p></div>");
+        sb.append("<div><span class=\"badge badge-class\" style=\"font-size:15px; padding:6px 14px;\">")
+          .append(d.totalTypes).append(" Types Indexed</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.totalTypes).append("</div><div class=\"card-lbl\">Total Types / Classes</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--green);\">").append(d.totalMethods).append("</div><div class=\"card-lbl\">Total Methods</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--yellow);\">").append(d.totalFields).append("</div><div class=\"card-lbl\">Total Fields</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--purple);\">").append(d.totalLines).append("</div><div class=\"card-lbl\">Lines of Code</div></div>");
+        sb.append("</div>\n");
+
+        sb.append("<h2>Indexed Type Inventory</h2>\n");
+        sb.append("<table><thead><tr><th>Class / Type</th><th>Package</th><th>Kind</th><th style=\"text-align:right;\">Lines</th><th style=\"text-align:right;\">Methods</th><th style=\"text-align:right;\">Fields</th></tr></thead><tbody>\n");
+        for (TypeMetricRow r : d.types) {
+            String kindClass = "badge-class";
+            if ("INTERFACE".equalsIgnoreCase(r.kind)) kindClass = "badge-interface";
+            else if ("ENUM".equalsIgnoreCase(r.kind)) kindClass = "badge-enum";
+            else if ("RECORD".equalsIgnoreCase(r.kind)) kindClass = "badge-record";
+
+            sb.append("<tr>");
+            sb.append("<td><code>").append(escapeHtml(r.simpleName)).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(r.packageName)).append("</code></td>");
+            sb.append("<td><span class=\"badge ").append(kindClass).append("\">").append(escapeHtml(r.kind)).append("</span></td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(r.lineCount).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(r.methodCount).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(r.fieldCount).append("</td>");
+            sb.append("</tr>\n");
+        }
+        sb.append("</tbody></table>\n");
+
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
     public String renderMetricsJson(MetricsReportData d) {
         try {
             return jsonMapper.writeValueAsString(d);

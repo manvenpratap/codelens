@@ -284,20 +284,27 @@ To run CodeLens automatically at login in the background on macOS:
 
 ---
 
-## Scanning a Codebase
+## Scanning a Codebase & Folder Exclusions
 
 ### Method 1: Web UI
 1. Open `http://localhost:7878`.
-2. Paste the **absolute path** to your Java source directory (e.g. `/Users/you/project/src/main/java`) or click **Browse…**.
-3. Click **Scan**.
-4. The top progress bar and status footer will display parsing phases in realtime. The package tree, stats, and search index will automatically reload upon completion.
+2. Paste the **absolute path** to your Java source directory (e.g. `/Users/you/project/src` or repository root) or click **Browse…**.
+3. *(Optional)* Click **⚙ Settings** to configure **Exclude Patterns** (default: `target, build, .mvn, .git, .gradle, node_modules, bin, out`, supports globs such as `**/test/**`, `*/generated-sources/*`, `*Test.java`).
+4. Click **Scan**.
+5. The top progress bar and status footer will display parsing phases in realtime. The package tree, stats, and search index will automatically reload upon completion with automatic package prefix clean-up.
 
 ### Method 2: REST API
 ```bash
 curl -X POST http://localhost:7878/api/scan \
      -H 'Content-Type: application/json' \
-     -d '{"sourcePath":"/absolute/path/to/project/src/main/java"}'
+     -d '{
+       "sourcePath": "/absolute/path/to/project",
+       "excludePatterns": ["target", "build", ".mvn", ".git", "**/test/**", "generated-sources/**"]
+     }'
 ```
+
+### Automatic Package Handling & Smart Shortening
+CodeLens automatically discovers common namespace roots (e.g. `com.company.project.`) across all scanned packages and cleans them into human-readable module clusters (e.g. `trading.risk` → `Trading › Risk`) without requiring manual prefix stripping configuration. You can switch between **Auto-Detect & Clean**, **Abbreviated (`c.e.trading`)**, and **Full FQN** anytime in **⚙ Settings**.
 
 ### Using the Built-In Sample Project
 ```bash

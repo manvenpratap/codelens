@@ -76,6 +76,8 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         type.setKind(n.isInterface() ? "INTERFACE" : "CLASS");
         type.setModifiers(modifierString(n.getModifiers()));
         type.setSourceFile(ctx.sourceFile);
+        type.setFieldCount(n.getFields().size());
+        type.setMethodCount(n.getMethods().size() + n.getConstructors().size());
 
         n.getRange().ifPresent(r -> {
             type.setStartLine(r.begin.line);
@@ -126,6 +128,43 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         type.setKind("ENUM");
         type.setModifiers(modifierString(n.getModifiers()));
         type.setSourceFile(ctx.sourceFile);
+        type.setFieldCount(n.getFields().size());
+        type.setMethodCount(n.getMethods().size() + n.getConstructors().size());
+        n.getRange().ifPresent(r -> {
+            type.setStartLine(r.begin.line);
+            type.setEndLine(r.end.line);
+            type.setLineCount(r.end.line - r.begin.line + 1);
+        });
+        ctx.types.add(type);
+        super.visit(n, ctx);
+
+        ctx.currentTypeFqn        = prevTypeFqn;
+        ctx.currentTypeFieldNames = prevFields;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Record
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void visit(RecordDeclaration n, VisitContext ctx) {
+        String prevTypeFqn     = ctx.currentTypeFqn;
+        Set<String> prevFields = ctx.currentTypeFieldNames;
+
+        String simpleName = n.getNameAsString();
+        String fqn = ctx.packageName.isEmpty() ? simpleName
+                                               : ctx.packageName + "." + simpleName;
+        ctx.currentTypeFqn        = fqn;
+        ctx.currentTypeFieldNames = new HashSet<>();
+
+        CodeType type = new CodeType();
+        type.setId(fqn);  type.setFqn(fqn);
+        type.setSimpleName(simpleName);
+        type.setPackageFqn(ctx.packageName);
+        type.setKind("RECORD");
+        type.setModifiers(modifierString(n.getModifiers()));
+        type.setSourceFile(ctx.sourceFile);
+        type.setFieldCount(n.getFields().size() + n.getParameters().size());
+        type.setMethodCount(n.getMethods().size() + n.getConstructors().size());
         n.getRange().ifPresent(r -> {
             type.setStartLine(r.begin.line);
             type.setEndLine(r.end.line);

@@ -209,7 +209,7 @@ public class CodeLensServer {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Handler: POST /api/scan
-    // Body: { "sourcePath": "/absolute/path/to/src" }
+    // Body: { "sourcePath": "/absolute/path/to/src", "excludePatterns": ["target", "build", "..."] }
     // ─────────────────────────────────────────────────────────────────────────
     private void startScan(Context ctx) {
         Map<?, ?> body = ctx.bodyAsClass(Map.class);
@@ -217,6 +217,17 @@ public class CodeLensServer {
         if (sourcePath == null || sourcePath.isBlank()) {
             ctx.status(400).json(Map.of("error", "sourcePath is required"));
             return;
+        }
+
+        Object rawExcludes = body.get("excludePatterns");
+        List<String> excludePatterns = null;
+        if (rawExcludes instanceof List<?>) {
+            excludePatterns = ((List<?>) rawExcludes).stream().map(Object::toString).toList();
+        } else if (rawExcludes instanceof String && !((String) rawExcludes).isBlank()) {
+            excludePatterns = Arrays.stream(((String) rawExcludes).split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
         }
 
         // Reject if already running
@@ -234,7 +245,8 @@ public class CodeLensServer {
         scanState.set(progress);
 
         // Launch background scan task
-        scanExecutor.submit(() -> runScan(sourcePath, progress));
+        final List<String> finalExcludes = excludePatterns;
+        scanExecutor.submit(() -> runScan(sourcePath, finalExcludes, progress));
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
     }
@@ -249,7 +261,7 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
     // Background scan task
     // ─────────────────────────────────────────────────────────────────────────
-    private void runScan(String sourcePath, ScanProgress progress) {
+    private void runScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
         try {
             // Phase 1: parse sources
             progress.setCurrentPhase("AST Parsing");
@@ -257,6 +269,7 @@ public class CodeLensServer {
             JavaSourceScanner scanner = new JavaSourceScanner();
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
+                excludePatterns,
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
                     progress.setProcessedFiles(done);
@@ -924,7 +937,9 @@ public class CodeLensServer {
             List<CodeField> fields = dao.findAllFields();
             ReportService.MetricsReportData data = reportService.buildMetricsData(types, methods, fields);
 
-            if ("json".equals(format)) {
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderMetricsHtml(data));
+            } else if ("json".equals(format)) {
                 ctx.json(data);
             } else if ("markdown".equals(format) || "md".equals(format)) {
                 ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderMetricsMarkdown(data));

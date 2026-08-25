@@ -44,6 +44,8 @@ const App = {
   packages: [],
   // Current stats
   stats: { types: 0, methods: 0, fields: 0, packages: 0 },
+  // Package Presentation mode: 'flat' (Eclipse) | 'hierarchical'
+  packagePresentation: localStorage.getItem('codelens_package_presentation') || 'flat',
   // Monaco Editor state
   currentFilePath: null,
   editor: null,
@@ -93,7 +95,7 @@ const api = {
   review:             (body)      => api.post('/review', body),
   search:             (q, n=30)   => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`),
   scanStatus:         ()          => api.get('/scan/status'),
-  startScan:          (sourcePath) => api.post('/scan', { sourcePath }),
+  startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
   saveNote:           (body)      => api.post('/notes', body),
   deleteNote:         (id)        => api.delete(`/notes/${id}`),
@@ -125,9 +127,12 @@ async function startScan() {
     return;
   }
 
+  const settings = loadSettings();
+  const excludePatterns = settings.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
+
   setScanUI('scanning');
   try {
-    await api.startScan(path);
+    await api.startScan(path, excludePatterns);
     pollScanStatus();
   } catch (e) {
     setScanUI('idle');
@@ -257,6 +262,61 @@ async function updateFooterGitBranch() {
    4. Left panel - package tree + search
    ───────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Automatically calculates the common base package prefix across the codebase.
+ * E.g. ["com.example.trading.model", "com.example.trading.risk"] -> "com.example.trading."
+ */
+function detectCommonPackagePrefix(packages) {
+  if (!packages || packages.length === 0) return '';
+  const valid = packages.filter(p => p && p !== 'default' && p !== '(default)' && p.includes('.'));
+  if (valid.length === 0) return '';
+  if (valid.length === 1) {
+    const parts = valid[0].split('.');
+    if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(parts[0])) {
+      return parts.slice(0, 2).join('.') + '.';
+    }
+    return '';
+  }
+
+  const splitPkgs = valid.map(p => p.split('.'));
+  const commonParts = [];
+  const minLen = Math.min(...splitPkgs.map(p => p.length));
+
+  for (let i = 0; i < minLen - 1; i++) { // Leave at least the leaf package segment
+    const part = splitPkgs[0][i];
+    if (splitPkgs.every(p => p[i] === part)) {
+      commonParts.push(part);
+    } else {
+      break;
+    }
+  }
+
+  if (commonParts.length > 0) {
+    return commonParts.join('.') + '.';
+  }
+
+  if (splitPkgs.every(p => p[0] === splitPkgs[0][0]) && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(splitPkgs[0][0])) {
+    return splitPkgs[0][0] + '.';
+  }
+
+  return '';
+}
+
+/** Sync explorer toolbar button states */
+function syncExplorerToolbar() {
+  const flatBtn = qs('#btn-pkg-mode-flat');
+  const treeBtn = qs('#btn-pkg-mode-tree');
+  const isFlat = (App.packagePresentation !== 'hierarchical');
+  if (flatBtn) {
+    flatBtn.classList.toggle('active', isFlat);
+    flatBtn.setAttribute('aria-pressed', isFlat ? 'true' : 'false');
+  }
+  if (treeBtn) {
+    treeBtn.classList.toggle('active', !isFlat);
+    treeBtn.setAttribute('aria-pressed', !isFlat ? 'true' : 'false');
+  }
+}
+
 /** Fetch all packages and render the tree into #explorer-tree. */
 async function loadPackageTree() {
   const tree = qs('#explorer-tree');
@@ -264,9 +324,12 @@ async function loadPackageTree() {
 
   try {
     App.packages = await api.packages();
+    App.commonPackagePrefix = detectCommonPackagePrefix(App.packages.map(p => p.fqn));
 
-    // Build a tree structure from the flat list
-    const root     = buildPackageTree(App.packages);
+    syncExplorerToolbar();
+
+    // Build a tree structure according to selected presentation mode
+    const root = buildPackageTree(App.packages, App.packagePresentation);
     tree.innerHTML = '';
 
     if (root.length === 0) {
@@ -281,17 +344,34 @@ async function loadPackageTree() {
 }
 
 /**
- * Convert flat package list to a full hierarchical tree.
- * Creates synthetic intermediate package nodes if needed so "com.example.trading"
- * can nest under "com" -> "example" -> "trading" or display naturally.
+ * Convert package list to the selected view structure:
+ * - 'flat' (Eclipse Package Explorer style): Direct list of actual packages with FQN (e.g. com.example.trading) containing classes.
+ * - 'hierarchical': Nested package structure collapsing single-child chains.
  */
-function buildPackageTree(packages) {
+function buildPackageTree(packages, presentationMode = App.packagePresentation || 'flat') {
+  if (presentationMode === 'flat') {
+    // Eclipse Style: Flat list of all real packages with their full FQN
+    return packages
+      .map(pkg => ({
+        id: pkg.fqn,
+        fqn: pkg.fqn,
+        name: pkg.fqn,
+        parentFqn: null,
+        fileCount: pkg.fileCount || 0,
+        typeCount: pkg.typeCount || 0,
+        children: [],
+        isSynthetic: false
+      }))
+      .sort((a, b) => a.fqn.localeCompare(b.fqn, undefined, { sensitivity: 'base' }));
+  }
+
+  // Hierarchical Mode
   const map = {};
   const roots = [];
 
   // Index all explicit packages
   for (const pkg of packages) {
-    map[pkg.fqn] = { ...pkg, children: [], isSynthetic: false };
+    map[pkg.fqn] = { ...pkg, name: pkg.name || pkg.fqn.split('.').pop(), children: [], isSynthetic: false };
   }
 
   // Ensure all ancestor packages exist in the tree
@@ -332,7 +412,6 @@ function buildPackageTree(packages) {
     }
   }
 
-  // Helper to collapse single-child package chains if desired or keep clean
   return roots;
 }
 
@@ -360,7 +439,7 @@ function renderPackageTree(nodes, container, depth) {
     icon.textContent = '📦';
     item.appendChild(icon);
 
-    // Label: show leaf name if nested, or FQN if root
+    // Label: show full FQN in flat mode, or leaf name in hierarchical mode
     const label = createElement('span', { class: 'tree-label' });
     label.textContent = node.name || node.fqn;
     label.title = node.fqn;
@@ -454,14 +533,22 @@ async function loadTypesInTree(pkgFqn, container, depth) {
         'data-id': t.id,
       });
 
-      const icon = createElement('span', { class: `tree-icon kind-${(t.kind || '').toLowerCase()}` });
+      const icon = createElement('span', { class: `tree-icon kind-${(t.kind || 'class').toLowerCase()}` });
       icon.textContent = kindIcon(t.kind);
       item.appendChild(icon);
 
       const label = createElement('span', { class: 'tree-label' });
       label.textContent = t.simpleName;
-      label.title = t.fqn;
+      label.title = `${t.fqn} (${(t.kind || 'CLASS').toLowerCase()})`;
       item.appendChild(label);
+
+      // Method count metadata badge
+      if (typeof t.methodCount === 'number' && t.methodCount > 0) {
+        const meta = createElement('span', { class: 'tree-type-meta' });
+        meta.textContent = `${t.methodCount}m`;
+        meta.title = `${t.methodCount} methods, ${t.fieldCount || 0} fields`;
+        item.appendChild(meta);
+      }
 
       item.addEventListener('click', e => {
         e.stopPropagation();
@@ -1558,11 +1645,14 @@ async function loadCalleesGraph(methodId, depth = App.graphDepth) {
   }
 }
 
-/** Format package FQN into clean module name taking into account prefix strip settings. */
+/** 
+ * Automatically format package FQN into clean module name without manual prefix configuration.
+ */
 function formatModuleFromPackage(pkg) {
-  if (!pkg) return 'Core';
+  if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
   const settings = loadSettings();
-  const prefixStr = settings.packagePrefixStrip || '';
+  const mode = settings.packageMode || 'auto';
+
   let res = pkg;
   // If pkg is a full type or method FQN, extract the package part
   const parenIdx = res.indexOf('(');
@@ -1574,19 +1664,34 @@ function formatModuleFromPackage(pkg) {
       break;
     }
   }
-  if (prefixStr) {
-    const prefixes = prefixStr.split(',').map(s => s.trim()).filter(Boolean);
-    for (const p of prefixes) {
-      if (res.startsWith(p)) {
-        const stripped = res.substring(p.length);
-        res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
-        break;
-      }
+  if (!res || res === 'default') return 'Core';
+
+  if (mode === 'fqn') return res;
+
+  if (mode === 'compact') {
+    const p = res.split('.');
+    if (p.length <= 2) return res;
+    return p.map((seg, idx) => idx >= p.length - 2 ? seg : seg.charAt(0)).join('.');
+  }
+
+  // Auto mode:
+  if (App.commonPackagePrefix && res.startsWith(App.commonPackagePrefix)) {
+    const stripped = res.substring(App.commonPackagePrefix.length);
+    if (stripped) res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
+  } else {
+    const pkgParts = res.split('.');
+    if (pkgParts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(pkgParts[0])) {
+      res = (pkgParts.length >= 4) ? pkgParts.slice(2).join('.') : pkgParts[pkgParts.length - 1];
     }
   }
+
   if (!res || res === 'default') return 'Core';
-  if (/^[a-z]+$/i.test(res)) {
-    return res.charAt(0).toUpperCase() + res.slice(1);
+  const remainingParts = res.split('.').filter(Boolean);
+  if (remainingParts.length === 1) {
+    const s = remainingParts[0];
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  } else if (remainingParts.length > 1) {
+    return remainingParts.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' › ');
   }
   return res;
 }
@@ -2243,6 +2348,52 @@ async function init() {
   // Filter chips
   qsa('.chip').forEach(chip => {
     chip.addEventListener('click', () => setFilter(chip.dataset.filter));
+  });
+
+  // Explorer presentation toolbar (Flat Eclipse vs Hierarchical Tree, Expand/Collapse)
+  qs('#btn-pkg-mode-flat')?.addEventListener('click', () => {
+    App.packagePresentation = 'flat';
+    localStorage.setItem('codelens_package_presentation', 'flat');
+    syncExplorerToolbar();
+    if (App.packages && App.packages.length > 0) {
+      const root = buildPackageTree(App.packages, 'flat');
+      const tree = qs('#explorer-tree');
+      tree.innerHTML = '';
+      renderPackageTree(root, tree, 0);
+    }
+  });
+
+  qs('#btn-pkg-mode-tree')?.addEventListener('click', () => {
+    App.packagePresentation = 'hierarchical';
+    localStorage.setItem('codelens_package_presentation', 'hierarchical');
+    syncExplorerToolbar();
+    if (App.packages && App.packages.length > 0) {
+      const root = buildPackageTree(App.packages, 'hierarchical');
+      const tree = qs('#explorer-tree');
+      tree.innerHTML = '';
+      renderPackageTree(root, tree, 0);
+    }
+  });
+
+  qs('#btn-tree-expand-all')?.addEventListener('click', async () => {
+    if (!App.packages || App.packages.length === 0) return;
+    for (const pkg of App.packages) {
+      App.openPackages.add(pkg.fqn);
+    }
+    const root = buildPackageTree(App.packages, App.packagePresentation);
+    const tree = qs('#explorer-tree');
+    tree.innerHTML = '';
+    renderPackageTree(root, tree, 0);
+  });
+
+  qs('#btn-tree-collapse-all')?.addEventListener('click', () => {
+    App.openPackages.clear();
+    if (App.packages && App.packages.length > 0) {
+      const root = buildPackageTree(App.packages, App.packagePresentation);
+      const tree = qs('#explorer-tree');
+      tree.innerHTML = '';
+      renderPackageTree(root, tree, 0);
+    }
   });
 
   // Tab bar
@@ -3237,7 +3388,8 @@ const SETTINGS_DEFAULTS = {
   defaultDepth: 3,
   autoFit: true,
   showHulls: true,
-  packagePrefixStrip: '',
+  excludePatterns: 'target, build, .mvn, .git, .gradle, node_modules, bin, out',
+  packageMode: 'auto', // 'auto' | 'compact' | 'fqn'
 };
 
 const SETTINGS_STORAGE_KEY = 'codelens_settings';
@@ -3295,7 +3447,7 @@ function applyAllSettings(settings) {
       showLabels: settings.showLabels,
       showGrid: settings.showGrid,
       showHulls: settings.showHulls,
-      packagePrefixStrip: settings.packagePrefixStrip || '',
+      packageMode: settings.packageMode || 'auto',
     });
   }
 
@@ -3333,9 +3485,13 @@ function syncSettingsUI(settings) {
   const depthSel = qs('#set-default-depth');
   if (depthSel) depthSel.value = settings.defaultDepth;
 
-  // Package prefix strip input
-  const prefixInput = qs('#set-package-prefix-strip');
-  if (prefixInput) prefixInput.value = settings.packagePrefixStrip || '';
+  // Exclude patterns input
+  const excludeInput = qs('#set-exclude-patterns');
+  if (excludeInput) excludeInput.value = settings.excludePatterns !== undefined ? settings.excludePatterns : 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
+
+  // Package Mode select dropdown
+  const modeSel = qs('#set-package-mode');
+  if (modeSel) modeSel.value = settings.packageMode || 'auto';
 }
 
 function openSettings() {
@@ -3431,12 +3587,22 @@ function initSettings() {
   wireToggle('set-auto-fit', 'autoFit');
   wireToggle('set-hulls', 'showHulls');
 
-  // Wire package prefix strip input
-  const prefixInput = qs('#set-package-prefix-strip');
-  if (prefixInput) {
-    prefixInput.addEventListener('input', () => {
+  // Wire exclude patterns input
+  const excludeInput = qs('#set-exclude-patterns');
+  if (excludeInput) {
+    excludeInput.addEventListener('input', () => {
       const s = loadSettings();
-      s.packagePrefixStrip = prefixInput.value.trim();
+      s.excludePatterns = excludeInput.value.trim();
+      saveSettings(s);
+    });
+  }
+
+  // Wire package mode dropdown
+  const modeSel = qs('#set-package-mode');
+  if (modeSel) {
+    modeSel.addEventListener('change', () => {
+      const s = loadSettings();
+      s.packageMode = modeSel.value;
       saveSettings(s);
       applyAllSettings(s);
     });
@@ -3530,16 +3696,55 @@ const ExportHub = {
     }
   },
 
-  download() {
+  async download() {
     const ext = ExportHub.activeFormat === 'markdown' ? 'md' : ExportHub.activeFormat;
-    const url = `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `codelens-${ExportHub.activeType}-report.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showBanner(`Downloading codelens-${ExportHub.activeType}-report.${ext}…`);
+    const filename = `codelens-${ExportHub.activeType}-report.${ext}`;
+
+    let content = ExportHub.cachedContent;
+    if (!content) {
+      try {
+        const res = await fetch(`/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`);
+        content = await res.text();
+        ExportHub.cachedContent = content;
+      } catch (e) {
+        showError('Failed to fetch report content: ' + e.message);
+        return;
+      }
+    }
+
+    const mimeTypes = {
+      html: 'text/html;charset=utf-8',
+      markdown: 'text/markdown;charset=utf-8',
+      json: 'application/json;charset=utf-8',
+      csv: 'text/csv;charset=utf-8',
+    };
+    const mime = mimeTypes[ExportHub.activeFormat] || 'text/plain;charset=utf-8';
+
+    try {
+      const blob = new Blob([content], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 300);
+      showBanner(`✓ Downloaded ${filename}`);
+    } catch (err) {
+      const url = `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+      }, 300);
+      showBanner(`Downloading ${filename}…`);
+    }
   },
 
   copy() {
@@ -3558,6 +3763,15 @@ const ExportHub = {
   },
 
   openTab() {
+    if (ExportHub.activeFormat === 'html' && ExportHub.cachedContent) {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(ExportHub.cachedContent);
+        win.document.close();
+        return;
+      }
+    }
     const url = `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
     window.open(url, '_blank');
   }
@@ -3581,10 +3795,6 @@ function initExportHub() {
   qsa('.export-type-card').forEach(card => {
     card.addEventListener('click', () => {
       ExportHub.activeType = card.dataset.report;
-      // Default to csv if metrics, otherwise keep or switch to markdown
-      if (ExportHub.activeType === 'metrics' && ExportHub.activeFormat === 'html') {
-        ExportHub.activeFormat = 'csv';
-      }
       ExportHub.syncUI();
       ExportHub.fetchPreview();
     });
