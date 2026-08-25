@@ -25,9 +25,13 @@
       this._data = null;
       this._buildings = [];
       this._districts = [];
+      this._arcLines = [];
+      this._callBeams = [];
       this._filterQuery = '';
       this._hiddenPackages = new Set();
       this._showWireframe = false;
+      this._showArcs = true;
+      this._autoRotate = false;
       this._raycaster = null;
       this._mouse = null;
       this._hoveredMesh = null;
@@ -35,10 +39,33 @@
       this._toolbar = null;
       this._resizeObserver = null;
       this._onSelectEntity = null;
+      this._targetCameraPos = null;
+      this._targetControlsTarget = null;
     }
 
     onSelectEntity(callback) {
       this._onSelectEntity = callback;
+    }
+
+    toggleAutoRotate() {
+      this._autoRotate = !this._autoRotate;
+      if (this._controls) this._controls.autoRotate = this._autoRotate;
+    }
+
+    toggleArcs() {
+      this._showArcs = !this._showArcs;
+      this._arcLines.forEach(a => { a.visible = this._showArcs; });
+    }
+
+    flyToBuilding(buildingMesh) {
+      if (!buildingMesh || !this._camera || !this._controls) return;
+      const targetPos = buildingMesh.position.clone();
+      this._targetControlsTarget = targetPos;
+      this._targetCameraPos = new THREE.Vector3(
+        targetPos.x + 80,
+        targetPos.y + 60,
+        targetPos.z + 80
+      );
     }
 
     setData(payload, treeData) {
@@ -317,7 +344,69 @@
         });
       });
 
+      // Build Inter-Class Call Arcs across the Skyline
+      this._buildSkylineCallArcs();
       this._buildOverlayControls(pkgs);
+    }
+
+    _buildSkylineCallArcs() {
+      const edges = this._data.edges || [];
+      if (edges.length === 0) return;
+
+      const buildingMap = new Map();
+      this._buildings.forEach(b => {
+        const id = b.userData.entity.id || b.userData.entity.label || b.userData.entity.simpleName;
+        if (id) buildingMap.set(id, b);
+      });
+
+      this._arcLines = [];
+      this._callBeams = [];
+
+      edges.forEach(e => {
+        const srcMesh = buildingMap.get(e.source || e.caller);
+        const tgtMesh = buildingMap.get(e.target || e.callee);
+        if (!srcMesh || !tgtMesh || srcMesh === tgtMesh) return;
+
+        const p1 = srcMesh.position.clone();
+        p1.y += srcMesh.userData.height / 2; // Spire peak
+
+        const p2 = tgtMesh.position.clone();
+        p2.y += tgtMesh.userData.height / 2;
+
+        const dist = p1.distanceTo(p2);
+        const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+        mid.y += Math.max(30, Math.min(180, dist * 0.45)); // Parabolic arch
+
+        const curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
+        const points = curve.getPoints(24);
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+
+        const arcMat = new THREE.LineBasicMaterial({
+          color: srcMesh.userData.origColor || 0x10b981,
+          transparent: true,
+          opacity: 0.35,
+        });
+
+        const arcLine = new THREE.Line(geo, arcMat);
+        this._scene.add(arcLine);
+        this._arcLines.push(arcLine);
+
+        this._callBeams.push({
+          curve: curve,
+          progress: Math.random(),
+          speed: 0.003 + Math.random() * 0.004,
+        });
+      });
+
+      // Laser energy particles mesh
+      if (this._callBeams.length > 0) {
+        const beamGeo = new THREE.BufferGeometry();
+        const beamPositions = new Float32Array(this._callBeams.length * 3);
+        beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPositions, 3));
+        const beamMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 3.5, transparent: true, opacity: 0.9 });
+        this._beamGroup = new THREE.Points(beamGeo, beamMat);
+        this._scene.add(this._beamGroup);
+      }
     }
 
     _buildOverlayControls(pkgs = []) {
@@ -345,12 +434,50 @@
       searchBox.style.borderRadius = '6px';
       searchBox.style.padding = '4px 10px';
       searchBox.style.fontSize = '11px';
-      searchBox.style.width = '140px';
+      searchBox.style.width = '130px';
       searchBox.style.outline = 'none';
       searchBox.addEventListener('input', (e) => {
         this.setFilter(e.target.value);
       });
       this._toolbar.appendChild(searchBox);
+
+      // Skyline Arcs toggle
+      const arcsBtn = document.createElement('button');
+      arcsBtn.className = 'hud-btn' + (this._showArcs ? ' active' : '');
+      arcsBtn.innerHTML = '<span class="hud-btn-icon">⌒</span> <span class="hud-btn-text">Call Arcs</span>';
+      arcsBtn.style.background = '#0a0d12';
+      arcsBtn.style.border = '1px solid ' + (this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)');
+      arcsBtn.style.color = this._showArcs ? '#f8fafc' : '#94a3b8';
+      arcsBtn.style.borderRadius = '6px';
+      arcsBtn.style.padding = '5px 10px';
+      arcsBtn.style.fontSize = '11px';
+      arcsBtn.style.cursor = 'pointer';
+      arcsBtn.addEventListener('click', () => {
+        this.toggleArcs();
+        arcsBtn.classList.toggle('active', this._showArcs);
+        arcsBtn.style.borderColor = this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)';
+        arcsBtn.style.color = this._showArcs ? '#f8fafc' : '#94a3b8';
+      });
+      this._toolbar.appendChild(arcsBtn);
+
+      // Auto Orbit toggle
+      const orbitBtn = document.createElement('button');
+      orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
+      orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
+      orbitBtn.style.background = '#0a0d12';
+      orbitBtn.style.border = '1px solid ' + (this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)');
+      orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
+      orbitBtn.style.borderRadius = '6px';
+      orbitBtn.style.padding = '5px 10px';
+      orbitBtn.style.fontSize = '11px';
+      orbitBtn.style.cursor = 'pointer';
+      orbitBtn.addEventListener('click', () => {
+        this.toggleAutoRotate();
+        orbitBtn.classList.toggle('active', this._autoRotate);
+        orbitBtn.style.borderColor = this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)';
+        orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
+      });
+      this._toolbar.appendChild(orbitBtn);
 
       // Wireframe toggle
       const wireBtn = document.createElement('button');
@@ -363,7 +490,6 @@
       wireBtn.style.padding = '5px 10px';
       wireBtn.style.fontSize = '11px';
       wireBtn.style.cursor = 'pointer';
-
       wireBtn.addEventListener('click', () => {
         this.toggleWireframe();
         wireBtn.classList.toggle('active', this._showWireframe);
@@ -425,6 +551,8 @@
     _onClick(event) {
       if (!this._hoveredMesh) return;
       const entity = this._hoveredMesh.userData.entity;
+      this.flyToBuilding(this._hoveredMesh);
+
       if (entity && this._onSelectEntity) {
         this._onSelectEntity(entity.id || entity.fqn);
       } else if (entity && window.selectEntity) {
@@ -434,6 +562,34 @@
 
     _animate() {
       this._animId = requestAnimationFrame(this._animate.bind(this));
+
+      // Animate laser energy call beams along arcs
+      if (this._beamGroup && this._callBeams.length > 0) {
+        const positions = this._beamGroup.geometry.attributes.position.array;
+        this._callBeams.forEach((b, idx) => {
+          b.progress = (b.progress + b.speed) % 1;
+          const pos = b.curve.getPointAt(b.progress);
+          positions[idx * 3] = pos.x;
+          positions[idx * 3 + 1] = pos.y;
+          positions[idx * 3 + 2] = pos.z;
+        });
+        this._beamGroup.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Smooth camera fly-to interpolation
+      if (this._targetCameraPos && this._camera) {
+        this._camera.position.lerp(this._targetCameraPos, 0.05);
+        if (this._camera.position.distanceTo(this._targetCameraPos) < 1) {
+          this._targetCameraPos = null;
+        }
+      }
+      if (this._targetControlsTarget && this._controls) {
+        this._controls.target.lerp(this._targetControlsTarget, 0.05);
+        if (this._controls.target.distanceTo(this._targetControlsTarget) < 1) {
+          this._targetControlsTarget = null;
+        }
+      }
+
       if (this._controls) this._controls.update();
       if (this._renderer && this._scene && this._camera) {
         this._renderer.render(this._scene, this._camera);

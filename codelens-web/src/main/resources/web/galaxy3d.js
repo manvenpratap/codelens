@@ -27,6 +27,7 @@
       this._edgeLines = [];
       this._planeMeshes = [];
       this._showPlanes = true;
+      this._autoRotate = false;
       this._filterQuery = '';
       this._hiddenPackages = new Set();
       this._particleGroup = null;
@@ -38,6 +39,24 @@
       this._toolbar = null;
       this._resizeObserver = null;
       this._onSelectEntity = null;
+      this._targetCameraPos = null;
+      this._targetControlsTarget = null;
+    }
+
+    toggleAutoRotate() {
+      this._autoRotate = !this._autoRotate;
+      if (this._controls) this._controls.autoRotate = this._autoRotate;
+    }
+
+    flyToNode(nodeMesh) {
+      if (!nodeMesh || !this._camera || !this._controls) return;
+      const targetPos = nodeMesh.position.clone();
+      this._targetControlsTarget = targetPos;
+      this._targetCameraPos = new THREE.Vector3(
+        targetPos.x + 60,
+        targetPos.y + 40,
+        targetPos.z + 70
+      );
     }
 
     togglePlanes(visible) {
@@ -408,6 +427,25 @@
       });
       this._toolbar.appendChild(searchBox);
 
+      // Auto Orbit toggle
+      const orbitBtn = document.createElement('button');
+      orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
+      orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
+      orbitBtn.style.background = '#0a0d12';
+      orbitBtn.style.border = '1px solid ' + (this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)');
+      orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
+      orbitBtn.style.borderRadius = '6px';
+      orbitBtn.style.padding = '5px 10px';
+      orbitBtn.style.fontSize = '11px';
+      orbitBtn.style.cursor = 'pointer';
+      orbitBtn.addEventListener('click', () => {
+        this.toggleAutoRotate();
+        orbitBtn.classList.toggle('active', this._autoRotate);
+        orbitBtn.style.borderColor = this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)';
+        orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
+      });
+      this._toolbar.appendChild(orbitBtn);
+
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'hud-btn active';
       toggleBtn.innerHTML = '<span class="hud-btn-icon">◈</span> <span class="hud-btn-text">Cluster Planes</span>';
@@ -479,6 +517,8 @@
     _onClick(event) {
       if (!this._hoveredMesh) return;
       const entity = this._hoveredMesh.userData.node.raw;
+      this.flyToNode(this._hoveredMesh);
+
       if (entity && this._onSelectEntity) {
         this._onSelectEntity(entity.id || entity.fqn);
       } else if (entity && window.selectEntity) {
@@ -500,6 +540,20 @@
           positions[idx * 3 + 2] = pos.z;
         });
         this._particleGroup.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Smooth camera fly-to interpolation
+      if (this._targetCameraPos && this._camera) {
+        this._camera.position.lerp(this._targetCameraPos, 0.05);
+        if (this._camera.position.distanceTo(this._targetCameraPos) < 1) {
+          this._targetCameraPos = null;
+        }
+      }
+      if (this._targetControlsTarget && this._controls) {
+        this._controls.target.lerp(this._targetControlsTarget, 0.05);
+        if (this._controls.target.distanceTo(this._targetControlsTarget) < 1) {
+          this._targetControlsTarget = null;
+        }
       }
 
       if (this._controls) this._controls.update();
