@@ -424,8 +424,8 @@
       this._toolbar = document.createElement('div');
       this._toolbar.className = 'city3d-hud-overlay';
       this._toolbar.style.position = 'absolute';
-      this._toolbar.style.top = '14px';
-      this._toolbar.style.right = '14px';
+      this._toolbar.style.bottom = '16px';
+      this._toolbar.style.left = '16px';
       this._toolbar.style.display = 'flex';
       this._toolbar.style.alignItems = 'center';
       this._toolbar.style.gap = '8px';

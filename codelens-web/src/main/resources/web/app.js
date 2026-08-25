@@ -1318,6 +1318,11 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (brightnessCtrl) brightnessCtrl.style.display = is3D ? 'flex' : 'none';
   if (brightnessDiv) brightnessDiv.style.display = is3D ? '' : 'none';
 
+  // Toggle visibility of bottom canvas toolbar
+  const canvasToolbar = qs('#codebase-canvas-toolbar');
+  const hasBottomControls = (supportsGranularity || showPojoFilter || is3D);
+  if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
+
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
     App.activeAltRenderer.destroy();

@@ -1149,6 +1149,33 @@ body.resizing .panel-resizer {
   pointer-events: auto;
 }
 
+/* Dedicated Top View Switcher in Codebase Viz */
+.codebase-top-bar {
+  top: 14px;
+  left: 14px;
+  right: auto;
+  width: auto;
+  max-width: calc(100% - 28px);
+}
+
+/* Dedicated Bottom Floating In-Canvas Display Options Toolbar */
+.codebase-bottom-bar {
+  top: auto;
+  bottom: 16px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: auto;
+  max-width: calc(100% - 32px);
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full, 9999px);
+  padding: 5px 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 150;
+  pointer-events: auto;
+}
+
 .graph-search-wrap {
   position: relative;
   display: flex;
@@ -2448,6 +2475,7 @@ body.resizing .panel-resizer {
   display: flex;
   align-items: center;
   gap: 8px;
+  pointer-events: none;
 }
 
 .banner-toast {

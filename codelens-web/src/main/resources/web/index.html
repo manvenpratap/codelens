@@ -457,10 +457,10 @@
       aria-labelledby="tab-codebase"
       tabindex="0"
     >
-      <!-- Dedicated Floating Macro Visualization Level Switcher Bar -->
-      <div id="codebase-hud-bar" class="graph-hud-bar" aria-label="Codebase Visualization Level">
+      <!-- Top Floating View Modes Switcher Bar (2D Graph, 3D City, 3D Galaxy, Treemap, Sunburst, DSM, Chord) -->
+      <div id="codebase-hud-bar" class="graph-hud-bar codebase-top-bar" aria-label="Codebase Visualization Level">
         <span class="hud-label" style="font-weight:700; color:#34d399; display:flex; align-items:center; gap:5px;">
-          <span>🪐</span> Macro Viz:
+          <span>🪐</span> Views:
         </span>
         <div class="graph-level-pills" id="codebase-level-selector" role="group" aria-label="Codebase Level">
           <button class="level-pill active" data-level="city3d" title="3D Software City (WebGL Monoliths)">🏙️ 3D City</button>
@@ -473,9 +473,10 @@
           <button class="level-pill" data-level="dsm" title="Dependency Structure Matrix (Adjacency Grid)">⊞ DSM</button>
           <button class="level-pill" data-level="chord" title="Chord Diagram (Inter-class Call Volume)">⌒ Chord</button>
         </div>
+      </div>
 
-        <div class="hud-divider" id="codebase-granularity-divider"></div>
-
+      <!-- Bottom Floating In-Canvas Controls Toolbar (Scope, POJO filtering, Brightness, Camera/View options) -->
+      <div id="codebase-canvas-toolbar" class="graph-hud-bar codebase-bottom-bar" aria-label="In-Canvas Display Options">
         <!-- Granularity / Level Switcher (Classes vs Methods) -->
         <div class="graph-level-pills" id="codebase-granularity-selector" role="group" aria-label="Codebase Granularity">
           <span class="hud-label" style="font-size:11px; margin-right:2px;">Scope:</span>
