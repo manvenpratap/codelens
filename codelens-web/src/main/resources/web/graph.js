@@ -195,6 +195,11 @@ class ForceGraph {
     this._ty = 0;
     this._sc = 1;
 
+    // POJO & Accessor Filtering
+    this._hideGetters = true;
+    this._rawNodes    = [];
+    this._rawEdges    = [];
+
     // Public click callback
     this.onNodeClick = null;
 
@@ -331,6 +336,75 @@ class ForceGraph {
   /* ── Public Data & Control API ───────────────────────────────────────────── */
 
   setData(nodes, edges) {
+    this._rawNodes = nodes || [];
+    this._rawEdges = edges || [];
+    this._applyData(this._rawNodes, this._rawEdges);
+  }
+
+  /** Checks if a node is a trivial getter, setter, or POJO accessor. */
+  _isPojoAccessor(node) {
+    if (!node || node.role === 'root') return false;
+    const name = (node.label || node.id.split('.').pop() || '').replace(/\(.*\)$/, '').trim();
+    if (['toString', 'hashCode', 'equals', 'canEqual', 'getClass'].includes(name)) return true;
+    if (name.length > 3 && name.startsWith('get') && /^[A-Z]/.test(name.charAt(3))) return true;
+    if (name.length > 3 && name.startsWith('set') && /^[A-Z]/.test(name.charAt(3))) return true;
+    if (name.length > 2 && name.startsWith('is') && /^[A-Z]/.test(name.charAt(2))) return true;
+    if (name.length > 3 && name.startsWith('has') && /^[A-Z]/.test(name.charAt(3))) return true;
+    return false;
+  }
+
+  /** Filters out POJO accessor nodes and edges when _hideGetters is enabled. */
+  _filterData(nodes, edges) {
+    if (!this._hideGetters) return { nodes: nodes || [], edges: edges || [], hiddenCount: 0 };
+    const hiddenSet = new Set();
+    const filteredNodes = [];
+
+    for (const n of (nodes || [])) {
+      if (this._isPojoAccessor(n)) {
+        hiddenSet.add(n.id);
+      } else {
+        filteredNodes.push(n);
+      }
+    }
+
+    // Keep edges where neither endpoint is hidden
+    const filteredEdges = (edges || []).filter(e => {
+      const src = (typeof e.source === 'object' && e.source) ? e.source.id : e.source;
+      const tgt = (typeof e.target === 'object' && e.target) ? e.target.id : e.target;
+      return !hiddenSet.has(src) && !hiddenSet.has(tgt);
+    });
+
+    return { nodes: filteredNodes, edges: filteredEdges, hiddenCount: hiddenSet.size };
+  }
+
+  /** Toggles POJO and getter/setter filtering. */
+  toggleHideGetters() {
+    this._hideGetters = !this._hideGetters;
+    const btn = document.getElementById('btn-filter-getters');
+    if (btn) {
+      btn.classList.toggle('active', this._hideGetters);
+    }
+    if (this._rawNodes && this._rawNodes.length > 0) {
+      this._applyData(this._rawNodes, this._rawEdges);
+    }
+  }
+
+  _applyData(rawNodes, rawEdges) {
+    const { nodes, edges, hiddenCount } = this._filterData(rawNodes, rawEdges);
+
+    // Update HUD button label/title with hidden count
+    const btnText = document.getElementById('btn-filter-getters-text');
+    const btn = document.getElementById('btn-filter-getters');
+    if (btnText && btn) {
+      if (this._hideGetters && hiddenCount > 0) {
+        btnText.textContent = `Hide POJOs (${hiddenCount})`;
+        btn.title = `${hiddenCount} POJO getters/setters hidden. Click to show all.`;
+      } else {
+        btnText.textContent = 'Hide POJOs';
+        btn.title = this._hideGetters ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+      }
+    }
+
     const dpr = window.devicePixelRatio || 1;
     const cx = (this._canvas.width / dpr) / 2;
     const cy = (this._canvas.height / dpr) / 2;
@@ -1483,6 +1557,12 @@ class ForceGraph {
 
     const btnHeat = document.getElementById('btn-heat');
     if (btnHeat) btnHeat.onclick = () => this.toggleHeat();
+
+    const btnFilterGetters = document.getElementById('btn-filter-getters');
+    if (btnFilterGetters) {
+      btnFilterGetters.onclick = () => this.toggleHideGetters();
+      btnFilterGetters.classList.toggle('active', this._hideGetters);
+    }
 
     // Node card close
     const btnNodeCardClose = document.getElementById('btn-node-card-close');

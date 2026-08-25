@@ -79,6 +79,39 @@ public class CallGraphAnalyzer {
             g.vertexSet().size(), g.edgeSet().size());
     }
 
+    /**
+     * Identifies if a method FQN represents a trivial POJO accessor / getter / setter / boilerplate method.
+     */
+    public static boolean isPojoOrAccessor(String methodFqn) {
+        if (methodFqn == null || methodFqn.isEmpty()) return false;
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        int dot = base.lastIndexOf('.');
+        String name = (dot >= 0) ? base.substring(dot + 1) : base;
+        if (name.isEmpty()) return false;
+
+        // Standard Object boilerplate
+        if ("toString".equals(name) || "hashCode".equals(name) || "equals".equals(name) || "canEqual".equals(name) || "getClass".equals(name)) {
+            return true;
+        }
+
+        // Standard Getters / Setters / Is / Has
+        if (name.length() > 3 && name.startsWith("get") && Character.isUpperCase(name.charAt(3))) {
+            return true;
+        }
+        if (name.length() > 3 && name.startsWith("set") && Character.isUpperCase(name.charAt(3))) {
+            return true;
+        }
+        if (name.length() > 2 && name.startsWith("is") && Character.isUpperCase(name.charAt(2))) {
+            return true;
+        }
+        if (name.length() > 3 && name.startsWith("has") && Character.isUpperCase(name.charAt(3))) {
+            return true;
+        }
+
+        return false;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Public query API
     // ─────────────────────────────────────────────────────────────────────────
@@ -89,7 +122,11 @@ public class CallGraphAnalyzer {
      * BFS limited to {@code maxDepth} hops.
      */
     public List<GraphNode> callees(String methodFqn, int maxDepth) {
-        return bfs(callGraph, methodFqn, maxDepth, "callee");
+        return callees(methodFqn, maxDepth, false);
+    }
+
+    public List<GraphNode> callees(String methodFqn, int maxDepth, boolean hideGetters) {
+        return bfs(callGraph, methodFqn, maxDepth, "callee", hideGetters);
     }
 
     /**
@@ -97,8 +134,12 @@ public class CallGraphAnalyzer {
      * by traversing the reversed graph.
      */
     public List<GraphNode> callers(String methodFqn, int maxDepth) {
+        return callers(methodFqn, maxDepth, false);
+    }
+
+    public List<GraphNode> callers(String methodFqn, int maxDepth, boolean hideGetters) {
         Graph<String, DefaultEdge> reversed = new EdgeReversedGraph<>(callGraph);
-        return bfs(reversed, methodFqn, maxDepth, "caller");
+        return bfs(reversed, methodFqn, maxDepth, "caller", hideGetters);
     }
 
     /**
@@ -140,8 +181,12 @@ public class CallGraphAnalyzer {
      * rendering by the frontend graph canvas.
      */
     public GraphView callHierarchyView(String rootFqn, int depth) {
-        List<GraphNode> calleeNodes = callees(rootFqn, depth);
-        List<GraphNode> callerNodes = callers(rootFqn, depth);
+        return callHierarchyView(rootFqn, depth, false);
+    }
+
+    public GraphView callHierarchyView(String rootFqn, int depth, boolean hideGetters) {
+        List<GraphNode> calleeNodes = callees(rootFqn, depth, hideGetters);
+        List<GraphNode> callerNodes = callers(rootFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
@@ -178,7 +223,11 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView callersView(String rootFqn, int depth) {
-        List<GraphNode> callerNodes = callers(rootFqn, depth);
+        return callersView(rootFqn, depth, false);
+    }
+
+    public GraphView callersView(String rootFqn, int depth, boolean hideGetters) {
+        List<GraphNode> callerNodes = callers(rootFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
@@ -210,7 +259,11 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView calleesView(String rootFqn, int depth) {
-        List<GraphNode> calleeNodes = callees(rootFqn, depth);
+        return calleesView(rootFqn, depth, false);
+    }
+
+    public GraphView calleesView(String rootFqn, int depth, boolean hideGetters) {
+        List<GraphNode> calleeNodes = callees(rootFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
@@ -246,11 +299,18 @@ public class CallGraphAnalyzer {
      * Emits all indexed vertices and relationships.
      */
     public GraphView fullGraphView() {
+        return fullGraphView(false);
+    }
+
+    public GraphView fullGraphView(boolean hideGetters) {
         Graph<String, DefaultEdge> g = callGraph;
         List<GraphNode> allNodes = new ArrayList<>();
         List<GraphEdge> edges    = new ArrayList<>();
+        Set<String> includedVertices = new HashSet<>();
 
         for (String v : g.vertexSet()) {
+            if (hideGetters && isPojoOrAccessor(v)) continue;
+            includedVertices.add(v);
             int inDeg  = g.inDegreeOf(v);
             int outDeg = g.outDegreeOf(v);
             String role;
@@ -258,16 +318,20 @@ public class CallGraphAnalyzer {
                 role = "root";
             } else if (inDeg > 0 && outDeg == 0) {
                 role = "callee";
-            } else if (inDeg > 0 && outDeg > 0) {
+            } else if (inDeg > 0 && outDeg == 0) {
                 role = "propagator";
             } else {
                 role = "default";
             }
             allNodes.add(new GraphNode(v, label(v), role, "METHOD"));
+        }
 
+        for (String v : includedVertices) {
             for (DefaultEdge e : g.outgoingEdgesOf(v)) {
                 String tgt = g.getEdgeTarget(e);
-                edges.add(new GraphEdge(v, tgt, "CALLS"));
+                if (includedVertices.contains(tgt)) {
+                    edges.add(new GraphEdge(v, tgt, "CALLS"));
+                }
             }
         }
 
@@ -481,6 +545,11 @@ public class CallGraphAnalyzer {
 
     private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
                                  int maxDepth, String role) {
+        return bfs(g, start, maxDepth, role, false);
+    }
+
+    private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
+                                 int maxDepth, String role, boolean hideGetters) {
         if (!g.containsVertex(start)) return Collections.emptyList();
 
         List<GraphNode> result = new ArrayList<>();
@@ -492,6 +561,7 @@ public class CallGraphAnalyzer {
             int    depth = it.getDepth(v);
             if (v.equals(start)) continue;        // skip root itself
             if (depth > maxDepth) break;
+            if (hideGetters && isPojoOrAccessor(v)) continue;
             result.add(new GraphNode(v, label(v), role, "METHOD"));
         }
         return result;
