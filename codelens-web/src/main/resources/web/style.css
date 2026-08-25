@@ -30,15 +30,16 @@
   --border-focus: #3b82f6;
 
   /* Curated HSL Accent Scales (Cobalt, Ice Silver, Emerald, Amber, Crimson) */
-  --primary:        #2563eb;
-  --primary-hover:  #1d4ed8;
-  --primary-active: #1e40af;
+  --primary:        #60a5fa;  /* Text-safe sky blue — passes 6:1+ on all dark surfaces */
+  --primary-bg:     #2563eb;  /* Cobalt background blue — for buttons, filled chips, active pills */
+  --primary-hover:  #3b82f6;
+  --primary-active: #2563eb;
   --primary-subtle: rgba(37, 99, 235, 0.14);
   --primary-glow:   rgba(37, 99, 235, 0.18);
   --primary-border: rgba(59, 130, 246, 0.40);
 
-  --accent:         #2563eb;
-  --accent-light:   #60a5fa;
+  --accent:         #60a5fa;
+  --accent-light:   #93c5fd;
   --accent-subtle:  rgba(37, 99, 235, 0.14);
 
   --cyan:         #2563eb;
@@ -149,7 +150,7 @@ input, textarea, select {
 }
 
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--primary-bg);
   outline-offset: 2px;
 }
 
@@ -242,7 +243,7 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 .panel-resizer:focus-visible::after {
   left: 1px;
   width: 3px;
-  background: var(--primary);
+  background: var(--primary-bg);
   box-shadow: none;
 }
 
@@ -308,7 +309,7 @@ body.resizing .panel-resizer {
 
 .explorer-action-btn.active {
   background: var(--primary-subtle);
-  border-color: var(--primary);
+  border-color: var(--primary-bg);
   color: var(--primary);
   font-weight: 700;
 }
@@ -391,7 +392,7 @@ body.resizing .panel-resizer {
 
 .panel-expand-strip:hover {
   background: var(--bg-surface);
-  border-color: var(--primary);
+  border-color: var(--primary-bg);
   color: var(--text-primary);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   transform: translateY(-50%) scale(1.03);
@@ -580,7 +581,7 @@ body.resizing .panel-resizer {
 }
 .project-pill:hover {
   background: var(--bg-elevated);
-  border-color: var(--primary);
+  border-color: var(--primary-bg);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .project-pill-icon {
@@ -643,15 +644,15 @@ body.resizing .panel-resizer {
   transition: all var(--dur-std) var(--ease);
 }
 #scan-path-input:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
   background: var(--bg-surface);
 }
 #scan-path-input::placeholder { color: var(--text-muted); }
 
 /* Primary action button */
 .btn-primary {
-  background: var(--primary);
+  background: var(--primary-bg);
   color: #ffffff;
   border-radius: var(--radius-sm);
   padding: 8px 18px;
@@ -732,7 +733,7 @@ body.resizing .panel-resizer {
   color: var(--text-primary);
 }
 .header-action-btn.export-action-btn:hover {
-  background: var(--primary);
+  background: var(--primary-bg);
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
@@ -779,7 +780,7 @@ body.resizing .panel-resizer {
   position: absolute;
   bottom: 0; left: 0;
   height: 2px;
-  background: var(--primary);
+  background: var(--primary-bg);
   box-shadow: none;
   width: 0%;
 }
@@ -817,8 +818,8 @@ body.resizing .panel-resizer {
   transition: all var(--dur-std) var(--ease);
 }
 .search-input-wrap:focus-within {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
   background: var(--bg-surface);
 }
 .search-icon { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
@@ -854,8 +855,8 @@ body.resizing .panel-resizer {
 }
 .chip:hover  { border-color: var(--border-hover); color: var(--text-primary); }
 .chip.active {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary-bg);
+  border-color: var(--primary-bg);
   color: #ffffff;
 }
 
@@ -898,7 +899,7 @@ body.resizing .panel-resizer {
 }
 .tree-item.active {
   background: var(--primary-subtle);
-  border-left-color: var(--primary);
+  border-left-color: var(--primary-bg);
   color: var(--text-primary);
   font-weight: 600;
 }
@@ -1036,7 +1037,7 @@ body.resizing .panel-resizer {
 .tab:hover  { color: var(--text-primary); }
 .tab.active {
   color: var(--text-primary);
-  border-bottom-color: var(--primary);
+  border-bottom-color: var(--primary-bg);
   font-weight: 600;
 }
 .tab .tab-badge {
@@ -1139,8 +1140,8 @@ body.resizing .panel-resizer {
   transition: all var(--dur-fast) var(--ease);
 }
 .graph-search-wrap:focus-within {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 .graph-search-icon {
   color: var(--text-muted);
@@ -1230,8 +1231,8 @@ body.resizing .panel-resizer {
   color: var(--text-primary);
 }
 .depth-pill.active {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary-bg);
+  border-color: var(--primary-bg);
   color: #ffffff;
 }
 
@@ -1263,8 +1264,8 @@ body.resizing .panel-resizer {
   background: rgba(255, 255, 255, 0.05);
 }
 .level-pill.active {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary-bg);
+  border-color: var(--primary-bg);
   color: #ffffff;
   box-shadow: none;
 }
@@ -1424,7 +1425,7 @@ body.resizing .panel-resizer {
 .node-card-accent-bar {
   height: 3px;
   width: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--cyan-bright));
+  background: linear-gradient(90deg, var(--primary-bg), var(--cyan-bright));
   flex-shrink: 0;
 }
 .node-card-header {
@@ -1823,8 +1824,8 @@ body.resizing .panel-resizer {
   color: var(--text-primary);
 }
 .review-mode-btn.active {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary-bg);
+  border-color: var(--primary-bg);
   color: #ffffff;
   font-weight: 600;
 }
@@ -1856,8 +1857,8 @@ body.resizing .panel-resizer {
   transition: border-color var(--dur-fast) var(--ease);
 }
 .review-snippet-input:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 .review-target-info {
   font-size: 12px;
@@ -2185,7 +2186,7 @@ body.resizing .panel-resizer {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.rel-dot.CALLS        { background: var(--primary); }
+.rel-dot.CALLS        { background: var(--primary-bg); }
 .rel-dot.READS_FIELD  { background: var(--cyan); }
 .rel-dot.WRITES_FIELD { background: var(--amber); }
 .rel-dot.EXTENDS      { background: var(--emerald); }
@@ -2276,8 +2277,8 @@ body.resizing .panel-resizer {
   transition: border-color var(--dur-fast);
 }
 .note-editor:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 .note-editor::placeholder { color: var(--text-muted); }
 .note-save-row {
@@ -2310,7 +2311,7 @@ body.resizing .panel-resizer {
 .scan-spinner {
   width: 20px; height: 20px;
   border: 2px solid rgba(255, 255, 255, 0.15);
-  border-top-color: var(--primary);
+  border-top-color: var(--primary-bg);
   border-radius: 50%;
   flex-shrink: 0;
   animation: spin 0.7s linear infinite;
@@ -2577,8 +2578,8 @@ body.resizing .panel-resizer {
   transition: border-color var(--dur-fast) var(--ease);
 }
 .git-repo-input:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 .git-action-row {
   display: flex;
@@ -2620,7 +2621,7 @@ body.resizing .panel-resizer {
 }
 .git-progress-fill {
   height: 100%;
-  background: var(--primary);
+  background: var(--primary-bg);
 }
 
 .git-section {
@@ -2667,7 +2668,7 @@ body.resizing .panel-resizer {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--primary-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2839,7 +2840,7 @@ body.resizing .panel-resizer {
 /* Custom Monaco line highlight */
 .monaco-line-highlight-neon {
   background: rgba(37, 99, 235, 0.15) !important;
-  box-shadow: inset 3px 0 0 0 var(--primary);
+  box-shadow: inset 3px 0 0 0 var(--primary-bg);
 }
 
 /* Offline Native Code Viewer */
@@ -2870,7 +2871,7 @@ body.resizing .panel-resizer {
 }
 .fallback-line.highlight-target {
   background: rgba(37, 99, 235, 0.15) !important;
-  box-shadow: inset 3px 0 0 0 var(--primary);
+  box-shadow: inset 3px 0 0 0 var(--primary-bg);
 }
 .fallback-line-num {
   width: 48px;
@@ -3206,7 +3207,7 @@ body.resizing .panel-resizer {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--primary-bg);
   border: 2px solid var(--bg-panel);
   box-shadow: none;
   cursor: pointer;
@@ -3221,7 +3222,7 @@ body.resizing .panel-resizer {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--primary-bg);
   border: 2px solid var(--bg-panel);
   box-shadow: none;
   cursor: pointer;
@@ -3282,7 +3283,7 @@ body.resizing .panel-resizer {
 
 .toggle-switch input:checked + .toggle-track::before {
   transform: translateX(16px);
-  background: var(--primary);
+  background: var(--primary-bg);
   box-shadow: none;
 }
 
@@ -3311,8 +3312,8 @@ body.resizing .panel-resizer {
 }
 
 .settings-select:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 
 .settings-input {
@@ -3334,8 +3335,8 @@ body.resizing .panel-resizer {
 }
 
 .settings-input:focus {
-  border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  border-color: var(--primary-bg);
+  outline: 2px solid var(--primary-bg);
 }
 
 .settings-input::placeholder {
@@ -3371,7 +3372,7 @@ body.resizing .panel-resizer {
 }
 
 .theme-card.active {
-  border-color: var(--primary);
+  border-color: var(--primary-bg);
   box-shadow: 0 6px 24px rgba(0,0,0,0.3);
 }
 
@@ -3443,6 +3444,10 @@ body[data-theme="dark"], body:not(.theme-light) {
 body.theme-light, body[data-theme="light"] {
   color: #0f172a;
   background-color: #f1f5f9;
+  /* In light mode, --primary (#2563eb) passes 4.9:1 on white — readable */
+  --primary: #2563eb;
+  --primary-bg: #2563eb;
+  --primary-hover: #1d4ed8;
 }
 
 body.theme-light .logo-text {
