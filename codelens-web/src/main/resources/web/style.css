@@ -15,13 +15,13 @@
   --z-modal:      100;
   --z-tooltip:    200;
 
-  /* Layered Neutral Charcoal / Graphite Surfaces (Zero Purple) */
-  --bg-base:      #0d1117;
-  --bg-panel:     #161b22;
-  --bg-surface:   #1c2128;
-  --bg-elevated:  #21262d;
-  --bg-modal:     #161b22;
-  --bg-glass:     rgba(22, 27, 34, 0.85);
+  /* Layered OLED True Black & Neutral Charcoal Surfaces */
+  --bg-base:      #000000;
+  --bg-panel:     #0a0d12;
+  --bg-surface:   #12161f;
+  --bg-elevated:  #181e28;
+  --bg-modal:     #0a0d12;
+  --bg-glass:     rgba(10, 13, 18, 0.88);
 
   /* Precision borders */
   --border:       rgba(255, 255, 255, 0.08);

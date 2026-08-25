@@ -30,7 +30,7 @@ let GRAPHIFY_COLORS = [
 ];
 
 let GC = {
-  bg:       '#0d1117',
+  bg:       '#000000',
   grid:     'rgba(255, 255, 255, 0.02)',
   roles: {
     root:        '#2563eb',

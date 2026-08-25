@@ -3351,26 +3351,26 @@ function triggerRelayout() {
 
 const THEMES = {
   dark: {
-    label: 'Dark', icon: '🌑', tagline: 'Midnight Obsidian. Deep slate & balanced cobalt contrast.',
+    label: 'Dark', icon: '🌑', tagline: 'OLED Obsidian. True black canvas & deep graphite contrast.',
     css: {
-      '--bg-base': '#090d16', '--bg-panel': '#0f172a', '--bg-surface': '#1e293b',
-      '--bg-elevated': '#283548', '--bg-modal': '#0f172a', '--bg-glass': 'rgba(15,23,42,0.92)',
-      '--border': 'rgba(255,255,255,0.09)', '--border-hover': 'rgba(255,255,255,0.18)',
+      '--bg-base': '#000000', '--bg-panel': '#0a0d12', '--bg-surface': '#12161f',
+      '--bg-elevated': '#181e28', '--bg-modal': '#0a0d12', '--bg-glass': 'rgba(10,13,18,0.88)',
+      '--border': 'rgba(255,255,255,0.08)', '--border-hover': 'rgba(255,255,255,0.16)',
       '--border-light': 'rgba(255,255,255,0.12)', '--border-focus': '#3b82f6',
-      '--primary': '#60a5fa', '--primary-bg': '#283548', '--primary-hover': '#334155', '--primary-active': '#1e293b',
+      '--primary': '#60a5fa', '--primary-bg': '#181e28', '--primary-hover': '#21262d', '--primary-active': '#12161f',
       '--primary-subtle': 'rgba(255,255,255,0.05)', '--primary-glow': 'rgba(255,255,255,0.08)',
       '--primary-border': 'rgba(96,165,250,0.40)',
       '--cyan-bright': '#60a5fa', '--emerald': '#10b981', '--amber': '#f59e0b', '--red': '#ef4444',
       '--text-primary': '#f8fafc', '--text-secondary': '#cbd5e1', '--text-muted': '#94a3b8',
     },
     graph: {
-      bg: '#090d16', grid: 'rgba(255,255,255,0.03)',
+      bg: '#000000', grid: 'rgba(255,255,255,0.03)',
       roles: { root:'#2563eb',caller:'#60a5fa',callee:'#10b981',propagator:'#f59e0b',field:'#fb923c',reader:'#60a5fa',writer:'#ef4444',default:'#2563eb' },
       edgeKind: { CALLS:'#60a5fa',READS_FIELD:'#10b981',WRITES_FIELD:'#f59e0b',EXTENDS:'#94a3b8',IMPLEMENTS:'#94a3b8',default:'#64748b' },
       nodeColors: ['#2563eb','#10b981','#f59e0b','#818cf8','#ef4444','#14b8a6','#3b82f6','#f97316','#84cc16','#94a3b8'],
       lightMode: false,
     },
-    preview: ['#090d16','#0f172a','#2563eb','#10b981','#f59e0b'],
+    preview: ['#000000','#0a0d12','#2563eb','#10b981','#f59e0b'],
   },
   light: {
     label: 'Light', icon: '☀️', tagline: 'Pure Daylight. Crisp contrast, ultra-readable typography.',
