@@ -441,7 +441,9 @@ class ForceGraph {
 
     const sortedPkgs = Object.keys(pkgCounts).sort((a, b) => pkgCounts[b] - pkgCounts[a]);
     this._communities = sortedPkgs.map((pkg, idx) => {
-      const color = GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
+      const color = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(pkg, idx)
+        : GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
       const comm = {
         cid: idx,
         rawLabel: pkg,
@@ -485,6 +487,10 @@ class ForceGraph {
       const subAngle = Math.random() * Math.PI * 2;
       const subDist = (Math.random() * (isLargeSet ? 120 : 60));
 
+      const classColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(className || n.id, i)
+        : comm.color;
+
       return {
         ...n,
         package: finalPkg,
@@ -492,7 +498,8 @@ class ForceGraph {
         memberName: memberName,
         community: comm.cid,
         communityLabel: comm.label,
-        communityColor: comm.color,
+        communityColor: classColor,
+        pkgColor: comm.color,
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
