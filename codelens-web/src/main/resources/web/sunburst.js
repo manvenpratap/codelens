@@ -55,6 +55,9 @@ class SunburstRenderer {
 
     const wrap = document.createElement('div');
     wrap.className = 'sunburst-container';
+    wrap.setAttribute('role', 'img');
+    wrap.setAttribute('aria-label', 'Codebase Hierarchy Sunburst Visualizer');
+    wrap.setAttribute('tabindex', '0');
 
     // Breadcrumb
     const bc = document.createElement('div');
@@ -248,12 +251,34 @@ class SunburstRenderer {
     return `hsl(${Math.round(h * 360)}, ${Math.round(Math.min(s * 1.1, 1) * 100)}%, ${Math.round(newL * 100)}%)`;
   }
 
-  _draw() {
+  _triggerTransition(targetNode, newBreadcrumb) {
+    this._current = targetNode;
+    this._breadcrumb = newBreadcrumb;
+    this._hovered = null;
+    if (this._tooltip) this._tooltip.style.display = 'none';
+    this._layout();
+
+    let startTime = null;
+    const duration = 250;
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      this._draw(ease);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    requestAnimationFrame(animate);
+  }
+
+  _draw(transitionProgress = 1) {
     if (!this._ctx || !this._canvas) return;
     const ctx = this._ctx;
     const dpr = this._dpr;
     const w = this._canvas.width;
     const h = this._canvas.height;
+    const alphaMult = Math.max(0.05, Math.min(1, transitionProgress));
 
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -267,6 +292,7 @@ class SunburstRenderer {
     ctx.beginPath();
     ctx.arc(cx, cy, this._innerRadius, 0, 2 * Math.PI);
     ctx.fillStyle = 'rgba(22, 27, 34, 0.95)';
+    ctx.globalAlpha = 1.0 * alphaMult;
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = 1;
@@ -275,28 +301,35 @@ class SunburstRenderer {
     // Draw segments
     for (const seg of this._segments) {
       const node = seg.node;
-      const color = seg.color || '#3b82f6';
-      const isHovered = hovered === seg;
-      const isAncestor = hovered && this._isAncestor(seg.node, hovered.node);
-      const dimmed = hovered && !isHovered && !isAncestor && !this._isAncestor(hovered.node, seg.node);
+
+      // Highlight logic: if hovered, dim non-ancestors & non-descendants
+      let dimmed = false;
+      let isHot = false;
+      if (hovered) {
+        isHot = seg === hovered;
+        const hNode = hovered.node;
+        const isAnc = this._isAncestor(node, hNode);
+        const isDesc = this._isAncestor(hNode, node);
+        if (!isHot && !isAnc && !isDesc) {
+          dimmed = true;
+        }
+      }
 
       ctx.beginPath();
       ctx.arc(cx, cy, seg.outerRadius, seg.startAngle, seg.endAngle);
       ctx.arc(cx, cy, seg.innerRadius, seg.endAngle, seg.startAngle, true);
       ctx.closePath();
 
-      ctx.fillStyle = color;
-      ctx.globalAlpha = dimmed ? 0.18 : (isHovered ? 1.0 : 0.88);
+      ctx.fillStyle = seg.color;
+      ctx.globalAlpha = (dimmed ? 0.15 : (isHot ? 1.0 : 0.82)) * alphaMult;
       ctx.fill();
 
-      ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(10, 15, 25, 0.7)';
-      ctx.lineWidth = isHovered ? 2.5 : 0.75;
-      ctx.globalAlpha = 1;
+      ctx.strokeStyle = isHot ? '#ffffff' : 'rgba(15, 23, 42, 0.6)';
+      ctx.lineWidth = isHot ? 2 : 0.75;
       ctx.stroke();
 
-      // Label (only for segments big enough)
-      const arcAngle = seg.endAngle - seg.startAngle;
-      const arcLength = arcAngle * (seg.innerRadius + seg.outerRadius) / 2;
+      // Arc Segment Text Label (only for segments wide enough - LOD threshold: arc length > 35)
+      const arcLength = (seg.endAngle - seg.startAngle) * seg.innerRadius;
       const ringH = seg.outerRadius - seg.innerRadius;
 
       if (arcLength > 35 && ringH > 12 && !dimmed) {
@@ -316,7 +349,7 @@ class SunburstRenderer {
         const fontSize = Math.max(8, Math.min(11, ringH * 0.6));
         ctx.font = `500 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
         ctx.fillStyle = '#f8fafc';
-        ctx.globalAlpha = dimmed ? 0.2 : 0.9;
+        ctx.globalAlpha = (dimmed ? 0.2 : 0.9) * alphaMult;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
@@ -407,12 +440,7 @@ class SunburstRenderer {
     if (!this._hovered) return;
     const node = this._hovered.node;
     if (node.children && node.children.length > 0) {
-      this._current = node;
-      this._breadcrumb.push(node);
-      this._hovered = null;
-      this._tooltip.style.display = 'none';
-      this._layout();
-      this._draw();
+      this._triggerTransition(node, [...this._breadcrumb, node]);
     }
   }
 
@@ -436,12 +464,7 @@ class SunburstRenderer {
         btn.classList.add('active');
       } else {
         btn.addEventListener('click', () => {
-          this._current = node;
-          this._breadcrumb = this._breadcrumb.slice(0, i + 1);
-          this._hovered = null;
-          this._tooltip.style.display = 'none';
-          this._layout();
-          this._draw();
+          this._triggerTransition(node, this._breadcrumb.slice(0, i + 1));
         });
       }
       bc.appendChild(btn);

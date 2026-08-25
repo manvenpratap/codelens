@@ -112,6 +112,9 @@ class TreemapRenderer {
 
     const wrap = document.createElement('div');
     wrap.className = 'treemap-container';
+    wrap.setAttribute('role', 'img');
+    wrap.setAttribute('aria-label', 'Codebase Architectural Treemap');
+    wrap.setAttribute('tabindex', '0');
 
     // Breadcrumb
     const bc = document.createElement('div');
@@ -373,12 +376,34 @@ class TreemapRenderer {
     return '#ef4444';                             // red - very high
   }
 
-  _draw() {
+  _triggerTransition(targetNode, newBreadcrumb) {
+    this._current = targetNode;
+    this._breadcrumb = newBreadcrumb;
+    this._hovered = null;
+    if (this._tooltip) this._tooltip.style.display = 'none';
+    this._layout();
+
+    let startTime = null;
+    const duration = 250;
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      this._draw(ease);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    requestAnimationFrame(animate);
+  }
+
+  _draw(transitionProgress = 1) {
     if (!this._ctx || !this._canvas) return;
     const ctx = this._ctx;
     const dpr = this._dpr;
     const w = this._canvas.width;
     const h = this._canvas.height;
+    const alphaMult = Math.max(0.05, Math.min(1, transitionProgress));
 
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -390,6 +415,7 @@ class TreemapRenderer {
 
       // Container background
       ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+      ctx.globalAlpha = 1.0 * alphaMult;
       ctx.beginPath();
       this._roundRect(ctx, c.x, c.y, c.w, c.h, 6);
       ctx.fill();
@@ -454,13 +480,13 @@ class TreemapRenderer {
 
       // Fill
       ctx.fillStyle = color;
-      ctx.globalAlpha = isHovered ? 1.0 : 0.85;
+      ctx.globalAlpha = (isHovered ? 1.0 : 0.85) * alphaMult;
       ctx.beginPath();
       this._roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 4);
       ctx.fill();
 
       // Border
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1.0 * alphaMult;
       ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(0, 0, 0, 0.35)';
       ctx.lineWidth = isHovered ? 2 : 0.75;
       ctx.stroke();
@@ -468,7 +494,7 @@ class TreemapRenderer {
       // Label (only if rect is big enough - LOD culling threshold: w > 45 && h > 18)
       if (rect.w > 45 && rect.h > 18) {
         ctx.fillStyle = '#ffffff';
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = 1.0 * alphaMult;
         const fontSize = Math.max(10, Math.min(13, rect.w / 9));
         ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
         ctx.textBaseline = 'top';
@@ -574,12 +600,7 @@ class TreemapRenderer {
     if (!this._hovered) return;
     const node = this._hovered.node;
     if (node.children && node.children.length > 0) {
-      this._current = node;
-      this._breadcrumb.push(node);
-      this._hovered = null;
-      this._tooltip.style.display = 'none';
-      this._layout();
-      this._draw();
+      this._triggerTransition(node, [...this._breadcrumb, node]);
     }
   }
 
@@ -603,12 +624,7 @@ class TreemapRenderer {
         btn.classList.add('active');
       } else {
         btn.addEventListener('click', () => {
-          this._current = node;
-          this._breadcrumb = this._breadcrumb.slice(0, i + 1);
-          this._hovered = null;
-          this._tooltip.style.display = 'none';
-          this._layout();
-          this._draw();
+          this._triggerTransition(node, this._breadcrumb.slice(0, i + 1));
         });
       }
       bc.appendChild(btn);

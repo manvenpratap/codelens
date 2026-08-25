@@ -47,6 +47,9 @@ class ChordRenderer {
 
     const wrap = document.createElement('div');
     wrap.className = 'chord-container';
+    wrap.setAttribute('role', 'img');
+    wrap.setAttribute('aria-label', 'Codebase Architecture Chord Diagram');
+    wrap.setAttribute('tabindex', '0');
 
     const canvas = document.createElement('canvas');
     canvas.className = 'chord-canvas';
@@ -187,7 +190,7 @@ class ChordRenderer {
     const aw = this._arcWidth;
     const hovered = this._hovered;
 
-    // Draw chords (with bundling / low-weight culling for high-density networks)
+    // Draw D3-style double-sided ribbon polygons with linear gradients
     const minChordWeight = this._chords.length > 100 ? 2 : 1;
     for (const chord of this._chords) {
       if (chord.value < minChordWeight && hovered < 0) continue; // Chord weight culling / bundling
@@ -201,22 +204,37 @@ class ChordRenderer {
         continue;
       }
 
-      const srcMid = (srcArc.startAngle + srcArc.endAngle) / 2;
-      const tgtMid = (tgtArc.startAngle + tgtArc.endAngle) / 2;
+      const sa0 = srcArc.startAngle, sa1 = srcArc.endAngle;
+      const ta0 = tgtArc.startAngle, ta1 = tgtArc.endAngle;
 
-      const sx = cx + Math.cos(srcMid) * r;
-      const sy = cy + Math.sin(srcMid) * r;
-      const tx = cx + Math.cos(tgtMid) * r;
-      const ty = cy + Math.sin(tgtMid) * r;
+      const sx0 = cx + Math.cos(sa0) * r, sy0 = cy + Math.sin(sa0) * r;
+      const sx1 = cx + Math.cos(sa1) * r, sy1 = cy + Math.sin(sa1) * r;
+      const tx0 = cx + Math.cos(ta0) * r, ty0 = cy + Math.sin(ta0) * r;
+      const tx1 = cx + Math.cos(ta1) * r, ty1 = cy + Math.sin(ta1) * r;
 
-      const dimmed = hovered >= 0 && chord.source !== hovered && chord.target !== hovered;
+      const isHot = hovered >= 0 && (chord.source === hovered || chord.target === hovered);
+      const dimmed = hovered >= 0 && !isHot;
 
+      // Draw D3 Ribbon Geometry
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.quadraticCurveTo(cx, cy, tx, ty);
+      ctx.moveTo(sx0, sy0);
+      ctx.arc(cx, cy, r, sa0, sa1);
+      ctx.quadraticCurveTo(cx, cy, tx0, ty0);
+      ctx.arc(cx, cy, r, ta0, ta1);
+      ctx.quadraticCurveTo(cx, cy, sx0, sy0);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(sx0, sy0, tx0, ty0);
+      grad.addColorStop(0, srcArc.color);
+      grad.addColorStop(1, tgtArc.color);
+
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = dimmed ? 0.04 : (isHot ? 0.65 : 0.28);
+      ctx.fill();
+
       ctx.strokeStyle = srcArc.color;
-      ctx.globalAlpha = dimmed ? 0.05 : 0.35;
-      ctx.lineWidth = Math.max(1, Math.min(chord.value * 0.8, 6));
+      ctx.globalAlpha = dimmed ? 0.05 : (isHot ? 0.9 : 0.35);
+      ctx.lineWidth = isHot ? 1.5 : 0.5;
       ctx.stroke();
     }
 

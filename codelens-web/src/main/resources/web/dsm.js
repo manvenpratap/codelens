@@ -157,6 +157,7 @@ class DSMRenderer {
     wrap.className = 'dsm-container';
     wrap.setAttribute('role', 'region');
     wrap.setAttribute('aria-label', 'Dependency Structure Matrix');
+    wrap.setAttribute('tabindex', '0');
 
     // Advanced Toolbar & Controls Bar
     const currentScope = this._data.scope || 'classes';
