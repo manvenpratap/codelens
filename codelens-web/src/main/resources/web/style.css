@@ -3027,15 +3027,16 @@ body.resizing .panel-resizer {
 .help-card h4 {
   font-size: 12px;
   font-weight: 700;
-  color: var(--primary);
+  color: #60a5fa;
   margin: 0 0 6px 0;
 }
 
 .help-card p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
   margin: 0;
+  max-width: 72ch;
 }
 
 .help-flow {
@@ -3049,9 +3050,9 @@ body.resizing .panel-resizer {
   border: 1px solid var(--border);
   padding: 10px 14px;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .flow-step strong {
@@ -3065,6 +3066,7 @@ body.resizing .panel-resizer {
 
 .flow-step li {
   margin-bottom: 4px;
+  max-width: 72ch;
 }
 
 .shortcuts-table {
@@ -3081,11 +3083,12 @@ body.resizing .panel-resizer {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .sc-row span {
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3732,6 +3735,10 @@ body.theme-light .btn-ghost {
 body.theme-light .btn-ghost:hover {
   color: #0f172a;
   background: #e2e8f0;
+}
+
+body.theme-light .help-card h4 {
+  color: #2563eb;
 }
 
 /* =============================================================================
