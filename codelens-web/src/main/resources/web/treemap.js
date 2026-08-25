@@ -4,22 +4,21 @@
  */
 if (!window.CodeLensPalette) {
   const PALETTE = [
-    '#3b82f6', // 0: Precision Blue
-    '#10b981', // 1: Emerald
-    '#8b5cf6', // 2: Violet
-    '#f59e0b', // 3: Amber
-    '#ec4899', // 4: Pink
-    '#06b6d4', // 5: Cyan
-    '#f97316', // 6: Orange
-    '#14b8a6', // 7: Teal
-    '#a855f7', // 8: Purple
-    '#ef4444', // 9: Red
-    '#84cc16', // 10: Lime
-    '#6366f1', // 11: Indigo
-    '#0ea5e9', // 12: Sky
-    '#d946ef', // 13: Fuchsia
-    '#eab308', // 14: Gold
-    '#22c55e', // 15: Green
+    // 1-10: Vivid Primaries & Secondaries
+    '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899',
+    '#06b6d4', '#f97316', '#14b8a6', '#a855f7', '#ef4444',
+    // 11-20: High-luminance accents
+    '#84cc16', '#6366f1', '#0ea5e9', '#d946ef', '#eab308',
+    '#22c55e', '#f43f5e', '#38bdf8', '#fb923c', '#a3e635',
+    // 21-30: Jewel tones
+    '#059669', '#2563eb', '#d97706', '#7c3aed', '#db2777',
+    '#0891b2', '#ea580c', '#0d9488', '#9333ea', '#dc2626',
+    // 31-40: Neon & Pastel Brights
+    '#65a30d', '#4f46e5', '#0284c7', '#c026d3', '#ca8a04',
+    '#16a34a', '#e11d48', '#34d399', '#60a5fa', '#fbbf24',
+    // 41-50: Crisp distinct highlights
+    '#c084fc', '#f472b6', '#22d3ee', '#fb7185', '#2dd4bf',
+    '#818cf8', '#facc15', '#4ade80', '#e879f9', '#38bdf8'
   ];
 
   function getEntityColor(nameOrFqn, fallbackIndex = 0) {
