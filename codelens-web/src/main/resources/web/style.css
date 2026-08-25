@@ -2203,7 +2203,7 @@ body.resizing .panel-resizer {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.rel-dot.CALLS        { background: var(--primary-bg); }
+.rel-dot.CALLS        { background: var(--primary); }
 .rel-dot.READS_FIELD  { background: var(--cyan); }
 .rel-dot.WRITES_FIELD { background: var(--amber); }
 .rel-dot.EXTENDS      { background: var(--emerald); }
