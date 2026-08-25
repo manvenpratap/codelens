@@ -386,6 +386,7 @@ public class CodeLensServer {
         detail.put("notes",  dao.findNotesByEntity(id));
         Optional<CodeType> type = dao.findTypeById(m.get().getDeclaringTypeFqn());
         detail.put("sourceFile", type.isPresent() ? type.get().getSourceFile() : "");
+        detail.put("packageFqn", type.isPresent() ? type.get().getPackageFqn() : "");
         ctx.json(detail);
     }
 
@@ -458,6 +459,7 @@ public class CodeLensServer {
         detail.put("notes", dao.findNotesByEntity(id));
         Optional<CodeType> type = dao.findTypeById(f.get().getDeclaringTypeFqn());
         detail.put("sourceFile", type.isPresent() ? type.get().getSourceFile() : "");
+        detail.put("packageFqn", type.isPresent() ? type.get().getPackageFqn() : "");
         ctx.json(detail);
     }
 

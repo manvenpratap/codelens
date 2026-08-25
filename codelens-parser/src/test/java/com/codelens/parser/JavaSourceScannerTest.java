@@ -113,6 +113,24 @@ public class JavaSourceScannerTest {
         assertTrue(res.methods.stream().anyMatch(m -> m.getSimpleName().equals("isValid") && m.getDeclaringTypeFqn().equals("com.example.OrderRecord")), "isValid() method found");
     }
 
+    public void testPascalCasePackageNames(Path tempDir) throws IOException {
+        Path pkg = tempDir.resolve("src/main/java/com/tcs/bancs/ModuleName");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("AccountService.java"),
+            "package com.tcs.bancs.ModuleName;\n" +
+            "public class AccountService {\n" +
+            "    public void processAccount() {}\n" +
+            "}\n");
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        JavaSourceScanner.ScanResult res = scanner.scan(tempDir.toString(), null);
+
+        assertEquals(1, res.totalFiles, "1 file scanned");
+        assertTrue(res.packages.stream().anyMatch(p -> p.getFqn().equals("com.tcs.bancs.ModuleName")), "Package com.tcs.bancs.ModuleName found");
+        assertTrue(res.types.stream().anyMatch(t -> t.getFqn().equals("com.tcs.bancs.ModuleName.AccountService") && t.getPackageFqn().equals("com.tcs.bancs.ModuleName")), "Type FQN com.tcs.bancs.ModuleName.AccountService found");
+        assertTrue(res.methods.stream().anyMatch(m -> m.getDeclaringTypeFqn().equals("com.tcs.bancs.ModuleName.AccountService")), "Method on AccountService found");
+    }
+
     public static void main(String[] args) throws Exception {
         JavaSourceScannerTest test = new JavaSourceScannerTest();
         System.out.println("Running testIsExcludedWithFolderNames...");
@@ -158,6 +176,25 @@ public class JavaSourceScannerTest {
             });
         }
 
-        System.out.println("ALL JAVA SOURCE SCANNER AND RECORD TESTS PASSED SUCCESSFULLY!");
+        System.out.println("Running testPascalCasePackageNames...");
+        Path tempDir3 = Files.createTempDirectory("codelens_pascal_pkg_test");
+        try {
+            test.testPascalCasePackageNames(tempDir3);
+        } finally {
+            Files.walkFileTree(tempDir3, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        System.out.println("ALL JAVA SOURCE SCANNER AND PASCAL-CASE PACKAGE TESTS PASSED SUCCESSFULLY!");
     }
 }

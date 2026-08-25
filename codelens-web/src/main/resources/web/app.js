@@ -1650,6 +1650,7 @@ async function loadCalleesGraph(methodId, depth = App.graphDepth) {
 
 /** 
  * Automatically format package FQN into clean module name without manual prefix configuration.
+ * Fully supports uppercase and PascalCase package segments (e.g. com.tcs.bancs.ModuleName).
  */
 function formatModuleFromPackage(pkg) {
   if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
@@ -1657,17 +1658,9 @@ function formatModuleFromPackage(pkg) {
   const mode = settings.packageMode || 'auto';
 
   let res = pkg;
-  // If pkg is a full type or method FQN, extract the package part
+  // If pkg is a method signature like "foo(String)", strip the parameter list
   const parenIdx = res.indexOf('(');
   if (parenIdx !== -1) res = res.substring(0, parenIdx);
-  const parts = res.split('.');
-  for (let i = 0; i < parts.length; i++) {
-    if (/^[A-Z]/.test(parts[i])) {
-      res = parts.slice(0, i).join('.') || 'default';
-      break;
-    }
-  }
-  if (!res || res === 'default') return 'Core';
 
   if (mode === 'fqn') return res;
 
@@ -1677,7 +1670,7 @@ function formatModuleFromPackage(pkg) {
     return p.map((seg, idx) => idx >= p.length - 2 ? seg : seg.charAt(0)).join('.');
   }
 
-  // Auto mode:
+  // Auto mode: strip common repository base prefix if present
   if (App.commonPackagePrefix && res.startsWith(App.commonPackagePrefix)) {
     const stripped = res.substring(App.commonPackagePrefix.length);
     if (stripped) res = stripped.startsWith('.') ? stripped.substring(1) : stripped;
