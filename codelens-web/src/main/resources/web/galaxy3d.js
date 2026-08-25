@@ -154,9 +154,13 @@
       this._renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       this._renderer.setSize(width, height);
       this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      if (THREE.SRGBColorSpace) {
+        this._renderer.outputColorSpace = THREE.SRGBColorSpace;
+      }
       this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this._renderer.toneMappingExposure = 1.4;
       this._el.appendChild(this._renderer.domElement);
+      this._clock = new THREE.Clock();
 
       // Controls
       if (THREE.OrbitControls) {
@@ -542,6 +546,9 @@
     _animate() {
       this._animId = requestAnimationFrame(this._animate.bind(this));
 
+      const delta = this._clock ? Math.min(this._clock.getDelta(), 0.1) : 0.016;
+      const lerpFactor = 1 - Math.exp(-6 * delta);
+
       // Animate particles along curves
       if (this._particleGroup && this._particles.length > 0) {
         const positions = this._particleGroup.geometry.attributes.position.array;
@@ -555,15 +562,15 @@
         this._particleGroup.geometry.attributes.position.needsUpdate = true;
       }
 
-      // Smooth camera fly-to interpolation
+      // Smooth camera fly-to interpolation (frame-rate independent)
       if (this._targetCameraPos && this._camera) {
-        this._camera.position.lerp(this._targetCameraPos, 0.05);
+        this._camera.position.lerp(this._targetCameraPos, lerpFactor);
         if (this._camera.position.distanceTo(this._targetCameraPos) < 1) {
           this._targetCameraPos = null;
         }
       }
       if (this._targetControlsTarget && this._controls) {
-        this._controls.target.lerp(this._targetControlsTarget, 0.05);
+        this._controls.target.lerp(this._targetControlsTarget, lerpFactor);
         if (this._controls.target.distanceTo(this._targetControlsTarget) < 1) {
           this._targetControlsTarget = null;
         }
@@ -596,6 +603,23 @@
         this._resizeObserver.disconnect();
         this._resizeObserver = null;
       }
+      // Recursive WebGL resource disposal (geometries, materials, maps)
+      if (this._scene) {
+        this._scene.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((m) => {
+                if (m.map) m.map.dispose();
+                m.dispose();
+              });
+            } else {
+              if (obj.material.map) obj.material.map.dispose();
+              obj.material.dispose();
+            }
+          }
+        });
+      }
       if (this._controls) {
         this._controls.dispose();
         this._controls = null;
@@ -610,6 +634,7 @@
       }
       this._scene = null;
       this._camera = null;
+      this._clock = null;
       this._ambientLight = null;
       this._hemiLight = null;
       this._pointLight = null;

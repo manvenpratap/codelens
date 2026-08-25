@@ -22,11 +22,12 @@ A high-performance, **offline**, self-contained Java codebase intelligence and a
   - [1. Header & Navigation Controls](#1-header--navigation-controls)
   - [2. Left Panel: Explorer & Lucene Search](#2-left-panel-explorer--lucene-search)
   - [3. Centre Workspace Tabs](#3-centre-workspace-tabs)
-    - [Graph Canvas (Dynamic BFS Depth & Physics)](#a-graph-canvas-dynamic-bfs-depth--physics)
+    - [Graph Canvas (Graphify Knowledge Graph & Force Physics)](#a-graph-canvas-graphify-knowledge-graph--force-physics)
     - [Knowledge Base View](#b-knowledge-base-view)
-    - [Inconsistencies & Structural Drift Detector](#c-inconsistencies--structural-drift-detector)
-    - [Git Analytics & Churn Heatmap](#d-git-analytics--churn-heatmap)
-    - [Integrated Monaco Source Code Editor](#e-integrated-monaco-source-code-editor)
+    - [Codebase Visualizations View (3D City, 3D Galaxy, 2D Graph, Treemap, Sunburst, DSM, Chord)](#c-codebase-visualizations-view-3d-city-3d-galaxy-2d-graph-treemap-sunburst-dsm-chord)
+    - [On-Demand Code Review & Logic Auditor](#d-on-demand-code-review--logic-auditor)
+    - [Git Analytics & Churn Heatmap](#e-git-analytics--churn-heatmap)
+    - [Integrated Monaco Source Code Editor](#f-integrated-monaco-source-code-editor)
   - [4. Right Inspector Panel & Analyst Notes](#4-right-inspector-panel--analyst-notes)
   - [5. Interactive Footer & Realtime Status](#5-interactive-footer--realtime-status)
 - [Impact Investigation Workflows](#impact-investigation-workflows)
@@ -410,7 +411,24 @@ The interactive Canvas 2D engine visualises architectural hierarchies, call path
 - Lists field types, modifiers, and source line numbers.
 - Computes **Cyclomatic Complexity (CC)** scores for every method with colored health indicators (`Green: 1-4`, `Amber: 5-10`, `Red: 11+`).
 
-#### C. On-Demand Code Review & Logic Auditor
+#### C. Codebase Visualizations View (3D City, 3D Galaxy, 2D Graph, Treemap, Sunburst, DSM, Chord)
+Multi-model architectural exploration suite offering 7 interactive 2D and 3D rendering modes:
+
+- **Visualization Engines**:
+  - 🪐 **2D Graph (Blooming Tree)**: Force-directed dynamic topology layout with fixed-position hover cards, tooltips, and click-to-detail inspector cards.
+  - 🏙️ **3D Software City**: Interactive 3D urban visualizer mapping packages to city blocks, classes to buildings, lines of code to building height, and complexity/churn to roof colors. Includes live **Brightness & Exposure** sliders.
+  - 🌌 **3D Galaxy**: Gravitational star cluster visualizer rendering code modules as orbital star systems with dynamic exposure controls.
+  - 🗺️ **Treemap & Radial Sunburst**: Hierarchical package area partitioners and radial sunburst diagrams with sub-pixel LOD culling.
+  - 📊 **Dependency Structure Matrix (DSM)**: Sparse grid matrix showing package/class coupling strength and dependency counts.
+  - ⭕ **Chord Diagram**: Radial arc visualizer mapping inter-package and inter-class dependency flows.
+- **Granularity & Scope Controls**:
+  - **Classes vs. Methods Scope**: Switch between class-level and method-level architectural granularities.
+  - **POJO Filter Toggle**: Exclude simple getter/setter methods to focus strictly on core business logic.
+- **HUD Overlays & Controls**:
+  - **Bottom Floating Toolbar**: In-canvas floating control toolbar for physics, layout, zoom, and scope distinct from the top view selector.
+  - **Community & Package HUD Legend**: Top-right HUD legend displaying community clusters and color mappings across all 2D/3D renderers.
+
+#### D. On-Demand Code Review & Logic Auditor
 - 32 deep AST-based static checks across 6 quality categories:
   1. **Correctness**: Null pointer risks, unclosed streams, switch fallthroughs.
   2. **Concurrency**: Non-thread-safe mutation, unsynchronized state access.
@@ -419,11 +437,11 @@ The interactive Canvas 2D engine visualises architectural hierarchies, call path
   5. **API Contracts**: Missing documentation on public APIs, broken equals/hashCode contracts.
   6. **Blast Radius Impact**: High-centrality method mutation risks.
 
-#### D. Git Analytics & Churn Heatmap
+#### E. Git Analytics & Churn Heatmap
 - **Top Authors Leaderboard**: Ranked table of code contributors, total entities touched, and latest commit dates.
 - **♨ Hottest Entities**: Real-time churn bar chart highlighting the most frequently modified classes, methods, and fields.
 
-#### E. Integrated Monaco Source Code Editor
+#### F. Integrated Monaco Source Code Editor
 - Embedded Microsoft Monaco editor (the engine powering VS Code).
 - Click any **Source line link** (e.g. `Portfolio.java:42`) in the inspector or search results to open the file directly in Monaco, jumping automatically to that line with syntax highlighting.
 - Modify source code and click **Save** to persist changes directly to disk.
@@ -482,9 +500,10 @@ The interactive Canvas 2D engine visualises architectural hierarchies, call path
 | `Esc` | Clear search query / Close active modal dialog / Deselect node | Global |
 | `1` | Switch to **Graph** workspace | Global |
 | `2` | Switch to **Knowledge Base** workspace | Global |
-| `3` | Switch to **Code Review & Logic Auditor** workspace | Global |
-| `4` | Switch to **Git Analytics** workspace | Global |
-| `5` | Switch to **Source Code Editor** workspace | Global |
+| `3` | Switch to **Codebase Visualizations** workspace | Global |
+| `4` | Switch to **Code Review & Logic Auditor** workspace | Global |
+| `5` | Switch to **Git Analytics** workspace | Global |
+| `6` | Switch to **Source Code Editor** workspace | Global |
 | `[` | Toggle **Left Explorer Panel** | Global |
 | `]` | Toggle **Right Inspector Panel** | Global |
 | `?` | Open / Close **Feature Guide Modal** | Global |
