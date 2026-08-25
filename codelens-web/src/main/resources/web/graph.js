@@ -34,16 +34,16 @@ let GC = {
   grid:     'rgba(255, 255, 255, 0.02)',
   roles: {
     root:        '#2563eb',
-    caller:      '#38bdf8',
+    caller:      '#60a5fa',
     callee:      '#34d399',
     propagator:  '#fbbf24',
     field:       '#fb923c',
-    reader:      '#38bdf8',
+    reader:      '#60a5fa',
     writer:      '#f87171',
     default:     '#3b82f6',
   },
   edgeKind: {
-    CALLS:        '#38bdf8',
+    CALLS:        '#60a5fa',
     READS_FIELD:  '#2dd4bf',
     WRITES_FIELD: '#f59e0b',
     EXTENDS:      '#94a3b8',
@@ -1319,7 +1319,7 @@ class ForceGraph {
       if (count === 0) {
         mainColor = '#475569';
       } else if (heatRatio < 0.35) {
-        mainColor = lerpColor('#38bdf8', '#f59e0b', heatRatio / 0.35);
+        mainColor = lerpColor('#60a5fa', '#f59e0b', heatRatio / 0.35);
       } else {
         mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.35) / 0.65);
       }
@@ -1507,7 +1507,7 @@ class ForceGraph {
 
       mctx.beginPath();
       mctx.arc(mx, my, Math.max(2, n.radius * mScale), 0, Math.PI * 2);
-      mctx.fillStyle = n.communityColor || '#38bdf8';
+      mctx.fillStyle = n.communityColor || '#2563eb';
       mctx.fill();
     }
 
@@ -1674,11 +1674,11 @@ class ForceGraph {
     const neighborsList = document.getElementById('node-card-neighbors');
     const countEl = document.getElementById('node-card-neighbor-count');
 
-    const commColor = node.communityColor || '#38bdf8';
+    const commColor = node.communityColor || '#2563eb';
 
     // Type color map
     const typeColors = {
-      METHOD: '#38bdf8',    // Cyan
+      METHOD: '#60a5fa',    // Cobalt sky
       FIELD: '#f59e0b',     // Amber
       CLASS: '#3b82f6',     // Cobalt
       INTERFACE: '#10b981', // Emerald
@@ -2061,7 +2061,7 @@ class ForceGraph {
 
     const commColor = node.communityColor || '#3b82f6';
     const typeColors = {
-      METHOD:    '#38bdf8', // Cyan
+      METHOD:    '#60a5fa', // Cobalt sky
       FIELD:     '#f59e0b', // Amber
       CLASS:     '#3b82f6', // Cobalt
       INTERFACE: '#10b981', // Emerald
