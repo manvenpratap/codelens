@@ -71,53 +71,53 @@ colors:
 
 typography:
   display-hero:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "40px"
     fontWeight: 700
     lineHeight: 1.1
   display-headline:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "32px"
     fontWeight: 700
     lineHeight: 1.15
   display-xl:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "22px"
     fontWeight: 700
     lineHeight: 1.2
   title-lg:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "20px"
     fontWeight: 600
     lineHeight: 1.25
   display-lg:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "18px"
     fontWeight: 700
     lineHeight: 1.2
   title-md:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "17px"
     fontWeight: 600
     lineHeight: 1.3
   title-sm:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 600
     lineHeight: 1.3
   display:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "15px"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.02em"
   title:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
+    fontFamily: "Sora, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 600
     lineHeight: 1.3
   ui:
-    fontFamily: "Plus Jakarta Sans, system-ui, -apple-system, sans-serif"
+    fontFamily: "IBM Plex Sans, system-ui, -apple-system, sans-serif"
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.4
@@ -129,7 +129,7 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0"
   caption:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, system-ui, sans-serif"
     fontSize: "11px"
     fontWeight: 500
     lineHeight: 1.4
@@ -144,7 +144,7 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
   micro:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, system-ui, sans-serif"
     fontSize: "9px"
     fontWeight: 700
     lineHeight: 1.2
@@ -224,8 +224,8 @@ The palette uses a crisp **Raycast/Linear-inspired cobalt blue** (`#2563eb`) pai
 
 CodeLens uses a tailored three-tier typographic stack:
 
-1. **Brand & Section Headers (`--font-display`)**: `Space Grotesk, sans-serif` (weight `600`/`700`, tight letter spacing `-0.02em`, balance text-wrap).
-2. **UI & Data Telemetry (`--font-ui`)**: `Plus Jakarta Sans, system-ui, sans-serif` (weight `400`/`500`/`600`).
+1. **Brand & Section Headers (`--font-display`)**: `Sora, sans-serif` (weight `600`/`700`, tight letter spacing `-0.02em`, balance text-wrap).
+2. **UI & Data Telemetry (`--font-ui`)**: `IBM Plex Sans, system-ui, sans-serif` (weight `400`/`500`/`600`).
 3. **Source Code & AST Signatures (`--font-mono`)**: `JetBrains Mono, Menlo, Consolas, monospace` with `font-variant-numeric: tabular-nums` for aligned line numbers, complexity metrics, and token badges.
 
 ---
