@@ -3042,6 +3042,137 @@ body.resizing .panel-resizer {
   transform: scale(0.92);
 }
 
+.help-dialog {
+  max-width: 920px;
+  width: 92vw;
+}
+
+.guide-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.guide-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur-std) var(--ease);
+}
+
+.guide-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.guide-tab-btn.active {
+  color: var(--primary-bright);
+  background: var(--primary-bg);
+  border-color: var(--primary-border);
+}
+
+/* Workspace Inline Contextual Help Banners */
+.workspace-help-banner,
+.review-help-banner,
+.git-help-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.6));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  margin: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.workspace-help-banner strong,
+.review-help-banner strong,
+.git-help-banner strong {
+  color: var(--primary-bright);
+}
+
+.banner-badge {
+  background: var(--primary-bg);
+  color: var(--primary-bright);
+  border: 1px solid var(--primary-border);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.banner-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.banner-close:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* KB Complexity Legend Help Bar */
+.kb-help-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.kb-help-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cc-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.cc-low {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.cc-med {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.cc-high {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
 .modal-body {
   padding: 24px;
   overflow-y: auto;

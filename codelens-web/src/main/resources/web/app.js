@@ -2761,6 +2761,27 @@ async function init() {
     });
   }
 
+  // Feature Guide Modal sub-tab navigation
+  const guideTabBtns = qsa('.guide-tab-btn');
+  const guidePanels  = qsa('.guide-tab-panel');
+  guideTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.guideTab;
+      guideTabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      guidePanels.forEach(panel => {
+        if (panel.id === `guide-tab-${targetTab}`) {
+          panel.style.display = 'block';
+          panel.classList.add('active');
+        } else {
+          panel.style.display = 'none';
+          panel.classList.remove('active');
+        }
+      });
+    });
+  });
+
   bindKeyboard();
 
   // Eagerly initialize graph canvas instance

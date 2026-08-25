@@ -457,6 +457,15 @@
       aria-labelledby="tab-codebase"
       tabindex="0"
     >
+      <!-- Inline Contextual Help Banner for Codebase Viz -->
+      <div id="codebase-help-banner" class="workspace-help-banner">
+        <div class="banner-icon">💡</div>
+        <div class="banner-content">
+          <strong>Codebase Visualizations Suite:</strong> Explore your repository architecture across 7 interactive 2D &amp; 3D models. Switch between <strong>Classes</strong> and <strong>Methods</strong> scope, toggle POJO filters, or adjust 3D lighting exposure.
+        </div>
+        <button class="banner-close" onclick="this.parentElement.style.display='none'" title="Dismiss help">✕</button>
+      </div>
+
       <!-- Top Floating View Modes Switcher Bar (2D Graph, 3D City, 3D Galaxy, Treemap, Sunburst, DSM, Chord) -->
       <div id="codebase-hud-bar" class="graph-hud-bar codebase-top-bar" aria-label="Codebase Visualization Level">
         <span class="hud-label" style="font-weight:700; color:#34d399; display:flex; align-items:center; gap:5px;">
@@ -594,6 +603,12 @@
       tabindex="0"
       aria-live="polite"
     >
+      <div class="kb-help-bar">
+        <span class="kb-help-title">💡 Cyclomatic Complexity (CC):</span>
+        <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">Green: 1-4 Low</span>
+        <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">Amber: 5-10 Moderate</span>
+        <span class="cc-pill cc-high" title="High complexity method risk (CC 11+)">Red: 11+ High Risk</span>
+      </div>
       <div class="list-empty">
         Select a package or type from the explorer to browse its members.
       </div>
@@ -611,6 +626,10 @@
     >
       <!-- Review target selector -->
       <div class="review-workspace">
+        <div class="review-help-banner">
+          <span class="banner-badge">32 Static AST Rules</span>
+          <span>Automated static checks across Null Risks, Concurrency Hazards, Swallowed Exceptions, Code Smells, API Contracts, and Centrality Blast Radius.</span>
+        </div>
         <div class="review-controls">
           <div class="review-mode-selector">
             <button class="review-mode-btn active" data-mode="selection" title="Review the currently selected type/method from the Explorer">
@@ -655,6 +674,10 @@
       aria-live="polite"
     >
       <div class="git-view-inner">
+        <div class="git-help-banner">
+          <span class="banner-badge">JGit Telemetry</span>
+          <span>Computes commit frequencies, author leaderboards, and churn heat. Press <kbd>H</kbd> in Graph view to overlay thermal heat shaders onto graph nodes.</span>
+        </div>
         <!-- Git Repository Connection Card -->
         <div class="git-connect-card">
           <div class="git-connect-header">
@@ -815,113 +838,206 @@
      FEATURE & SCREEN HELPER MODAL DIALOG
      ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="help-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="help-modal-title">
-  <div class="modal-dialog">
+  <div class="modal-dialog help-dialog">
     <div class="modal-header">
       <div class="modal-title-row">
         <img src="/assets/app-icon.png" alt="CodeLens Icon" class="modal-icon-img" />
-        <h2 id="help-modal-title">CodeLens Feature &amp; Screen Guide</h2>
+        <div>
+          <h2 id="help-modal-title">CodeLens Intelligence Platform — Feature &amp; User Guide</h2>
+          <p class="modal-subtitle">Comprehensive walkthrough of workspace screens, 3D/2D visualizations, quality engines, and keyboard shortcuts</p>
+        </div>
       </div>
       <button class="modal-close-btn" id="help-modal-close" aria-label="Close Guide">✕</button>
     </div>
-    <div class="modal-body">
 
-      <section class="help-section">
-        <h3>Graph Legend &amp; Standard IDE Symbols</h3>
-        <div class="help-grid">
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge" style="background:var(--primary-subtle); color:var(--primary); border:1px solid var(--primary-border)">m</span> Method</h4>
-            <p>Java member methods and constructors. Circle size reflects connectivity degree (callers + callees).</p>
-          </div>
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4)">f</span> Field / Property</h4>
-            <p>Class fields and static variables. Tracks repository-wide reader and writer methods.</p>
-          </div>
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge nc-badge-class">C</span> Class</h4>
-            <p>Standard Java classes. Contains member methods, fields, and inheritance relationships.</p>
-          </div>
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge nc-badge-interface">I</span> Interface</h4>
-            <p>Java interface contracts. Displays polymorphic implementation links across packages.</p>
-          </div>
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge nc-badge-enum">E</span> Enum</h4>
-            <p>Enumeration types with constant values and associated behavior.</p>
-          </div>
-          <div class="help-card">
-            <h4><span class="nc-val nc-badge nc-badge-record">R</span> Record</h4>
-            <p>Java 17+ immutable data carriers with auto-generated component accessors.</p>
-          </div>
-        </div>
-      </section>
+    <!-- Guide Sub-Navigation Bar -->
+    <div class="guide-nav-bar" role="tablist" aria-label="Guide Sections">
+      <button class="guide-tab-btn active" data-guide-tab="overview" role="tab">🚀 Overview &amp; Workflows</button>
+      <button class="guide-tab-btn" data-guide-tab="views" role="tab">🎨 3D &amp; 2D Codebase Views</button>
+      <button class="guide-tab-btn" data-guide-tab="symbols" role="tab">💎 IDE Entity Symbols</button>
+      <button class="guide-tab-btn" data-guide-tab="quality" role="tab">🛡️ Quality &amp; Audit Engine</button>
+      <button class="guide-tab-btn" data-guide-tab="shortcuts" role="tab">⌨️ Keyboard Shortcuts</button>
+    </div>
 
-      <section class="help-section">
-        <h3>Core Intelligence Capabilities</h3>
-        <div class="help-grid">
-          <div class="help-card">
-            <h4>1. AST Source Indexing &amp; Master Browse</h4>
-            <p>Single-click folder selection parses 100% of Java AST structures and syncs Git history simultaneously into embedded H2 and Apache Lucene storage.</p>
-          </div>
-          <div class="help-card">
-            <h4>2. Knowledge Graph &amp; Force Physics</h4>
-            <p>Force-directed layout with Coulomb repulsion, Hooke spring tension, package convex hulls, and a toggleable Physics engine (<kbd>Space</kbd>) to freeze layouts.</p>
-          </div>
-          <div class="help-card">
-            <h4>3. Dynamic Call Hierarchy (BFS Depth)</h4>
-            <p>Traverse upstream callers and downstream callees across selectable graph depths (1, 2, 3, 5, or Max hops) with zero lag.</p>
-          </div>
-          <div class="help-card">
-            <h4>4. Field Impact &amp; Mutation Propagation</h4>
-            <p>Traces every method reading or writing a field, plus full upstream caller chains (Field &larr; Writers &larr; Callers) across the entire codebase.</p>
-          </div>
-          <div class="help-card">
-            <h4>5. Git Intelligence &amp; Churn Heatmap (<kbd>H</kbd>)</h4>
-            <p>Renders live commit frequencies, churn levels, and top contributing authors directly onto graph nodes as thermal shaders.</p>
-          </div>
-          <div class="help-card">
-            <h4>6. Integrated Monaco Code Editor</h4>
-            <p>Click any class, method, or link to inspect source files with full syntax highlighting and instant on-disk saving.</p>
-          </div>
-        </div>
-      </section>
+    <div class="modal-body guide-body">
 
-      <section class="help-section">
-        <h3>Screen &amp; Panel Breakdown</h3>
-        <div class="help-flow">
-          <div class="flow-step">
-            <strong>Header</strong>: Single master Browse button to pick your Java repository, live AST entity counters (Types, Methods, Fields, Rels), and real-time scan progress bar.
+      <!-- Sub-Tab 1: Overview & Workflows -->
+      <div class="guide-tab-panel active" id="guide-tab-overview">
+        <section class="help-section">
+          <h3>Workspace Navigation (6 Core Screens)</h3>
+          <div class="help-grid">
+            <div class="help-card">
+              <h4>1. Graph View (<kbd>1</kbd>)</h4>
+              <p>Call hierarchy and field impact canvas with force-directed physics, BFS depth pills (1–15 hops / Max), package convex hulls, quick inspector card, and radar minimap.</p>
+            </div>
+            <div class="help-card">
+              <h4>2. Knowledge Base (<kbd>2</kbd>)</h4>
+              <p>Structured package/type/member catalog with Cyclomatic Complexity health scores (Green: 1–4, Amber: 5–10, Red: 11+ High Risk).</p>
+            </div>
+            <div class="help-card">
+              <h4>3. Codebase Visualizations (<kbd>3</kbd>)</h4>
+              <p>Macro architectural exploration suite featuring 3D Software City, 3D Galaxy, 2D Graph, Treemap, Sunburst, DSM Matrix, and Chord diagram.</p>
+            </div>
+            <div class="help-card">
+              <h4>4. Code Review &amp; Logic Auditor (<kbd>4</kbd>)</h4>
+              <p>32 AST-backed static quality rules detecting null pointer risks, concurrency bugs, swallowed exceptions, smells, and high blast radius centrality.</p>
+            </div>
+            <div class="help-card">
+              <h4>5. Git Analytics &amp; Churn (<kbd>5</kbd>)</h4>
+              <p>Top author leaderboards, recent commit timeline, and hottest churned entities. Press <kbd>H</kbd> in Graph view to overlay thermal heat shaders.</p>
+            </div>
+            <div class="help-card">
+              <h4>6. Source Code Editor (<kbd>6</kbd>)</h4>
+              <p>Embedded Microsoft Monaco code editor. Jump directly from any graph node or line link (`Class.java:42`) to edit and save files on disk.</p>
+            </div>
           </div>
-          <div class="flow-step">
-            <strong>Left Panel (Explorer &amp; Search)</strong>: Filter by Type chips, browse packages and member trees, or press <kbd>⌘K</kbd> for instant Lucene search. Collapsible via <kbd>[</kbd>.
-          </div>
-          <div class="flow-step">
-            <strong>Centre Panel (5 Workspaces)</strong>:
-            <ul>
-              <li><strong>Graph (<kbd>1</kbd>)</strong>: Interactive force canvas with depth pills, convex cluster hulls, live physics simulation, quick-inspector card, and minimap radar.</li>
-              <li><strong>Knowledge Base (<kbd>2</kbd>)</strong>: Structured catalog with member signatures, complexity metrics, and quick search.</li>
-              <li><strong>Code Review (<kbd>3</kbd>)</strong>: 32 AST-based static quality &amp; concurrency checks with actionable fix recommendations.</li>
-              <li><strong>Git (<kbd>4</kbd>)</strong>: Commit author leaderboards, recent history, and hottest churned files.</li>
-              <li><strong>Source (<kbd>5</kbd>)</strong>: Embedded Monaco code editor for deep source inspection and live edits.</li>
-            </ul>
-          </div>
-          <div class="flow-step">
-            <strong>Right Panel (Inspector)</strong>: Complete entity detail, Cyclomatic Complexity score bar, relationships, git blame telemetry, and editable analyst notes. Collapsible via <kbd>]</kbd>.
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="help-section">
-        <h3>Keyboard Shortcuts</h3>
-        <div class="shortcuts-table">
-          <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global Lucene entity search</span></div>
-          <div class="sc-row"><kbd>Esc</kbd> <span>Close search popup, guide, or deselect node</span></div>
-          <div class="sc-row"><kbd>1</kbd>-<kbd>5</kbd> <span>Switch workspace tab (Graph, KB, Review, Git, Source)</span></div>
-          <div class="sc-row"><kbd>Space</kbd> <span>Toggle / Freeze live graph physics simulation</span></div>
-          <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit churn heatmap on graph nodes</span></div>
-          <div class="sc-row"><kbd>F</kbd> <span>Fit entire graph to screen</span></div>
-          <div class="sc-row"><kbd>[</kbd> / <kbd>]</kbd> <span>Toggle Left Explorer / Right Inspector panels</span></div>
-        </div>
-      </section>
+        <section class="help-section">
+          <h3>Key Impact Investigation Workflows</h3>
+          <div class="help-flow">
+            <div class="flow-step">
+              <strong>Method Blast Radius Analysis</strong>: Search or click any method &rarr; Click <code>⬆ Callers</code> in the Inspector &rarr; Expand BFS depth from 1 to 5 hops to trace all entrypoints and public controllers impacted by signature changes.
+            </div>
+            <div class="flow-step">
+              <strong>Field Mutation Propagation Chains</strong>: Select any field &rarr; Click <code>🔗 Propagation Chain</code> in the Inspector &rarr; Traces <code>Field &larr; Writer Methods &larr; Upstream Calling Triggers</code> across the repository with color-coded node roles.
+            </div>
+            <div class="flow-step">
+              <strong>Repository Scan &amp; Folder Exclusions</strong>: Click <strong>Browse…</strong> to pick your Java repository &rarr; Configure <strong>⚙ Settings</strong> exclude patterns (`target, build, .mvn, .git, node_modules, **/test/**`) &rarr; Click <strong>Scan</strong>.
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Sub-Tab 2: 3D & 2D Codebase Views -->
+      <div class="guide-tab-panel" id="guide-tab-views" style="display:none;">
+        <section class="help-section">
+          <h3>Interactive Architectural Renderers</h3>
+          <div class="help-grid">
+            <div class="help-card">
+              <h4>🏙️ 3D Software City ("CodeCity")</h4>
+              <p>Visualizes packages as elevated ground platforms and classes as skyscraper monoliths. Base footprint = method/field count, Height = lines of code (LOC), Roof color = complexity/churn. Orbit with mouse drag/wheel; adjust <strong>Exposure &amp; Brightness</strong> slider.</p>
+            </div>
+            <div class="help-card">
+              <h4>🌌 3D Force Galaxy ("Orbital Graph")</h4>
+              <p>Gravitational star cluster rendering code modules as orbital star systems with 3D quadratic bezier call arcs, animated particle pulses, and glowing celestial spheres.</p>
+            </div>
+            <div class="help-card">
+              <h4>🌸 2D Blooming Tree Graph</h4>
+              <p>Whole-codebase force topology rendering classes and methods as connected nodes with fixed-position hover cards, tooltips, and click-to-detail inspector HUDs.</p>
+            </div>
+            <div class="help-card">
+              <h4>▦ Zoomable Treemap</h4>
+              <p>Squarified area partitioner sizing rectangles by lines of code and coloring by complexity. Click any package or class rectangle to zoom in with breadcrumb navigation.</p>
+            </div>
+            <div class="help-card">
+              <h4>◉ Sunburst (Radial Hierarchy)</h4>
+              <p>Concentric ring segments representing Package &rarr; Class &rarr; Method hierarchy. Segment angle reflects size; click ring slices to zoom radially.</p>
+            </div>
+            <div class="help-card">
+              <h4>⊞ Dependency Structure Matrix (DSM)</h4>
+              <p>Sparse grid matrix displaying dependency counts between classes and packages. Highlights cyclic dependencies in red for architecture refactoring.</p>
+            </div>
+            <div class="help-card">
+              <h4>⌒ Chord Diagram</h4>
+              <p>Circular arc visualizer with double-sided bezier ribbon polygons showing inter-package and inter-class call volume with directional linear gradients.</p>
+            </div>
+            <div class="help-card">
+              <h4>⚡ Granularity &amp; POJO Filter</h4>
+              <p>Toggle between <strong>Classes</strong> and <strong>Methods</strong> scope on the floating bottom toolbar. Enable <strong>Hide POJOs</strong> to filter out trivial getters and setters.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Sub-Tab 3: IDE Entity Symbols -->
+      <div class="guide-tab-panel" id="guide-tab-symbols" style="display:none;">
+        <section class="help-section">
+          <h3>Graph Legend &amp; Standard IDE Badges</h3>
+          <div class="help-grid">
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge" style="background:var(--primary-subtle); color:var(--primary); border:1px solid var(--primary-border)">m</span> Method</h4>
+              <p>Java member methods and constructors. Circle size reflects connectivity degree (callers + callees).</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4)">f</span> Field / Property</h4>
+              <p>Class fields and static variables. Tracks repository-wide reader and writer methods.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge nc-badge-class">C</span> Class</h4>
+              <p>Standard Java classes. Contains member methods, fields, and inheritance relationships.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge nc-badge-interface">I</span> Interface</h4>
+              <p>Java interface contracts. Displays polymorphic implementation links across packages.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge nc-badge-enum">E</span> Enum</h4>
+              <p>Enumeration types with constant values and associated behavior.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge nc-badge-record">R</span> Record</h4>
+              <p>Java 17+ immutable data carriers with auto-generated component accessors.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Sub-Tab 4: Quality & Audit Engine -->
+      <div class="guide-tab-panel" id="guide-tab-quality" style="display:none;">
+        <section class="help-section">
+          <h3>32 Static AST Quality Rules</h3>
+          <div class="help-grid">
+            <div class="help-card">
+              <h4>1. Correctness Checks</h4>
+              <p>Detects null pointer risks, unclosed resource streams (`AutoCloseable`), switch fallthrough bugs, and string comparison mistakes.</p>
+            </div>
+            <div class="help-card">
+              <h4>2. Concurrency Hazards</h4>
+              <p>Flags non-thread-safe field mutations, unsynchronized static state access, double-checked locking anti-patterns, and thread pool leaks.</p>
+            </div>
+            <div class="help-card">
+              <h4>3. Exception Safety</h4>
+              <p>Identifies swallowed exception blocks, raw `Throwable` catches, lost stack traces, and cleanup block failures.</p>
+            </div>
+            <div class="help-card">
+              <h4>4. Code Smells &amp; Metrics</h4>
+              <p>Flags long parameter lists ($>5$ params), high cyclomatic complexity ($>10$), dead code, and oversized classes ($>500$ LOC).</p>
+            </div>
+            <div class="help-card">
+              <h4>5. API Contracts &amp; Docs</h4>
+              <p>Audits missing Javadoc on public methods, broken `equals`/`hashCode` contracts, and mutable collection leaks.</p>
+            </div>
+            <div class="help-card">
+              <h4>6. Blast Radius Centrality</h4>
+              <p>Identifies high-centrality methods that act as critical system bottlenecks and carry high refactoring risk.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Sub-Tab 5: Keyboard Shortcuts -->
+      <div class="guide-tab-panel" id="guide-tab-shortcuts" style="display:none;">
+        <section class="help-section">
+          <h3>Complete Keyboard Shortcuts</h3>
+          <div class="shortcuts-table">
+            <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global Apache Lucene entity search</span></div>
+            <div class="sc-row"><kbd>Esc</kbd> <span>Close search popup, guide, or deselect active node</span></div>
+            <div class="sc-row"><kbd>1</kbd> <span>Switch to <strong>Graph Canvas</strong> workspace</span></div>
+            <div class="sc-row"><kbd>2</kbd> <span>Switch to <strong>Knowledge Base</strong> catalog</span></div>
+            <div class="sc-row"><kbd>3</kbd> <span>Switch to <strong>Codebase Visualizations</strong> suite</span></div>
+            <div class="sc-row"><kbd>4</kbd> <span>Switch to <strong>Code Review &amp; Logic Auditor</strong></span></div>
+            <div class="sc-row"><kbd>5</kbd> <span>Switch to <strong>Git Analytics &amp; Churn</strong></span></div>
+            <div class="sc-row"><kbd>6</kbd> <span>Switch to <strong>Integrated Monaco Code Editor</strong></span></div>
+            <div class="sc-row"><kbd>Space</kbd> <span>Toggle / Freeze live graph force physics simulation</span></div>
+            <div class="sc-row"><kbd>H</kbd> <span>Toggle Git commit churn heatmap shaders on nodes</span></div>
+            <div class="sc-row"><kbd>F</kbd> <span>Fit entire graph layout to screen viewport</span></div>
+            <div class="sc-row"><kbd>[</kbd> <span>Toggle Left Explorer &amp; Search Panel</span></div>
+            <div class="sc-row"><kbd>]</kbd> <span>Toggle Right Entity Inspector Panel</span></div>
+            <div class="sc-row"><kbd>?</kbd> <span>Open / Close Feature &amp; Screen Guide modal</span></div>
+          </div>
+        </section>
+      </div>
 
     </div>
   </div>
