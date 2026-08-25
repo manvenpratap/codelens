@@ -1364,6 +1364,32 @@ async function loadWholeCodebaseGraph(level = null) {
         App.activeAltRenderer = renderer;
         renderAltVizInspector('Sunburst', countTreemapNodes(data), data.size);
         showBanner('Sunburst loaded: ' + countTreemapNodes(data) + ' nodes');
+
+      } else if (App.codebaseGraphLevel === 'city3d') {
+        showBanner('Building 3D Software City...');
+        const data = await api.architectureGraph();
+        if (!data.nodes || data.nodes.length === 0) {
+          showGraphEmpty('No architecture data available for 3D City. Run a scan first.');
+          return;
+        }
+        const renderer = new window.CodeCity3DRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('3D City', data.nodes.length, data.edges.length);
+        showBanner('3D Software City loaded: ' + data.nodes.length + ' buildings');
+
+      } else if (App.codebaseGraphLevel === 'galaxy3d') {
+        showBanner('Generating 3D Force Galaxy...');
+        const data = await api.architectureGraph();
+        if (!data.nodes || data.nodes.length === 0) {
+          showGraphEmpty('No architecture data available for 3D Galaxy. Run a scan first.');
+          return;
+        }
+        const renderer = new window.Galaxy3DRenderer(qs('#graph-view'));
+        renderer.setData(data);
+        App.activeAltRenderer = renderer;
+        renderAltVizInspector('3D Galaxy', data.nodes.length, data.edges.length);
+        showBanner('3D Force Galaxy loaded: ' + data.nodes.length + ' orbital nodes');
       }
     } catch (e) {
       showGraphEmpty('Failed to load visualization: ' + e.message);
@@ -1433,6 +1459,8 @@ function renderAltVizInspector(vizName, nodeCount, sizeOrEdges) {
     'Treemap': [['Nodes', String(nodeCount)], ['Total Lines', String(sizeOrEdges)], ['View', 'Zoomable Treemap']],
     'Chord': [['Classes', String(nodeCount)], ['Relationships', String(sizeOrEdges)], ['View', 'Chord Diagram']],
     'Sunburst': [['Nodes', String(nodeCount)], ['Total Lines', String(sizeOrEdges)], ['View', 'Sunburst']],
+    '3D City': [['Buildings', String(nodeCount)], ['View', '3D Software City Monoliths (Three.js)']],
+    '3D Galaxy': [['Orbital Nodes', String(nodeCount)], ['Relationships', String(sizeOrEdges)], ['View', '3D Constellation Galaxy (Three.js)']],
   };
 
   body.appendChild(metaGrid(labels[vizName] || [['Nodes', String(nodeCount)]]));
@@ -1443,6 +1471,8 @@ function renderAltVizInspector(vizName, nodeCount, sizeOrEdges) {
     'Treemap': 'Rectangle size = lines of code. Colors = categorical palette consistent with Sunburst & Chord. Click to zoom in.',
     'Chord': 'Arc size = connection volume. Chords = inter-class calls. Hover an arc to isolate its connections.',
     'Sunburst': 'Ring segments = packages/classes/methods. Angle = proportion of code size. Click to zoom in.',
+    '3D City': '3D WebGL Monoliths: Height = Lines of Code, Base = Complexity. Left-click + drag to orbit, right-click to pan, scroll to zoom. Click skyscraper to inspect.',
+    '3D Galaxy': '3D Orbital Constellation: 3D Force-Directed nodes with particle energy pulses along call arcs. Orbit / Pan camera and click nodes to traverse.',
   };
   hint.innerHTML = '<div style="font-size:12px; color:var(--text-secondary); line-height:1.5; padding:8px 0;">' + (tips[vizName] || '') + '</div>';
   body.appendChild(hint);
@@ -2604,6 +2634,14 @@ async function init() {
   const sunburstLevelBtn = qs('#btn-level-sunburst');
   if (sunburstLevelBtn) {
     sunburstLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('sunburst'));
+  }
+  const city3dLevelBtn = qs('#btn-level-city3d');
+  if (city3dLevelBtn) {
+    city3dLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('city3d'));
+  }
+  const galaxy3dLevelBtn = qs('#btn-level-galaxy3d');
+  if (galaxy3dLevelBtn) {
+    galaxy3dLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('galaxy3d'));
   }
 
   // Expose global handles for testing and automation

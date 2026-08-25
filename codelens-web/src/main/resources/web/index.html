@@ -359,6 +359,9 @@
           <button class="level-pill" id="btn-level-treemap" data-level="treemap" title="Zoomable Treemap (Code Size and Complexity)">Treemap</button>
           <button class="level-pill" id="btn-level-chord" data-level="chord" title="Chord Diagram (Inter-class Call Volume)">Chord</button>
           <button class="level-pill" id="btn-level-sunburst" data-level="sunburst" title="Sunburst (Radial Hierarchy by Size)">Sunburst</button>
+          <span class="level-pill-divider"></span>
+          <button class="level-pill" id="btn-level-city3d" data-level="city3d" title="3D Software City (WebGL Monoliths)">3D City</button>
+          <button class="level-pill" id="btn-level-galaxy3d" data-level="galaxy3d" title="3D Force Galaxy (Orbital Constellation)">3D Galaxy</button>
         </div>
 
         <div class="hud-divider" id="graph-level-divider" style="display:none;"></div>
@@ -1037,12 +1040,16 @@
        1. graph.js   defines window.ForceGraph (no DOM interaction on load)
        2. app.js     calls window.ForceGraph after DOMContentLoaded fires
      ═══════════════════════════════════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script src="/graph.js"    defer></script>
 <script src="/dsm.js"      defer></script>
 <script src="/treemap.js"  defer></script>
 <script src="/chord.js"    defer></script>
 <script src="/sunburst.js" defer></script>
+<script src="/city3d.js"   defer></script>
+<script src="/galaxy3d.js" defer></script>
 <script src="/app.js"      defer></script>
 
 </body>
