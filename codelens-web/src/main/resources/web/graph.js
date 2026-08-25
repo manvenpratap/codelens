@@ -680,7 +680,8 @@ class ForceGraph {
   /* ── Physics Simulation ─────────────────────────────────────────────────── */
 
   _runInitialStabilization() {
-    for (let i = 0; i < 120; i++) {
+    const ticks = this._nodes.length > 100 ? 12 : 25;
+    for (let i = 0; i < ticks; i++) {
       this._simulateTick();
     }
   }
@@ -814,31 +815,29 @@ class ForceGraph {
       nd.y += nd.vy;
     }
 
-    // 5. Multi-pass Hard Collision Separation (mathematically guarantees NO OVERLAP)
-    for (let iter = 0; iter < 4; iter++) {
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const ni = nodes[i], nj = nodes[j];
-          if (this._hiddenCommunities.has(ni.community) || this._hiddenCommunities.has(nj.community)) continue;
+    // 5. Hard Collision Separation (Single-pass for high FPS)
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const ni = nodes[i], nj = nodes[j];
+        if (this._hiddenCommunities.has(ni.community) || this._hiddenCommunities.has(nj.community)) continue;
 
-          const dx = nj.x - ni.x;
-          const dy = nj.y - ni.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          const requiredDist = ni.radius + nj.radius + 38;
+        const dx = nj.x - ni.x;
+        const dy = nj.y - ni.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const requiredDist = ni.radius + nj.radius + 34;
 
-          if (dist < requiredDist) {
-            const overlap = (requiredDist - dist) * 0.5;
-            const ux = dx / dist;
-            const uy = dy / dist;
+        if (dist < requiredDist) {
+          const overlap = (requiredDist - dist) * 0.5;
+          const ux = dx / dist;
+          const uy = dy / dist;
 
-            if (!ni.pinned) {
-              ni.x -= ux * overlap;
-              ni.y -= uy * overlap;
-            }
-            if (!nj.pinned) {
-              nj.x += ux * overlap;
-              nj.y += uy * overlap;
-            }
+          if (!ni.pinned) {
+            ni.x -= ux * overlap;
+            ni.y -= uy * overlap;
+          }
+          if (!nj.pinned) {
+            nj.x += ux * overlap;
+            nj.y += uy * overlap;
           }
         }
       }
