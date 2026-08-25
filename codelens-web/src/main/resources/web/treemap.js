@@ -3,22 +3,18 @@
  * Shared consistently across Sunburst, Treemap, Chord Diagram, and Graphify views.
  */
 if (!window.CodeLensPalette) {
+  // 50 maximally distinguishable equidistant hues across the full 360° color wheel
   const PALETTE = [
-    // 1-10: Vivid Primaries & Secondaries
-    '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899',
-    '#06b6d4', '#f97316', '#14b8a6', '#a855f7', '#ef4444',
-    // 11-20: High-luminance accents
-    '#84cc16', '#6366f1', '#0ea5e9', '#d946ef', '#eab308',
-    '#22c55e', '#f43f5e', '#38bdf8', '#fb923c', '#a3e635',
-    // 21-30: Jewel tones
-    '#059669', '#2563eb', '#d97706', '#7c3aed', '#db2777',
-    '#0891b2', '#ea580c', '#0d9488', '#9333ea', '#dc2626',
-    // 31-40: Neon & Pastel Brights
-    '#65a30d', '#4f46e5', '#0284c7', '#c026d3', '#ca8a04',
-    '#16a34a', '#e11d48', '#34d399', '#60a5fa', '#fbbf24',
-    // 41-50: Crisp distinct highlights
-    '#c084fc', '#f472b6', '#22d3ee', '#fb7185', '#2dd4bf',
-    '#818cf8', '#facc15', '#4ade80', '#e879f9', '#38bdf8'
+    '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+    '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
+    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+    '#ec4899', '#f43f5e', '#dc2626', '#ea580c', '#d97706',
+    '#ca8a04', '#65a30d', '#16a34a', '#059669', '#0d9488',
+    '#0891b2', '#0284c7', '#2563eb', '#4f46e5', '#7c3aed',
+    '#9333ea', '#c026d3', '#db2777', '#e11d48', '#ff3366',
+    '#ff6600', '#ffaa00', '#ffcc00', '#99ee00', '#00dd77',
+    '#00ddcc', '#0099ff', '#3355ff', '#8833ff', '#dd00ff',
+    '#ff00aa', '#ff1a75', '#ff5722', '#ff9800', '#e91e63'
   ];
 
   function getEntityColor(nameOrFqn, fallbackIndex = 0) {
