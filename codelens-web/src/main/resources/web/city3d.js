@@ -36,10 +36,30 @@
       this._onSelectEntity = callback;
     }
 
-    setData(payload) {
+    setData(payload, treeData) {
       this._data = payload;
+      this._treeData = treeData || null;
+      this._treeClassMetrics = new Map();
+      if (this._treeData) {
+        this._indexTreeMetrics(this._treeData);
+      }
       this._initScene();
       this._buildCity();
+    }
+
+    _indexTreeMetrics(node) {
+      if (!node) return;
+      if (node.kind === 'CLASS' || node.kind === 'INTERFACE' || node.kind === 'ENUM' || node.kind === 'RECORD' || (node.children && node.children.some(c => c.kind === 'METHOD'))) {
+        const methods = (node.children || []).filter(c => c.kind === 'METHOD');
+        this._treeClassMetrics.set(node.fqn || node.name, {
+          lineCount: node.lineCount || node.size || 0,
+          methodCount: methods.length,
+          kind: node.kind || 'CLASS'
+        });
+      }
+      if (node.children) {
+        node.children.forEach(c => this._indexTreeMetrics(c));
+      }
     }
 
     _initScene() {
@@ -197,8 +217,11 @@
           const bx = districtX - districtW / 2 + (cCol + 1) * (districtW / (bCols + 1));
           const bz = districtZ - districtH / 2 + (cRow + 1) * (districtH / (Math.ceil(pkgClasses.length / bCols) + 1));
 
-          const loc = cls.lineCount || cls.size || 50;
-          const height = Math.max(12, Math.min(240, Math.log2(loc + 1) * 22));
+          const metrics = this._treeClassMetrics.get(cls.id || cls.label || cls.simpleName) || {};
+          const loc = metrics.lineCount || cls.lineCount || cls.size || 60;
+          const methodCount = metrics.methodCount !== undefined ? metrics.methodCount : (cls.methods ? cls.methods.length : 'N/A');
+
+          const height = Math.max(14, Math.min(260, Math.log2(loc + 1) * 24));
           const width = 14;
           const depth = 14;
 
@@ -218,7 +241,15 @@
           mesh.position.set(bx, 3 + height / 2, bz);
           mesh.castShadow = true;
           mesh.receiveShadow = true;
-          mesh.userData = { entity: cls, origColor: colorHex, height: height, colorStr: pkgColorStr, pkg: pkgName };
+          mesh.userData = {
+            entity: cls,
+            origColor: colorHex,
+            height: height,
+            colorStr: pkgColorStr,
+            pkg: pkgName,
+            loc: loc,
+            methodCount: methodCount
+          };
 
           this._scene.add(mesh);
           this._buildings.push(mesh);
@@ -252,11 +283,14 @@
 
         const data = hit.userData.entity;
         const col = hit.userData.colorStr || '#34d399';
+        const locVal = hit.userData.loc || 'N/A';
+        const mVal = hit.userData.methodCount !== undefined ? hit.userData.methodCount : 'N/A';
+
         this._tooltip.innerHTML = `
           <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
-            <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || data.id}</div>
-            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">LOC: ${data.lineCount || data.size || 'N/A'} • Methods: ${data.methods ? data.methods.length : 'N/A'}</div>
+            <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
+            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">LOC: ${locVal} • Methods: ${mVal}</div>
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;

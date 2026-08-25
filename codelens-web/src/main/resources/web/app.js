@@ -1380,16 +1380,19 @@ async function loadWholeCodebaseGraph(level = null) {
 
       } else if (App.codebaseGraphLevel === 'city3d') {
         showBanner('Building 3D Software City...');
-        const data = await api.architectureGraph();
-        if (!data.nodes || data.nodes.length === 0) {
+        const [archData, treeData] = await Promise.all([
+          api.architectureGraph(),
+          api.treemapData()
+        ]);
+        if (!archData.nodes || archData.nodes.length === 0) {
           showGraphEmpty('No architecture data available for 3D City. Run a scan first.');
           return;
         }
         const renderer = new window.CodeCity3DRenderer(qs('#graph-view'));
-        renderer.setData(data);
+        renderer.setData(archData, treeData);
         App.activeAltRenderer = renderer;
-        renderAltVizInspector('3D City', data.nodes.length, data.edges.length);
-        showBanner('3D Software City loaded: ' + data.nodes.length + ' buildings');
+        renderAltVizInspector('3D City', archData.nodes.length, archData.edges.length);
+        showBanner('3D Software City loaded: ' + archData.nodes.length + ' buildings');
 
       } else if (App.codebaseGraphLevel === 'galaxy3d') {
         showBanner('Generating 3D Force Galaxy...');
