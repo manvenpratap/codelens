@@ -946,10 +946,10 @@ body.resizing .panel-resizer {
   font-family: var(--font-display);
 }
 .tree-type-item .kind-class      { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
-.tree-type-item .kind-interface  { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.tree-type-item .kind-interface  { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.4); }
 .tree-type-item .kind-enum       { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
-.tree-type-item .kind-record     { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
-.tree-type-item .kind-annotation { background: rgba(236, 72, 153, 0.2); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); }
+.tree-type-item .kind-record     { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); }
+.tree-type-item .kind-annotation { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); }
 
 .tree-type-meta {
   font-size: 11px;
@@ -1533,9 +1533,9 @@ body.resizing .panel-resizer {
   white-space: nowrap;
 }
 .nc-badge-class     { background: var(--primary-subtle); color: var(--primary); border-color: var(--primary-border); }
-.nc-badge-interface { background: var(--emerald-subtle); color: var(--emerald); border-color: rgba(16, 185, 129, 0.4); }
+.nc-badge-interface { background: rgba(34, 197, 94, 0.15); color: #22c55e; border-color: rgba(34, 197, 94, 0.4); }
 .nc-badge-enum      { background: var(--amber-subtle);   color: var(--amber);   border-color: rgba(245, 158, 11, 0.4); }
-.nc-badge-record    { background: rgba(147, 51, 234, 0.12); color: #c084fc; border-color: rgba(147, 51, 234, 0.3); }
+.nc-badge-record    { background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.4); }
 .node-card-neighbors-sec {
   margin-top: 6px;
   display: flex;
@@ -2069,7 +2069,7 @@ body.resizing .panel-resizer {
   font-family: var(--font-display);
 }
 .entity-kind-badge.CLASS  { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.22); }
-.entity-kind-badge.INTERFACE { background: rgba(16, 185, 129, 0.12); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.22); }
+.entity-kind-badge.INTERFACE { background: rgba(34, 197, 94, 0.12); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.22); }
 .entity-kind-badge.ENUM   { background: rgba(244, 63, 94, 0.12); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.22); }
 .entity-kind-badge.METHOD { background: rgba(37, 99, 235, 0.12); color: #60a5fa; border: 1px solid rgba(37, 99, 235, 0.22); }
 .entity-kind-badge.FIELD  { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.22); }
