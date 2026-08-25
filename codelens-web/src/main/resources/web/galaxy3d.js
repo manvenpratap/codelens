@@ -25,14 +25,23 @@
       this._edges = [];
       this._nodeMeshes = [];
       this._edgeLines = [];
+      this._planeMeshes = [];
+      this._showPlanes = true;
       this._particleGroup = null;
       this._particles = [];
       this._raycaster = null;
       this._mouse = null;
       this._hoveredMesh = null;
       this._tooltip = null;
+      this._toolbar = null;
       this._resizeObserver = null;
       this._onSelectEntity = null;
+    }
+
+    togglePlanes(visible) {
+      if (visible !== undefined) this._showPlanes = visible;
+      else this._showPlanes = !this._showPlanes;
+      this._planeMeshes.forEach(p => { p.visible = this._showPlanes; });
     }
 
     onSelectEntity(callback) {
@@ -248,6 +257,65 @@
         });
       });
 
+      // Group nodes by package to generate 3D Orbital Planes / Shaded Disks
+      const pkgNodesMap = new Map();
+      this._nodes.forEach(n => {
+        const pkg = n.raw.package || n.id.split('.').slice(0, -1).join('.') || 'default';
+        if (!pkgNodesMap.has(pkg)) pkgNodesMap.set(pkg, []);
+        pkgNodesMap.get(pkg).push(n);
+      });
+
+      this._planeMeshes = [];
+      let pIdx = 0;
+      pkgNodesMap.forEach((pkgNodes, pkgName) => {
+        const colorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(pkgName, pIdx++)
+          : '#34d399';
+        const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
+
+        // Calculate center and radius of package cluster
+        let avgX = 0, avgY = 0, avgZ = 0;
+        pkgNodes.forEach(pn => { avgX += pn.x; avgY += pn.y; avgZ += pn.z; });
+        avgX /= pkgNodes.length; avgY /= pkgNodes.length; avgZ /= pkgNodes.length;
+
+        let maxDist = 24;
+        pkgNodes.forEach(pn => {
+          const d = Math.sqrt((pn.x - avgX)**2 + (pn.y - avgY)**2 + (pn.z - avgZ)**2);
+          if (d > maxDist) maxDist = d;
+        });
+
+        // 3D Orbital Shaded Disk / Plane for the package
+        const diskRadius = maxDist + 22;
+        const diskGeo = new THREE.CylinderGeometry(diskRadius, diskRadius, 2, 32);
+        const diskMat = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.12,
+          roughness: 0.8,
+          metalness: 0.2,
+          side: THREE.DoubleSide,
+        });
+
+        const planeMesh = new THREE.Mesh(diskGeo, diskMat);
+        planeMesh.position.set(avgX, avgY, avgZ);
+        planeMesh.rotation.x = Math.PI / 2; // Lie on plane
+        this._scene.add(planeMesh);
+        this._planeMeshes.push(planeMesh);
+
+        // Outer glowing orbital ring
+        const ringGeo = new THREE.RingGeometry(diskRadius - 0.8, diskRadius, 36);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.45,
+          side: THREE.DoubleSide
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(avgX, avgY, avgZ);
+        this._scene.add(ringMesh);
+        this._planeMeshes.push(ringMesh);
+      });
+
       // Flow Particles Mesh
       const particleGeo = new THREE.BufferGeometry();
       const pPositions = new Float32Array(this._particles.length * 3);
@@ -255,6 +323,44 @@
       const pMat = new THREE.PointsMaterial({ color: 0x6ee7b7, size: 3.5, transparent: true, opacity: 0.9 });
       this._particleGroup = new THREE.Points(particleGeo, pMat);
       this._scene.add(this._particleGroup);
+
+      // Create Floating Quick Controls Overlay inside 3D Galaxy
+      this._buildOverlayControls();
+    }
+
+    _buildOverlayControls() {
+      if (this._toolbar) this._toolbar.remove();
+
+      this._toolbar = document.createElement('div');
+      this._toolbar.className = 'galaxy3d-hud-overlay';
+      this._toolbar.style.position = 'absolute';
+      this._toolbar.style.top = '14px';
+      this._toolbar.style.right = '14px';
+      this._toolbar.style.display = 'flex';
+      this._toolbar.style.alignItems = 'center';
+      this._toolbar.style.gap = '8px';
+      this._toolbar.style.zIndex = '120';
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'hud-btn active';
+      toggleBtn.innerHTML = '<span class="hud-btn-icon">◈</span> <span class="hud-btn-text">Cluster Planes</span>';
+      toggleBtn.style.background = '#0a0d12';
+      toggleBtn.style.border = '1px solid #10b981';
+      toggleBtn.style.color = '#f8fafc';
+      toggleBtn.style.borderRadius = '6px';
+      toggleBtn.style.padding = '5px 10px';
+      toggleBtn.style.fontSize = '11px';
+      toggleBtn.style.cursor = 'pointer';
+
+      toggleBtn.addEventListener('click', () => {
+        this.togglePlanes();
+        toggleBtn.classList.toggle('active', this._showPlanes);
+        toggleBtn.style.borderColor = this._showPlanes ? '#10b981' : 'rgba(255,255,255,0.15)';
+        toggleBtn.style.color = this._showPlanes ? '#f8fafc' : '#94a3b8';
+      });
+
+      this._toolbar.appendChild(toggleBtn);
+      this._el.appendChild(this._toolbar);
     }
 
     _onMouseMove(event) {
