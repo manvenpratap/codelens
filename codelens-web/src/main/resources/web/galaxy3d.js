@@ -339,21 +339,23 @@
         this._planeMeshes.push(ringMesh);
       });
 
-      // Sphere Geometry for Nodes
-      const sphereGeo = new THREE.SphereGeometry(6.5, 18, 18);
-
       this._nodes.forEach((n) => {
+        const isMethod = (n.raw.type === 'METHOD' || n.raw.kind === 'METHOD' || n.raw.role === 'method' || n.id.includes('('));
+        const nodeRadius = isMethod ? 4.2 : 6.5;
+        const sphereGeo = new THREE.SphereGeometry(nodeRadius, 16, 16);
+        const nodeHex = isMethod ? 0x38bdf8 : n.colorHex;
+
         const mat = new THREE.MeshStandardMaterial({
-          color: n.colorHex,
-          emissive: n.colorHex,
-          emissiveIntensity: 0.65,
+          color: nodeHex,
+          emissive: nodeHex,
+          emissiveIntensity: isMethod ? 0.8 : 0.65,
           roughness: 0.15,
           metalness: 0.45,
         });
 
         const mesh = new THREE.Mesh(sphereGeo, mat);
         mesh.position.set(n.x, n.y, n.z);
-        mesh.userData = { node: n, origColor: n.colorHex, colorStr: n.colorStr, pkg: n.pkg };
+        mesh.userData = { node: n, origColor: nodeHex, colorStr: isMethod ? '#38bdf8' : n.colorStr, pkg: n.pkg, isMethod: isMethod };
 
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
@@ -494,12 +496,17 @@
         }
 
         const data = hit.userData.node.raw;
+        const isMethod = hit.userData.isMethod;
         const col = hit.userData.colorStr || '#34d399';
+        const kindBadge = isMethod
+          ? '<span style="color:#38bdf8; font-weight:700;">METHOD</span>'
+          : `<span style="color:${col}; font-weight:700;">${data.kind || 'CLASS'}</span>`;
+
         this._tooltip.innerHTML = `
           <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
-            <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || data.id}</div>
-            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">Kind: ${data.kind || 'TYPE'}</div>
+            <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
+            <div style="font-size:11px; font-family:JetBrains Mono,monospace; margin-top:4px;">Kind: ${kindBadge}</div>
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;

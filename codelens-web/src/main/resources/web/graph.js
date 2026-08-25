@@ -847,10 +847,9 @@ class ForceGraph {
     this._ticks++;
   }
 
-  /* ── Rendering Loop ─────────────────────────────────────────────────────── */
-
   _startLoop() {
     const loop = () => {
+      if (!this._canvas || !this._ctx) return;
       if (this._physicsEnabled && this._ticks < PHYSICS.maxTicks) {
         this._simulateTick();
       }
@@ -863,6 +862,7 @@ class ForceGraph {
   }
 
   _draw() {
+    if (!this._canvas || !this._ctx) return;
     const ctx = this._ctx;
     const dpr = window.devicePixelRatio || 1;
     const W   = this._canvas.width / dpr;
@@ -2086,11 +2086,14 @@ class ForceGraph {
   }
 
   _bindResize() {
-    const ro = new ResizeObserver(() => this._resize());
-    ro.observe(this._container);
+    this._resizeObserver = new ResizeObserver(() => this._resize());
+    if (this._container) {
+      this._resizeObserver.observe(this._container);
+    }
   }
 
   _resize() {
+    if (!this._canvas || !this._container) return;
     const dpr = window.devicePixelRatio || 1;
     const w = this._container.clientWidth || 800;
     const h = this._container.clientHeight || 600;
@@ -2255,19 +2258,32 @@ class ForceGraph {
       const changed = this._packageMode !== newMode;
       this._packageMode = newMode;
       if (changed && this._communities && this._communities.length > 0) {
-        for (const comm of this._communities) {
-          comm.label = this._formatPackageLabel(comm.rawLabel || comm.label);
-        }
-        for (const node of this._nodes) {
-          const comm = this._communityMap.get(node.package) || this._communities[node.community || 0];
-          if (comm) {
-            node.communityLabel = comm.label;
-          }
-        }
         this._renderCommunityLegend();
         this._draw();
       }
     }
+  }
+
+  destroy() {
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+    if (this._animId) {
+      cancelAnimationFrame(this._animId);
+      this._animId = null;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    if (this._canvas) {
+      this._canvas.remove();
+      this._canvas = null;
+    }
+    this._ctx = null;
+    this._nodes = [];
+    this._edges = [];
   }
 }
 

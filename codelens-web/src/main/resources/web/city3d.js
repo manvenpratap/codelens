@@ -294,7 +294,7 @@
         platform.userData = { pkg: pkgName, edgeLine: distLine };
         this._districts.push(platform);
 
-        // Build Skyscrapers inside district
+        // Build Skyscrapers / Method Monoliths inside district
         pkgClasses.forEach((cls, cIndex) => {
           const cCol = cIndex % bCols;
           const cRow = Math.floor(cIndex / bCols);
@@ -302,16 +302,19 @@
           const bz = districtZ - districtH / 2 + (cRow + 1) * (districtH / (Math.ceil(pkgClasses.length / bCols) + 1));
 
           const metrics = this._treeClassMetrics.get(cls.id || cls.label || cls.simpleName) || {};
-          const loc = metrics.lineCount || cls.lineCount || cls.size || 60;
+          const isMethod = (cls.type === 'METHOD' || cls.kind === 'METHOD' || cls.role === 'method' || cls.id.includes('('));
+          const loc = metrics.lineCount || cls.lineCount || cls.size || (isMethod ? 25 : 60);
           const methodCount = metrics.methodCount !== undefined ? metrics.methodCount : (cls.methods ? cls.methods.length : 'N/A');
 
-          const height = Math.max(14, Math.min(260, Math.log2(loc + 1) * 24));
-          const width = 14;
-          const depth = 14;
+          const height = isMethod
+            ? Math.max(8, Math.min(180, Math.log2(loc + 1) * 16))
+            : Math.max(14, Math.min(260, Math.log2(loc + 1) * 24));
+          const width = isMethod ? 9 : 14;
+          const depth = isMethod ? 9 : 14;
 
           const buildingGeo = new THREE.BoxGeometry(width, height, depth);
           
-          const colorHex = pkgColorHex;
+          const colorHex = isMethod ? (cls.type === 'METHOD' ? 0x38bdf8 : pkgColorHex) : pkgColorHex;
 
           const buildingMat = new THREE.MeshStandardMaterial({
             color: colorHex,
@@ -329,7 +332,7 @@
 
           // Skyscraper Edge Wireframe
           const bEdges = new THREE.EdgesGeometry(buildingGeo);
-          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }));
+          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: isMethod ? 0.55 : 0.75 }));
           bLine.position.copy(mesh.position);
           this._scene.add(bLine);
 
@@ -337,9 +340,10 @@
             entity: cls,
             origColor: colorHex,
             height: height,
-            colorStr: pkgColorStr,
+            colorStr: isMethod ? '#38bdf8' : pkgColorStr,
             pkg: pkgName,
             loc: loc,
+            isMethod: isMethod,
             methodCount: methodCount,
             edgeLine: bLine
           };
@@ -527,13 +531,18 @@
         const data = hit.userData.entity;
         const col = hit.userData.colorStr || '#34d399';
         const locVal = hit.userData.loc || 'N/A';
+        const isMethod = hit.userData.isMethod;
         const mVal = hit.userData.methodCount !== undefined ? hit.userData.methodCount : 'N/A';
+
+        const subInfo = isMethod
+          ? `<span style="color:#38bdf8; font-weight:700;">METHOD</span> • LOC: ${locVal}`
+          : `<span style="color:${col}; font-weight:700;">CLASS</span> • LOC: ${locVal} • Methods: ${mVal}`;
 
         this._tooltip.innerHTML = `
           <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
             <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
-            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">LOC: ${locVal} • Methods: ${mVal}</div>
+            <div style="font-size:11px; font-family:JetBrains Mono,monospace; margin-top:4px;">${subInfo}</div>
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;
