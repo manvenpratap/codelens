@@ -2875,8 +2875,21 @@ function renderEntityHeader(kind, name, fqn) {
   header.innerHTML = `
     <div class="entity-kind-badge ${kind}">${kind}</div>
     <div class="entity-name">${esc(name)}</div>
-    <div class="entity-fqn">${esc(fqn)}</div>`;
+    <div class="entity-fqn" title="Click to copy fully qualified name" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+      <span>${esc(fqn)}</span>
+      <span class="copy-hint-icon" style="opacity:0.6;font-size:11px;" title="Copy to clipboard">📋</span>
+    </div>`;
   header.style.display = '';
+  const fqnEl = header.querySelector('.entity-fqn');
+  if (fqnEl) {
+    fqnEl.onclick = () => {
+      navigator.clipboard.writeText(fqn).then(() => {
+        showBanner(`✓ Copied ${kind}: ${name}`);
+      }).catch(() => {
+        showBanner(`✓ Copied ${fqn}`);
+      });
+    };
+  }
   const empty = qs('#detail-empty-state');
   if (empty) empty.style.display = 'none';
 }

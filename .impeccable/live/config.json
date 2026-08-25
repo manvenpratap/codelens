@@ -1,0 +1,8 @@
+{
+  "files": [
+    "codelens-web/src/main/resources/web/index.html"
+  ],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}
