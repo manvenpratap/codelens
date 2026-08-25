@@ -223,60 +223,121 @@
 
       const nodeIndexMap = new Map();
 
-      // Initialize 3D positions in spherical distribution
-      this._nodes = rawNodes.map((n, i) => {
-        const phi = Math.acos(-1 + (2 * i) / rawNodes.length);
-        const theta = Math.sqrt(rawNodes.length * Math.PI) * phi;
-        const radius = 120 + Math.random() * 80;
-
-        const nodeObj = {
-          id: n.id,
-          label: n.label || n.id.split('.').pop(),
-          raw: n,
-          x: radius * Math.cos(theta) * Math.sin(phi),
-          y: radius * Math.sin(theta) * Math.sin(phi),
-          z: radius * Math.cos(phi),
-          vx: 0, vy: 0, vz: 0,
-        };
-        nodeIndexMap.set(n.id, nodeObj);
-        return nodeObj;
+      // Group nodes by package/module to form clean orbital star systems
+      const pkgMap = new Map();
+      rawNodes.forEach(n => {
+        const pkg = n.package || (n.id.includes('.') ? n.id.split('.').slice(0, -1).join('.') : 'default');
+        if (!pkgMap.has(pkg)) pkgMap.set(pkg, []);
+        pkgMap.get(pkg).push(n);
       });
 
-      // Quick 3D Relaxation Simulation Step
-      for (let step = 0; step < 45; step++) {
-        // Repulsion between all pairs
-        for (let i = 0; i < this._nodes.length; i++) {
-          for (let j = i + 1; j < this._nodes.length; j++) {
-            const n1 = this._nodes[i];
-            const n2 = this._nodes[j];
-            const dx = n2.x - n1.x;
-            const dy = n2.y - n1.y;
-            const dz = n2.z - n1.z;
-            const distSq = dx * dx + dy * dy + dz * dz + 100;
-            const force = 1800 / distSq;
-            const dist = Math.sqrt(distSq);
-            const fx = (dx / dist) * force;
-            const fy = (dy / dist) * force;
-            const fz = (dz / dist) * force;
-            n1.x -= fx; n1.y -= fy; n1.z -= fz;
-            n2.x += fx; n2.y += fy; n2.z += fz;
-          }
-        }
-      }
+      const pkgs = Array.from(pkgMap.keys());
+      const totalPkgs = pkgs.length;
 
-      // Sphere Geometry for Nodes
-      const sphereGeo = new THREE.SphereGeometry(6, 16, 16);
+      // Position each package cluster around the galactic core
+      this._nodes = [];
+      this._planeMeshes = [];
 
-      this._nodes.forEach((n, idx) => {
-        const pkgName = n.raw.package || n.id.split('.').slice(0, -1).join('.') || 'default';
+      pkgs.forEach((pkgName, pIdx) => {
+        const pkgNodes = pkgMap.get(pkgName);
         const colorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-          ? window.CodeLensPalette.getColor(pkgName, idx)
+          ? window.CodeLensPalette.getColor(pkgName, pIdx)
           : '#34d399';
         const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
 
-        const mat = new THREE.MeshStandardMaterial({
+        // Galactic orbit angle for package center
+        const pPhi = Math.acos(-1 + (2 * pIdx) / Math.max(1, totalPkgs));
+        const pTheta = Math.sqrt(totalPkgs * Math.PI) * pPhi;
+        const systemRadius = totalPkgs > 1 ? (140 + (pIdx % 3) * 45) : 0;
+
+        const centerX = totalPkgs > 1 ? systemRadius * Math.cos(pTheta) * Math.sin(pPhi) : 0;
+        const centerY = totalPkgs > 1 ? systemRadius * Math.sin(pTheta) * Math.sin(pPhi) * 0.5 : 0; // slightly flattened
+        const centerZ = totalPkgs > 1 ? systemRadius * Math.cos(pPhi) : 0;
+
+        // Define a clean local orbital plane for this package system
+        const planeNormal = totalPkgs > 1 
+          ? new THREE.Vector3(centerX, centerY, centerZ).normalize() 
+          : new THREE.Vector3(0, 1, 0);
+
+        // Find tangent vectors for circular plane
+        const up = Math.abs(planeNormal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+        const tangentU = new THREE.Vector3().crossVectors(planeNormal, up).normalize();
+        const tangentV = new THREE.Vector3().crossVectors(planeNormal, tangentU).normalize();
+
+        const count = pkgNodes.length;
+        const localRadiusStep = Math.max(16, 80 / Math.max(1, Math.sqrt(count)));
+        let maxClusterRadius = 25;
+
+        pkgNodes.forEach((n, nIdx) => {
+          // Arrange nodes in concentric rings on the package's local plane
+          const ringIdx = Math.floor(Math.sqrt(nIdx));
+          const itemsInRing = Math.max(1, ringIdx * 4);
+          const posInRing = nIdx - ringIdx * ringIdx;
+          const angle = (posInRing / itemsInRing) * Math.PI * 2 + (ringIdx * 0.5);
+          const r = 18 + ringIdx * 24;
+          if (r > maxClusterRadius) maxClusterRadius = r;
+
+          const px = centerX + tangentU.x * r * Math.cos(angle) + tangentV.x * r * Math.sin(angle);
+          const py = centerY + tangentU.y * r * Math.cos(angle) + tangentV.y * r * Math.sin(angle);
+          const pz = centerZ + tangentU.z * r * Math.cos(angle) + tangentV.z * r * Math.sin(angle);
+
+          const nodeObj = {
+            id: n.id,
+            label: n.label || n.id.split('.').pop(),
+            raw: n,
+            x: px, y: py, z: pz,
+            pkg: pkgName,
+            colorStr: colorStr,
+            colorHex: colorHex
+          };
+          this._nodes.push(nodeObj);
+          nodeIndexMap.set(n.id, nodeObj);
+        });
+
+        // 3D Orbital Shaded Disk / Plane for the package
+        const diskRadius = maxClusterRadius + 16;
+        const diskGeo = new THREE.CylinderGeometry(diskRadius, diskRadius, 1.5, 36);
+        const diskMat = new THREE.MeshStandardMaterial({
           color: colorHex,
-          emissive: colorHex,
+          transparent: true,
+          opacity: 0.14,
+          roughness: 0.8,
+          metalness: 0.2,
+          side: THREE.DoubleSide,
+        });
+
+        const planeMesh = new THREE.Mesh(diskGeo, diskMat);
+        planeMesh.position.set(centerX, centerY, centerZ);
+        // Align cylinder axis with plane normal
+        const defaultNormal = new THREE.Vector3(0, 1, 0);
+        planeMesh.quaternion.setFromUnitVectors(defaultNormal, planeNormal);
+        planeMesh.userData = { pkg: pkgName };
+        this._scene.add(planeMesh);
+        this._planeMeshes.push(planeMesh);
+
+        // Outer glowing orbital ring
+        const ringGeo = new THREE.RingGeometry(diskRadius - 1.2, diskRadius, 48);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(centerX, centerY, centerZ);
+        ringMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), planeNormal);
+        ringMesh.userData = { pkg: pkgName };
+        this._scene.add(ringMesh);
+        this._planeMeshes.push(ringMesh);
+      });
+
+      // Sphere Geometry for Nodes
+      const sphereGeo = new THREE.SphereGeometry(5.5, 16, 16);
+
+      this._nodes.forEach((n) => {
+        const mat = new THREE.MeshStandardMaterial({
+          color: n.colorHex,
+          emissive: n.colorHex,
           emissiveIntensity: 0.35,
           roughness: 0.3,
           metalness: 0.7,
@@ -284,7 +345,7 @@
 
         const mesh = new THREE.Mesh(sphereGeo, mat);
         mesh.position.set(n.x, n.y, n.z);
-        mesh.userData = { node: n, origColor: colorHex, colorStr: colorStr, pkg: pkgName };
+        mesh.userData = { node: n, origColor: n.colorHex, colorStr: n.colorStr, pkg: n.pkg };
 
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
@@ -296,18 +357,16 @@
         const tgt = nodeIndexMap.get(e.target || e.callee);
         if (!src || !tgt) return;
 
-        const srcPkg = (src && src.raw && src.raw.package) ? src.raw.package : (src ? src.id.split('.').slice(0, -1).join('.') : 'default');
-        const srcColorHex = (parseInt(((window.CodeLensPalette && window.CodeLensPalette.getColor) ? window.CodeLensPalette.getColor(srcPkg, 0) : '#34d399').replace('#', ''), 16) || 0x34d399);
-
         const p1 = new THREE.Vector3(src.x, src.y, src.z);
         const p2 = new THREE.Vector3(tgt.x, tgt.y, tgt.z);
+        const dist = p1.distanceTo(p2);
         const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-        mid.add(new THREE.Vector3((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20));
+        mid.add(new THREE.Vector3((Math.random() - 0.5) * 15, Math.max(15, dist * 0.25), (Math.random() - 0.5) * 15));
 
         const curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
         const points = curve.getPoints(24);
         const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMat = new THREE.LineBasicMaterial({ color: srcColorHex, transparent: true, opacity: 0.45 });
+        const lineMat = new THREE.LineBasicMaterial({ color: src.colorHex, transparent: true, opacity: 0.45 });
         const line = new THREE.Line(geo, lineMat);
         line.userData = { src: src.id, tgt: tgt.id };
 
@@ -320,67 +379,6 @@
           progress: Math.random(),
           speed: 0.003 + Math.random() * 0.004,
         });
-      });
-
-      // Group nodes by package to generate 3D Orbital Planes / Shaded Disks
-      const pkgNodesMap = new Map();
-      this._nodes.forEach(n => {
-        const pkg = n.raw.package || n.id.split('.').slice(0, -1).join('.') || 'default';
-        if (!pkgNodesMap.has(pkg)) pkgNodesMap.set(pkg, []);
-        pkgNodesMap.get(pkg).push(n);
-      });
-
-      this._planeMeshes = [];
-      let pIdx = 0;
-      pkgNodesMap.forEach((pkgNodes, pkgName) => {
-        const colorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-          ? window.CodeLensPalette.getColor(pkgName, pIdx++)
-          : '#34d399';
-        const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
-
-        // Calculate center and radius of package cluster
-        let avgX = 0, avgY = 0, avgZ = 0;
-        pkgNodes.forEach(pn => { avgX += pn.x; avgY += pn.y; avgZ += pn.z; });
-        avgX /= pkgNodes.length; avgY /= pkgNodes.length; avgZ /= pkgNodes.length;
-
-        let maxDist = 24;
-        pkgNodes.forEach(pn => {
-          const d = Math.sqrt((pn.x - avgX)**2 + (pn.y - avgY)**2 + (pn.z - avgZ)**2);
-          if (d > maxDist) maxDist = d;
-        });
-
-        // 3D Orbital Shaded Disk / Plane for the package
-        const diskRadius = maxDist + 22;
-        const diskGeo = new THREE.CylinderGeometry(diskRadius, diskRadius, 2, 32);
-        const diskMat = new THREE.MeshStandardMaterial({
-          color: colorHex,
-          transparent: true,
-          opacity: 0.12,
-          roughness: 0.8,
-          metalness: 0.2,
-          side: THREE.DoubleSide,
-        });
-
-        const planeMesh = new THREE.Mesh(diskGeo, diskMat);
-        planeMesh.position.set(avgX, avgY, avgZ);
-        planeMesh.rotation.x = Math.PI / 2; // Lie on plane
-        planeMesh.userData = { pkg: pkgName };
-        this._scene.add(planeMesh);
-        this._planeMeshes.push(planeMesh);
-
-        // Outer glowing orbital ring
-        const ringGeo = new THREE.RingGeometry(diskRadius - 0.8, diskRadius, 36);
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: colorHex,
-          transparent: true,
-          opacity: 0.45,
-          side: THREE.DoubleSide
-        });
-        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-        ringMesh.position.set(avgX, avgY, avgZ);
-        ringMesh.userData = { pkg: pkgName };
-        this._scene.add(ringMesh);
-        this._planeMeshes.push(ringMesh);
       });
 
       // Flow Particles Mesh
