@@ -544,11 +544,6 @@ public class CallGraphAnalyzer {
     // ─────────────────────────────────────────────────────────────────────────
 
     private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
-                                 int maxDepth, String role) {
-        return bfs(g, start, maxDepth, role, false);
-    }
-
-    private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
                                  int maxDepth, String role, boolean hideGetters) {
         if (!g.containsVertex(start)) return Collections.emptyList();
 
