@@ -632,8 +632,13 @@
 
     <!-- Right panel header toolbar with collapse toggle -->
     <div class="right-panel-toolbar">
-      <span class="right-panel-title">Inspector</span>
-      <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">▶</button>
+      <div class="right-panel-title-wrap">
+        <span class="right-panel-badge">◈</span>
+        <span class="right-panel-title">Inspector</span>
+      </div>
+      <div class="right-panel-actions">
+        <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">▶</button>
+      </div>
     </div>
 
     <!-- Entity header: kind badge + name + FQN -->
@@ -642,7 +647,7 @@
     <!-- Placeholder shown when no entity is selected -->
     <div class="detail-empty" id="detail-empty-state" aria-label="No entity selected">
       <div class="detail-empty-icon" aria-hidden="true">◉</div>
-      <div class="detail-empty-text">Select a type, method, or field<br>to view its details</div>
+      <div class="detail-empty-text">Select a type, method, or field<br>to view its details &amp; graph topology</div>
     </div>
 
     <!-- Scrollable body: metadata grid + relationships + notes -->
@@ -1041,7 +1046,7 @@
 <script src="/app.js?v=4.1.1"    defer></script>
 
 <!-- impeccable-live-start -->
-<script src="http://localhost:8404/live.js?token=a648764a-71d9-4397-b7d0-04b7005eaded"></script>
+<script src="http://localhost:8405/live.js?token=41f2dc45-b4ff-4e01-821a-058a1057c6df"></script>
 <!-- impeccable-live-end -->
 </body>
 </html>
