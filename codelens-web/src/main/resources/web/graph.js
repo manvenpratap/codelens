@@ -1649,8 +1649,19 @@ class ForceGraph {
   }
 
   _renderCommunityLegend() {
-    const legendWrap = document.getElementById('graph-community-legend');
-    const legendList = document.getElementById('graph-legend-list');
+    // Find legend in local container or fallback to global ID
+    let legendWrap = this._container ? this._container.querySelector('.graph-community-legend') : null;
+    let legendList = this._container ? this._container.querySelector('.legend-list') : null;
+
+    if (!legendWrap || !legendList) {
+      if (this._container && this._container.closest('#codebase-view')) {
+        legendWrap = document.getElementById('codebase-community-legend');
+        legendList = document.getElementById('codebase-legend-list');
+      } else {
+        legendWrap = document.getElementById('graph-community-legend');
+        legendList = document.getElementById('graph-legend-list');
+      }
+    }
     if (!legendWrap || !legendList) return;
 
     if (this._communities.length === 0) {

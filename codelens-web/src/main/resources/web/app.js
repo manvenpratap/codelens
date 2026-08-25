@@ -1346,6 +1346,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         }
         App.activeAltRenderer = renderer;
         renderAltVizInspector(`3D City (${isMethods ? 'Methods' : 'Classes'})`, graphData.nodes.length, graphData.edges.length);
+        renderCodebaseLegend(graphData.nodes);
         showBanner(`3D Software City loaded: ${graphData.nodes.length} ${isMethods ? 'methods' : 'buildings'}`);
 
       } else if (effectiveLevel === 'galaxy3d') {
@@ -1362,6 +1363,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         }
         App.activeAltRenderer = renderer;
         renderAltVizInspector(`3D Galaxy (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
+        renderCodebaseLegend(data.nodes);
         showBanner(`3D Force Galaxy loaded: ${data.nodes.length} ${isMethods ? 'method nodes' : 'orbital nodes'}`);
 
       } else if (effectiveLevel === 'graph2d') {
@@ -1391,6 +1393,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector('Treemap', countTreemapNodes(data), data.size);
+        renderCodebaseLegend(data);
         showBanner('Treemap loaded: ' + countTreemapNodes(data) + ' nodes, ' + data.size + ' total lines');
 
       } else if (effectiveLevel === 'sunburst') {
@@ -1404,6 +1407,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector('Sunburst', countTreemapNodes(data), data.size);
+        renderCodebaseLegend(data);
         showBanner('Sunburst loaded: ' + countTreemapNodes(data) + ' nodes');
 
       } else if (effectiveLevel === 'dsm') {
@@ -1423,6 +1427,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
             const scopedData = await api.dsmData(newScope);
             renderer.setData(scopedData);
             renderAltVizInspector('DSM', scopedData.classes.length, 0);
+            renderCodebaseLegend(scopedData.classes.map(c => ({ id: c, package: c.split('.').slice(0, -1).join('.') || 'default' })));
             showBanner(`DSM loaded: ${scopedData.classes.length} ${newScope}`);
           } catch (err) {
             showBanner('Error changing DSM scope: ' + err.message);
@@ -1437,6 +1442,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector(`DSM (${dsmScope})`, data.classes.length, 0);
+        renderCodebaseLegend(data.classes.map(c => ({ id: c, package: c.split('.').slice(0, -1).join('.') || 'default' })));
         showBanner('DSM loaded: ' + data.classes.length + ' ' + (data.scope || dsmScope));
 
       } else if (effectiveLevel === 'chord') {
@@ -1450,6 +1456,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderer.setData(data);
         App.activeAltRenderer = renderer;
         renderAltVizInspector(`Chord (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
+        renderCodebaseLegend(data.nodes);
         showBanner(`Chord diagram loaded: ${data.nodes.length} ${isMethods ? 'methods' : 'classes'}, ${data.edges.length} relationships`);
       }
     } catch (e) {
@@ -1496,14 +1503,96 @@ async function loadWholeCodebaseGraph(level, granularity) {
   }
 }
 
-/** Count total nodes in a treemap tree (recursive). */
-function countTreemapNodes(node) {
-  if (!node) return 0;
-  let count = 1;
-  if (node.children) {
-    for (const child of node.children) count += countTreemapNodes(child);
+/** Render interactive Community & Package Legend for Codebase Viz views (3D City, 3D Galaxy, 2D Graph, Treemap, DSM, Chord). */
+function renderCodebaseLegend(nodesOrTreeData) {
+  const legendWrap = qs('#codebase-community-legend');
+  const legendList = qs('#codebase-legend-list');
+  if (!legendWrap || !legendList) return;
+
+  if (!nodesOrTreeData) {
+    legendWrap.style.display = 'none';
+    return;
   }
-  return count;
+
+  // Extract unique packages with node counts
+  const pkgCounts = new Map();
+
+  if (Array.isArray(nodesOrTreeData)) {
+    // Array of nodes { id, label, package, ... }
+    nodesOrTreeData.forEach(n => {
+      let pkg = n.package;
+      if (!pkg && n.id && n.id.includes('.')) {
+        const parts = n.id.replace(/\(.*\)/, '').split('.');
+        pkg = parts.slice(0, -1).join('.') || 'default';
+      }
+      pkg = pkg || 'default';
+      pkgCounts.set(pkg, (pkgCounts.get(pkg) || 0) + 1);
+    });
+  } else if (nodesOrTreeData.children) {
+    // Hierarchical tree (treemap / sunburst)
+    const traverse = (item) => {
+      if (item.type === 'PACKAGE' || (item.children && !item.type)) {
+        const pkgName = item.fqn || item.name || 'default';
+        let count = 0;
+        if (item.children) {
+          item.children.forEach(c => {
+            if (c.children) count += c.children.length;
+            else count += 1;
+          });
+        }
+        if (count > 0) pkgCounts.set(pkgName, (pkgCounts.get(pkgName) || 0) + count);
+      }
+      if (item.children) {
+        item.children.forEach(c => traverse(c));
+      }
+    };
+    traverse(nodesOrTreeData);
+  }
+
+  if (pkgCounts.size === 0) {
+    legendWrap.style.display = 'none';
+    return;
+  }
+
+  const sortedPkgs = Array.from(pkgCounts.entries()).sort((a, b) => b[1] - a[1]);
+
+  legendWrap.style.display = 'flex';
+  legendList.innerHTML = sortedPkgs.map(([pkg, count], idx) => {
+    const color = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+      ? window.CodeLensPalette.getColor(pkg, idx)
+      : '#3b82f6';
+    const displayLabel = formatPackageDisplayName(pkg);
+    return `
+      <div class="legend-item" data-pkg="${pkg}">
+        <div class="legend-dot" style="background:${color}"></div>
+        <span class="legend-label" title="${pkg}">${displayLabel}</span>
+        <span class="legend-count">${count}</span>
+      </div>
+    `;
+  }).join('');
+
+  legendList.querySelectorAll('.legend-item').forEach(item => {
+    item.onclick = () => {
+      const pkg = item.dataset.pkg;
+      item.classList.toggle('dimmed');
+      const isDimmed = item.classList.contains('dimmed');
+      if (App.activeAltRenderer) {
+        if (typeof App.activeAltRenderer.togglePackage === 'function') {
+          App.activeAltRenderer.togglePackage(pkg, !isDimmed);
+        }
+      }
+    };
+  });
+}
+
+function formatPackageDisplayName(pkg) {
+  if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
+  const parts = pkg.split('.').filter(Boolean);
+  if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(parts[0])) {
+    const sub = parts.slice(2);
+    return sub.length > 0 ? sub.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' › ') : parts[parts.length - 1];
+  }
+  return parts.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' › ');
 }
 
 /** Render inspector panel for alt-viz modes. */
@@ -2727,6 +2816,15 @@ async function init() {
       } else if (App.graph && typeof App.graph.toggleHideGetters === 'function') {
         App.graph.toggleHideGetters();
       }
+    });
+  }
+
+  // Codebase Legend close button
+  const codebaseLegendCloseBtn = qs('#btn-codebase-legend-close');
+  if (codebaseLegendCloseBtn) {
+    codebaseLegendCloseBtn.addEventListener('click', () => {
+      const legend = qs('#codebase-community-legend');
+      if (legend) legend.style.display = 'none';
     });
   }
 
