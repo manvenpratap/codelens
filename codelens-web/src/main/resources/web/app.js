@@ -1304,6 +1304,13 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
   if (granDiv) granDiv.style.display = supportsGranularity ? '' : 'none';
 
+  // Toggle POJO filter button in Codebase HUD (visible for 2D Graph when scope is methods)
+  const pojoCtrl = qs('#codebase-pojo-controls');
+  const pojoDiv = qs('#codebase-pojo-divider');
+  const showPojoFilter = (effectiveLevel === 'graph2d' && isMethods);
+  if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
+  if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
+
   // Toggle brightness slider visibility (only for 3D modes)
   const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
   const brightnessCtrl = qs('#codebase-brightness-controls');
@@ -2678,7 +2685,7 @@ async function init() {
   qsa('#codebase-level-selector .level-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       const level = btn.dataset.level;
-      if (level) loadWholeCodebaseGraph(level);
+      if (level) loadWholeCodebaseGraph(level, App.codebaseGranularity || 'arch');
     });
   });
 
@@ -2707,6 +2714,18 @@ async function init() {
       }
       if (App.activeAltRenderer && typeof App.activeAltRenderer.setBrightness === 'function') {
         App.activeAltRenderer.setBrightness(val);
+      }
+    });
+  }
+
+  // Codebase POJO Filter button
+  const codebasePojoBtn = qs('#btn-codebase-filter-getters');
+  if (codebasePojoBtn) {
+    codebasePojoBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleHideGetters === 'function') {
+        App.activeAltRenderer.toggleHideGetters();
+      } else if (App.graph && typeof App.graph.toggleHideGetters === 'function') {
+        App.graph.toggleHideGetters();
       }
     });
   }

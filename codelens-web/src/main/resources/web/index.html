@@ -483,6 +483,15 @@
           <button class="level-pill" id="btn-codebase-methods" data-granularity="methods" title="Detailed Method & Field Call Hierarchy">Methods</button>
         </div>
 
+        <div class="hud-divider" id="codebase-pojo-divider" style="display:none;"></div>
+
+        <!-- Codebase POJO Filter Toggle (For 2D Graph / Methods scope) -->
+        <div id="codebase-pojo-controls" style="display:none;">
+          <button id="btn-codebase-filter-getters" class="hud-btn active" title="Hide trivial POJO getters, setters, and accessor boilerplate">
+            <span class="hud-btn-icon">⚡</span> <span class="hud-btn-text" id="btn-codebase-filter-getters-text">Hide POJOs</span>
+          </button>
+        </div>
+
         <div class="hud-divider" id="codebase-brightness-divider"></div>
 
         <!-- 3D Views Brightness & Exposure Slider -->

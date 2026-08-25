@@ -380,10 +380,11 @@ class ForceGraph {
   /** Toggles POJO and getter/setter filtering. */
   toggleHideGetters() {
     this._hideGetters = !this._hideGetters;
-    const btn = document.getElementById('btn-filter-getters');
-    if (btn) {
-      btn.classList.toggle('active', this._hideGetters);
-    }
+    const btn1 = document.getElementById('btn-filter-getters');
+    const btn2 = document.getElementById('btn-codebase-filter-getters');
+    if (btn1) btn1.classList.toggle('active', this._hideGetters);
+    if (btn2) btn2.classList.toggle('active', this._hideGetters);
+
     if (this._rawNodes && this._rawNodes.length > 0) {
       this._applyData(this._rawNodes, this._rawEdges);
     }
@@ -392,18 +393,20 @@ class ForceGraph {
   _applyData(rawNodes, rawEdges) {
     const { nodes, edges, hiddenCount } = this._filterData(rawNodes, rawEdges);
 
-    // Update HUD button label/title with hidden count
-    const btnText = document.getElementById('btn-filter-getters-text');
-    const btn = document.getElementById('btn-filter-getters');
-    if (btnText && btn) {
-      if (this._hideGetters && hiddenCount > 0) {
-        btnText.textContent = `Hide POJOs (${hiddenCount})`;
-        btn.title = `${hiddenCount} POJO getters/setters hidden. Click to show all.`;
-      } else {
-        btnText.textContent = 'Hide POJOs';
-        btn.title = this._hideGetters ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+    // Update HUD button labels/titles with hidden count in both tabs
+    ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+      const btn = document.getElementById(id);
+      const btnText = document.getElementById(`${id}-text`);
+      if (btnText && btn) {
+        if (this._hideGetters && hiddenCount > 0) {
+          btnText.textContent = `Hide POJOs (${hiddenCount})`;
+          btn.title = `${hiddenCount} POJO getters/setters hidden. Click to show all.`;
+        } else {
+          btnText.textContent = 'Hide POJOs';
+          btn.title = this._hideGetters ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+        }
       }
-    }
+    });
 
     const dpr = window.devicePixelRatio || 1;
     const cx = (this._canvas.width / dpr) / 2;
