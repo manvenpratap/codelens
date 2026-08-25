@@ -1010,14 +1010,17 @@
      (Inlined here so it is available even if CSS fails to load)
      ═══════════════════════════════════════════════════════════════════════════ -->
 <style>
-  .visually-hidden {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+  .visually-hidden,
+  .visually-hidden * {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
   }
 </style>
 
@@ -1036,5 +1039,8 @@
 <script src="/sunburst.js?v=4.1.1" defer></script>
 <script src="/app.js?v=4.1.1"    defer></script>
 
+<!-- impeccable-live-start -->
+<script src="http://localhost:8400/live.js?token=f4c1ec9e-32ad-436b-a8cb-3e6a2e1a5395"></script>
+<!-- impeccable-live-end -->
 </body>
 </html>
