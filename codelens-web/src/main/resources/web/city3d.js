@@ -167,6 +167,11 @@
         const districtW = Math.max(bCols * bSpacing + 20, 80);
         const districtH = Math.max(Math.ceil(pkgClasses.length / bCols) * bSpacing + 20, 80);
 
+        const pkgColorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(pkgName, pIndex)
+          : '#10b981';
+        const pkgColorHex = parseInt(pkgColorStr.replace('#', ''), 16) || 0x10b981;
+
         // District Base Platform
         const platformGeo = new THREE.BoxGeometry(districtW, 3, districtH);
         const platformMat = new THREE.MeshStandardMaterial({
@@ -181,7 +186,7 @@
 
         // District Platform Border Edge
         const edges = new THREE.EdgesGeometry(platformGeo);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.35 }));
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: pkgColorHex, transparent: true, opacity: 0.55 }));
         line.position.copy(platform.position);
         this._scene.add(line);
 
@@ -199,31 +204,31 @@
 
           const buildingGeo = new THREE.BoxGeometry(width, height, depth);
           
-          let colorHex = 0x34d399; // Emerald mint
-          if (cls.kind === 'INTERFACE') colorHex = 0x10b981;
-          else if (cls.kind === 'ENUM') colorHex = 0xf59e0b;
-          else if (cls.kind === 'RECORD') colorHex = 0xa855f7;
+          const classColorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+            ? window.CodeLensPalette.getColor(cls.id || cls.label || cls.simpleName, cIndex)
+            : pkgColorStr;
+          const colorHex = parseInt(classColorStr.replace('#', ''), 16) || 0x34d399;
 
           const buildingMat = new THREE.MeshStandardMaterial({
             color: colorHex,
             roughness: 0.25,
             metalness: 0.75,
             emissive: colorHex,
-            emissiveIntensity: 0.12,
+            emissiveIntensity: 0.18,
           });
 
           const mesh = new THREE.Mesh(buildingGeo, buildingMat);
           mesh.position.set(bx, 3 + height / 2, bz);
           mesh.castShadow = true;
           mesh.receiveShadow = true;
-          mesh.userData = { entity: cls, origColor: colorHex, height: height };
+          mesh.userData = { entity: cls, origColor: colorHex, height: height, colorStr: classColorStr, pkg: pkgName };
 
           this._scene.add(mesh);
           this._buildings.push(mesh);
 
           // Skyscraper Edge Wireframe
           const bEdges = new THREE.EdgesGeometry(buildingGeo);
-          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 }));
+          const bLine = new THREE.LineSegments(bEdges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
           bLine.position.copy(mesh.position);
           this._scene.add(bLine);
         });
@@ -249,11 +254,12 @@
         }
 
         const data = hit.userData.entity;
+        const col = hit.userData.colorStr || '#34d399';
         this._tooltip.innerHTML = `
-          <div class="tt-inner" style="background:#0a0d12; border:1px solid #10b981; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
+          <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
             <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || data.id}</div>
-            <div style="font-size:11px; color:#34d399; font-family:JetBrains Mono,monospace; margin-top:4px;">LOC: ${data.lineCount || data.size || 'N/A'} • Methods: ${data.methods ? data.methods.length : 'N/A'}</div>
+            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">LOC: ${data.lineCount || data.size || 'N/A'} • Methods: ${data.methods ? data.methods.length : 'N/A'}</div>
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;

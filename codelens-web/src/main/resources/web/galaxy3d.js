@@ -194,23 +194,23 @@
       // Sphere Geometry for Nodes
       const sphereGeo = new THREE.SphereGeometry(6, 16, 16);
 
-      this._nodes.forEach(n => {
-        let colorHex = 0x34d399; // Mint
-        if (n.raw.kind === 'INTERFACE') colorHex = 0x10b981;
-        else if (n.raw.kind === 'ENUM') colorHex = 0xf59e0b;
-        else if (n.raw.kind === 'RECORD') colorHex = 0xa855f7;
+      this._nodes.forEach((n, idx) => {
+        const colorStr = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(n.id || n.label, idx)
+          : '#34d399';
+        const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
 
         const mat = new THREE.MeshStandardMaterial({
           color: colorHex,
           emissive: colorHex,
-          emissiveIntensity: 0.25,
+          emissiveIntensity: 0.35,
           roughness: 0.3,
           metalness: 0.7,
         });
 
         const mesh = new THREE.Mesh(sphereGeo, mat);
         mesh.position.set(n.x, n.y, n.z);
-        mesh.userData = { node: n, origColor: colorHex };
+        mesh.userData = { node: n, origColor: colorHex, colorStr: colorStr };
 
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
@@ -222,6 +222,10 @@
         const tgt = nodeIndexMap.get(e.target || e.callee);
         if (!src || !tgt) return;
 
+        const srcColorHex = (src && src.raw)
+          ? (parseInt(((window.CodeLensPalette && window.CodeLensPalette.getColor) ? window.CodeLensPalette.getColor(src.id, 0) : '#34d399').replace('#', ''), 16) || 0x34d399)
+          : 0x34d399;
+
         const p1 = new THREE.Vector3(src.x, src.y, src.z);
         const p2 = new THREE.Vector3(tgt.x, tgt.y, tgt.z);
         const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
@@ -230,7 +234,7 @@
         const curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
         const points = curve.getPoints(24);
         const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.35 });
+        const lineMat = new THREE.LineBasicMaterial({ color: srcColorHex, transparent: true, opacity: 0.45 });
         const line = new THREE.Line(geo, lineMat);
 
         this._scene.add(line);
@@ -273,11 +277,12 @@
         }
 
         const data = hit.userData.node.raw;
+        const col = hit.userData.colorStr || '#34d399';
         this._tooltip.innerHTML = `
-          <div class="tt-inner" style="background:#0a0d12; border:1px solid #34d399; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
+          <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
             <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || data.id}</div>
-            <div style="font-size:11px; color:#34d399; font-family:JetBrains Mono,monospace; margin-top:4px;">Kind: ${data.kind || 'TYPE'}</div>
+            <div style="font-size:11px; color:${col}; font-family:JetBrains Mono,monospace; margin-top:4px;">Kind: ${data.kind || 'TYPE'}</div>
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;
