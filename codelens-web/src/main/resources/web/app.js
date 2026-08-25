@@ -4009,7 +4009,19 @@ const ExportHub = {
     try {
       ExportHub.loading = true;
       const res = await fetch(`/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`);
-      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      let text = await res.text();
+      // Format JSON string if response is raw JSON
+      if (ExportHub.activeFormat === 'json') {
+        try {
+          const parsed = JSON.parse(text);
+          text = JSON.stringify(parsed, null, 2);
+        } catch (_) {}
+      }
+
       ExportHub.cachedContent = text;
 
       if (ExportHub.activeFormat === 'html') {
@@ -4024,6 +4036,7 @@ const ExportHub = {
 
       if (statusEl) statusEl.textContent = `Generated (${(text.length / 1024).toFixed(1)} KB)`;
     } catch (err) {
+      ExportHub.cachedContent = '';
       if (codeEl) {
         frameEl.style.display = 'none';
         codeEl.style.display = 'block';

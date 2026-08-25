@@ -894,7 +894,10 @@ public class CodeLensServer {
 
     private void getArchitectureReport(Context ctx) {
         try {
-            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "markdown";
+            else format = format.trim().toLowerCase();
+
             List<CodeType> types = dao.findAllTypes();
             List<CodeMethod> methods = dao.findAllMethods();
             List<CodeField> fields = dao.findAllFields();
@@ -917,7 +920,10 @@ public class CodeLensServer {
 
     private void getReviewReport(Context ctx) {
         try {
-            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "markdown";
+            else format = format.trim().toLowerCase();
+
             List<CodeType> types = dao.findAllTypes();
             ReportService.ReviewReportData data = reportService.buildReviewReportData(types);
 
@@ -938,7 +944,10 @@ public class CodeLensServer {
 
     private void getMetricsReport(Context ctx) {
         try {
-            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("csv").toLowerCase();
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "csv";
+            else format = format.trim().toLowerCase();
+
             List<CodeType> types = dao.findAllTypes();
             List<CodeMethod> methods = dao.findAllMethods();
             List<CodeField> fields = dao.findAllFields();
@@ -961,8 +970,13 @@ public class CodeLensServer {
 
     private void downloadReport(Context ctx) {
         try {
-            String type = ctx.queryParamAsClass("type", String.class).getOrDefault("architecture").toLowerCase();
-            String format = ctx.queryParamAsClass("format", String.class).getOrDefault("markdown").toLowerCase();
+            String type = ctx.queryParam("type");
+            if (type == null || type.isBlank()) type = "architecture";
+            else type = type.trim().toLowerCase();
+
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "markdown";
+            else format = format.trim().toLowerCase();
 
             String ext = format.equals("markdown") ? "md" : format;
             String filename = "codelens-" + type + "-report." + ext;
