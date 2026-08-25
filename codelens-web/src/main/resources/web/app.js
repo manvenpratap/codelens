@@ -716,9 +716,7 @@ function switchTab(tabName) {
     updateReviewTargetInfo();
   }
   if (tabName === 'codebase') {
-    if (!App.activeAltRenderer) {
-      loadWholeCodebaseGraph(App.codebaseGraphLevel || 'city3d');
-    }
+    loadWholeCodebaseGraph(App.codebaseGraphLevel || 'city3d');
   }
   if (tabName === 'source' && App.editor) {
     setTimeout(() => {
@@ -1269,7 +1267,7 @@ async function loadWholeCodebaseGraph(level = App.codebaseGraphLevel || 'city3d'
   const isAltViz = ['city3d', 'galaxy3d', 'treemap', 'sunburst', 'dsm', 'chord'].includes(level);
 
   // If in Macro Codebase Viz mode, ensure Codebase Viz tab is active
-  if (isAltViz) {
+  if (isAltViz && App.activeTab !== 'codebase') {
     switchTab('codebase');
   }
 
@@ -2599,20 +2597,29 @@ async function init() {
   // Pre-load git branch metadata in the status footer
   updateFooterGitBranch();
 
-  // Whole codebase graph button
+  // Whole codebase graph button in Graph tab (2D Force-Directed Graph)
   const fullCodebaseBtn = qs('#btn-full-codebase');
   if (fullCodebaseBtn) {
-    fullCodebaseBtn.addEventListener('click', () => loadWholeCodebaseGraph(App.codebaseGraphLevel || 'arch'));
+    fullCodebaseBtn.addEventListener('click', () => {
+      switchTab('graph');
+      loadWholeCodebaseGraph('arch');
+    });
   }
 
-  // Level selector buttons
+  // Level selector buttons in Graph tab
   const archLevelBtn = qs('#btn-level-arch');
   if (archLevelBtn) {
-    archLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('arch'));
+    archLevelBtn.addEventListener('click', () => {
+      switchTab('graph');
+      loadWholeCodebaseGraph('arch');
+    });
   }
   const methodsLevelBtn = qs('#btn-level-methods');
   if (methodsLevelBtn) {
-    methodsLevelBtn.addEventListener('click', () => loadWholeCodebaseGraph('methods'));
+    methodsLevelBtn.addEventListener('click', () => {
+      switchTab('graph');
+      loadWholeCodebaseGraph('methods');
+    });
   }
 
   // Dedicated Codebase Macro Visualization level buttons
