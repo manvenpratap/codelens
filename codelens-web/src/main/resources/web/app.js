@@ -1265,7 +1265,7 @@ async function loadWholeCodebaseGraph(level = null) {
   // Update pill active states
   qsa('.level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === App.codebaseGraphLevel));
 
-  const isAltViz = ['dsm', 'treemap', 'chord', 'sunburst'].includes(App.codebaseGraphLevel);
+  const isAltViz = ['dsm', 'treemap', 'chord', 'sunburst', 'city3d', 'galaxy3d'].includes(App.codebaseGraphLevel);
 
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
