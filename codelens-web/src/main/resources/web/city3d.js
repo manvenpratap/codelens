@@ -191,23 +191,23 @@
         this._controls.maxDistance = 1800;
       }
 
-      // Lights - High Brightness Rig
-      const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
-      this._scene.add(ambientLight);
+      // Lights
+      this._ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+      this._scene.add(this._ambientLight);
 
-      const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
-      dirLight.position.set(250, 450, 250);
-      dirLight.castShadow = true;
-      dirLight.shadow.mapSize.width = 2048;
-      dirLight.shadow.mapSize.height = 2048;
-      this._scene.add(dirLight);
+      this._dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+      this._dirLight.position.set(250, 450, 250);
+      this._dirLight.castShadow = true;
+      this._dirLight.shadow.mapSize.width = 2048;
+      this._dirLight.shadow.mapSize.height = 2048;
+      this._scene.add(this._dirLight);
 
-      const dirLight2 = new THREE.DirectionalLight(0x34d399, 0.85);
-      dirLight2.position.set(-250, 350, -250);
-      this._scene.add(dirLight2);
+      this._dirLight2 = new THREE.DirectionalLight(0x34d399, 0.65);
+      this._dirLight2.position.set(-250, 350, -250);
+      this._scene.add(this._dirLight2);
 
-      const topLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.9);
-      this._scene.add(topLight);
+      this._topLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.7);
+      this._scene.add(this._topLight);
 
       // Grid Floor
       const gridHelper = new THREE.GridHelper(1400, 70, 0x10b981, 0x334155);
@@ -601,6 +601,18 @@
       }
     }
 
+    setBrightness(val) {
+      // val in range [0.2, 2.5], 1.0 is default
+      const factor = Math.max(0.2, Math.min(2.5, val));
+      if (this._renderer) {
+        this._renderer.toneMappingExposure = 1.0 * factor;
+      }
+      if (this._ambientLight) this._ambientLight.intensity = 0.95 * factor;
+      if (this._dirLight) this._dirLight.intensity = 1.1 * factor;
+      if (this._dirLight2) this._dirLight2.intensity = 0.65 * factor;
+      if (this._topLight) this._topLight.intensity = 0.7 * factor;
+    }
+
     destroy() {
       if (this._animId) {
         cancelAnimationFrame(this._animId);
@@ -624,6 +636,10 @@
       }
       this._scene = null;
       this._camera = null;
+      this._ambientLight = null;
+      this._dirLight = null;
+      this._dirLight2 = null;
+      this._topLight = null;
       this._buildings = [];
     }
   }

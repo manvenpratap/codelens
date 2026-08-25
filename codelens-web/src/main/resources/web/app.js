@@ -1288,6 +1288,13 @@ async function loadWholeCodebaseGraph(level) {
   qsa('#codebase-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === effectiveLevel));
   qsa('#graph-level-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.level === effectiveLevel));
 
+  // Toggle brightness slider visibility (only for 3D modes)
+  const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
+  const brightnessCtrl = qs('#codebase-brightness-controls');
+  const brightnessDiv = qs('#codebase-brightness-divider');
+  if (brightnessCtrl) brightnessCtrl.style.display = is3D ? 'flex' : 'none';
+  if (brightnessDiv) brightnessDiv.style.display = is3D ? '' : 'none';
+
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
     App.activeAltRenderer.destroy();
@@ -1311,6 +1318,9 @@ async function loadWholeCodebaseGraph(level) {
         }
         const renderer = new window.CodeCity3DRenderer(mountContainer);
         renderer.setData(archData, treeData);
+        if (typeof renderer.setBrightness === 'function') {
+          renderer.setBrightness(App.codebaseBrightness || 1.0);
+        }
         App.activeAltRenderer = renderer;
         renderAltVizInspector('3D City', archData.nodes.length, archData.edges.length);
         showBanner('3D Software City loaded: ' + archData.nodes.length + ' buildings');
@@ -1324,6 +1334,9 @@ async function loadWholeCodebaseGraph(level) {
         }
         const renderer = new window.Galaxy3DRenderer(mountContainer);
         renderer.setData(data);
+        if (typeof renderer.setBrightness === 'function') {
+          renderer.setBrightness(App.codebaseBrightness || 1.0);
+        }
         App.activeAltRenderer = renderer;
         renderAltVizInspector('3D Galaxy', data.nodes.length, data.edges.length);
         showBanner('3D Force Galaxy loaded: ' + data.nodes.length + ' orbital nodes');
@@ -2659,6 +2672,39 @@ async function init() {
       if (level) loadWholeCodebaseGraph(level);
     });
   });
+
+  // Codebase 3D Views Brightness Slider
+  const brightnessSlider = qs('#codebase-brightness-slider');
+  const brightnessValLabel = qs('#codebase-brightness-value');
+  const resetBrightnessBtn = qs('#btn-reset-brightness');
+
+  if (brightnessSlider) {
+    brightnessSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value) || 1.0;
+      App.codebaseBrightness = val;
+      if (brightnessValLabel) {
+        brightnessValLabel.textContent = `${Math.round(val * 100)}%`;
+      }
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.setBrightness === 'function') {
+        App.activeAltRenderer.setBrightness(val);
+      }
+    });
+  }
+
+  if (resetBrightnessBtn) {
+    resetBrightnessBtn.addEventListener('click', () => {
+      if (brightnessSlider) {
+        brightnessSlider.value = '1.0';
+      }
+      if (brightnessValLabel) {
+        brightnessValLabel.textContent = '100%';
+      }
+      App.codebaseBrightness = 1.0;
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.setBrightness === 'function') {
+        App.activeAltRenderer.setBrightness(1.0);
+      }
+    });
+  }
 
   // Expose global handles for testing and automation
   window.App = App;

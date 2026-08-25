@@ -167,20 +167,20 @@
         this._controls.maxDistance = 1500;
       }
 
-      // Lights - High Brightness Rig
-      const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
-      this._scene.add(ambientLight);
+      // Lights
+      this._ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+      this._scene.add(this._ambientLight);
 
-      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 1.1);
-      this._scene.add(hemiLight);
+      this._hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.85);
+      this._scene.add(this._hemiLight);
 
-      const pointLight = new THREE.PointLight(0xffffff, 1.8, 1200);
-      pointLight.position.set(0, 80, 0);
-      this._scene.add(pointLight);
+      this._pointLight = new THREE.PointLight(0xffffff, 1.3, 1200);
+      this._pointLight.position.set(0, 80, 0);
+      this._scene.add(this._pointLight);
 
-      const dirLight = new THREE.DirectionalLight(0x34d399, 1.0);
-      dirLight.position.set(150, 200, 150);
-      this._scene.add(dirLight);
+      this._dirLight = new THREE.DirectionalLight(0x34d399, 0.75);
+      this._dirLight.position.set(150, 200, 150);
+      this._scene.add(this._dirLight);
 
       // Stars background particle field
       const starGeo = new THREE.BufferGeometry();
@@ -568,6 +568,18 @@
       }
     }
 
+    setBrightness(val) {
+      // val in range [0.2, 2.5], 1.0 is default
+      const factor = Math.max(0.2, Math.min(2.5, val));
+      if (this._renderer) {
+        this._renderer.toneMappingExposure = 1.0 * factor;
+      }
+      if (this._ambientLight) this._ambientLight.intensity = 1.0 * factor;
+      if (this._hemiLight) this._hemiLight.intensity = 0.85 * factor;
+      if (this._pointLight) this._pointLight.intensity = 1.3 * factor;
+      if (this._dirLight) this._dirLight.intensity = 0.75 * factor;
+    }
+
     destroy() {
       if (this._animId) {
         cancelAnimationFrame(this._animId);
@@ -591,6 +603,10 @@
       }
       this._scene = null;
       this._camera = null;
+      this._ambientLight = null;
+      this._hemiLight = null;
+      this._pointLight = null;
+      this._dirLight = null;
       this._nodeMeshes = [];
       this._edgeLines = [];
       this._particles = [];
