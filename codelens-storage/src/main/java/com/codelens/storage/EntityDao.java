@@ -752,8 +752,11 @@ public class EntityDao {
         if (packageFqn == null || packageFqn.isBlank()) return "default";
         String[] parts = packageFqn.split("\\.");
         if (parts.length >= 3) {
-            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net")) {
-                return (parts.length >= 4) ? parts[2] : parts[parts.length - 2];
+            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net") || parts[0].equals("dev") || parts[0].equals("app")) {
+                if (parts.length >= 4) {
+                    return parts[parts.length - 1]; // e.g. com.tcs.bancs.BS -> BS
+                }
+                return parts[2]; // e.g. com.example.trading -> trading
             }
             return parts[0];
         } else if (parts.length == 2) {

@@ -1550,7 +1550,8 @@ function renderCodebaseLegend(nodesOrTreeData) {
       let pkg = n.package;
       if (!pkg && n.id && n.id.includes('.')) {
         const parts = n.id.replace(/\(.*\)/, '').split('.');
-        pkg = parts.slice(0, -1).join('.') || 'default';
+        const isType = (n.type === 'CLASS' || n.type === 'TYPE' || parts.length <= 2);
+        pkg = isType ? (parts.slice(0, -1).join('.') || 'default') : (parts.slice(0, -2).join('.') || 'default');
       }
       pkg = pkg || 'default';
       pkgCounts.set(pkg, (pkgCounts.get(pkg) || 0) + 1);
@@ -1717,7 +1718,7 @@ function renderWholeCodebaseInspector(view, levelName = 'Architecture') {
   const isArch = (levelName === 'Architecture');
   renderEntityHeader('CODEBASE', isArch ? 'System Architecture' : 'Detailed Call Topology', isArch ? 'Class and Component Dependencies' : 'All Indexed Packages and Methods');
 
-  const pkgs = new Set((view.nodes || []).map(n => n.package || n.id.split('.').slice(0, -1).join('.')));
+  const pkgs = new Set((view.nodes || []).map(n => n.package || (n.id && n.id.includes('.') ? ((n.type === 'CLASS' || n.type === 'TYPE' || n.id.split('.').length <= 2) ? n.id.split('.').slice(0, -1).join('.') : n.id.split('.').slice(0, -2).join('.')) : 'default')));
 
   body.appendChild(metaGrid([
     [isArch ? 'Components / Classes' : 'Total Methods', String(view.nodes ? view.nodes.length : 0)],

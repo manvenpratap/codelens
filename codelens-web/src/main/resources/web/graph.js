@@ -259,41 +259,52 @@ class ForceGraph {
       return { pkg: 'default', className: parts[0] || '', memberName: '' };
     }
 
-    // Find class segment (first segment starting with uppercase letter)
-    let classIdx = -1;
-    for (let i = 0; i < parts.length; i++) {
-      if (/^[A-Z]/.test(parts[i])) {
-        classIdx = i;
-        break;
+    const typeUpper = (nodeType || '').toUpperCase();
+
+    if (typeUpper === 'PACKAGE' || typeUpper === 'MODULE') {
+      return { pkg: sigPart, className: '', memberName: '' };
+    }
+
+    if (typeUpper === 'CLASS' || typeUpper === 'TYPE') {
+      return {
+        pkg: parts.slice(0, -1).join('.') || 'default',
+        className: parts[parts.length - 1],
+        memberName: '',
+      };
+    }
+
+    if (typeUpper === 'METHOD' || typeUpper === 'FIELD' || parenIdx !== -1) {
+      if (parts.length >= 3) {
+        return {
+          pkg: parts.slice(0, -2).join('.') || 'default',
+          className: parts[parts.length - 2],
+          memberName: parts[parts.length - 1],
+        };
+      } else if (parts.length === 2) {
+        return {
+          pkg: 'default',
+          className: parts[0],
+          memberName: parts[1],
+        };
       }
     }
 
-    let pkg = 'default';
-    let className = '';
-    let memberName = '';
-
-    if (classIdx !== -1) {
-      pkg = parts.slice(0, classIdx).join('.') || 'default';
-      className = parts[classIdx];
-      memberName = parts.slice(classIdx + 1).join('.');
-    } else {
-      if (nodeType === 'METHOD' || parenIdx !== -1) {
-        if (parts.length >= 3) {
-          pkg = parts.slice(0, -2).join('.');
-          className = parts[parts.length - 2];
-          memberName = parts[parts.length - 1];
-        } else if (parts.length === 2) {
-          pkg = 'default';
-          className = parts[0];
-          memberName = parts[1];
-        }
-      } else {
-        pkg = parts.slice(0, -1).join('.') || 'default';
-        className = parts[parts.length - 1];
-      }
+    // Default heuristic for unknown types:
+    // If the last segment starts with lowercase or has parentheses, treat as member (method/field)
+    if (parts.length >= 3 && (/^[a-z_]/.test(parts[parts.length - 1]) || parenIdx !== -1)) {
+      return {
+        pkg: parts.slice(0, -2).join('.') || 'default',
+        className: parts[parts.length - 2],
+        memberName: parts[parts.length - 1],
+      };
     }
 
-    return { pkg, className, memberName };
+    // Otherwise treat as class
+    return {
+      pkg: parts.slice(0, -1).join('.') || 'default',
+      className: parts[parts.length - 1],
+      memberName: '',
+    };
   }
 
   /** Format a package name automatically into a clean, human-friendly Module/Package name. */

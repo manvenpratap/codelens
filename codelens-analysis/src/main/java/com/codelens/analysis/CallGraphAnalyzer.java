@@ -512,8 +512,13 @@ public class CallGraphAnalyzer {
         String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
         String[] parts = base.split("\\.");
         if (parts.length >= 3) {
-            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net")) {
-                return (parts.length >= 4) ? parts[2] : parts[parts.length - 2];
+            if (parts[0].equals("com") || parts[0].equals("org") || parts[0].equals("io") || parts[0].equals("net") || parts[0].equals("dev") || parts[0].equals("app")) {
+                if (parts.length >= 5) {
+                    return parts[3]; // e.g. com.tcs.bancs.BS.AccountService -> BS
+                } else if (parts.length == 4) {
+                    return (parts[3].matches("^[A-Z0-9_]+$") && !parts[2].matches("^[A-Z0-9_]+$")) ? parts[3] : parts[2];
+                }
+                return parts[2];
             }
             return parts[0];
         } else if (parts.length == 2) {

@@ -238,7 +238,8 @@
       // Group nodes by package/module to form clean orbital star systems
       const pkgMap = new Map();
       rawNodes.forEach(n => {
-        const pkg = n.package || (n.id.includes('.') ? n.id.split('.').slice(0, -1).join('.') : 'default');
+        const isType = (n.type === 'CLASS' || n.type === 'TYPE' || n.id.split('.').length <= 2);
+        const pkg = n.package || (n.id.includes('.') ? (isType ? n.id.split('.').slice(0, -1).join('.') : n.id.split('.').slice(0, -2).join('.')) : 'default');
         if (!pkgMap.has(pkg)) pkgMap.set(pkg, []);
         pkgMap.get(pkg).push(n);
       });
