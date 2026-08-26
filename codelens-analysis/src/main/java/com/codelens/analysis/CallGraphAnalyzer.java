@@ -350,16 +350,35 @@ public class CallGraphAnalyzer {
             allClasses.add(extractClassFqn(v));
         }
 
-        // Auto-select scope: if > 120 classes and scope is null, default to "modules"
         String effectiveScope = scope;
         if (effectiveScope == null || effectiveScope.isEmpty() || "auto".equalsIgnoreCase(effectiveScope)) {
-            effectiveScope = (allClasses.size() > 120) ? "modules" : "classes";
+            Set<String> modules = new HashSet<>();
+            Set<String> packages = new HashSet<>();
+            for (String v : g.vertexSet()) {
+                modules.add(extractModuleName(v));
+                packages.add(extractPackageFqn(v));
+            }
+            if (modules.size() > 1 && allClasses.size() > 500) {
+                effectiveScope = "modules";
+            } else if (packages.size() > 1 && allClasses.size() > 300) {
+                effectiveScope = "packages";
+            } else {
+                effectiveScope = "classes";
+            }
         }
 
         if ("modules".equalsIgnoreCase(effectiveScope)) {
-            return moduleArchitectureGraphView();
+            GraphView modView = moduleArchitectureGraphView();
+            if (modView.nodes.size() <= 1 && allClasses.size() > 1) {
+                return classArchitectureGraphView(filter);
+            }
+            return modView;
         } else if ("packages".equalsIgnoreCase(effectiveScope)) {
-            return packageArchitectureGraphView(filter);
+            GraphView pkgView = packageArchitectureGraphView(filter);
+            if (pkgView.nodes.size() <= 1 && allClasses.size() > 1) {
+                return classArchitectureGraphView(filter);
+            }
+            return pkgView;
         } else {
             return classArchitectureGraphView(filter);
         }
@@ -649,13 +668,23 @@ public class CallGraphAnalyzer {
 
         String effectiveScope = scope;
         if (effectiveScope == null || effectiveScope.isEmpty() || "auto".equalsIgnoreCase(effectiveScope)) {
-            effectiveScope = (allClasses.size() > 100) ? "modules" : "classes";
+            Set<String> modules = new HashSet<>();
+            for (String v : g.vertexSet()) modules.add(extractModuleName(v));
+            effectiveScope = (modules.size() > 1 && allClasses.size() > 300) ? "modules" : "classes";
         }
 
         if ("modules".equalsIgnoreCase(effectiveScope)) {
-            return moduleDsmView();
+            DSMPayload modDsm = moduleDsmView();
+            if (modDsm.classes.size() <= 1 && allClasses.size() > 1) {
+                return classDsmView(filter);
+            }
+            return modDsm;
         } else if ("packages".equalsIgnoreCase(effectiveScope)) {
-            return packageDsmView(filter);
+            DSMPayload pkgDsm = packageDsmView(filter);
+            if (pkgDsm.classes.size() <= 1 && allClasses.size() > 1) {
+                return classDsmView(filter);
+            }
+            return pkgDsm;
         } else {
             return classDsmView(filter);
         }
