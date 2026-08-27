@@ -873,9 +873,24 @@ class ForceGraph {
     this._ticks++;
   }
 
+  pause() {
+    this._paused = true;
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
+
+  resume() {
+    if (!this._paused) return;
+    this._paused = false;
+    this._resize();
+    this._startLoop();
+  }
+
   _startLoop() {
     const loop = () => {
-      if (!this._canvas || !this._ctx) return;
+      if (!this._canvas || !this._ctx || this._paused) return;
       if (this._physicsEnabled && this._ticks < PHYSICS.maxTicks) {
         this._simulateTick();
       }

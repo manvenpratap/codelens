@@ -640,7 +640,26 @@
       }
     }
 
+    pause() {
+      this._paused = true;
+      if (this._animId) {
+        cancelAnimationFrame(this._animId);
+        this._animId = null;
+      }
+    }
+
+    resume() {
+      if (!this._paused) return;
+      this._paused = false;
+      if (this._clock) this._clock.start();
+      this._onResize();
+      if (!this._animId) {
+        this._animId = requestAnimationFrame(this._animate.bind(this));
+      }
+    }
+
     _animate() {
+      if (this._paused) return;
       this._animId = requestAnimationFrame(this._animate.bind(this));
 
       const delta = this._clock ? Math.min(this._clock.getDelta(), 0.1) : 0.016;

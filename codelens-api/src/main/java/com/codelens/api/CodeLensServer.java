@@ -180,10 +180,11 @@ public class CodeLensServer {
         app.get("/api/git/status",           this::getGitStatus);
 
         // ── Reports & Exports ─────────────────────────────────────────────────
-        app.get("/api/reports/architecture", this::getArchitectureReport);
-        app.get("/api/reports/review",       this::getReviewReport);
-        app.get("/api/reports/metrics",      this::getMetricsReport);
-        app.get("/api/reports/download",     this::downloadReport);
+        app.get("/api/reports/architecture",  this::getArchitectureReport);
+        app.get("/api/reports/review",        this::getReviewReport);
+        app.get("/api/reports/metrics",       this::getMetricsReport);
+        app.get("/api/reports/html-snapshot", this::getHtmlSnapshotReport);
+        app.get("/api/reports/download",      this::downloadReport);
 
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
@@ -968,6 +969,31 @@ public class CodeLensServer {
         }
     }
 
+    private void getHtmlSnapshotReport(Context ctx) {
+        try {
+            String scope = ctx.queryParam("scope");
+            String filter = ctx.queryParam("filter");
+
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
+            Object fullGraph = callGraph.fullGraphView();
+            Object archGraph = callGraph.architectureGraphView(scope, filter);
+
+            String projectName = types.isEmpty() ? "Codebase"
+                : (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
+
+            String html = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
+            ctx.contentType("text/html; charset=UTF-8").result(html);
+        } catch (Exception e) {
+            log.error("Failed to generate HTML graph snapshot: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate HTML graph snapshot: " + e.getMessage()));
+        }
+    }
+
     private void downloadReport(Context ctx) {
         try {
             String type = ctx.queryParam("type");
@@ -977,6 +1003,12 @@ public class CodeLensServer {
             String format = ctx.queryParam("format");
             if (format == null || format.isBlank()) format = "markdown";
             else format = format.trim().toLowerCase();
+
+            if ("html-snapshot".equals(type) || "graph-snapshot".equals(type)) {
+                ctx.header("Content-Disposition", "attachment; filename=\"codelens-interactive-graph.html\"");
+                getHtmlSnapshotReport(ctx);
+                return;
+            }
 
             String ext = format.equals("markdown") ? "md" : format;
             String filename = "codelens-" + type + "-report." + ext;

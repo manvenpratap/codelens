@@ -59,6 +59,34 @@ const App = {
 /* ─────────────────────────────────────────────────────────────────────────────
    2. API client - thin fetch wrapper
    ───────────────────────────────────────────────────────────────────────────── */
+// ── In-Memory Graph Data Cache (Zero Network Overhead across views) ───────────
+const GraphDataCache = {
+  _cache: new Map(),
+  _scanRevision: 0,
+
+  get(key) {
+    return this._cache.get(key);
+  },
+
+  set(key, data) {
+    this._cache.set(key, data);
+  },
+
+  has(key) {
+    return this._cache.has(key);
+  },
+
+  clear() {
+    this._cache.clear();
+    this._scanRevision++;
+  },
+
+  getRevision() {
+    return this._scanRevision;
+  }
+};
+window.GraphDataCache = GraphDataCache;
+
 const api = {
   /** Make an API request; throws on non-2xx. */
   async request(path, options = {}) {
@@ -86,10 +114,34 @@ const api = {
   callers:            (id, d=4)   => api.get(`/methods/${enc(id)}/callers?depth=${d}`),
   callees:            (id, d=4)   => api.get(`/methods/${enc(id)}/callees?depth=${d}`),
   callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
-  fullGraph:          ()          => api.get('/graph/all'),
-  architectureGraph:  (scope, filter) => api.get(`/graph/architecture${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
-  dsmData:            (scope, filter) => api.get(`/graph/dsm${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
-  treemapData:        (scope, filter) => api.get(`/graph/treemap${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`),
+  fullGraph:          async () => {
+    const key = 'graph:full';
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get('/graph/all');
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  architectureGraph:  async (scope, filter) => {
+    const key = `graph:arch:${scope || ''}:${filter || ''}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/graph/architecture${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  dsmData:            async (scope, filter) => {
+    const key = `graph:dsm:${scope || ''}:${filter || ''}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/graph/dsm${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  treemapData:        async (scope, filter) => {
+    const key = `graph:treemap:${scope || ''}:${filter || ''}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/graph/treemap${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
@@ -203,6 +255,13 @@ async function onScanComplete(s) {
   qs('#scan-status-bar').classList.remove('visible');
   qs('#scan-progress-bar').style.width = '100%';
   setTimeout(() => qs('#scan-progress-bar').style.width = '0%', 600);
+
+  // Invalidate in-memory graph cache and reset active renderer on rescan
+  GraphDataCache.clear();
+  if (App.activeAltRenderer && typeof App.activeAltRenderer.destroy === 'function') {
+    App.activeAltRenderer.destroy();
+    App.activeAltRenderer = null;
+  }
 
   // Update header bar into loaded project view
   updateHeaderProjectBar(s.sourcePath || qs('#scan-path-input')?.value?.trim());
@@ -709,20 +768,38 @@ async function setFilter(kind) {
 
 /** Switch the active tab in the centre panel. */
 function switchTab(tabName) {
+  const previousTab = App.activeTab;
   App.activeTab = tabName;
   qsa('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   qsa('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === tabName + '-view'));
+
+  // Pause rendering loops in inactive tabs to save CPU/GPU
+  if (previousTab === 'codebase' && tabName !== 'codebase' && App.activeAltRenderer && typeof App.activeAltRenderer.pause === 'function') {
+    App.activeAltRenderer.pause();
+  }
+  if (previousTab === 'graph' && tabName !== 'graph' && App.graph && typeof App.graph.pause === 'function') {
+    App.graph.pause();
+  }
+
   if (tabName === 'review') {
     updateReviewTargetInfo();
   }
   if (tabName === 'codebase') {
     const macroLevel = App.codebaseMacroLevel || 'city3d';
-    loadWholeCodebaseGraph(macroLevel);
+    if (App.activeAltRenderer &&
+        App.activeAltRenderer._currentLevel === macroLevel &&
+        App.activeAltRenderer._currentGranularity === (App.codebaseGranularity || 'arch') &&
+        App.activeAltRenderer._cachedRevision === GraphDataCache.getRevision()) {
+      if (typeof App.activeAltRenderer.resume === 'function') {
+        App.activeAltRenderer.resume();
+      }
+    } else {
+      loadWholeCodebaseGraph(macroLevel);
+    }
   }
   if (tabName === 'graph') {
-    if (App.activeAltRenderer) {
-      App.activeAltRenderer.destroy();
-      App.activeAltRenderer = null;
+    if (App.graph && typeof App.graph.resume === 'function') {
+      App.graph.resume();
     }
   }
   if (tabName === 'source' && App.editor) {
@@ -1323,6 +1400,17 @@ async function loadWholeCodebaseGraph(level, granularity) {
   const hasBottomControls = (supportsGranularity || showPojoFilter || is3D);
   if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
 
+  // Fast Resume: If current renderer matches effective level, granularity and cache revision, resume in 0ms!
+  if (App.activeAltRenderer &&
+      App.activeAltRenderer._currentLevel === effectiveLevel &&
+      App.activeAltRenderer._currentGranularity === (isMethods ? 'methods' : 'arch') &&
+      App.activeAltRenderer._cachedRevision === GraphDataCache.getRevision()) {
+    if (typeof App.activeAltRenderer.resume === 'function') {
+      App.activeAltRenderer.resume();
+    }
+    return;
+  }
+
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
     App.activeAltRenderer.destroy();
@@ -1485,6 +1573,12 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderAltVizInspector(`Chord (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
         renderCodebaseLegend(data.nodes);
         showBanner(`Chord diagram loaded: ${data.nodes.length} ${isMethods ? 'methods' : 'classes'}, ${data.edges.length} relationships`);
+      }
+
+      if (App.activeAltRenderer) {
+        App.activeAltRenderer._currentLevel = effectiveLevel;
+        App.activeAltRenderer._currentGranularity = (isMethods ? 'methods' : 'arch');
+        App.activeAltRenderer._cachedRevision = GraphDataCache.getRevision();
       }
     } catch (e) {
       showCodebaseEmpty('Failed to load visualization: ' + e.message);
@@ -4338,14 +4432,18 @@ const ExportHub = {
 
     try {
       ExportHub.loading = true;
-      const res = await fetch(`/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`);
+      const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
+      const url = isSnapshot
+        ? '/api/reports/html-snapshot'
+        : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
+      const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
 
       let text = await res.text();
       // Format JSON string if response is raw JSON
-      if (ExportHub.activeFormat === 'json') {
+      if (ExportHub.activeFormat === 'json' && !isSnapshot) {
         try {
           const parsed = JSON.parse(text);
           text = JSON.stringify(parsed, null, 2);
@@ -4354,7 +4452,7 @@ const ExportHub = {
 
       ExportHub.cachedContent = text;
 
-      if (ExportHub.activeFormat === 'html') {
+      if (ExportHub.activeFormat === 'html' || isSnapshot) {
         codeEl.style.display = 'none';
         frameEl.style.display = 'block';
         frameEl.srcdoc = text;
@@ -4379,13 +4477,17 @@ const ExportHub = {
   },
 
   async download() {
-    const ext = ExportHub.activeFormat === 'markdown' ? 'md' : ExportHub.activeFormat;
-    const filename = `codelens-${ExportHub.activeType}-report.${ext}`;
+    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
+    const ext = isSnapshot ? 'html' : (ExportHub.activeFormat === 'markdown' ? 'md' : ExportHub.activeFormat);
+    const filename = isSnapshot ? 'codelens-interactive-graph.html' : `codelens-${ExportHub.activeType}-report.${ext}`;
 
     let content = ExportHub.cachedContent;
     if (!content) {
       try {
-        const res = await fetch(`/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`);
+        const url = isSnapshot
+          ? '/api/reports/html-snapshot'
+          : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
+        const res = await fetch(url);
         content = await res.text();
         ExportHub.cachedContent = content;
       } catch (e) {
@@ -4400,7 +4502,7 @@ const ExportHub = {
       json: 'application/json;charset=utf-8',
       csv: 'text/csv;charset=utf-8',
     };
-    const mime = mimeTypes[ExportHub.activeFormat] || 'text/plain;charset=utf-8';
+    const mime = isSnapshot ? 'text/html;charset=utf-8' : (mimeTypes[ExportHub.activeFormat] || 'text/plain;charset=utf-8');
 
     try {
       const blob = new Blob([content], { type: mime });
@@ -4416,7 +4518,7 @@ const ExportHub = {
       }, 300);
       showBanner(`✓ Downloaded ${filename}`);
     } catch (err) {
-      const url = `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
+      const url = isSnapshot ? '/api/reports/download?type=html-snapshot' : `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
@@ -4445,7 +4547,8 @@ const ExportHub = {
   },
 
   openTab() {
-    if (ExportHub.activeFormat === 'html' && ExportHub.cachedContent) {
+    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
+    if ((ExportHub.activeFormat === 'html' || isSnapshot) && ExportHub.cachedContent) {
       const win = window.open('', '_blank');
       if (win) {
         win.document.open();
@@ -4454,7 +4557,7 @@ const ExportHub = {
         return;
       }
     }
-    const url = `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
+    const url = isSnapshot ? '/api/reports/html-snapshot' : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
     window.open(url, '_blank');
   }
 };
@@ -4477,6 +4580,9 @@ function initExportHub() {
   qsa('.export-type-card').forEach(card => {
     card.addEventListener('click', () => {
       ExportHub.activeType = card.dataset.report;
+      if (ExportHub.activeType === 'html-snapshot') {
+        ExportHub.activeFormat = 'html';
+      }
       ExportHub.syncUI();
       ExportHub.fetchPreview();
     });
