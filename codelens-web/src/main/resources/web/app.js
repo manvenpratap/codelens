@@ -3947,11 +3947,16 @@ function syncSettingsUI(settings) {
 
   // POJO Settings sync
   if (window.CodeLensClassifier) {
-    const pojoCfg = window.CodeLensClassifier.getPojoConfig();
+    const pojoCfg = window.CodeLensClassifier.getPojoConfig() || {};
     const pojoStdChk = qs('#set-pojo-std');
-    if (pojoStdChk) pojoStdChk.checked = pojoCfg.includeStandardAccessors;
+    if (pojoStdChk) pojoStdChk.checked = (pojoCfg.includeStandardAccessors !== false && pojoCfg.enableStandardGettersSetters !== false);
     const pojoPatternsArea = qs('#set-pojo-patterns');
-    if (pojoPatternsArea) pojoPatternsArea.value = pojoCfg.customPatterns.join('\n');
+    if (pojoPatternsArea) {
+      const patterns = Array.isArray(pojoCfg.customPatterns)
+        ? pojoCfg.customPatterns
+        : (typeof pojoCfg.patterns === 'string' ? pojoCfg.patterns.split(',').map(s => s.trim()).filter(Boolean) : []);
+      pojoPatternsArea.value = patterns.join('\n');
+    }
   }
 
   // Archetype Rules list rendering
@@ -4182,9 +4187,14 @@ function initSettings() {
     resetPojoBtn.addEventListener('click', () => {
       if (window.CodeLensClassifier) {
         window.CodeLensClassifier.resetPojoConfig();
-        const cfg = window.CodeLensClassifier.getPojoConfig();
-        if (pojoStdChk) pojoStdChk.checked = cfg.includeStandardAccessors;
-        if (pojoPatternsArea) pojoPatternsArea.value = cfg.customPatterns.join('\n');
+        const cfg = window.CodeLensClassifier.getPojoConfig() || {};
+        if (pojoStdChk) pojoStdChk.checked = (cfg.includeStandardAccessors !== false && cfg.enableStandardGettersSetters !== false);
+        if (pojoPatternsArea) {
+          const patterns = Array.isArray(cfg.customPatterns)
+            ? cfg.customPatterns
+            : (typeof cfg.patterns === 'string' ? cfg.patterns.split(',').map(s => s.trim()).filter(Boolean) : []);
+          pojoPatternsArea.value = patterns.join('\n');
+        }
         showBanner('POJO detection criteria reset to default');
       }
     });

@@ -131,18 +131,53 @@
       return parts[0];
     }
 
-    // ── POJO Detection ────────────────────────────────────────────────────────
-
     _loadPojoConfig() {
       try {
         const raw = localStorage.getItem(POJO_STORAGE_KEY);
-        if (raw) return { ...DEFAULT_POJO_CONFIG, ...JSON.parse(raw) };
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return { ...DEFAULT_POJO_CONFIG, ...parsed };
+        }
       } catch (_) {}
       return { ...DEFAULT_POJO_CONFIG };
     }
 
     getPojoConfig() {
-      return { ...this._pojoConfig };
+      const enableStd = this._pojoConfig.enableStandardGettersSetters !== false && this._pojoConfig.includeStandardAccessors !== false;
+      const patternsList = Array.isArray(this._pojoConfig.customPatterns)
+        ? this._pojoConfig.customPatterns
+        : (typeof this._pojoConfig.patterns === 'string'
+            ? this._pojoConfig.patterns.split(',').map(s => s.trim()).filter(Boolean)
+            : ['get*', 'set*', 'is*', 'has*']);
+
+      return {
+        includeStandardAccessors: enableStd,
+        enableStandardGettersSetters: enableStd,
+        customPatterns: patternsList,
+        patterns: patternsList.join(', ')
+      };
+    }
+
+    setPojoConfig(cfg) {
+      if (!cfg) return;
+      if (cfg.includeStandardAccessors !== undefined) {
+        this._pojoConfig.enableStandardGettersSetters = Boolean(cfg.includeStandardAccessors);
+        this._pojoConfig.includeStandardAccessors = Boolean(cfg.includeStandardAccessors);
+      }
+      if (cfg.enableStandardGettersSetters !== undefined) {
+        this._pojoConfig.enableStandardGettersSetters = Boolean(cfg.enableStandardGettersSetters);
+        this._pojoConfig.includeStandardAccessors = Boolean(cfg.enableStandardGettersSetters);
+      }
+      if (cfg.customPatterns !== undefined) {
+        const list = Array.isArray(cfg.customPatterns) ? cfg.customPatterns : [];
+        this._pojoConfig.customPatterns = list;
+        this._pojoConfig.patterns = list.join(', ');
+      }
+      if (cfg.patterns !== undefined) {
+        this._pojoConfig.patterns = String(cfg.patterns);
+        this._pojoConfig.customPatterns = this._pojoConfig.patterns.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      this.savePojoConfig(this._pojoConfig);
     }
 
     savePojoConfig(cfg) {
