@@ -1304,10 +1304,10 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
   if (granDiv) granDiv.style.display = supportsGranularity ? '' : 'none';
 
-  // Toggle POJO filter button in Codebase HUD (visible for 2D Graph when scope is methods)
+  // Toggle POJO filter button in Codebase HUD (visible for 2D Graph, 3D City, and 3D Galaxy when scope is methods)
   const pojoCtrl = qs('#codebase-pojo-controls');
   const pojoDiv = qs('#codebase-pojo-divider');
-  const showPojoFilter = (effectiveLevel === 'graph2d' && isMethods);
+  const showPojoFilter = (['graph2d', 'city3d', 'galaxy3d'].includes(effectiveLevel) && isMethods);
   if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
   if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
 
@@ -1542,72 +1542,169 @@ function renderCodebaseLegend(nodesOrTreeData) {
   }
 
   // Extract unique packages with node counts
-  const pkgCounts = new Map();
+  // Map of pkg -> Map<className, { count, nodes, fqn, kind }>
+  const pkgMap = new Map();
 
   if (Array.isArray(nodesOrTreeData)) {
     // Array of nodes { id, label, package, ... }
     nodesOrTreeData.forEach(n => {
       let pkg = n.package;
+      let cls = n.className;
       if (!pkg && n.id && n.id.includes('.')) {
         const parts = n.id.replace(/\(.*\)/, '').split('.');
         const isType = (n.type === 'CLASS' || n.type === 'TYPE' || parts.length <= 2);
         pkg = isType ? (parts.slice(0, -1).join('.') || 'default') : (parts.slice(0, -2).join('.') || 'default');
+        if (!cls) cls = isType ? parts[parts.length - 1] : parts[parts.length - 2];
       }
       pkg = pkg || 'default';
-      pkgCounts.set(pkg, (pkgCounts.get(pkg) || 0) + 1);
+      cls = cls || (n.type === 'CLASS' ? n.label : (n.id && n.id.includes('.') ? n.id.split('.').slice(-2, -1)[0] : n.id)) || 'Class';
+
+      if (!pkgMap.has(pkg)) pkgMap.set(pkg, new Map());
+      const classMap = pkgMap.get(pkg);
+      if (!classMap.has(cls)) {
+        classMap.set(cls, { count: 0, firstNode: n, fqn: (n.package ? `${n.package}.${cls}` : cls) });
+      }
+      classMap.get(cls).count++;
     });
   } else if (nodesOrTreeData.children) {
     // Hierarchical tree (treemap / sunburst)
-    const traverse = (item) => {
+    const traverse = (item, parentPkg) => {
       if (item.type === 'PACKAGE' || (item.children && !item.type)) {
         const pkgName = item.fqn || item.name || 'default';
-        let count = 0;
+        if (!pkgMap.has(pkgName)) pkgMap.set(pkgName, new Map());
         if (item.children) {
           item.children.forEach(c => {
-            if (c.children) count += c.children.length;
-            else count += 1;
+            if (c.type === 'CLASS' || (!c.children && c.name)) {
+              const clsMap = pkgMap.get(pkgName);
+              const clsName = c.name || c.label || 'Class';
+              clsMap.set(clsName, { count: c.value || c.loc || (c.children ? c.children.length : 1), firstNode: c, fqn: c.fqn || `${pkgName}.${clsName}` });
+            } else {
+              traverse(c, pkgName);
+            }
           });
         }
-        if (count > 0) pkgCounts.set(pkgName, (pkgCounts.get(pkgName) || 0) + count);
-      }
-      if (item.children) {
-        item.children.forEach(c => traverse(c));
+      } else if (item.children) {
+        item.children.forEach(c => traverse(c, parentPkg));
       }
     };
-    traverse(nodesOrTreeData);
+    traverse(nodesOrTreeData, 'default');
   }
 
-  if (pkgCounts.size === 0) {
+  if (pkgMap.size === 0) {
     legendWrap.style.display = 'none';
     return;
   }
 
-  const sortedPkgs = Array.from(pkgCounts.entries()).sort((a, b) => b[1] - a[1]);
+  const sortedPkgs = Array.from(pkgMap.entries()).map(([pkg, classMap]) => {
+    let totalCount = 0;
+    classMap.forEach(v => { totalCount += v.count; });
+    return { pkg, classMap, totalCount };
+  }).sort((a, b) => b.totalCount - a.totalCount);
 
   legendWrap.style.display = 'flex';
-  legendList.innerHTML = sortedPkgs.map(([pkg, count], idx) => {
+
+  // Add Expand All / Collapse All actions header if not present
+  let actionsWrap = legendWrap.querySelector('.legend-actions');
+  if (!actionsWrap) {
+    actionsWrap = document.createElement('div');
+    actionsWrap.className = 'legend-actions';
+    actionsWrap.style.display = 'flex';
+    actionsWrap.style.gap = '4px';
+    actionsWrap.style.marginBottom = '6px';
+    actionsWrap.innerHTML = `
+      <button class="legend-actions-btn" id="codebase-legend-expand-all">Expand All</button>
+      <button class="legend-actions-btn" id="codebase-legend-collapse-all">Collapse All</button>
+    `;
+    legendList.parentElement.insertBefore(actionsWrap, legendList);
+
+    actionsWrap.querySelector('#codebase-legend-expand-all').onclick = () => {
+      legendList.querySelectorAll('.legend-chevron').forEach(ch => ch.classList.add('open'));
+      legendList.querySelectorAll('.legend-class-list').forEach(cl => cl.classList.add('open'));
+    };
+    actionsWrap.querySelector('#codebase-legend-collapse-all').onclick = () => {
+      legendList.querySelectorAll('.legend-chevron').forEach(ch => ch.classList.remove('open'));
+      legendList.querySelectorAll('.legend-class-list').forEach(cl => cl.classList.remove('open'));
+    };
+  }
+
+  legendList.innerHTML = sortedPkgs.map(({ pkg, classMap, totalCount }, idx) => {
     const color = (window.CodeLensPalette && window.CodeLensPalette.getColor)
       ? window.CodeLensPalette.getColor(pkg, idx)
       : '#3b82f6';
     const displayLabel = formatPackageDisplayName(pkg);
+    const safePkgId = 'pkg-' + idx;
+
+    const classesHtml = Array.from(classMap.entries()).map(([clsName, meta]) => {
+      let archBadgeHtml = '';
+      if (window.CodeLensClassifier) {
+        const arch = window.CodeLensClassifier.classifyType(clsName, meta.fqn, pkg);
+        if (arch) {
+          archBadgeHtml = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66;" title="${esc(arch.description)}">${arch.icon} ${esc(arch.badge)}</span>`;
+        }
+      }
+      return `
+        <div class="legend-class-item" data-pkg="${pkg}" data-class="${clsName}" data-fqn="${meta.fqn}" title="Toggle ${clsName} (${meta.count})">
+          <div class="legend-class-dot" style="background:${color}"></div>
+          <span class="legend-class-label">${clsName}</span>
+          ${archBadgeHtml}
+          <span class="legend-count">${meta.count}</span>
+        </div>
+      `;
+    }).join('');
+
     return `
-      <div class="legend-item" data-pkg="${pkg}">
-        <div class="legend-dot" style="background:${color}"></div>
-        <span class="legend-label" title="${pkg}">${displayLabel}</span>
-        <span class="legend-count">${count}</span>
+      <div class="legend-pkg-wrap" data-pkg="${pkg}">
+        <div class="legend-pkg-row" data-pkg="${pkg}">
+          <span class="legend-chevron" data-target="${safePkgId}" title="Expand / collapse classes">▶</span>
+          <div class="legend-dot" style="background:${color}"></div>
+          <span class="legend-label" title="${pkg}">${displayLabel}</span>
+          <span class="legend-count">${totalCount}</span>
+        </div>
+        <div class="legend-class-list" id="${safePkgId}">
+          ${classesHtml}
+        </div>
       </div>
     `;
   }).join('');
 
-  legendList.querySelectorAll('.legend-item').forEach(item => {
-    item.onclick = () => {
-      const pkg = item.dataset.pkg;
+  // Wire chevrons
+  legendList.querySelectorAll('.legend-chevron').forEach(chev => {
+    chev.onclick = (e) => {
+      e.stopPropagation();
+      const targetId = chev.dataset.target;
+      const list = legendList.querySelector(`#${targetId}`);
+      chev.classList.toggle('open');
+      if (list) list.classList.toggle('open');
+    };
+  });
+
+  // Wire package toggle
+  legendList.querySelectorAll('.legend-pkg-row').forEach(row => {
+    row.onclick = (e) => {
+      if (e.target.classList.contains('legend-chevron')) return;
+      const pkg = row.dataset.pkg;
+      row.classList.toggle('dimmed');
+      const isDimmed = row.classList.contains('dimmed');
+      const wrap = row.closest('.legend-pkg-wrap');
+      if (wrap) {
+        wrap.querySelectorAll('.legend-class-item').forEach(ci => ci.classList.toggle('dimmed', isDimmed));
+      }
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.togglePackage === 'function') {
+        App.activeAltRenderer.togglePackage(pkg, !isDimmed);
+      }
+    };
+  });
+
+  // Wire class item toggle
+  legendList.querySelectorAll('.legend-class-item').forEach(item => {
+    item.onclick = (e) => {
+      e.stopPropagation();
+      const clsName = item.dataset.class;
+      const fqn = item.dataset.fqn;
       item.classList.toggle('dimmed');
       const isDimmed = item.classList.contains('dimmed');
-      if (App.activeAltRenderer) {
-        if (typeof App.activeAltRenderer.togglePackage === 'function') {
-          App.activeAltRenderer.togglePackage(pkg, !isDimmed);
-        }
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleEntity === 'function') {
+        App.activeAltRenderer.toggleEntity(clsName, !isDimmed);
       }
     };
   });
@@ -3158,8 +3255,23 @@ document.addEventListener('DOMContentLoaded', init);
 function renderEntityHeader(kind, name, fqn) {
   const header = qs('#entity-header');
   if (!header) return;
+
+  let archBadge = '';
+  if (window.CodeLensClassifier) {
+    const isMethod = (kind === 'METHOD');
+    const arch = isMethod
+      ? window.CodeLensClassifier.classifyMethod(name, fqn)
+      : window.CodeLensClassifier.classifyType(name, fqn);
+    if (arch) {
+      archBadge = `<span class="archetype-badge" style="background:${arch.color}22; border:1px solid ${arch.color}; color:${arch.color}; margin-left:6px; font-weight:700; font-size:11px;" title="${esc(arch.description)}">${arch.icon} ${esc(arch.label)} (${esc(arch.badge)})</span>`;
+    }
+  }
+
   header.innerHTML = `
-    <div class="entity-kind-badge ${kind}">${kind}</div>
+    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:4px;">
+      <div class="entity-kind-badge ${kind}">${kind}</div>
+      ${archBadge}
+    </div>
     <div class="entity-name">${esc(name)}</div>
     <div class="entity-fqn" title="Click to copy fully qualified name" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
       <span>${esc(fqn)}</span>
@@ -3832,6 +3944,88 @@ function syncSettingsUI(settings) {
   // Package Mode select dropdown
   const modeSel = qs('#set-package-mode');
   if (modeSel) modeSel.value = settings.packageMode || 'auto';
+
+  // POJO Settings sync
+  if (window.CodeLensClassifier) {
+    const pojoCfg = window.CodeLensClassifier.getPojoConfig();
+    const pojoStdChk = qs('#set-pojo-std');
+    if (pojoStdChk) pojoStdChk.checked = pojoCfg.includeStandardAccessors;
+    const pojoPatternsArea = qs('#set-pojo-patterns');
+    if (pojoPatternsArea) pojoPatternsArea.value = pojoCfg.customPatterns.join('\n');
+  }
+
+  // Archetype Rules list rendering
+  renderArchetypeRulesList();
+}
+
+function renderArchetypeRulesList() {
+  const container = qs('#archetype-rules-list');
+  if (!container || !window.CodeLensClassifier) return;
+
+  const rules = window.CodeLensClassifier.getRules();
+  if (rules.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted); font-size:12px; padding:8px 0;">No archetype rules defined. Click "+ Add Rule" or choose a Preset above.</div>';
+    return;
+  }
+
+  container.innerHTML = rules.map(r => `
+    <div class="archetype-rule-item ${r.enabled ? '' : 'disabled'}" data-id="${r.id}">
+      <div class="archetype-rule-left">
+        <label class="toggle-switch" title="${r.enabled ? 'Disable rule' : 'Enable rule'}" style="flex-shrink:0;">
+          <input type="checkbox" class="rule-toggle" data-id="${r.id}" ${r.enabled ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+        <span class="archetype-rule-badge" style="background:${r.color}22; color:${r.color}; border:1px solid ${r.color}66;">
+          ${r.icon || '◈'} ${r.badge || r.label}
+        </span>
+        <div class="archetype-rule-info">
+          <span class="archetype-rule-name">${esc(r.label)}</span>
+          <span class="archetype-rule-pattern"><code>${esc(r.pattern)}</code> <span class="archetype-rule-scope">(${r.scope || 'METHOD'})</span></span>
+        </div>
+      </div>
+      <div class="archetype-rule-actions">
+        <button class="rule-btn rule-btn-edit" data-id="${r.id}" title="Edit Rule">✏️</button>
+        <button class="rule-btn rule-btn-delete" data-id="${r.id}" title="Delete Rule">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Wire rule toggles
+  container.querySelectorAll('.rule-toggle').forEach(chk => {
+    chk.onchange = () => {
+      const id = chk.dataset.id;
+      window.CodeLensClassifier.updateRule(id, { enabled: chk.checked });
+      renderArchetypeRulesList();
+    };
+  });
+
+  // Wire edit buttons
+  container.querySelectorAll('.rule-btn-edit').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      const rule = window.CodeLensClassifier.getRules().find(r => r.id === id);
+      if (!rule) return;
+      qs('#rule-form-id').value = rule.id;
+      qs('#rule-form-label').value = rule.label || '';
+      qs('#rule-form-badge').value = rule.badge || '';
+      qs('#rule-form-icon').value = rule.icon || '⚡';
+      qs('#rule-form-color').value = rule.color || '#3b82f6';
+      qs('#rule-form-scope').value = rule.scope || 'METHOD';
+      qs('#rule-form-pattern').value = rule.pattern || '';
+      qs('#rule-form-desc').value = rule.description || '';
+      const form = qs('#archetype-rule-form-wrap');
+      if (form) form.style.display = 'block';
+    };
+  });
+
+  // Wire delete buttons
+  container.querySelectorAll('.rule-btn-delete').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      window.CodeLensClassifier.deleteRule(id);
+      renderArchetypeRulesList();
+    };
+  });
 }
 
 function openSettings() {
@@ -3853,6 +4047,10 @@ function resetSettings() {
   const defaults = { ...SETTINGS_DEFAULTS };
   saveSettings(defaults);
   applyAllSettings(defaults);
+  if (window.CodeLensClassifier) {
+    window.CodeLensClassifier.resetPojoConfig();
+    window.CodeLensClassifier.resetRules();
+  }
   syncSettingsUI(defaults);
   showBanner('Settings restored to defaults');
 }
@@ -3956,6 +4154,127 @@ function initSettings() {
       s.defaultDepth = parseInt(depthSel.value);
       saveSettings(s);
       applyAllSettings(s);
+    });
+  }
+
+  // Wire POJO Settings
+  const pojoStdChk = qs('#set-pojo-std');
+  if (pojoStdChk) {
+    pojoStdChk.addEventListener('change', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.setPojoConfig({ includeStandardAccessors: pojoStdChk.checked });
+      }
+    });
+  }
+
+  const pojoPatternsArea = qs('#set-pojo-patterns');
+  if (pojoPatternsArea) {
+    pojoPatternsArea.addEventListener('input', () => {
+      if (window.CodeLensClassifier) {
+        const lines = pojoPatternsArea.value.split('\n').map(s => s.trim()).filter(Boolean);
+        window.CodeLensClassifier.setPojoConfig({ customPatterns: lines });
+      }
+    });
+  }
+
+  const resetPojoBtn = qs('#btn-reset-pojo-patterns');
+  if (resetPojoBtn) {
+    resetPojoBtn.addEventListener('click', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.resetPojoConfig();
+        const cfg = window.CodeLensClassifier.getPojoConfig();
+        if (pojoStdChk) pojoStdChk.checked = cfg.includeStandardAccessors;
+        if (pojoPatternsArea) pojoPatternsArea.value = cfg.customPatterns.join('\n');
+        showBanner('POJO detection criteria reset to default');
+      }
+    });
+  }
+
+  // Wire Archetype Rule Presets
+  const btnPresetBancs = qs('#btn-preset-bancs');
+  if (btnPresetBancs) {
+    btnPresetBancs.addEventListener('click', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.loadPreset('bancs');
+        renderArchetypeRulesList();
+        showBanner('Loaded Banking / BaNCS transaction archetypes');
+      }
+    });
+  }
+
+  const btnPresetSpring = qs('#btn-preset-spring');
+  if (btnPresetSpring) {
+    btnPresetSpring.addEventListener('click', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.loadPreset('spring');
+        renderArchetypeRulesList();
+        showBanner('Loaded Spring REST / MVC archetypes');
+      }
+    });
+  }
+
+  const btnResetArchetypes = qs('#btn-reset-archetype-rules');
+  if (btnResetArchetypes) {
+    btnResetArchetypes.addEventListener('click', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.resetRules();
+        renderArchetypeRulesList();
+        showBanner('Reset archetype rules to defaults');
+      }
+    });
+  }
+
+  // Wire Archetype Rule Form
+  const btnAddRule = qs('#btn-add-archetype-rule');
+  const formWrap = qs('#archetype-rule-form-wrap');
+  if (btnAddRule && formWrap) {
+    btnAddRule.addEventListener('click', () => {
+      qs('#rule-form-id').value = '';
+      qs('#rule-form-label').value = '';
+      qs('#rule-form-badge').value = '';
+      qs('#rule-form-icon').value = '⚡';
+      qs('#rule-form-color').value = '#3b82f6';
+      qs('#rule-form-scope').value = 'METHOD';
+      qs('#rule-form-pattern').value = '{MODULE}';
+      qs('#rule-form-desc').value = '';
+      formWrap.style.display = 'block';
+    });
+  }
+
+  const btnCancelRule = qs('#btn-cancel-archetype-rule');
+  if (btnCancelRule && formWrap) {
+    btnCancelRule.addEventListener('click', () => {
+      formWrap.style.display = 'none';
+    });
+  }
+
+  const btnSaveRule = qs('#btn-save-archetype-rule');
+  if (btnSaveRule && formWrap) {
+    btnSaveRule.addEventListener('click', () => {
+      const id = qs('#rule-form-id').value.trim();
+      const label = qs('#rule-form-label').value.trim();
+      const badge = qs('#rule-form-badge').value.trim();
+      const icon = qs('#rule-form-icon').value.trim() || '⚡';
+      const color = qs('#rule-form-color').value.trim() || '#3b82f6';
+      const scope = qs('#rule-form-scope').value;
+      const pattern = qs('#rule-form-pattern').value.trim();
+      const description = qs('#rule-form-desc').value.trim();
+
+      if (!label || !pattern) {
+        alert('Please provide at least a Rule Label and Pattern.');
+        return;
+      }
+
+      if (window.CodeLensClassifier) {
+        if (id) {
+          window.CodeLensClassifier.updateRule(id, { label, badge: badge || label, icon, color, scope, pattern, description });
+        } else {
+          window.CodeLensClassifier.addRule({ label, badge: badge || label, icon, color, scope, pattern, description, enabled: true });
+        }
+        formWrap.style.display = 'none';
+        renderArchetypeRulesList();
+        showBanner(`Saved rule "${label}"`);
+      }
     });
   }
 }

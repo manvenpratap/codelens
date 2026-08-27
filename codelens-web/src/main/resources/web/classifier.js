@@ -1,0 +1,394 @@
+/**
+ * classifier.js - CodeLens Semantic Archetype & POJO Classification Engine
+ *
+ * Provides:
+ * - Dynamic pattern matching for Methods and Classes with module token substitution ({MODULE}, {MOD}).
+ * - Built-in banking / BaNCS transaction archetypes ({MODULE}ET, {MODULE}BT, {MODULE}PS, {MODULE}PB, {MODULE}PA, {MODULE}DG).
+ * - Customizable POJO / Accessor method detection rules.
+ * - LocalStorage persistence and Settings modal synchronisation.
+ */
+
+(function(window) {
+  'use strict';
+
+  const POJO_STORAGE_KEY = 'codelens_pojo_config';
+  const RULES_STORAGE_KEY = 'codelens_archetype_rules';
+
+  const DEFAULT_POJO_CONFIG = {
+    enableStandardGettersSetters: true,
+    patterns: 'get*, set*, is*, has*, toString, hashCode, equals, canEqual, getClass, compareTo, clone'
+  };
+
+  const DEFAULT_ARCHETYPE_RULES = [
+    {
+      id: 'rule-et',
+      target: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}ET',
+      label: 'Elementary Transaction',
+      badge: 'FETCH',
+      category: 'READ_ONLY',
+      color: '#10b981',
+      icon: '📥',
+      description: 'Elementary transactions only meant for fetching data',
+      enabled: true
+    },
+    {
+      id: 'rule-bt',
+      target: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}BT',
+      label: 'Business Transaction',
+      badge: 'MUTATE',
+      category: 'MUTATION',
+      color: '#f59e0b',
+      icon: '⚡',
+      description: 'Business transactions meant for create/update data',
+      enabled: true
+    },
+    {
+      id: 'rule-ps',
+      target: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}PS',
+      label: 'Batch Processor',
+      badge: 'BATCH',
+      category: 'BATCH',
+      color: '#8b5cf6',
+      icon: '⚙️',
+      description: 'Batch processor / background jobs',
+      enabled: true
+    },
+    {
+      id: 'rule-pb',
+      target: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}PB',
+      label: 'Process Before Batch',
+      badge: 'PRE-BATCH',
+      category: 'PRE_PROCESS',
+      color: '#3b82f6',
+      icon: '⏮️',
+      description: 'Process before batch execution',
+      enabled: true
+    },
+    {
+      id: 'rule-pa',
+      target: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}PA',
+      label: 'Process After Batch',
+      badge: 'POST-BATCH',
+      category: 'POST_PROCESS',
+      color: '#ec4899',
+      icon: '⏭️',
+      description: 'Process after batch execution',
+      enabled: true
+    },
+    {
+      id: 'rule-dg',
+      target: 'CLASS',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}DG',
+      label: 'Data Grabber',
+      badge: 'DATA-GRABBER',
+      category: 'DATA_ACCESS',
+      color: '#06b6d4',
+      icon: '📦',
+      description: 'Data grabber / data retrieval components',
+      enabled: true
+    }
+  ];
+
+  class CodeLensClassifier {
+    constructor() {
+      this._pojoConfig = this._loadPojoConfig();
+      this._rules = this._loadRules();
+    }
+
+    // ── Module Identification Helper ──────────────────────────────────────────
+
+    /**
+     * Extracts the module name from a package or FQN (e.g. "com.tcs.bancs.AM" -> "AM", "com.tcs.bancs.BS.AccountService" -> "BS").
+     */
+    extractModule(pkgOrFqn) {
+      if (!pkgOrFqn) return '';
+      const clean = pkgOrFqn.replace(/\(.*\)$/, '').trim();
+      const parts = clean.split('.').filter(Boolean);
+      if (parts.length === 0) return '';
+
+      // Check standard enterprise prefixes (com.tcs.bancs.AM, org.example.banking.BS)
+      if (parts.length >= 4 && ['com', 'org', 'io', 'net', 'dev', 'app'].includes(parts[0])) {
+        // e.g. com.tcs.bancs.AM -> parts[3] is AM
+        if (/^[A-Z0-9_]+$/.test(parts[3]) || parts.length >= 5) {
+          return parts[3];
+        }
+        return parts[2];
+      }
+      if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app'].includes(parts[0])) {
+        return parts[2];
+      }
+      return parts[0];
+    }
+
+    // ── POJO Detection ────────────────────────────────────────────────────────
+
+    _loadPojoConfig() {
+      try {
+        const raw = localStorage.getItem(POJO_STORAGE_KEY);
+        if (raw) return { ...DEFAULT_POJO_CONFIG, ...JSON.parse(raw) };
+      } catch (_) {}
+      return { ...DEFAULT_POJO_CONFIG };
+    }
+
+    getPojoConfig() {
+      return { ...this._pojoConfig };
+    }
+
+    savePojoConfig(cfg) {
+      this._pojoConfig = { ...this._pojoConfig, ...cfg };
+      localStorage.setItem(POJO_STORAGE_KEY, JSON.stringify(this._pojoConfig));
+    }
+
+    resetPojoConfig() {
+      this._pojoConfig = { ...DEFAULT_POJO_CONFIG };
+      this.savePojoConfig(this._pojoConfig);
+      return this.getPojoConfig();
+    }
+
+    /**
+     * Checks if a method is a POJO accessor / boilerplate method based on heuristics & user rules.
+     */
+    isPojo(methodNameOrNode, fqn, pkg) {
+      let name = '';
+      let fullFqn = fqn || '';
+      let packageFqn = pkg || '';
+
+      if (typeof methodNameOrNode === 'object' && methodNameOrNode !== null) {
+        name = methodNameOrNode.simpleName || methodNameOrNode.label || (methodNameOrNode.id ? methodNameOrNode.id.split('.').pop() : '') || '';
+        fullFqn = methodNameOrNode.fqn || methodNameOrNode.id || fullFqn;
+        packageFqn = methodNameOrNode.package || methodNameOrNode.packageFqn || packageFqn;
+      } else {
+        name = String(methodNameOrNode || '');
+      }
+
+      name = name.replace(/\(.*\)$/, '').trim();
+      if (!name) return false;
+
+      // Never treat root graph node as POJO
+      if (typeof methodNameOrNode === 'object' && methodNameOrNode.role === 'root') return false;
+
+      // 1. Standard Object methods
+      const standardObjectMethods = ['toString', 'hashCode', 'equals', 'canEqual', 'getClass', 'compareTo', 'clone', 'finalize', 'notify', 'notifyAll', 'wait'];
+      if (standardObjectMethods.includes(name)) return true;
+
+      // 2. Standard Java getter/setter heuristics
+      if (this._pojoConfig.enableStandardGettersSetters) {
+        if (name.length > 3 && name.startsWith('get') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
+        if (name.length > 3 && name.startsWith('set') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
+        if (name.length > 2 && name.startsWith('is') && /^[A-Z0-9_]/.test(name.charAt(2))) return true;
+        if (name.length > 3 && name.startsWith('has') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
+      }
+
+      // 3. User configured POJO patterns
+      const customPatterns = (this._pojoConfig.patterns || '')
+        .split(',')
+        .map(p => p.trim())
+        .filter(Boolean);
+
+      for (const pattern of customPatterns) {
+        if (this._matchesPattern(name, pattern, fullFqn, packageFqn)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    // ── Archetype Rules Engine ────────────────────────────────────────────────
+
+    _loadRules() {
+      try {
+        const raw = localStorage.getItem(RULES_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (_) {}
+      return JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
+    }
+
+    getRules() {
+      return [...this._rules];
+    }
+
+    saveRules(rules) {
+      this._rules = Array.isArray(rules) ? rules : [];
+      localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this._rules));
+    }
+
+    resetRules() {
+      this._rules = JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
+      this.saveRules(this._rules);
+      return this.getRules();
+    }
+
+    addRule(rule) {
+      const newRule = {
+        id: 'rule-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        enabled: true,
+        category: 'CUSTOM',
+        color: '#3b82f6',
+        icon: '🏷️',
+        ...rule
+      };
+      this._rules.push(newRule);
+      this.saveRules(this._rules);
+      return newRule;
+    }
+
+    updateRule(id, updatedFields) {
+      const idx = this._rules.findIndex(r => r.id === id);
+      if (idx >= 0) {
+        this._rules[idx] = { ...this._rules[idx], ...updatedFields };
+        this.saveRules(this._rules);
+        return this._rules[idx];
+      }
+      return null;
+    }
+
+    deleteRule(id) {
+      this._rules = this._rules.filter(r => r.id !== id);
+      this.saveRules(this._rules);
+    }
+
+    /**
+     * Classifies a method by matching its name/FQN against active archetype rules.
+     * @returns {Object|null} Archetype classification descriptor if matched, else null.
+     */
+    classifyMethod(methodNameOrNode, fqn, pkg) {
+      return this._classifyEntity('METHOD', methodNameOrNode, fqn, pkg);
+    }
+
+    /**
+     * Classifies a class/type by matching its name/FQN against active archetype rules.
+     * @returns {Object|null} Archetype classification descriptor if matched, else null.
+     */
+    classifyType(typeNameOrNode, fqn, pkg) {
+      return this._classifyEntity('CLASS', typeNameOrNode, fqn, pkg);
+    }
+
+    _classifyEntity(targetType, nameOrNode, fqn, pkg) {
+      let name = '';
+      let fullFqn = fqn || '';
+      let packageFqn = pkg || '';
+
+      if (typeof nameOrNode === 'object' && nameOrNode !== null) {
+        name = nameOrNode.simpleName || nameOrNode.label || (nameOrNode.id ? nameOrNode.id.split('.').pop() : '') || '';
+        fullFqn = nameOrNode.fqn || nameOrNode.id || fullFqn;
+        packageFqn = nameOrNode.package || nameOrNode.packageFqn || packageFqn;
+      } else {
+        name = String(nameOrNode || '');
+      }
+
+      name = name.replace(/\(.*\)$/, '').trim();
+      if (!name) return null;
+
+      const activeRules = this._rules.filter(r => r.enabled && (r.target === targetType || r.target === 'ANY'));
+
+      for (const rule of activeRules) {
+        if (this._matchesRule(name, rule, fullFqn, packageFqn)) {
+          return {
+            ruleId: rule.id,
+            label: rule.label,
+            badge: rule.badge || rule.label.toUpperCase(),
+            category: rule.category || 'CUSTOM',
+            color: rule.color || '#10b981',
+            icon: rule.icon || '🏷️',
+            description: rule.description || ''
+          };
+        }
+      }
+
+      return null;
+    }
+
+    _matchesRule(name, rule, fqn, pkg) {
+      if (!rule || !rule.pattern) return false;
+      const pattern = rule.pattern.trim();
+      const matchType = rule.matchType || 'PREFIX';
+
+      return this._matchesPattern(name, pattern, fqn, pkg, matchType);
+    }
+
+    _matchesPattern(name, pattern, fqn, pkg, matchType = 'AUTO') {
+      if (!name || !pattern) return false;
+
+      // Extract module name from package or fqn (e.g. com.tcs.bancs.AM -> "AM")
+      const moduleName = this.extractModule(pkg || fqn || '');
+
+      // Replace {MODULE} or {MOD} tokens in pattern
+      let resolvedPattern = pattern;
+      if (resolvedPattern.includes('{MODULE}') || resolvedPattern.includes('{MOD}')) {
+        if (!moduleName) {
+          // If no module is identified, match any 2-4 uppercase letter module prefix
+          resolvedPattern = resolvedPattern.replace(/\{MODULE\}|\{MOD\}/g, '[A-Z]{2,4}');
+          matchType = 'REGEX';
+        } else {
+          resolvedPattern = resolvedPattern.replace(/\{MODULE\}|\{MOD\}/g, moduleName);
+        }
+      }
+
+      // Regex literal: /pattern/i
+      if (resolvedPattern.startsWith('/') && resolvedPattern.endsWith('/')) {
+        try {
+          const re = new RegExp(resolvedPattern.slice(1, -1), 'i');
+          return re.test(name) || re.test(fqn);
+        } catch (_) { return false; }
+      }
+
+      if (matchType === 'REGEX') {
+        try {
+          const re = new RegExp(resolvedPattern, 'i');
+          return re.test(name) || re.test(fqn);
+        } catch (_) { return false; }
+      }
+
+      // Wildcard glob pattern (e.g. AMET*, *Service, get*Data)
+      if (resolvedPattern.includes('*') || matchType === 'GLOB') {
+        const regexStr = '^' + resolvedPattern.split('*').map(s => this._escapeRegex(s)).join('.*') + '$';
+        try {
+          return new RegExp(regexStr, 'i').test(name);
+        } catch (_) { return false; }
+      }
+
+      if (matchType === 'PREFIX') {
+        return name.toLowerCase().startsWith(resolvedPattern.toLowerCase());
+      }
+      if (matchType === 'SUFFIX') {
+        return name.toLowerCase().endsWith(resolvedPattern.toLowerCase());
+      }
+      if (matchType === 'CONTAINS') {
+        return name.toLowerCase().includes(resolvedPattern.toLowerCase());
+      }
+      if (matchType === 'EXACT') {
+        return name.toLowerCase() === resolvedPattern.toLowerCase();
+      }
+
+      // Default AUTO behavior
+      if (resolvedPattern.endsWith('*')) {
+        return name.toLowerCase().startsWith(resolvedPattern.slice(0, -1).toLowerCase());
+      }
+      if (resolvedPattern.startsWith('*')) {
+        return name.toLowerCase().endsWith(resolvedPattern.slice(1).toLowerCase());
+      }
+      return name.toLowerCase().startsWith(resolvedPattern.toLowerCase());
+    }
+
+    _escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+
+  window.CodeLensClassifier = new CodeLensClassifier();
+})(window);

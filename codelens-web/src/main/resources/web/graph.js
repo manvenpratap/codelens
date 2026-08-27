@@ -162,6 +162,7 @@ class ForceGraph {
     this._communities = []; // Array of { cid, label, color, count, nodes: Set, hidden: boolean }
     this._communityMap = new Map(); // package/community name -> community object
     this._hiddenCommunities = new Set();
+    this._hiddenClasses = new Set();
 
     this._ticks       = 0;
     this._rafId       = null;
@@ -355,6 +356,9 @@ class ForceGraph {
   /** Checks if a node is a trivial getter, setter, or POJO accessor. */
   _isPojoAccessor(node) {
     if (!node || node.role === 'root') return false;
+    if (window.CodeLensClassifier) {
+      return window.CodeLensClassifier.isPojo(node, node.id, node.package || node.packageFqn);
+    }
     const name = (node.label || node.id.split('.').pop() || '').replace(/\(.*\)$/, '').trim();
     if (['toString', 'hashCode', 'equals', 'canEqual', 'getClass'].includes(name)) return true;
     if (name.length > 3 && name.startsWith('get') && /^[A-Z]/.test(name.charAt(3))) return true;
@@ -634,6 +638,14 @@ class ForceGraph {
     if (emptyState) emptyState.style.display = 'flex';
   }
 
+  _isNodeHidden(node) {
+    if (!node) return false;
+    if (this._hiddenCommunities.has(node.community)) return true;
+    if (node.className && this._hiddenClasses.has(node.className)) return true;
+    if (this._hiddenClasses.has(node.id)) return true;
+    return false;
+  }
+
   fitToScreen() {
     if (this._nodes.length === 0) return;
     const dpr = window.devicePixelRatio || 1;
@@ -642,7 +654,7 @@ class ForceGraph {
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const n of this._nodes) {
-      if (this._hiddenCommunities.has(n.community)) continue;
+      if (this._isNodeHidden(n)) continue;
       minX = Math.min(minX, n.x - n.radius);
       maxX = Math.max(maxX, n.x + n.radius);
       minY = Math.min(minY, n.y - n.radius);
@@ -720,7 +732,7 @@ class ForceGraph {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
-        if (this._hiddenCommunities.has(ni.community) || this._hiddenCommunities.has(nj.community)) continue;
+        if (this._isNodeHidden(ni) || this._isNodeHidden(nj)) continue;
 
         const dx = nj.x - ni.x;
         const dy = nj.y - ni.y;
@@ -751,7 +763,7 @@ class ForceGraph {
       if (si === undefined || ti === undefined) continue;
 
       const src = nodes[si], tgt = nodes[ti];
-      if (this._hiddenCommunities.has(src.community) || this._hiddenCommunities.has(tgt.community)) continue;
+      if (this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
 
       const dx = tgt.x - src.x;
       const dy = tgt.y - src.y;
@@ -767,7 +779,7 @@ class ForceGraph {
     // 3. Blooming Branch & Core Cohesion force
     for (let i = 0; i < n; i++) {
       const nd = nodes[i];
-      if (this._hiddenCommunities.has(nd.community)) continue;
+      if (this._isNodeHidden(nd)) continue;
 
       // Leaf nodes are drawn in a gentle radial bloom toward their branch core
       if (!nd.isBranchCore && nd.branchCenterX !== undefined && nd.branchCenterY !== undefined) {
@@ -794,14 +806,14 @@ class ForceGraph {
               const fx = (dx / dist) * f;
               const fy = (dy / dist) * f;
               ni._fx += fx; ni._fy += fy;
-              nj._fx -= fx; nj._fy -= fy;
+              nj._fx += fx; nj._fy += fy;
             }
           } else if (dist > PHYSICS.springLen * 1.6) {
             const f = (dist - PHYSICS.springLen) * PHYSICS.clusterK;
             const fx = (dx / dist) * f;
             const fy = (dy / dist) * f;
             ni._fx += fx; ni._fy += fy;
-            nj._fx -= fx; nj._fy -= fy;
+            nj._fx += fx; nj._fy += fy;
           }
         }
       }
@@ -834,7 +846,7 @@ class ForceGraph {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
-        if (this._hiddenCommunities.has(ni.community) || this._hiddenCommunities.has(nj.community)) continue;
+        if (this._isNodeHidden(ni) || this._isNodeHidden(nj)) continue;
 
         const dx = nj.x - ni.x;
         const dy = nj.y - ni.y;
@@ -1242,7 +1254,7 @@ class ForceGraph {
       if (si === undefined || ti === undefined) continue;
 
       const src = this._nodes[si], tgt = this._nodes[ti];
-      if (this._hiddenCommunities.has(src.community) || this._hiddenCommunities.has(tgt.community)) continue;
+      if (this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
 
       // Focus opacity logic
       let opacity = 0.65;
@@ -1339,7 +1351,7 @@ class ForceGraph {
     const vyMax = (canvasH - this._ty) / this._sc + 60;
 
     for (const node of this._nodes) {
-      if (this._hiddenCommunities.has(node.community)) continue;
+      if (this._isNodeHidden(node)) continue;
 
       // Canvas Viewport Culling
       if (node.x < vxMin || node.x > vxMax || node.y < vyMin || node.y > vyMax) {
@@ -1582,7 +1594,7 @@ class ForceGraph {
 
     // Draw minimap nodes
     for (const n of this._nodes) {
-      if (this._hiddenCommunities.has(n.community)) continue;
+      if (this._isNodeHidden(n)) continue;
       const mx = n.x * mScale + mOx;
       const my = n.y * mScale + mOy;
 
@@ -1681,22 +1693,117 @@ class ForceGraph {
     }
 
     legendWrap.style.display = 'flex';
-    legendList.innerHTML = this._communities.map(c => `
-      <div class="legend-item ${this._hiddenCommunities.has(c.cid) ? 'dimmed' : ''}" data-cid="${c.cid}">
-        <div class="legend-dot" style="background:${c.color}"></div>
-        <span class="legend-label" title="${c.label}">${c.label}</span>
-        <span class="legend-count">${c.count}</span>
-      </div>
-    `).join('');
 
-    legendList.querySelectorAll('.legend-item').forEach(item => {
-      item.onclick = () => {
-        const cid = parseInt(item.dataset.cid, 10);
+    // Add Expand All / Collapse All header actions if not present
+    let actionsWrap = legendWrap.querySelector('.legend-actions');
+    if (!actionsWrap) {
+      actionsWrap = document.createElement('div');
+      actionsWrap.className = 'legend-actions';
+      actionsWrap.style.display = 'flex';
+      actionsWrap.style.gap = '4px';
+      actionsWrap.style.marginBottom = '6px';
+      actionsWrap.innerHTML = `
+        <button class="legend-actions-btn" id="graph-legend-expand-all">Expand All</button>
+        <button class="legend-actions-btn" id="graph-legend-collapse-all">Collapse All</button>
+      `;
+      legendList.parentElement.insertBefore(actionsWrap, legendList);
+
+      actionsWrap.querySelector('#graph-legend-expand-all').onclick = () => {
+        legendList.querySelectorAll('.legend-chevron').forEach(ch => ch.classList.add('open'));
+        legendList.querySelectorAll('.legend-class-list').forEach(cl => cl.classList.add('open'));
+      };
+      actionsWrap.querySelector('#graph-legend-collapse-all').onclick = () => {
+        legendList.querySelectorAll('.legend-chevron').forEach(ch => ch.classList.remove('open'));
+        legendList.querySelectorAll('.legend-class-list').forEach(cl => cl.classList.remove('open'));
+      };
+    }
+
+    legendList.innerHTML = this._communities.map(c => {
+      const commNodes = this._nodes.filter(n => n.community === c.cid);
+      const classMap = new Map();
+      commNodes.forEach(n => {
+        const clsName = n.className || (n.type === 'CLASS' ? n.label : (n.id && n.id.includes('.') ? n.id.split('.').slice(-2, -1)[0] : n.id)) || 'Class';
+        if (!classMap.has(clsName)) classMap.set(clsName, []);
+        classMap.get(clsName).push(n);
+      });
+
+      const classesHtml = Array.from(classMap.entries()).map(([clsName, nodesInCls]) => {
+        const isClsDimmed = this._hiddenClasses.has(clsName) || this._hiddenCommunities.has(c.cid);
+        const count = nodesInCls.length;
+        let archBadgeHtml = '';
+        if (window.CodeLensClassifier) {
+          const firstNode = nodesInCls[0];
+          const arch = window.CodeLensClassifier.classifyType(clsName, firstNode ? firstNode.id : '', c.label);
+          if (arch) {
+            archBadgeHtml = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66;">${arch.icon} ${arch.badge}</span>`;
+          }
+        }
+        return `
+          <div class="legend-class-item ${isClsDimmed ? 'dimmed' : ''}" data-cid="${c.cid}" data-class="${clsName}" title="Toggle class ${clsName} (${count} members)">
+            <div class="legend-class-dot" style="background:${c.color}"></div>
+            <span class="legend-class-label">${clsName}</span>
+            ${archBadgeHtml}
+            <span class="legend-count">${count}</span>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="legend-pkg-wrap" data-cid="${c.cid}">
+          <div class="legend-pkg-row ${this._hiddenCommunities.has(c.cid) ? 'dimmed' : ''}" data-cid="${c.cid}">
+            <span class="legend-chevron" data-cid="${c.cid}" title="Toggle class list">▶</span>
+            <div class="legend-dot" style="background:${c.color}"></div>
+            <span class="legend-label" title="${c.label}">${c.label}</span>
+            <span class="legend-count">${c.count}</span>
+          </div>
+          <div class="legend-class-list" id="graph-legend-classes-${c.cid}">
+            ${classesHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire chevron toggle
+    legendList.querySelectorAll('.legend-chevron').forEach(chev => {
+      chev.onclick = (e) => {
+        e.stopPropagation();
+        const cid = chev.dataset.cid;
+        const list = legendList.querySelector(`#graph-legend-classes-${cid}`);
+        chev.classList.toggle('open');
+        if (list) list.classList.toggle('open');
+      };
+    });
+
+    // Wire package row toggle
+    legendList.querySelectorAll('.legend-pkg-row').forEach(row => {
+      row.onclick = (e) => {
+        if (e.target.classList.contains('legend-chevron')) return;
+        const cid = parseInt(row.dataset.cid, 10);
         if (this._hiddenCommunities.has(cid)) {
           this._hiddenCommunities.delete(cid);
-          item.classList.remove('dimmed');
+          row.classList.remove('dimmed');
+          // un-dim nested class items
+          const list = legendList.querySelector(`#graph-legend-classes-${cid}`);
+          if (list) list.querySelectorAll('.legend-class-item').forEach(ci => ci.classList.remove('dimmed'));
         } else {
           this._hiddenCommunities.add(cid);
+          row.classList.add('dimmed');
+          const list = legendList.querySelector(`#graph-legend-classes-${cid}`);
+          if (list) list.querySelectorAll('.legend-class-item').forEach(ci => ci.classList.add('dimmed'));
+        }
+      };
+    });
+
+    // Wire class item toggle
+    legendList.querySelectorAll('.legend-class-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const clsName = item.dataset.class;
+        if (this._hiddenClasses.has(clsName)) {
+          this._hiddenClasses.delete(clsName);
+          item.classList.remove('dimmed');
+        } else {
+          this._hiddenClasses.add(clsName);
           item.classList.add('dimmed');
         }
       };
@@ -2163,7 +2270,7 @@ class ForceGraph {
     const wp = this._screenToWorld(screenX, screenY);
     for (let i = this._nodes.length - 1; i >= 0; i--) {
       const n = this._nodes[i];
-      if (this._hiddenCommunities.has(n.community)) continue;
+      if (this._isNodeHidden(n)) continue;
       const dx = wp.x - n.x;
       const dy = wp.y - n.y;
       if (dx * dx + dy * dy <= (n.radius + 6) * (n.radius + 6)) {

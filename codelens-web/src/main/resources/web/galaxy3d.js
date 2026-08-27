@@ -30,6 +30,8 @@
       this._autoRotate = false;
       this._filterQuery = '';
       this._hiddenPackages = new Set();
+      this._hiddenEntities = new Set();
+      this._hidePojo = false;
       this._particleGroup = null;
       this._particles = [];
       this._raycaster = null;
@@ -46,6 +48,33 @@
     toggleAutoRotate() {
       this._autoRotate = !this._autoRotate;
       if (this._controls) this._controls.autoRotate = this._autoRotate;
+    }
+
+    togglePojo() {
+      this._hidePojo = !this._hidePojo;
+      this._applyFilters();
+      return this._hidePojo;
+    }
+
+    toggleHideGetters() {
+      return this.togglePojo();
+    }
+
+    setHidePojo(hide) {
+      this._hidePojo = Boolean(hide);
+      this._applyFilters();
+    }
+
+    toggleEntity(entityId, visible) {
+      if (visible === undefined) {
+        if (this._hiddenEntities.has(entityId)) this._hiddenEntities.delete(entityId);
+        else this._hiddenEntities.add(entityId);
+      } else if (visible) {
+        this._hiddenEntities.delete(entityId);
+      } else {
+        this._hiddenEntities.add(entityId);
+      }
+      this._applyFilters();
     }
 
     flyToNode(nodeMesh) {
@@ -86,14 +115,25 @@
       const visibleNodeIds = new Set();
       this._nodeMeshes.forEach(m => {
         const d = m.userData;
-        const name = (d.node.raw.label || d.node.raw.simpleName || d.node.id || '').toLowerCase();
+        const rawNode = (d.node && d.node.raw) ? d.node.raw : {};
+        const nodeId = d.node ? d.node.id : '';
+        const name = (rawNode.label || rawNode.simpleName || nodeId || '').toLowerCase();
         const pkg = (d.pkg || '').toLowerCase();
         const matchesSearch = !this._filterQuery || name.includes(this._filterQuery) || pkg.includes(this._filterQuery);
         const matchesPkg = !this._hiddenPackages.has(d.pkg);
-        const visible = matchesSearch && matchesPkg;
+        const matchesEntity = !this._hiddenEntities.has(nodeId);
+
+        let matchesPojo = true;
+        if (this._hidePojo && d.isMethod) {
+          if (window.CodeLensClassifier && window.CodeLensClassifier.isPojo(rawNode, nodeId, d.pkg)) {
+            matchesPojo = false;
+          }
+        }
+
+        const visible = matchesSearch && matchesPkg && matchesEntity && matchesPojo;
 
         m.visible = visible;
-        if (visible) visibleNodeIds.add(d.node.id);
+        if (visible) visibleNodeIds.add(nodeId);
       });
 
       this._edgeLines.forEach(l => {
@@ -507,11 +547,22 @@
           ? '<span style="color:#38bdf8; font-weight:700;">METHOD</span>'
           : `<span style="color:${col}; font-weight:700;">${data.kind || 'CLASS'}</span>`;
 
+        let archetypeHtml = '';
+        if (window.CodeLensClassifier) {
+          const arch = isMethod
+            ? window.CodeLensClassifier.classifyMethod(data, data.id || data.fqn, hit.userData.pkg)
+            : window.CodeLensClassifier.classifyType(data, data.id || data.fqn, hit.userData.pkg);
+          if (arch) {
+            archetypeHtml = `<div style="margin-top:6px;"><span class="archetype-badge" style="background:${arch.color}22; border:1px solid ${arch.color}; color:${arch.color}; font-size:10px; padding:2px 6px; border-radius:4px;">${arch.icon} ${arch.label} (${arch.badge})</span></div>`;
+          }
+        }
+
         this._tooltip.innerHTML = `
           <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
             <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
             <div style="font-size:11px; font-family:JetBrains Mono,monospace; margin-top:4px;">Kind: ${kindBadge}</div>
+            ${archetypeHtml}
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;

@@ -1445,6 +1445,111 @@ body.resizing .panel-resizer {
   font-family: var(--font-mono);
 }
 
+/* Expandable Package & Class Legend */
+.legend-pkg-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.legend-pkg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.legend-pkg-row:hover {
+  background: var(--bg-elevated);
+}
+.legend-pkg-row.dimmed {
+  opacity: 0.35;
+}
+.legend-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.legend-chevron:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+.legend-chevron.open {
+  transform: rotate(90deg);
+}
+.legend-class-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+.legend-class-list.open {
+  display: flex;
+}
+.legend-class-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  transition: all var(--dur-fast) var(--ease);
+}
+.legend-class-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.legend-class-item.dimmed {
+  opacity: 0.3;
+}
+.legend-class-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-class-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.legend-class-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.legend-actions-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  font-size: 9.5px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+.legend-actions-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    Graphify Node Quick-Inspector Card (Floating HUD)
    ───────────────────────────────────────────────────────────────────────────── */
@@ -3592,6 +3697,171 @@ body.resizing .panel-resizer {
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ── Archetype Badges & Presets ─────────────────────────────────── */
+
+.archetype-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.archetype-presets-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+}
+
+.archetype-rule-form-wrap {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.rule-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.rule-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.rule-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-form-field label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.rule-form-field .settings-input,
+.rule-form-field .settings-select {
+  width: 100%;
+}
+
+.rule-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.archetype-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.archetype-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  gap: 8px;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.archetype-rule-item:hover {
+  border-color: var(--border-hover);
+}
+
+.archetype-rule-item.disabled {
+  opacity: 0.45;
+}
+
+.rule-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-target-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.08);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.rule-pattern-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rule-desc-text {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rule-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rule-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.rule-action-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.rule-action-btn.delete:hover {
+  color: var(--red);
 }
 
 /* ── Settings Footer ────────────────────────────────────────────── */
