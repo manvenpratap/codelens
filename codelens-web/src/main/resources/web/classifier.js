@@ -19,10 +19,11 @@
     patterns: 'get*, set*, is*, has*, toString, hashCode, equals, canEqual, getClass, compareTo, clone'
   };
 
-  const DEFAULT_ARCHETYPE_RULES = [
+  const BANCS_PRESET_RULES = [
     {
-      id: 'rule-et',
+      id: 'rule-bancs-et',
       target: 'METHOD',
+      scope: 'METHOD',
       matchType: 'PREFIX',
       pattern: '{MODULE}ET',
       label: 'Elementary Transaction',
@@ -34,8 +35,9 @@
       enabled: true
     },
     {
-      id: 'rule-bt',
+      id: 'rule-bancs-bt',
       target: 'METHOD',
+      scope: 'METHOD',
       matchType: 'PREFIX',
       pattern: '{MODULE}BT',
       label: 'Business Transaction',
@@ -47,8 +49,9 @@
       enabled: true
     },
     {
-      id: 'rule-ps',
+      id: 'rule-bancs-ps',
       target: 'METHOD',
+      scope: 'METHOD',
       matchType: 'PREFIX',
       pattern: '{MODULE}PS',
       label: 'Batch Processor',
@@ -60,8 +63,9 @@
       enabled: true
     },
     {
-      id: 'rule-pb',
+      id: 'rule-bancs-pb',
       target: 'METHOD',
+      scope: 'METHOD',
       matchType: 'PREFIX',
       pattern: '{MODULE}PB',
       label: 'Process Before Batch',
@@ -73,8 +77,9 @@
       enabled: true
     },
     {
-      id: 'rule-pa',
+      id: 'rule-bancs-pa',
       target: 'METHOD',
+      scope: 'METHOD',
       matchType: 'PREFIX',
       pattern: '{MODULE}PA',
       label: 'Process After Batch',
@@ -86,8 +91,9 @@
       enabled: true
     },
     {
-      id: 'rule-dg',
+      id: 'rule-bancs-dg',
       target: 'CLASS',
+      scope: 'CLASS',
       matchType: 'PREFIX',
       pattern: '{MODULE}DG',
       label: 'Data Grabber',
@@ -99,6 +105,81 @@
       enabled: true
     }
   ];
+
+  const SPRING_PRESET_RULES = [
+    {
+      id: 'rule-spring-ctrl',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Controller',
+      label: 'REST Controller',
+      badge: 'CTRL',
+      category: 'CONTROLLER',
+      color: '#3b82f6',
+      icon: '🌐',
+      description: 'Spring REST / Web MVC Controller',
+      enabled: true
+    },
+    {
+      id: 'rule-spring-srv',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Service',
+      label: 'Business Service',
+      badge: 'SRV',
+      category: 'SERVICE',
+      color: '#10b981',
+      icon: '⚙️',
+      description: 'Spring Business Service Layer',
+      enabled: true
+    },
+    {
+      id: 'rule-spring-repo',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Repository',
+      label: 'Data Repository',
+      badge: 'REPO',
+      category: 'DATA_ACCESS',
+      color: '#8b5cf6',
+      icon: '🗄️',
+      description: 'Spring Data JPA / Mongo Repository',
+      enabled: true
+    },
+    {
+      id: 'rule-spring-dto',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*DTO',
+      label: 'Data Transfer Object',
+      badge: 'DTO',
+      category: 'DTO',
+      color: '#06b6d4',
+      icon: '📄',
+      description: 'Data Transfer Object / Schema',
+      enabled: true
+    },
+    {
+      id: 'rule-spring-mapper',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Mapper',
+      label: 'Entity Mapper',
+      badge: 'MAPPER',
+      category: 'MAPPER',
+      color: '#f59e0b',
+      icon: '🔄',
+      description: 'MapStruct / Object transformation mapper',
+      enabled: true
+    }
+  ];
+
+  const DEFAULT_ARCHETYPE_RULES = BANCS_PRESET_RULES;
 
   class CodeLensClassifier {
     constructor() {
@@ -268,14 +349,31 @@
       return this.getRules();
     }
 
+    loadPreset(presetName) {
+      const name = String(presetName || '').toLowerCase().trim();
+      let presetRules = [];
+      if (name === 'bancs' || name === 'banking') {
+        presetRules = JSON.parse(JSON.stringify(BANCS_PRESET_RULES));
+      } else if (name === 'spring' || name === 'mvc') {
+        presetRules = JSON.parse(JSON.stringify(SPRING_PRESET_RULES));
+      } else {
+        presetRules = JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
+      }
+      this.saveRules(presetRules);
+      return this.getRules();
+    }
+
     addRule(rule) {
+      const target = rule.scope || rule.target || 'METHOD';
       const newRule = {
         id: 'rule-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
         enabled: true,
         category: 'CUSTOM',
         color: '#3b82f6',
         icon: '🏷️',
-        ...rule
+        ...rule,
+        target: target,
+        scope: target
       };
       this._rules.push(newRule);
       this.saveRules(this._rules);
@@ -285,7 +383,13 @@
     updateRule(id, updatedFields) {
       const idx = this._rules.findIndex(r => r.id === id);
       if (idx >= 0) {
-        this._rules[idx] = { ...this._rules[idx], ...updatedFields };
+        const target = updatedFields.scope || updatedFields.target || this._rules[idx].scope || this._rules[idx].target || 'METHOD';
+        this._rules[idx] = {
+          ...this._rules[idx],
+          ...updatedFields,
+          target: target,
+          scope: target
+        };
         this.saveRules(this._rules);
         return this._rules[idx];
       }
@@ -329,7 +433,7 @@
       name = name.replace(/\(.*\)$/, '').trim();
       if (!name) return null;
 
-      const activeRules = this._rules.filter(r => r.enabled && (r.target === targetType || r.target === 'ANY'));
+      const activeRules = this._rules.filter(r => r.enabled && ((r.target || r.scope) === targetType || (r.target || r.scope) === 'ANY'));
 
       for (const rule of activeRules) {
         if (this._matchesRule(name, rule, fullFqn, packageFqn)) {
