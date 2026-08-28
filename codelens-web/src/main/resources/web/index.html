@@ -186,20 +186,37 @@
     ></div>
 
     <!-- Live entity count statistics footer at bottom of explorer sidebar -->
-    <div class="stats-row explorer-stats-footer" role="status" aria-live="polite" aria-label="Index statistics">
-      <div class="stat-pill" title="Total indexed Java classes, interfaces, enums, and records">
-        <span class="stat-count" id="stat-types">0</span>
-        <span class="stat-label">types</span>
+    <div class="stats-row explorer-stats-footer" id="explorer-stats-footer" role="status" aria-live="polite" aria-label="Index statistics">
+      <div class="stat-pill" id="stat-pill-modules" title="Total root packages / modules">
+        <span class="stat-count" id="stat-modules">0</span>
+        <span class="stat-label">modules</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-pill" title="Total indexed methods with cyclomatic complexity and call signatures">
+      <div class="stat-pill" id="stat-pill-classes" title="Total indexed Java classes">
+        <span class="stat-count" id="stat-classes">0</span>
+        <span class="stat-label">classes</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-pill stat-pill-interactive" id="stat-pill-methods" title="Total indexed methods with archetype breakup (Click to view breakdown)" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
         <span class="stat-count" id="stat-methods">0</span>
         <span class="stat-label">methods</span>
+        <svg class="svg-icon icon-xs stat-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-pill" title="Total indexed member and static fields">
+      <div class="stat-pill" id="stat-pill-fields" title="Total indexed member and static fields">
         <span class="stat-count" id="stat-fields">0</span>
         <span class="stat-label">fields</span>
+      </div>
+
+      <!-- Interactive Archetypes Breakup Popover -->
+      <div class="methods-archetypes-popover" id="methods-archetypes-popover" style="display:none;" role="dialog" aria-label="Method Archetypes Breakup">
+        <div class="archetypes-popover-header">
+          <span class="popover-title">Method Archetypes Breakup</span>
+          <span class="popover-total" id="popover-methods-total">0 methods</span>
+        </div>
+        <div class="archetypes-popover-list" id="popover-archetypes-list">
+          <!-- Populated dynamically with each archetype badge, name, color, and count -->
+        </div>
       </div>
     </div>
 

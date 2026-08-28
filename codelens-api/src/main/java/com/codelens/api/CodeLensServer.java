@@ -346,7 +346,9 @@ public class CodeLensServer {
     // Stats
     // ─────────────────────────────────────────────────────────────────────────
     private void getStats(Context ctx) throws Exception {
-        ctx.json(dao.getStats());
+        Map<String, Object> stats = dao.getStats();
+        stats.put("methodsList", dao.findMethodSignatures());
+        ctx.json(stats);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

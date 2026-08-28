@@ -3131,17 +3131,106 @@ async function loadStats() {
     const s = await api.stats();
     App.stats = s;
 
-    // Animate counters to new values
-    animateCounter(qs('#stat-types'),   s.types   || 0);
+    // Animate counters to new values: modules, classes, methods, fields
+    animateCounter(qs('#stat-modules'), s.modules || s.packages || 0);
+    animateCounter(qs('#stat-classes'), s.classes || s.types || 0);
     animateCounter(qs('#stat-methods'), s.methods || 0);
     animateCounter(qs('#stat-fields'),  s.fields  || 0);
 
-    if (s.types > 0) {
+    // Also support fallback elements if any
+    animateCounter(qs('#stat-types'),   s.types   || 0);
+
+    // Compute & update method archetypes breakup
+    updateMethodArchetypesBreakup(s);
+
+    if ((s.types || s.classes) > 0) {
       updateHeaderProjectBar();
     }
   } catch (e) {
     console.warn('Stats load failed:', e);
   }
+}
+
+/** Update the method archetypes breakup inside the explorer footer popover */
+function updateMethodArchetypesBreakup(stats) {
+  const methodList = stats?.methodsList || [];
+  const popoverList = qs('#popover-archetypes-list');
+  const popoverTotal = qs('#popover-methods-total');
+  const methodsCount = stats?.methods || methodList.length || 0;
+
+  if (popoverTotal) {
+    popoverTotal.textContent = `${methodsCount.toLocaleString()} method${methodsCount === 1 ? '' : 's'}`;
+  }
+
+  if (!popoverList) return;
+
+  const items = getAvailableArchetypeItems();
+  const counts = new Map();
+  items.forEach(it => counts.set(it.id, 0));
+
+  if (window.CodeLensClassifier && methodList.length > 0) {
+    methodList.forEach(m => {
+      const res = window.CodeLensClassifier.classifyMethod(m.name, m.fqn, m.type);
+      const ruleId = res ? res.ruleId : 'UNCLASSIFIED';
+      counts.set(ruleId, (counts.get(ruleId) || 0) + 1);
+    });
+  }
+
+  // Sort items by count descending
+  const sortedItems = [...items].sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0));
+
+  popoverList.innerHTML = sortedItems.map(item => {
+    const count = counts.get(item.id) || 0;
+    const pct = methodsCount > 0 ? ((count / methodsCount) * 100).toFixed(1) : '0.0';
+    const color = item.color || '#64748b';
+    return `
+      <div class="archetype-breakup-row" data-id="${esc(item.id)}" title="${esc(item.label)}: ${count} methods (${pct}%)">
+        <div class="archetype-breakup-left">
+          <span class="archetype-breakup-badge" style="background:${color}22; color:${color}; border:1px solid ${color}55;">[${esc(item.badge)}]</span>
+          <span class="archetype-breakup-name">${esc(item.label)}</span>
+        </div>
+        <div class="archetype-breakup-right">
+          <span class="archetype-breakup-count">${count.toLocaleString()}</span>
+          <span class="archetype-breakup-pct">${pct}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/** Initialize interactive click and keyboard triggers for the archetypes breakup popover */
+function initArchetypePopover() {
+  const pill = qs('#stat-pill-methods');
+  const popover = qs('#methods-archetypes-popover');
+  if (!pill || !popover) return;
+
+  const toggle = (e) => {
+    e.stopPropagation();
+    const isVisible = popover.style.display !== 'none';
+    popover.style.display = isVisible ? 'none' : 'flex';
+    pill.classList.toggle('popover-open', !isVisible);
+    pill.setAttribute('aria-expanded', !isVisible ? 'true' : 'false');
+  };
+
+  pill.addEventListener('click', toggle);
+  pill.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle(e);
+    } else if (e.key === 'Escape') {
+      popover.style.display = 'none';
+      pill.classList.remove('popover-open');
+      pill.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!popover.contains(e.target) && !pill.contains(e.target)) {
+      popover.style.display = 'none';
+      pill.classList.remove('popover-open');
+      pill.setAttribute('aria-expanded', 'false');
+    }
+  });
 }
 
 /** Update the loaded project header bar display and toggle off scan input */
@@ -3690,6 +3779,7 @@ async function init() {
   // Archetype Filter Dropdowns initialization & listeners
   populateArchetypeDropdowns();
   setupArchetypeFilterListeners();
+  initArchetypePopover();
 
   // Expose global handles for testing and automation
   window.App = App;

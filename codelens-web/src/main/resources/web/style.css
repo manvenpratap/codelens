@@ -809,15 +809,17 @@ body.theme-light .explorer-stats-footer {
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   background: transparent;
   border: none;
-  padding: 3px 6px;
+  padding: 3px 5px;
   font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
   font-family: var(--font-mono);
   transition: all var(--dur-fast) var(--ease);
+  position: relative;
+  user-select: none;
 }
 .stat-pill:hover {
   color: var(--text-primary);
@@ -831,15 +833,169 @@ body.theme-light .explorer-stats-footer {
   color: var(--text-muted);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
+
+.stat-pill.stat-pill-interactive {
+  cursor: pointer;
+  border-radius: var(--radius-xs, 4px);
+}
+.stat-pill.stat-pill-interactive:hover,
+.stat-pill.stat-pill-interactive.popover-open {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+body.theme-light .stat-pill.stat-pill-interactive:hover,
+body.theme-light .stat-pill.stat-pill-interactive.popover-open {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.stat-pill .stat-info-icon {
+  width: 11px;
+  height: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.stat-pill.stat-pill-interactive:hover .stat-info-icon,
+.stat-pill.stat-pill-interactive.popover-open .stat-info-icon {
+  opacity: 1;
+  color: var(--primary);
+}
+
 .stat-divider {
   width: 1px;
   height: 12px;
   background: var(--border);
 }
 
-/* Top-Right Dedicated Action Group */
+/* Method Archetypes Breakup Popover */
+.methods-archetypes-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 10px;
+  right: 10px;
+  max-height: 280px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.2);
+  padding: 10px 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: popoverFadeUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+body.theme-light .methods-archetypes-popover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+}
+
+@keyframes popoverFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.archetypes-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+body.theme-light .archetypes-popover-header {
+  border-bottom-color: #e2e8f0;
+}
+.archetypes-popover-header .popover-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+}
+.archetypes-popover-header .popover-total {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.archetypes-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 210px;
+  padding-right: 2px;
+}
+
+.archetype-breakup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-xs, 4px);
+  background: rgba(255, 255, 255, 0.03);
+  transition: background var(--dur-fast) var(--ease);
+}
+body.theme-light .archetype-breakup-row {
+  background: #f8fafc;
+}
+.archetype-breakup-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.theme-light .archetype-breakup-row:hover {
+  background: #f1f5f9;
+}
+
+.archetype-breakup-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.archetype-breakup-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 1px 4.5px;
+  border-radius: 3px;
+  line-height: 1.2;
+}
+.archetype-breakup-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.archetype-breakup-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.archetype-breakup-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+.archetype-breakup-pct {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  width: 32px;
+  text-align: right;
+}
 .header-actions-group {
   display: flex;
   align-items: center;

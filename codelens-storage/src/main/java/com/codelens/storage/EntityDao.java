@@ -537,18 +537,42 @@ public class EntityDao {
     // STATS
     // =========================================================================
 
-    public Map<String, Integer> getStats() throws SQLException {
-        Map<String, Integer> stats = new LinkedHashMap<>();
+    public Map<String, Object> getStats() throws SQLException {
+        Map<String, Object> stats = new LinkedHashMap<>();
         try (Connection c = db.getConnection();
              Statement s = c.createStatement()) {
-            stats.put("packages",       singleInt(s, "SELECT COUNT(*) FROM packages"));
+            int rootPkgs = singleInt(s, "SELECT COUNT(*) FROM packages WHERE parent_fqn IS NULL OR parent_fqn = ''");
+            int totalPkgs = singleInt(s, "SELECT COUNT(*) FROM packages");
+            if (rootPkgs == 0) rootPkgs = totalPkgs;
+            stats.put("modules",        rootPkgs);
+            stats.put("packages",       totalPkgs);
             stats.put("types",          singleInt(s, "SELECT COUNT(*) FROM types"));
+            stats.put("classes",        singleInt(s, "SELECT COUNT(*) FROM types WHERE kind = 'CLASS'"));
+            stats.put("interfaces",     singleInt(s, "SELECT COUNT(*) FROM types WHERE kind = 'INTERFACE'"));
+            stats.put("enums",          singleInt(s, "SELECT COUNT(*) FROM types WHERE kind = 'ENUM'"));
+            stats.put("records",        singleInt(s, "SELECT COUNT(*) FROM types WHERE kind = 'RECORD'"));
             stats.put("fields",         singleInt(s, "SELECT COUNT(*) FROM fields"));
             stats.put("methods",        singleInt(s, "SELECT COUNT(*) FROM methods"));
             stats.put("relationships",  singleInt(s, "SELECT COUNT(*) FROM relationships"));
             stats.put("inconsistencies",singleInt(s, "SELECT COUNT(*) FROM inconsistencies"));
         }
         return stats;
+    }
+
+    public List<Map<String, String>> findMethodSignatures() throws SQLException {
+        List<Map<String, String>> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, declaring_type_fqn FROM methods")) {
+            while (rs.next()) {
+                Map<String, String> m = new HashMap<>(3);
+                m.put("name", rs.getString(1));
+                m.put("fqn", rs.getString(2));
+                m.put("type", rs.getString(3));
+                list.add(m);
+            }
+        }
+        return list;
     }
 
     private int singleInt(Statement s, String sql) throws SQLException {
