@@ -549,10 +549,14 @@
       <!-- Bottom Floating In-Canvas Controls Toolbar (Scope, POJO filtering, Brightness, Camera/View options) -->
       <div id="codebase-canvas-toolbar" class="graph-hud-bar codebase-bottom-bar" aria-label="In-Canvas Display Options">
         <!-- Granularity / Level Switcher (Classes vs Methods) -->
-        <div class="graph-level-pills" id="codebase-granularity-selector" role="group" aria-label="Codebase Granularity">
-          <span class="hud-label" style="font-size:11px; margin-right:2px;">Scope:</span>
-          <button class="level-pill active" id="btn-codebase-arch" data-granularity="arch" title="Class Architecture level">Classes</button>
-          <button class="level-pill" id="btn-codebase-methods" data-granularity="methods" title="Detailed Method & Field Call Hierarchy">Methods</button>
+        <div id="codebase-granularity-wrap" class="codebase-scope-wrap" style="display:flex; align-items:center; gap:6px;">
+          <span class="hud-label" style="display:flex; align-items:center; gap:4px; font-size:11px;">
+            <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg> Scope:
+          </span>
+          <div class="graph-level-pills" id="codebase-granularity-selector" role="group" aria-label="Codebase Granularity">
+            <button class="level-pill active" id="btn-codebase-arch" data-granularity="arch" title="Class Architecture level">Classes</button>
+            <button class="level-pill" id="btn-codebase-methods" data-granularity="methods" title="Detailed Method & Field Call Hierarchy">Methods</button>
+          </div>
         </div>
 
         <div class="hud-divider" id="codebase-pojo-divider" style="display:none;"></div>

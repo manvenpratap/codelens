@@ -1718,7 +1718,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
   qsa('#codebase-granularity-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.granularity === (isMethods ? 'methods' : 'arch')));
 
   // Toggle visibility of granularity selector (supported for 3D City, 3D Galaxy, 2D Graph, DSM, and Chord)
-  const granCtrl = qs('#codebase-granularity-selector');
+  const granCtrl = qs('#codebase-granularity-wrap') || qs('#codebase-granularity-selector');
   const granDiv = qs('#codebase-granularity-divider');
   const supportsGranularity = ['city3d', 'galaxy3d', 'graph2d', 'dsm', 'chord'].includes(effectiveLevel);
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
