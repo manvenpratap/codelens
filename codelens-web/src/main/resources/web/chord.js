@@ -19,6 +19,7 @@ class ChordRenderer {
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
     this._archetypeFilter = 'ALL';
+    this._hidePojo = true;
     this._hovered = -1;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -27,6 +28,20 @@ class ChordRenderer {
       onMouseLeave: this._onMouseLeave.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  toggleHideGetters() {
+    this._hidePojo = !this._hidePojo;
+    ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle('active', this._hidePojo);
+        btn.title = this._hidePojo ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+      }
+    });
+    this._buildChordData();
+    this._draw();
+    return this._hidePojo;
   }
 
   setArchetypeFilter(ruleId) {
@@ -77,8 +92,15 @@ class ChordRenderer {
     if (this._hiddenPackages.has(pkg)) return true;
     if (this._hiddenEntities.has(name) || this._hiddenEntities.has(fqn)) return true;
 
+    const isMethod = node.type === 'METHOD' || (!node.type && fqn.includes('('));
+
+    if (this._hidePojo && isMethod && window.CodeLensClassifier) {
+      if (typeof window.CodeLensClassifier.isPojoAccessor === 'function' && window.CodeLensClassifier.isPojoAccessor(name, fqn)) {
+        return true;
+      }
+    }
+
     if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
-      const isMethod = node.type === 'METHOD' || (!node.type && fqn.includes('('));
       const ok = window.CodeLensClassifier.isMatchArchetype(
         name,
         fqn,

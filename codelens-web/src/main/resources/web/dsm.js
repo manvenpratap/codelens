@@ -26,11 +26,25 @@ class DSMRenderer {
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
     this._archetypeFilter = 'ALL';
+    this._hidePojo = true;
     this._selectedCell = null;
     this._onScopeChange = null;
     this._onSelectCell = null;
     this._onSelectEntity = null;
     this._tooltip = null;
+  }
+
+  toggleHideGetters() {
+    this._hidePojo = !this._hidePojo;
+    ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle('active', this._hidePojo);
+        btn.title = this._hidePojo ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+      }
+    });
+    this._render();
+    return this._hidePojo;
   }
 
   setArchetypeFilter(ruleId) {
@@ -75,8 +89,15 @@ class DSMRenderer {
     if (this._hiddenEntities.has(simple) || this._hiddenEntities.has(clsFqn)) return true;
     if (this._hiddenEntities.has(clsFqn.split('(')[0])) return true;
 
+    const isMethod = clsFqn.includes('(');
+
+    if (this._hidePojo && isMethod && window.CodeLensClassifier) {
+      if (typeof window.CodeLensClassifier.isPojoAccessor === 'function' && window.CodeLensClassifier.isPojoAccessor(simple, clsFqn)) {
+        return true;
+      }
+    }
+
     if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
-      const isMethod = clsFqn.includes('(');
       const ok = window.CodeLensClassifier.isMatchArchetype(
         simple,
         clsFqn,

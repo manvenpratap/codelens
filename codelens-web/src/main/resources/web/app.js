@@ -1724,10 +1724,10 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
   if (granDiv) granDiv.style.display = supportsGranularity ? '' : 'none';
 
-  // Toggle POJO filter button in Codebase HUD (visible for 2D Graph, 3D City, and 3D Galaxy when scope is methods)
+  // Toggle POJO filter button in Codebase HUD (visible across all visualizations where method-level scope is present)
   const pojoCtrl = qs('#codebase-pojo-controls');
   const pojoDiv = qs('#codebase-pojo-divider');
-  const showPojoFilter = (['graph2d', 'city3d', 'galaxy3d'].includes(effectiveLevel) && isMethods);
+  const showPojoFilter = (supportsGranularity && isMethods);
   if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
   if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
 
@@ -1894,8 +1894,13 @@ async function loadWholeCodebaseGraph(level, granularity) {
         renderer.onScopeChange(async (newScope) => {
           try {
             showBanner(`Loading DSM (${newScope})...`);
-            App.codebaseGranularity = (newScope === 'methods' ? 'methods' : 'arch');
-            qsa('#codebase-granularity-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.granularity === (newScope === 'methods' ? 'methods' : 'arch')));
+            const isMethodsNow = (newScope === 'methods');
+            App.codebaseGranularity = (isMethodsNow ? 'methods' : 'arch');
+            qsa('#codebase-granularity-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.granularity === (isMethodsNow ? 'methods' : 'arch')));
+            const pojoCtrl = qs('#codebase-pojo-controls');
+            const pojoDiv = qs('#codebase-pojo-divider');
+            if (pojoCtrl) pojoCtrl.style.display = isMethodsNow ? 'block' : 'none';
+            if (pojoDiv) pojoDiv.style.display = isMethodsNow ? '' : 'none';
             const scopedData = await api.dsmData(newScope);
             renderer.setData(scopedData);
             renderAltVizInspector('DSM', scopedData.classes.length, 0);
