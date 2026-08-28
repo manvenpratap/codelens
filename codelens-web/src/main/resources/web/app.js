@@ -844,6 +844,17 @@ function switchTab(tabName) {
       }, 20);
     }
   }
+  if (tabName === 'git') {
+    const gitInput = qs('#git-repo-input');
+    const projPath = App.currentPath || qs('#scan-path-input')?.value?.trim() || localStorage.getItem('codelens_last_path');
+    if (gitInput && (!gitInput.value || gitInput.value.trim() === '') && projPath) {
+      gitInput.value = projPath;
+      gitInput.dataset.synced = 'true';
+      validateGitRepoPath();
+    } else {
+      loadGitSummary();
+    }
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2887,6 +2898,13 @@ function updateHeaderProjectBar(path) {
   if (projectBar) projectBar.style.display = 'flex';
   if (scanBar) scanBar.style.display = 'none';
   if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
+  const gitInput = qs('#git-repo-input');
+  if (gitInput && (!gitInput.value || gitInput.dataset.synced === 'true')) {
+    gitInput.value = path;
+    gitInput.dataset.synced = 'true';
+    validateGitRepoPath();
+  }
 }
 
 /** Reveal the scan input bar to switch or open a different project */
@@ -3412,14 +3430,27 @@ function initGitControls() {
   const repoInput   = qs('#git-repo-input');
   const validateBtn = qs('#git-validate-btn');
   const analyzeBtn  = qs('#git-analyze-btn');
+  const useProjectBtn = qs('#git-use-project-btn');
 
   // Pre-fill input if empty and scan path is available
+  const projPath = App.currentPath || qs('#scan-path-input')?.value?.trim() || localStorage.getItem('codelens_last_path');
   if (repoInput && (!repoInput.value || repoInput.value.trim() === '')) {
-    const scanPath = qs('#scan-path-input')?.value?.trim();
-    if (scanPath) {
-      repoInput.value = scanPath;
+    if (projPath) {
+      repoInput.value = projPath;
       repoInput.dataset.synced = 'true';
+      validateGitRepoPath();
     }
+  }
+
+  if (useProjectBtn) {
+    useProjectBtn.addEventListener('click', () => {
+      const currentProj = App.currentPath || qs('#scan-path-input')?.value?.trim() || localStorage.getItem('codelens_last_path');
+      if (currentProj && repoInput) {
+        repoInput.value = currentProj;
+        repoInput.dataset.synced = 'true';
+        validateGitRepoPath();
+      }
+    });
   }
 
   if (validateBtn) {
@@ -3443,21 +3474,39 @@ function initGitControls() {
 
 function updateGitValidationBadge(info) {
   const badge = qs('#git-validation-status');
+  const metaRow = qs('#git-repo-meta-row');
+  const branchEl = qs('#git-meta-branch');
+  const commitEl = qs('#git-meta-commit');
+
   if (!badge) return;
   if (info.idle) {
-    badge.innerHTML = '<span class="git-status-dot idle"></span><span class="git-status-text">Not validated</span>';
+    badge.innerHTML = '<span class="git-status-dot idle"></span><span class="git-status-text">Not connected</span>';
+    if (metaRow) metaRow.style.display = 'none';
   } else if (info.valid) {
-    badge.innerHTML = `<span class="git-status-dot valid"></span><span class="git-status-text">Valid (${esc(info.branch || 'HEAD')})</span>`;
+    badge.innerHTML = `<span class="git-status-dot valid"></span><span class="git-status-text">Connected</span>`;
+    if (metaRow) {
+      metaRow.style.display = 'flex';
+      if (branchEl) branchEl.innerHTML = `<svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> <span>${esc(info.branch || 'HEAD')}</span>`;
+      if (commitEl) commitEl.textContent = info.headCommit || 'HEAD';
+    }
   } else if (info.running) {
     badge.innerHTML = '<span class="git-status-dot running"></span><span class="git-status-text">Analyzing…</span>';
   } else {
     badge.innerHTML = `<span class="git-status-dot invalid"></span><span class="git-status-text" title="${esc(info.error || '')}">Invalid repository</span>`;
+    if (metaRow) metaRow.style.display = 'none';
   }
 }
 
 async function validateGitRepoPath() {
   const repoInput = qs('#git-repo-input');
-  const repoPath = repoInput ? repoInput.value.trim() : '';
+  let repoPath = repoInput ? repoInput.value.trim() : '';
+  if (!repoPath) {
+    const projPath = App.currentPath || qs('#scan-path-input')?.value?.trim() || localStorage.getItem('codelens_last_path');
+    if (projPath) {
+      repoPath = projPath;
+      if (repoInput) repoInput.value = repoPath;
+    }
+  }
   if (!repoPath) {
     updateGitValidationBadge({ error: 'Please enter a path' });
     return false;
@@ -3466,14 +3515,15 @@ async function validateGitRepoPath() {
   const validateBtn = qs('#git-validate-btn');
   if (validateBtn) {
     validateBtn.disabled = true;
-    validateBtn.textContent = 'Validating…';
+    validateBtn.innerHTML = '<span class="spinner-inline"></span> <span>Validating…</span>';
   }
 
   try {
     const res = await api.validateGitRepo(repoPath);
     if (res.valid) {
-      updateGitValidationBadge({ valid: true, branch: res.branch });
+      updateGitValidationBadge({ valid: true, branch: res.branch, headCommit: res.headCommit });
       if (repoInput) repoInput.value = res.repoPath;
+      loadGitSummary();
       return true;
     } else {
       updateGitValidationBadge({ error: res.error });
@@ -3485,7 +3535,7 @@ async function validateGitRepoPath() {
   } finally {
     if (validateBtn) {
       validateBtn.disabled = false;
-      validateBtn.textContent = 'Validate Repo';
+      validateBtn.innerHTML = '<svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> <span>Validate</span>';
     }
   }
 }
@@ -3507,7 +3557,7 @@ async function startGitAnalysis() {
   const analyzeBtn = qs('#git-analyze-btn');
   if (analyzeBtn) {
     analyzeBtn.disabled = true;
-    analyzeBtn.innerHTML = '<span class="spinner-inline"></span> Starting…';
+    analyzeBtn.innerHTML = '<span class="spinner-inline"></span> <span>Analyzing…</span>';
   }
 
   try {
@@ -3519,7 +3569,7 @@ async function startGitAnalysis() {
     showError('Git analysis failed to start: ' + e.message);
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
-      analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze Git History';
+      analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Analyze History</span>';
     }
   }
 }
@@ -3555,7 +3605,7 @@ function pollGitAnalysisStatus() {
 
         if (analyzeBtn) {
           analyzeBtn.disabled = false;
-          analyzeBtn.textContent = 'Analyze History';
+          analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Analyze History</span>';
         }
 
         setTimeout(() => showGitProgressBox(false), 2000);
@@ -3570,7 +3620,7 @@ function pollGitAnalysisStatus() {
         if (textMsg) textMsg.textContent = `Failed: ${status.errorDetail || 'Unknown error'}`;
         if (analyzeBtn) {
           analyzeBtn.disabled = false;
-          analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze Git History';
+          analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Analyze History</span>';
         }
       }
     } catch (_) {}
@@ -3584,14 +3634,23 @@ function pollGitAnalysisStatus() {
 async function loadGitSummary() {
   const authorsList = qs('#git-authors-list');
   const hotList     = qs('#git-hot-list');
+  const authorsBadge = qs('#git-authors-badge');
+  const hotBadge = qs('#git-hot-badge');
   if (!authorsList || !hotList) return;
 
   try {
     const summary = await api.gitSummary();
     // ── Top authors ───────────────────────────────────────────────────────────
     if (!summary.topAuthors || summary.topAuthors.length === 0) {
-      authorsList.innerHTML = '<div class="list-empty">Connect a Git repository above to inspect author telemetry.</div>';
+      if (authorsBadge) authorsBadge.textContent = '0 authors';
+      authorsList.innerHTML = `
+        <div class="git-empty-card">
+          <div class="git-empty-icon"><svg class="svg-icon icon-indigo icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div class="git-empty-title">No Author Telemetry</div>
+          <div class="git-empty-desc">Connect and analyze a Git repository above to inspect contributor commit volume and leaderboard rankings.</div>
+        </div>`;
     } else {
+      if (authorsBadge) authorsBadge.textContent = `${summary.topAuthors.length} authors`;
       authorsList.innerHTML = summary.topAuthors.map((a, i) => {
         const avatar = a.authorName
           ? a.authorName.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -3611,24 +3670,46 @@ async function loadGitSummary() {
     }
     // ── Hottest entities ──────────────────────────────────────────────────────
     if (!summary.hotEntities || summary.hotEntities.length === 0) {
-      hotList.innerHTML = '<div class="list-empty">No churn data available yet.</div>';
+      if (hotBadge) hotBadge.textContent = '0 entities';
+      hotList.innerHTML = `
+        <div class="git-empty-card">
+          <div class="git-empty-icon"><svg class="svg-icon icon-amber icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+          <div class="git-empty-title">No Churn Data Available</div>
+          <div class="git-empty-desc">Click <strong>Analyze History</strong> to calculate change frequency and highlight high-churn risk areas in your code.</div>
+        </div>`;
     } else {
+      if (hotBadge) hotBadge.textContent = `${summary.hotEntities.length} entities`;
       const maxCount = Math.max(...summary.hotEntities.map(e => e.commitCount), 1);
       hotList.innerHTML = summary.hotEntities.map(e => {
         const pct   = Math.round((e.commitCount / maxCount) * 100);
         const label = (e.entityFqn || '').split('.').pop();
-        return `<div class="git-hot-row">
+        return `<div class="git-hot-row" data-fqn="${esc(e.entityFqn)}" title="Click to view ${esc(e.entityFqn)} (${e.commitCount} commits)">
           <div class="git-hot-label" title="${esc(e.entityFqn)}">${esc(label)}</div>
           <div class="git-hot-bar-wrap">
             <div class="git-hot-bar" style="width:${pct}%" aria-label="${e.commitCount} commits"></div>
           </div>
-          <div class="git-hot-count">${e.commitCount}</div>
+          <div class="git-hot-count">${e.commitCount} commits</div>
         </div>`;
       }).join('');
+
+      hotList.querySelectorAll('.git-hot-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const fqn = row.dataset.fqn;
+          if (fqn) {
+            if (fqn.includes('(')) {
+              loadMethodDetails(fqn);
+            } else {
+              loadClassDetails(fqn);
+            }
+          }
+        });
+      });
     }
   } catch (err) {
-    authorsList.innerHTML = '<div class="list-empty">Git data not available yet.</div>';
-    hotList.innerHTML = '';
+    if (authorsBadge) authorsBadge.textContent = '0 authors';
+    if (hotBadge) hotBadge.textContent = '0 entities';
+    authorsList.innerHTML = '<div class="git-empty-card"><div class="git-empty-title">Git data not available</div></div>';
+    hotList.innerHTML = '<div class="git-empty-card"><div class="git-empty-title">Git data not available</div></div>';
     console.warn('Git summary fetch failed:', err);
   }
 }

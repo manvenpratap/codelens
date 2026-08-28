@@ -736,9 +736,10 @@
     >
       <div class="git-view-inner">
         <div class="git-help-banner">
-          <span class="banner-badge">JGit Telemetry</span>
+          <span class="banner-badge"><svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> JGit Telemetry</span>
           <span>Computes commit frequencies, author leaderboards, and churn heat. Press <kbd>H</kbd> in Graph view to overlay thermal heat shaders onto graph nodes.</span>
         </div>
+
         <!-- Git Repository Connection Card -->
         <div class="git-connect-card">
           <div class="git-connect-header">
@@ -751,8 +752,10 @@
               <span class="git-status-text">Not connected</span>
             </div>
           </div>
+
           <div class="git-connect-form">
-            <div class="git-input-wrap">
+            <div class="git-input-group">
+              <span class="git-input-icon"><svg class="svg-icon icon-muted icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
               <input
                 type="text"
                 id="git-repo-input"
@@ -760,16 +763,34 @@
                 placeholder="Enter absolute Git repository root path (e.g. /path/to/repo)…"
                 spellcheck="false"
               />
-            </div>
-            <div class="git-action-row">
+              <button id="git-use-project-btn" class="btn-ghost git-use-project-btn" title="Use currently open project path">
+                <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                <span>Current Project</span>
+              </button>
               <button id="git-validate-btn" class="btn-ghost git-validate-btn" title="Validate repository path">
-                Validate Repo
+                <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Validate</span>
               </button>
               <button id="git-analyze-btn" class="btn-primary git-analyze-btn" title="Run background Git blame &amp; churn analysis">
-                Analyze History
+                <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span>Analyze History</span>
               </button>
             </div>
+
+            <!-- Repository Meta Info Pill Row (Visible when valid repo connected) -->
+            <div id="git-repo-meta-row" class="git-repo-meta-row" style="display:none;">
+              <div class="git-meta-item">
+                <span class="git-meta-label">Branch:</span>
+                <span class="git-meta-val git-meta-branch" id="git-meta-branch"><svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> <span>main</span></span>
+              </div>
+              <div class="git-meta-divider"></div>
+              <div class="git-meta-item">
+                <span class="git-meta-label">HEAD Commit:</span>
+                <span class="git-meta-val git-meta-commit" id="git-meta-commit">-</span>
+              </div>
+            </div>
           </div>
+
           <!-- Live Background Progress Bar -->
           <div id="git-progress-box" class="git-progress-box" style="display:none">
             <div class="git-progress-top">
@@ -784,16 +805,37 @@
 
         <!-- Top Authors leaderboard -->
         <div class="git-section" id="git-authors-section">
-          <div class="git-section-title">Top Authors</div>
+          <div class="git-section-title">
+            <div class="git-section-title-left">
+              <svg class="svg-icon icon-indigo icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Top Authors</span>
+            </div>
+            <span class="git-section-badge" id="git-authors-badge">0 authors</span>
+          </div>
           <div id="git-authors-list" class="git-authors-list">
-            <div class="list-empty">Connect a Git repository above to inspect author telemetry.</div>
+            <div class="git-empty-card">
+              <div class="git-empty-icon"><svg class="svg-icon icon-indigo icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <div class="git-empty-title">No Author Telemetry</div>
+              <div class="git-empty-desc">Connect and analyze a Git repository above to inspect contributor commit volume and leaderboard rankings.</div>
+            </div>
           </div>
         </div>
+
         <!-- Hottest Entities -->
         <div class="git-section" id="git-hot-section">
-          <div class="git-section-title">Hottest Entities</div>
+          <div class="git-section-title">
+            <div class="git-section-title-left">
+              <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>Hottest Entities</span>
+            </div>
+            <span class="git-section-badge" id="git-hot-badge">0 entities</span>
+          </div>
           <div id="git-hot-list" class="git-hot-list">
-            <div class="list-empty">No churn data available yet.</div>
+            <div class="git-empty-card">
+              <div class="git-empty-icon"><svg class="svg-icon icon-amber icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+              <div class="git-empty-title">No Churn Data Available</div>
+              <div class="git-empty-desc">Click <strong>Analyze History</strong> to calculate change frequency and highlight high-churn risk areas in your code.</div>
+            </div>
           </div>
         </div>
       </div>
