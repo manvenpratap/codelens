@@ -192,9 +192,11 @@ class SunburstRenderer {
           ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
           : '#3b82f6';
       } else if (depth === 1) {
-        segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-          ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
-          : '#3b82f6';
+        segColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+          ? window.CodeLensPalette.getClassColor(child.fqn || child.name, 'CLASS', idx)
+          : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+              ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
+              : '#3b82f6');
       } else {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.tintColor)
           ? window.CodeLensPalette.tintColor(parentColor || '#3b82f6', idx)

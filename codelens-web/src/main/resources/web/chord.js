@@ -138,9 +138,11 @@ class ChordRenderer {
     this._arcs = nodes.map((nd, i) => {
       const fraction = totals[i] / grandTotal;
       const arcAngle = totalAngle * fraction;
-      const arcColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(nd.id || nd.label, i)
-        : colors[i % colors.length];
+      const arcColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+        ? window.CodeLensPalette.getClassColor(nd.id || nd.label, nd.type || 'METHOD', i)
+        : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+            ? window.CodeLensPalette.getColor(nd.id || nd.label, i)
+            : colors[i % colors.length]);
       const arc = {
         index: i,
         startAngle: angle,

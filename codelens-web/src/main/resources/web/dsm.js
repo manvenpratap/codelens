@@ -268,9 +268,11 @@ class DSMRenderer {
 
     for (let j = 0; j < n; j++) {
       const cls = orderedClasses[j];
-      const colColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(cls, j)
-        : '#3b82f6';
+      const colColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+        ? window.CodeLensPalette.getClassColor(cls, (this._scope === 'methods' ? 'METHOD' : 'CLASS'), j)
+        : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+            ? window.CodeLensPalette.getColor(cls, j)
+            : '#3b82f6');
 
       const th = document.createElement('th');
       th.className = 'dsm-col-header';
@@ -303,9 +305,11 @@ class DSMRenderer {
     for (let i = 0; i < n; i++) {
       const rowCls = orderedClasses[i];
       const rowPkg = packages[rowCls] || '(default)';
-      const rowColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(rowCls, i)
-        : '#3b82f6';
+      const rowColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+        ? window.CodeLensPalette.getClassColor(rowCls, (this._scope === 'methods' ? 'METHOD' : 'CLASS'), i)
+        : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+            ? window.CodeLensPalette.getColor(rowCls, i)
+            : '#3b82f6');
 
       // Package cluster separator line in cluster mode
       if (this._sortMode === 'cluster' && rowPkg !== prevPkg && i > 0) {
@@ -524,12 +528,16 @@ class DSMRenderer {
       document.body.appendChild(this._tooltip);
     }
 
-    const callerColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-      ? window.CodeLensPalette.getColor(caller, 0)
-      : '#3b82f6';
-    const calleeColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-      ? window.CodeLensPalette.getColor(callee, 1)
-      : '#10b981';
+    const callerColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+      ? window.CodeLensPalette.getClassColor(caller, (this._scope === 'methods' ? 'METHOD' : 'CLASS'), 0)
+      : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(caller, 0)
+          : '#3b82f6');
+    const calleeColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+      ? window.CodeLensPalette.getClassColor(callee, (this._scope === 'methods' ? 'METHOD' : 'CLASS'), 1)
+      : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(callee, 1)
+          : '#10b981');
 
     this._tooltip.innerHTML = `
       <div class="dsm-tip-header ${isCycle ? 'dsm-tip-cycle' : ''}">

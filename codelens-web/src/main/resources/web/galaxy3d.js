@@ -334,14 +334,20 @@
           const py = centerY + tangentU.y * r * Math.cos(angle) + tangentV.y * r * Math.sin(angle);
           const pz = centerZ + tangentU.z * r * Math.cos(angle) + tangentV.z * r * Math.sin(angle);
 
+          // Retain class color coding across both classes view and methods view
+          const nodeColorStr = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+            ? window.CodeLensPalette.getClassColor(n.id, n.type || n.kind, nIdx)
+            : colorStr;
+          const nodeColorHex = parseInt(nodeColorStr.replace('#', ''), 16) || colorHex;
+
           const nodeObj = {
             id: n.id,
             label: n.label || n.id.split('.').pop(),
             raw: n,
             x: px, y: py, z: pz,
             pkg: pkgName,
-            colorStr: colorStr,
-            colorHex: colorHex
+            colorStr: nodeColorStr,
+            colorHex: nodeColorHex
           };
           this._nodes.push(nodeObj);
           nodeIndexMap.set(n.id, nodeObj);

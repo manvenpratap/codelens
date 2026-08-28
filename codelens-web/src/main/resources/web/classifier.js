@@ -529,5 +529,94 @@
     }
   }
 
+  // 50 maximally distinguishable equidistant hues across the full 360° color wheel
+  const PALETTE = [
+    '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+    '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
+    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+    '#ec4899', '#f43f5e', '#dc2626', '#ea580c', '#d97706',
+    '#ca8a04', '#65a30d', '#16a34a', '#059669', '#0d9488',
+    '#0891b2', '#0284c7', '#2563eb', '#4f46e5', '#7c3aed',
+    '#9333ea', '#c026d3', '#db2777', '#e11d48', '#ff3366',
+    '#ff6600', '#ffaa00', '#ffcc00', '#99ee00', '#00dd77',
+    '#00ddcc', '#0099ff', '#3355ff', '#8833ff', '#dd00ff',
+    '#ff00aa', '#ff1a75', '#ff5722', '#ff9800', '#e91e63'
+  ];
+
+  function getEntityColor(nameOrFqn, fallbackIndex = 0) {
+    if (!nameOrFqn) return PALETTE[fallbackIndex % PALETTE.length];
+    const clean = String(nameOrFqn).split('(')[0].trim();
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+      hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+      hash |= 0;
+    }
+    return PALETTE[Math.abs(hash) % PALETTE.length];
+  }
+
+  function extractClassFqn(fqn, nodeType) {
+    if (!fqn) return '';
+    const clean = String(fqn).split('(')[0].trim();
+    const parts = clean.split('.');
+    if (parts.length <= 1) return clean;
+
+    const typeUpper = (nodeType || '').toUpperCase();
+    if (typeUpper === 'CLASS' || typeUpper === 'TYPE') {
+      return clean;
+    }
+    if (typeUpper === 'PACKAGE' || typeUpper === 'MODULE') {
+      return clean;
+    }
+    if (typeUpper === 'METHOD' || typeUpper === 'FIELD' || fqn.includes('(')) {
+      return parts.slice(0, -1).join('.');
+    }
+    if (/^[a-z_]/.test(parts[parts.length - 1])) {
+      return parts.slice(0, -1).join('.');
+    }
+    return clean;
+  }
+
+  function getClassColor(nameOrFqn, nodeType = 'METHOD', fallbackIndex = 0) {
+    const classFqn = extractClassFqn(nameOrFqn, nodeType);
+    return getEntityColor(classFqn, fallbackIndex);
+  }
+
+  function tintColor(hex, index = 0) {
+    if (!hex || !hex.startsWith('#')) return hex || '#3b82f6';
+    const c = parseInt(hex.replace('#', ''), 16);
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+
+    const rNorm = r / 255, gNorm = g / 255, bNorm = b / 255;
+    const max = Math.max(rNorm, gNorm, bNorm), min = Math.min(rNorm, gNorm, bNorm);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case rNorm: h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0); break;
+        case gNorm: h = (bNorm - rNorm) / d + 2; break;
+        case bNorm: h = (rNorm - gNorm) / d + 4; break;
+      }
+      h /= 6;
+    }
+
+    const lightnessOffsets = [0.10, -0.08, 0.16, -0.14, 0.05, -0.10, 0.12];
+    const lOffset = lightnessOffsets[index % lightnessOffsets.length];
+    const newL = Math.max(0.28, Math.min(0.82, l + lOffset));
+
+    return `hsl(${Math.round(h * 360)}, ${Math.round(Math.min(s * 1.1, 1) * 100)}%, ${Math.round(newL * 100)}%)`;
+  }
+
+  window.CodeLensPalette = {
+    PALETTE,
+    getColor: getEntityColor,
+    getClassColor: getClassColor,
+    extractClassFqn: extractClassFqn,
+    tintColor: tintColor,
+  };
+
   window.CodeLensClassifier = new CodeLensClassifier();
 })(window);

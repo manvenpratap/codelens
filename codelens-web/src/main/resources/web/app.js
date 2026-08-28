@@ -1729,6 +1729,10 @@ function renderCodebaseLegend(nodesOrTreeData) {
     const safePkgId = 'pkg-' + idx;
 
     const classesHtml = Array.from(classMap.entries()).map(([clsName, meta]) => {
+      const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+        ? window.CodeLensPalette.getClassColor(meta.fqn || clsName, 'CLASS')
+        : color;
+
       let archBadgeHtml = '';
       if (window.CodeLensClassifier) {
         const arch = window.CodeLensClassifier.classifyType(clsName, meta.fqn, pkg);
@@ -1738,7 +1742,7 @@ function renderCodebaseLegend(nodesOrTreeData) {
       }
       return `
         <div class="legend-class-item" data-pkg="${pkg}" data-class="${clsName}" data-fqn="${meta.fqn}" title="Toggle ${clsName} (${meta.count})">
-          <div class="legend-class-dot" style="background:${color}"></div>
+          <div class="legend-class-dot" style="background:${classColor}"></div>
           <span class="legend-class-label">${clsName}</span>
           ${archBadgeHtml}
           <span class="legend-count">${meta.count}</span>

@@ -369,7 +369,11 @@
 
           const buildingGeo = new THREE.BoxGeometry(width, height, depth);
           
-          const colorHex = isMethod ? (cls.type === 'METHOD' ? 0x38bdf8 : pkgColorHex) : pkgColorHex;
+          // Retain class color coding across both classes view and methods view
+          const classColorStr = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+            ? window.CodeLensPalette.getClassColor(cls.id || cls.label, cls.type || (isMethod ? 'METHOD' : 'CLASS'), cIndex)
+            : (window.CodeLensPalette ? window.CodeLensPalette.getColor(cls.id || cls.label, cIndex) : pkgColorStr);
+          const colorHex = parseInt(classColorStr.replace('#', ''), 16) || pkgColorHex;
 
           const buildingMat = new THREE.MeshStandardMaterial({
             color: colorHex,
@@ -395,7 +399,7 @@
             entity: cls,
             origColor: colorHex,
             height: height,
-            colorStr: isMethod ? '#38bdf8' : pkgColorStr,
+            colorStr: classColorStr,
             pkg: pkgName,
             loc: loc,
             isMethod: isMethod,

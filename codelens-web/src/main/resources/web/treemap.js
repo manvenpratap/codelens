@@ -57,9 +57,30 @@ if (!window.CodeLensPalette) {
     return `hsl(${Math.round(h * 360)}, ${Math.round(Math.min(s * 1.1, 1) * 100)}%, ${Math.round(newL * 100)}%)`;
   }
 
+  function extractClassFqn(fqn, nodeType) {
+    if (!fqn) return '';
+    const clean = String(fqn).split('(')[0].trim();
+    const parts = clean.split('.');
+    if (parts.length <= 1) return clean;
+
+    const typeUpper = (nodeType || '').toUpperCase();
+    if (typeUpper === 'CLASS' || typeUpper === 'TYPE') return clean;
+    if (typeUpper === 'PACKAGE' || typeUpper === 'MODULE') return clean;
+    if (typeUpper === 'METHOD' || typeUpper === 'FIELD' || fqn.includes('(')) return parts.slice(0, -1).join('.');
+    if (/^[a-z_]/.test(parts[parts.length - 1])) return parts.slice(0, -1).join('.');
+    return clean;
+  }
+
+  function getClassColor(nameOrFqn, nodeType = 'METHOD', fallbackIndex = 0) {
+    const classFqn = extractClassFqn(nameOrFqn, nodeType);
+    return getEntityColor(classFqn, fallbackIndex);
+  }
+
   window.CodeLensPalette = {
     PALETTE,
     getColor: getEntityColor,
+    getClassColor: getClassColor,
+    extractClassFqn: extractClassFqn,
     tintColor: tintColor,
   };
 }
@@ -196,9 +217,11 @@ class TreemapRenderer {
         if (innerW > 10 && innerH > 10 && pkgNode.children && pkgNode.children.length > 0) {
           const classRects = this._calcSquarify(pkgNode.children, innerX, innerY, innerW, innerH);
           classRects.forEach((cr, cIdx) => {
-            const classColor = window.CodeLensPalette 
-              ? window.CodeLensPalette.getColor(cr.node.fqn || cr.node.name, cIdx)
-              : '#3b82f6';
+            const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+              ? window.CodeLensPalette.getClassColor(cr.node.fqn || cr.node.name, 'CLASS', cIdx)
+              : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+                  ? window.CodeLensPalette.getColor(cr.node.fqn || cr.node.name, cIdx)
+                  : '#3b82f6');
             this._rects.push({
               x: cr.x, y: cr.y, w: cr.w, h: cr.h,
               node: cr.node, parentNode: pkgNode, depth: 1, type: 'class',
@@ -218,9 +241,11 @@ class TreemapRenderer {
         classRects.forEach((cr, cIdx) => {
           const classNode = cr.node;
           const headerH = 24;
-          const classColor = window.CodeLensPalette 
-            ? window.CodeLensPalette.getColor(classNode.fqn || classNode.name, cIdx)
-            : '#3b82f6';
+          const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+            ? window.CodeLensPalette.getClassColor(classNode.fqn || classNode.name, 'CLASS', cIdx)
+            : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+                ? window.CodeLensPalette.getColor(classNode.fqn || classNode.name, cIdx)
+                : '#3b82f6');
 
           this._containers.push({
             x: cr.x, y: cr.y, w: cr.w, h: cr.h,

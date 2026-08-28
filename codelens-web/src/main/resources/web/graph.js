@@ -498,6 +498,11 @@ class ForceGraph {
       }
       const hotScore = deg * 3 + (n.role === 'root' ? 25 : 0) + (n.type === 'CLASS' ? 12 : 0) + heatVal * 2;
 
+      // Retain class color coding across both classes view and methods view
+      const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+        ? window.CodeLensPalette.getClassColor(n.id, n.type || 'METHOD')
+        : comm.color;
+
       const nodeObj = {
         ...n,
         package: finalPkg,
@@ -505,7 +510,9 @@ class ForceGraph {
         memberName: memberName,
         community: comm.cid,
         communityLabel: comm.label,
-        communityColor: comm.color,
+        communityColor: classColor,
+        packageColor: comm.color,
+        classColor: classColor,
         inDegree: inDegrees[n.id] || 0,
         outDegree: outDegrees[n.id] || 0,
         degree: deg,
@@ -1745,9 +1752,14 @@ class ForceGraph {
       const classesHtml = Array.from(classMap.entries()).map(([clsName, nodesInCls]) => {
         const isClsDimmed = this._hiddenClasses.has(clsName) || this._hiddenCommunities.has(c.cid);
         const count = nodesInCls.length;
+        const firstNode = nodesInCls[0];
+        const clsFqn = firstNode ? (firstNode.package ? `${firstNode.package}.${clsName}` : firstNode.id) : clsName;
+        const clsColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+          ? window.CodeLensPalette.getClassColor(clsFqn, 'CLASS')
+          : c.color;
+
         let archBadgeHtml = '';
         if (window.CodeLensClassifier) {
-          const firstNode = nodesInCls[0];
           const arch = window.CodeLensClassifier.classifyType(clsName, firstNode ? firstNode.id : '', c.label);
           if (arch) {
             archBadgeHtml = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66;">${arch.icon} ${arch.badge}</span>`;
@@ -1755,7 +1767,7 @@ class ForceGraph {
         }
         return `
           <div class="legend-class-item ${isClsDimmed ? 'dimmed' : ''}" data-cid="${c.cid}" data-class="${clsName}" title="Toggle class ${clsName} (${count} members)">
-            <div class="legend-class-dot" style="background:${c.color}"></div>
+            <div class="legend-class-dot" style="background:${clsColor}"></div>
             <span class="legend-class-label">${clsName}</span>
             ${archBadgeHtml}
             <span class="legend-count">${count}</span>
