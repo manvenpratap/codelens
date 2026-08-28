@@ -21,6 +21,7 @@ class SunburstRenderer {
     this._segments = [];
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
+    this._archetypeFilter = 'ALL';
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -30,6 +31,11 @@ class SunburstRenderer {
       onClick: this._onClick.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  setArchetypeFilter(ruleId) {
+    this._archetypeFilter = ruleId || 'ALL';
+    this._draw();
   }
 
   togglePackage(pkgName, visible) {
@@ -391,6 +397,20 @@ class SunburstRenderer {
         const isAnc = this._isAncestor(node, hNode);
         const isDesc = this._isAncestor(hNode, node);
         if (!isHot && !isAnc && !isDesc) {
+          dimmed = true;
+        }
+      }
+
+      if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+        const isMethod = node.type === 'method' || (!node.type && (node.complexity !== undefined || !node.children));
+        const ok = window.CodeLensClassifier.isMatchArchetype(
+          node,
+          node.fqn || node.id || node.name,
+          node.package || node.packageFqn,
+          isMethod,
+          this._archetypeFilter
+        );
+        if (!ok) {
           dimmed = true;
         }
       }

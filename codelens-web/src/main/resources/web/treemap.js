@@ -99,6 +99,7 @@ class TreemapRenderer {
     this._containers = [];
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
+    this._archetypeFilter = 'ALL';
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -108,6 +109,11 @@ class TreemapRenderer {
       onClick: this._onClick.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  setArchetypeFilter(ruleId) {
+    this._archetypeFilter = ruleId || 'ALL';
+    this._draw();
   }
 
   togglePackage(pkgName, visible) {
@@ -547,23 +553,36 @@ class TreemapRenderer {
       const color = rect.color || this._complexityColor(node.complexity || 0);
       const isHovered = this._hovered === rect;
 
+      let isDimmedByArchetype = false;
+      if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+        const isMethod = node.type === 'method' || (!node.type && (node.complexity !== undefined || !node.children));
+        const ok = window.CodeLensClassifier.isMatchArchetype(
+          node,
+          node.fqn || node.id || node.name,
+          node.package || node.packageFqn,
+          isMethod,
+          this._archetypeFilter
+        );
+        if (!ok) isDimmedByArchetype = true;
+      }
+
       // Fill
       ctx.fillStyle = color;
-      ctx.globalAlpha = (isHovered ? 1.0 : 0.85) * alphaMult;
+      ctx.globalAlpha = (isDimmedByArchetype ? 0.12 : (isHovered ? 1.0 : 0.85)) * alphaMult;
       ctx.beginPath();
       this._roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 4);
       ctx.fill();
 
       // Border
-      ctx.globalAlpha = 1.0 * alphaMult;
-      ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(0, 0, 0, 0.35)';
+      ctx.globalAlpha = (isDimmedByArchetype ? 0.15 : 1.0) * alphaMult;
+      ctx.strokeStyle = isHovered ? '#ffffff' : (isDimmedByArchetype ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.35)');
       ctx.lineWidth = isHovered ? 2 : 0.75;
       ctx.stroke();
 
       // Label (only if rect is big enough - LOD culling threshold: w > 45 && h > 18)
       if (rect.w > 45 && rect.h > 18) {
         ctx.fillStyle = '#ffffff';
-        ctx.globalAlpha = 1.0 * alphaMult;
+        ctx.globalAlpha = (isDimmedByArchetype ? 0.18 : 1.0) * alphaMult;
         const fontSize = Math.max(10, Math.min(13, rect.w / 9));
         ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
         ctx.textBaseline = 'top';

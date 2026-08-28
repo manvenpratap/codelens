@@ -397,6 +397,28 @@
 
         <div class="hud-divider"></div>
 
+        <!-- Archetype Multi-Select Dropdown -->
+        <div class="archetype-multiselect-dropdown" id="graph-archetype-wrap">
+          <button type="button" class="hud-btn archetype-multiselect-btn" id="graph-archetype-btn" aria-haspopup="true" aria-expanded="false" title="Filter graph by semantic archetype (Multi-Select)">
+            <span class="hud-btn-icon"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+            <span class="archetype-btn-label" id="graph-archetype-label">Archetypes (All)</span>
+            <svg class="svg-icon icon-xxs chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="archetype-multiselect-panel" id="graph-archetype-panel" style="display:none;">
+            <div class="archetype-panel-header">
+              <span class="archetype-panel-title">Filter Archetypes</span>
+              <div class="archetype-panel-quick-actions">
+                <button type="button" class="archetype-action-link" id="graph-archetype-select-all">All</button>
+                <span class="sep">•</span>
+                <button type="button" class="archetype-action-link" id="graph-archetype-clear-all">Clear</button>
+              </div>
+            </div>
+            <div class="archetype-panel-list" id="graph-archetype-items"></div>
+          </div>
+        </div>
+
+        <div class="hud-divider"></div>
+
         <!-- Camera Controls -->
         <div class="graph-camera-controls">
           <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">
@@ -572,6 +594,28 @@
           <button id="btn-reset-brightness" class="hud-btn icon-only" style="padding:2px 6px; font-size:10px;" title="Reset Brightness to Default (100%)">
             <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
           </button>
+        </div>
+
+        <div class="hud-divider" id="codebase-archetype-divider"></div>
+
+        <!-- Codebase Archetype Multi-Select Dropdown -->
+        <div class="archetype-multiselect-dropdown" id="codebase-archetype-wrap">
+          <button type="button" class="hud-btn archetype-multiselect-btn" id="codebase-archetype-btn" aria-haspopup="true" aria-expanded="false" title="Filter visualization by semantic archetype (Multi-Select)">
+            <span class="hud-btn-icon"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+            <span class="archetype-btn-label" id="codebase-archetype-label">Archetypes (All)</span>
+            <svg class="svg-icon icon-xxs chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="archetype-multiselect-panel" id="codebase-archetype-panel" style="display:none;">
+            <div class="archetype-panel-header">
+              <span class="archetype-panel-title">Filter Archetypes</span>
+              <div class="archetype-panel-quick-actions">
+                <button type="button" class="archetype-action-link" id="codebase-archetype-select-all">All</button>
+                <span class="sep">•</span>
+                <button type="button" class="archetype-action-link" id="codebase-archetype-clear-all">Clear</button>
+              </div>
+            </div>
+            <div class="archetype-panel-list" id="codebase-archetype-items"></div>
+          </div>
         </div>
       </div>
 

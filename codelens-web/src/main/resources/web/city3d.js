@@ -31,6 +31,7 @@
       this._hiddenPackages = new Set();
       this._hiddenEntities = new Set();
       this._hidePojo = true;
+      this._archetypeFilter = 'ALL';
       this._showWireframe = false;
       this._showArcs = true;
       this._autoRotate = false;
@@ -43,6 +44,11 @@
       this._onSelectEntity = null;
       this._targetCameraPos = null;
       this._targetControlsTarget = null;
+    }
+
+    setArchetypeFilter(ruleId) {
+      this._archetypeFilter = ruleId || 'ALL';
+      this._applyFilters();
     }
 
     onSelectEntity(callback) {
@@ -181,7 +187,18 @@
           }
         }
 
-        const visible = matchesSearch && matchesPkg && !isEntityHidden && matchesPojo;
+        let matchesArchetype = true;
+        if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+          matchesArchetype = window.CodeLensClassifier.isMatchArchetype(
+            entity,
+            entityId,
+            d.pkg,
+            Boolean(d.isMethod),
+            this._archetypeFilter
+          );
+        }
+
+        const visible = matchesSearch && matchesPkg && !isEntityHidden && matchesPojo && matchesArchetype;
         b.visible = visible;
         if (b.userData.edgeLine) b.userData.edgeLine.visible = visible;
         if (visible) visibleEntityIds.add(entityId);

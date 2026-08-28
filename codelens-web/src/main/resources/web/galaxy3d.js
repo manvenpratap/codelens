@@ -72,6 +72,7 @@
       this._hiddenPackages  = new Set();
       this._hiddenEntities  = new Set();
       this._hidePojo        = true;
+      this._archetypeFilter = 'ALL';
 
       // Comet-trail particle system
       this._particles       = [];          // { curve, progress, speed }
@@ -100,6 +101,11 @@
     }
 
     /* ─────────────────── Public API ─────────────────────────── */
+
+    setArchetypeFilter(ruleId) {
+      this._archetypeFilter = ruleId || 'ALL';
+      this._applyFilters();
+    }
 
     toggleAutoRotate() {
       this._autoRotate = !this._autoRotate;
@@ -783,7 +789,18 @@
           }
         }
 
-        const show = okSearch && okPkg && !hidden && okPojo;
+        let okArchetype = true;
+        if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+          okArchetype = window.CodeLensClassifier.isMatchArchetype(
+            raw,
+            id,
+            d.pkg,
+            Boolean(d.isMethod),
+            this._archetypeFilter
+          );
+        }
+
+        const show = okSearch && okPkg && !hidden && okPojo && okArchetype;
         m.visible = show;
         if (d.haloMesh) d.haloMesh.visible = show;
         if (show) visible.add(id);

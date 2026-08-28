@@ -25,11 +25,17 @@ class DSMRenderer {
     this._searchQuery = '';
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
+    this._archetypeFilter = 'ALL';
     this._selectedCell = null;
     this._onScopeChange = null;
     this._onSelectCell = null;
     this._onSelectEntity = null;
     this._tooltip = null;
+  }
+
+  setArchetypeFilter(ruleId) {
+    this._archetypeFilter = ruleId || 'ALL';
+    this._render();
   }
 
   togglePackage(pkgName, visible) {
@@ -68,6 +74,19 @@ class DSMRenderer {
     if (pkg && this._hiddenPackages.has(pkg)) return true;
     if (this._hiddenEntities.has(simple) || this._hiddenEntities.has(clsFqn)) return true;
     if (this._hiddenEntities.has(clsFqn.split('(')[0])) return true;
+
+    if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+      const isMethod = clsFqn.includes('(');
+      const ok = window.CodeLensClassifier.isMatchArchetype(
+        simple,
+        clsFqn,
+        pkg,
+        isMethod,
+        this._archetypeFilter
+      );
+      if (!ok) return true;
+    }
+
     return false;
   }
 

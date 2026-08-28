@@ -201,6 +201,7 @@ class ForceGraph {
 
     // POJO & Accessor Filtering
     this._hideGetters = true;
+    this._archetypeFilter = 'ALL';
     this._rawNodes    = [];
     this._rawEdges    = [];
 
@@ -693,6 +694,12 @@ class ForceGraph {
     });
   }
 
+  setArchetypeFilter(ruleId) {
+    this._archetypeFilter = ruleId || 'ALL';
+    this._recomputeConvexHulls();
+    this.restartPhysics();
+  }
+
   _isNodeHidden(node) {
     if (!node) return false;
     if (this._hiddenCommunities.has(node.community)) return true;
@@ -711,6 +718,19 @@ class ForceGraph {
         return true;
       }
     }
+
+    if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+      const isMethod = (node.type || 'METHOD') === 'METHOD';
+      const ok = window.CodeLensClassifier.isMatchArchetype(
+        node,
+        node.id || node.fqn,
+        node.package || node.packageFqn,
+        isMethod,
+        this._archetypeFilter
+      );
+      if (!ok) return true;
+    }
+
     return false;
   }
 

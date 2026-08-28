@@ -18,6 +18,7 @@ class ChordRenderer {
     this._chords = [];
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
+    this._archetypeFilter = 'ALL';
     this._hovered = -1;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -26,6 +27,12 @@ class ChordRenderer {
       onMouseLeave: this._onMouseLeave.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  setArchetypeFilter(ruleId) {
+    this._archetypeFilter = ruleId || 'ALL';
+    this._buildChordData();
+    this._draw();
   }
 
   togglePackage(pkgName, visible) {
@@ -69,6 +76,19 @@ class ChordRenderer {
 
     if (this._hiddenPackages.has(pkg)) return true;
     if (this._hiddenEntities.has(name) || this._hiddenEntities.has(fqn)) return true;
+
+    if (this._archetypeFilter && this._archetypeFilter !== 'ALL' && window.CodeLensClassifier) {
+      const isMethod = node.type === 'METHOD' || (!node.type && fqn.includes('('));
+      const ok = window.CodeLensClassifier.isMatchArchetype(
+        name,
+        fqn,
+        pkg,
+        isMethod,
+        this._archetypeFilter
+      );
+      if (!ok) return true;
+    }
+
     return false;
   }
 

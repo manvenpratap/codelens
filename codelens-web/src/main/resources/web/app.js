@@ -171,18 +171,29 @@ function enc(fqn) {
    3. Scan workflow
    ───────────────────────────────────────────────────────────────────────────── */
 
-/** Start a scan with the path currently in the input box. */
-async function startScan() {
-  const path = qs('#scan-path-input').value.trim();
+/** Start a scan with the specified or active project path. */
+async function startScan(targetPath) {
+  let path = (typeof targetPath === 'string' && targetPath.trim()) ? targetPath.trim() : '';
   if (!path) {
+    path = qs('#scan-path-input')?.value?.trim() || App.currentPath || localStorage.getItem('codelens_last_path') || '';
+  }
+  if (!path) {
+    showHeaderScanBar();
     flashInput(qs('#scan-path-input'));
+    showBanner('Please enter or select the path to your Java source directory.');
     return;
   }
+
+  const scanInput = qs('#scan-path-input');
+  if (scanInput) scanInput.value = path;
+  App.currentPath = path;
+  localStorage.setItem('codelens_last_path', path);
 
   const settings = loadSettings();
   const excludePatterns = settings.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
 
   setScanUI('scanning');
+  showBanner(`Rescanning codebase at "${path}"…`);
   try {
     await api.startScan(path, excludePatterns);
     pollScanStatus();
@@ -285,16 +296,33 @@ async function onScanComplete(s) {
 /** Toggle scan button and spinner states. */
 function setScanUI(state) {
   const btn = qs('#scan-btn');
+  const rescanBtn = qs('#btn-rescan');
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
   if (state === 'scanning') {
-    btn.disabled      = true;
-    btn.textContent   = 'Scanning…';
+    if (btn) {
+      btn.disabled    = true;
+      btn.textContent = 'Scanning…';
+    }
+    if (rescanBtn) {
+      rescanBtn.disabled = true;
+      rescanBtn.classList.add('is-scanning');
+      const label = rescanBtn.querySelector('.btn-pill-label');
+      if (label) label.textContent = 'Scanning…';
+    }
     if (fText) fText.textContent = 'Scanning codebase…';
     if (fInd) { fInd.className = 'status-indicator busy'; }
   } else {
-    btn.disabled      = false;
-    btn.textContent   = 'Scan';
+    if (btn) {
+      btn.disabled    = false;
+      btn.textContent = 'Scan';
+    }
+    if (rescanBtn) {
+      rescanBtn.disabled = false;
+      rescanBtn.classList.remove('is-scanning');
+      const label = rescanBtn.querySelector('.btn-pill-label');
+      if (label) label.textContent = 'Rescan';
+    }
     if (fText && state === 'idle') {
       fText.textContent = 'Analyzer Idle';
       if (fInd) { fInd.className = 'status-indicator live'; }
@@ -833,6 +861,16 @@ function switchTab(tabName) {
   if (tabName === 'graph') {
     if (App.graph && typeof App.graph.resume === 'function') {
       App.graph.resume();
+    }
+    const emptyEl = qs('#graph-empty');
+    if (emptyEl && emptyEl.style.display !== 'none') {
+      if (App.selected && App.selected.kind === 'type' && App.selected.data && App.selected.data.methods && App.selected.data.methods.length > 0) {
+        selectMethod(App.selected.data.methods[0].id || App.selected.data.methods[0].fqn);
+      } else if (App.selected && App.selected.kind === 'method') {
+        loadCallGraph(App.selected.id);
+      } else if (App.selected && App.selected.kind === 'field') {
+        loadFieldImpact(App.selected.id);
+      }
     }
   }
   if (tabName === 'source') {
@@ -1898,6 +1936,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
         App.activeAltRenderer._currentLevel = effectiveLevel;
         App.activeAltRenderer._currentGranularity = (isMethods ? 'methods' : 'arch');
         App.activeAltRenderer._cachedRevision = GraphDataCache.getRevision();
+        if (typeof App.activeAltRenderer.setArchetypeFilter === 'function') {
+          App.activeAltRenderer.setArchetypeFilter(App.activeArchetypeFilter || 'ALL');
+        }
       }
     } catch (e) {
       showCodebaseEmpty('Failed to load visualization: ' + e.message);
@@ -2687,8 +2728,13 @@ function renderKnowledgeBaseForType(data) {
 
   // Wire hero action buttons
   hero.querySelector('#kb-btn-graph')?.addEventListener('click', () => {
-    switchTab('graph');
-    if (type.id) selectType(type.id);
+    if (methods && methods.length > 0) {
+      selectMethod(methods[0].id || methods[0].fqn);
+    } else if (fields && fields.length > 0) {
+      selectField(fields[0].id || fields[0].fqn);
+    } else {
+      switchTab('graph');
+    }
   });
   hero.querySelector('#kb-btn-source')?.addEventListener('click', () => {
     if (type.sourceFile) openSourceFile(type.sourceFile, type.startLine || 1);
@@ -3258,10 +3304,13 @@ async function init() {
   adaptOsShortcuts();
 
   // Wire up scan button and Enter key
-  qs('#scan-btn')?.addEventListener('click', startScan);
+  qs('#scan-btn')?.addEventListener('click', () => startScan());
 
   // Wire up header project bar controls
-  qs('#btn-rescan')?.addEventListener('click', startScan);
+  qs('#btn-rescan')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    startScan();
+  });
   qs('#btn-open-project')?.addEventListener('click', showHeaderScanBar);
   qs('#project-pill')?.addEventListener('click', showHeaderScanBar);
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
@@ -3628,11 +3677,231 @@ async function init() {
     });
   }
 
+  // Archetype Filter Dropdowns initialization & listeners
+  populateArchetypeDropdowns();
+  setupArchetypeFilterListeners();
+
   // Expose global handles for testing and automation
   window.App = App;
   window.selectMethod = selectMethod;
   window.loadWholeCodebaseGraph = loadWholeCodebaseGraph;
   window.api = api;
+  window.populateArchetypeDropdowns = populateArchetypeDropdowns;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Archetype Multi-Select Dropdown Controller
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function getAvailableArchetypeItems() {
+  if (!window.CodeLensClassifier) return [];
+  const rules = window.CodeLensClassifier.getActiveRules ? window.CodeLensClassifier.getActiveRules() : (window.CodeLensClassifier.getRules().filter(r => r.enabled));
+  const items = rules.map(r => ({
+    id: r.id,
+    label: r.label || r.id,
+    badge: r.badge || r.label,
+    color: r.color || '#10b981',
+    icon: r.icon || 'tag',
+    scope: r.scope || r.target || 'METHOD',
+    isUnclassified: false
+  }));
+
+  items.push({
+    id: 'UNCLASSIFIED',
+    label: 'Unclassified / Plain',
+    badge: 'NONE',
+    color: '#64748b',
+    icon: 'code',
+    scope: 'ANY',
+    isUnclassified: true
+  });
+
+  return items;
+}
+
+function updateArchetypeButtonLabels(availableItems) {
+  const allIds = availableItems.map(it => it.id);
+  let labelText = 'Archetypes: All';
+  let hasActiveFilter = false;
+
+  if (App.activeArchetypeFilter && App.activeArchetypeFilter !== 'ALL') {
+    const selectedSet = (App.activeArchetypeFilter instanceof Set)
+      ? App.activeArchetypeFilter
+      : new Set(Array.isArray(App.activeArchetypeFilter) ? App.activeArchetypeFilter : [App.activeArchetypeFilter]);
+
+    if (selectedSet.size === 0) {
+      labelText = 'Archetypes (None)';
+      hasActiveFilter = true;
+    } else if (selectedSet.size === allIds.length) {
+      labelText = 'Archetypes: All';
+      hasActiveFilter = false;
+    } else {
+      labelText = `Archetypes (${selectedSet.size}/${allIds.length})`;
+      hasActiveFilter = true;
+    }
+  }
+
+  ['#graph-archetype-label', '#codebase-archetype-label'].forEach(sel => {
+    const el = qs(sel);
+    if (el) el.textContent = labelText;
+  });
+
+  ['#graph-archetype-btn', '#codebase-archetype-btn'].forEach(sel => {
+    const btn = qs(sel);
+    if (btn) btn.classList.toggle('has-filter', hasActiveFilter);
+  });
+}
+
+function populateArchetypeDropdowns() {
+  const items = getAvailableArchetypeItems();
+  const allIds = items.map(it => it.id);
+
+  if (!App.activeArchetypeFilter || App.activeArchetypeFilter === 'ALL') {
+    App.activeArchetypeFilter = new Set(allIds);
+  } else if (!(App.activeArchetypeFilter instanceof Set)) {
+    App.activeArchetypeFilter = new Set(Array.isArray(App.activeArchetypeFilter) ? App.activeArchetypeFilter : [App.activeArchetypeFilter]);
+  }
+
+  const selectedSet = App.activeArchetypeFilter;
+
+  ['graph-archetype-items', 'codebase-archetype-items'].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = items.map(item => {
+      const isChecked = selectedSet.has(item.id);
+      const iconSvg = window.Icons ? window.Icons.get(item.icon, { size: 'xs' }) : '';
+      const color = item.color;
+      return `
+        <label class="archetype-panel-item" data-id="${esc(item.id)}">
+          <input type="checkbox" class="archetype-item-chk" data-id="${esc(item.id)}" ${isChecked ? 'checked' : ''} />
+          <span class="archetype-item-pill" style="background:${color}18; color:${color}; border:1px solid ${color}44;">
+            ${iconSvg}
+            <span class="archetype-item-badge">[${esc(item.badge)}]</span>
+            <span class="archetype-item-label">${esc(item.label)}</span>
+          </span>
+        </label>
+      `;
+    }).join('');
+  });
+
+  updateArchetypeButtonLabels(items);
+}
+
+function setupArchetypeFilterListeners() {
+  // Toggle popover panels
+  const setups = [
+    { btn: '#graph-archetype-btn', panel: '#graph-archetype-panel' },
+    { btn: '#codebase-archetype-btn', panel: '#codebase-archetype-panel' }
+  ];
+
+  setups.forEach(({ btn: btnSel, panel: panelSel }) => {
+    const btn = qs(btnSel);
+    const panel = qs(panelSel);
+    if (!btn || !panel) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = panel.style.display === 'none';
+      // Close all other archetype panels
+      document.querySelectorAll('.archetype-multiselect-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.archetype-multiselect-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+
+      if (isHidden) {
+        panel.style.display = 'flex';
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    panel.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  });
+
+  // Close when clicking anywhere outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.archetype-multiselect-dropdown')) {
+      document.querySelectorAll('.archetype-multiselect-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.archetype-multiselect-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    }
+  });
+
+  // Checkbox change handler (delegated on document or panels)
+  ['graph-archetype-items', 'codebase-archetype-items'].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.addEventListener('change', (e) => {
+      if (!e.target.classList.contains('archetype-item-chk')) return;
+      const id = e.target.dataset.id;
+      const checked = e.target.checked;
+
+      const items = getAvailableArchetypeItems();
+      const allIds = items.map(it => it.id);
+
+      if (!(App.activeArchetypeFilter instanceof Set)) {
+        App.activeArchetypeFilter = new Set(allIds);
+      }
+
+      if (checked) {
+        App.activeArchetypeFilter.add(id);
+      } else {
+        App.activeArchetypeFilter.delete(id);
+      }
+
+      // Sync checkboxes across all panels
+      document.querySelectorAll(`.archetype-item-chk[data-id="${id}"]`).forEach(chk => {
+        chk.checked = checked;
+      });
+
+      updateArchetypeButtonLabels(items);
+      triggerArchetypeFilterUpdate();
+    });
+  });
+
+  // "Select All" actions
+  ['#graph-archetype-select-all', '#codebase-archetype-select-all'].forEach(sel => {
+    const btn = qs(sel);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const items = getAvailableArchetypeItems();
+        const allIds = items.map(it => it.id);
+        App.activeArchetypeFilter = new Set(allIds);
+
+        document.querySelectorAll('.archetype-item-chk').forEach(chk => chk.checked = true);
+        updateArchetypeButtonLabels(items);
+        triggerArchetypeFilterUpdate();
+      });
+    }
+  });
+
+  // "Clear All" actions
+  ['#graph-archetype-clear-all', '#codebase-archetype-clear-all'].forEach(sel => {
+    const btn = qs(sel);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const items = getAvailableArchetypeItems();
+        App.activeArchetypeFilter = new Set(); // empty
+
+        document.querySelectorAll('.archetype-item-chk').forEach(chk => chk.checked = false);
+        updateArchetypeButtonLabels(items);
+        triggerArchetypeFilterUpdate();
+      });
+    }
+  });
+}
+
+function triggerArchetypeFilterUpdate() {
+  const filter = App.activeArchetypeFilter;
+
+  // Apply to 2D force graph
+  if (App.graph && typeof App.graph.setArchetypeFilter === 'function') {
+    App.graph.setArchetypeFilter(filter);
+  }
+  // Apply to active alt renderer (City3D, Galaxy3D, Treemap, Sunburst, DSM, Chord)
+  if (App.activeAltRenderer && typeof App.activeAltRenderer.setArchetypeFilter === 'function') {
+    App.activeAltRenderer.setArchetypeFilter(filter);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -4885,6 +5154,8 @@ function renderArchetypeRulesList() {
       renderArchetypeRulesList();
     };
   });
+
+  populateArchetypeDropdowns();
 }
 
 function openSettings(e) {

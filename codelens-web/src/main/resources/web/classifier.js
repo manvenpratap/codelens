@@ -490,6 +490,10 @@
       this.saveRules(this._rules);
     }
 
+    getActiveRules() {
+      return (this._rules || []).filter(r => r.enabled);
+    }
+
     /**
      * Classifies a method by matching its name/FQN against active archetype rules.
      * @returns {Object|null} Archetype classification descriptor if matched, else null.
@@ -504,6 +508,43 @@
      */
     classifyType(typeNameOrNode, fqn, pkg) {
       return this._classifyEntity('CLASS', typeNameOrNode, fqn, pkg);
+    }
+
+    /**
+     * General classification dispatcher for either method or class entity.
+     */
+    classifyEntity(entityOrNode, fqn, pkg, isMethod = false) {
+      return isMethod ? this.classifyMethod(entityOrNode, fqn, pkg) : this.classifyType(entityOrNode, fqn, pkg);
+    }
+
+    /**
+     * Test whether an entity matches the selected archetype rule filter.
+     * Supports single string, Set of strings, or Array of strings.
+     * @param {*} entity - Entity object or name
+     * @param {string} fqn - Full qualified name
+     * @param {string} pkg - Package name
+     * @param {boolean} isMethod - True if entity is a method
+     * @param {string|Set<string>|Array<string>} archetypeFilter - 'ALL', Set of rule ids, or specific rule id
+     */
+    isMatchArchetype(entity, fqn, pkg, isMethod, archetypeFilter) {
+      if (!archetypeFilter || archetypeFilter === 'ALL') return true;
+
+      const res = this.classifyEntity(entity, fqn, pkg, isMethod);
+      const matchedRuleId = res ? res.ruleId : 'UNCLASSIFIED';
+
+      if (archetypeFilter instanceof Set) {
+        if (archetypeFilter.has('ALL')) return true;
+        return archetypeFilter.has(matchedRuleId);
+      }
+      if (Array.isArray(archetypeFilter)) {
+        if (archetypeFilter.includes('ALL')) return true;
+        return archetypeFilter.includes(matchedRuleId);
+      }
+
+      if (archetypeFilter === 'NONE' || archetypeFilter === 'UNCLASSIFIED') {
+        return res === null;
+      }
+      return res !== null && res.ruleId === archetypeFilter;
     }
 
     _classifyEntity(targetType, nameOrNode, fqn, pkg) {
