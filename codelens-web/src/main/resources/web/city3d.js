@@ -277,18 +277,20 @@
       this._el.addEventListener('click', this._onClick.bind(this));
 
       // Resize observer
-      this._resizeObserver = new ResizeObserver(() => {
-        if (!this._el || !this._renderer || !this._camera) return;
-        const w = this._el.clientWidth;
-        const h = this._el.clientHeight;
-        if (w === 0 || h === 0) return;
-        this._camera.aspect = w / h;
-        this._camera.updateProjectionMatrix();
-        this._renderer.setSize(w, h);
-      });
+      this._resizeObserver = new ResizeObserver(() => this._onResize());
       this._resizeObserver.observe(this._el);
 
       this._animate();
+    }
+
+    _onResize() {
+      if (!this._el || !this._renderer || !this._camera) return;
+      const w = this._el.clientWidth;
+      const h = this._el.clientHeight;
+      if (w === 0 || h === 0) return;
+      this._camera.aspect = w / h;
+      this._camera.updateProjectionMatrix();
+      this._renderer.setSize(w, h);
     }
 
     _buildCity() {

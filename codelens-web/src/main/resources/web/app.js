@@ -770,7 +770,11 @@ async function setFilter(kind) {
 function switchTab(tabName) {
   const previousTab = App.activeTab;
   App.activeTab = tabName;
-  qsa('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  qsa('.tab').forEach(t => {
+    const isActive = (t.dataset.tab === tabName);
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
   qsa('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === tabName + '-view'));
 
   // Pause rendering loops in inactive tabs to save CPU/GPU
@@ -784,7 +788,7 @@ function switchTab(tabName) {
   if (tabName === 'review') {
     updateReviewTargetInfo();
   }
-  if (tabName === 'codebase') {
+  if (tabName === 'codebase' && !App._suppressTabLoad) {
     const macroLevel = App.codebaseMacroLevel || 'city3d';
     if (App.activeAltRenderer &&
         App.activeAltRenderer._currentLevel === macroLevel &&
@@ -1363,9 +1367,11 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
   // If in Macro Codebase Viz mode, ensure Codebase Viz tab is active
   if (isAltViz && App.activeTab !== 'codebase') {
-    switchTab('codebase');
+    App._suppressTabLoad = true;
+    try { switchTab('codebase'); } finally { App._suppressTabLoad = false; }
   } else if (!isAltViz && App.activeTab !== 'graph') {
-    switchTab('graph');
+    App._suppressTabLoad = true;
+    try { switchTab('graph'); } finally { App._suppressTabLoad = false; }
   }
 
   // Update pill active states in level selector

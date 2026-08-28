@@ -1151,20 +1151,39 @@ body.resizing .panel-resizer {
 
 /* Dedicated Top View Switcher in Codebase Viz */
 .codebase-top-bar {
-  top: 14px;
-  left: 14px;
+  top: 12px;
+  left: 50%;
   right: auto;
+  transform: translateX(-50%);
   width: auto;
   max-width: calc(100% - 28px);
+  z-index: var(--z-hud, 60);
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.codebase-top-bar .graph-level-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.codebase-top-bar .level-pill {
+  padding: 3px 8px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 /* Dedicated Bottom Floating In-Canvas Display Options Toolbar */
 .codebase-bottom-bar {
   top: auto;
   bottom: 16px;
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
+  right: 16px;
+  left: auto;
+  transform: none;
   width: auto;
   max-width: calc(100% - 32px);
   background: rgba(13, 17, 23, 0.88);
@@ -1379,6 +1398,18 @@ body.resizing .panel-resizer {
   flex-direction: column;
   gap: 8px;
   box-sizing: border-box;
+}
+
+#graph-view .graph-community-legend {
+  top: 72px;
+  right: 14px;
+  max-height: calc(100% - 140px);
+}
+
+#codebase-view .graph-community-legend {
+  top: 80px;
+  right: 14px;
+  max-height: calc(100% - 150px);
 }
 .legend-header {
   display: flex;
