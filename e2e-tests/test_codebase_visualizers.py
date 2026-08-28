@@ -21,7 +21,7 @@ VISUALIZERS = [
 def test_visualizer_classes_mode(desktop_page, level_id, name):
     """Test visualizer rendering in Classes architecture mode."""
     page = desktop_page
-    page.locator("#tab-codebase").click(no_wait_after=True)
+    page.locator("#btn-open-macro-studio").click(no_wait_after=True)
     page.wait_for_timeout(200)
 
     # Click the visualizer level button if not already selected
@@ -44,7 +44,7 @@ def test_visualizer_classes_mode(desktop_page, level_id, name):
 def test_visualizer_methods_mode(desktop_page, level_id, name):
     """Test visualizer rendering in Methods detailed mode."""
     page = desktop_page
-    page.locator("#tab-codebase").click(no_wait_after=True)
+    page.locator("#btn-open-macro-studio").click(no_wait_after=True)
     page.wait_for_timeout(200)
 
     # Switch to visualizer

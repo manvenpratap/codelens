@@ -38,10 +38,10 @@ def test_header_and_navigation_no_overlaps(browser_instance, viewport, vp_name):
     nav_tabs = [
         "#tab-graph",
         "#tab-knowledge",
-        "#tab-codebase",
         "#tab-review",
         "#tab-git",
         "#tab-source",
+        "#btn-open-macro-studio",
     ]
     tab_overlaps = check_element_overlaps(page, nav_tabs)
     assert len(tab_overlaps) == 0, f"Detected tab bar overlaps on {vp_name}: {tab_overlaps}"
@@ -57,7 +57,7 @@ def test_codebase_viz_floating_hud_no_overlaps(browser_instance, viewport, vp_na
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(300)
 
-    page.locator("#tab-codebase").click(no_wait_after=True)
+    page.locator("#btn-open-macro-studio").click(no_wait_after=True)
     wait_for_scene_ready(page)
 
     # Test City 3D

@@ -766,10 +766,36 @@ async function setFilter(kind) {
    5. Centre panel - tabs and views
    ───────────────────────────────────────────────────────────────────────────── */
 
+/** Open Macro Visualizer Studio as a dedicated full-bleed section. */
+function openMacroStudio(level, granularity) {
+  if (App.activeTab && App.activeTab !== 'codebase') {
+    App.lastGranularTab = App.activeTab;
+  }
+  document.body.classList.add('macro-studio-mode');
+  switchTab('codebase');
+  if (level) {
+    loadWholeCodebaseGraph(level, granularity);
+  }
+}
+
+/** Close Macro Visualizer Studio and return to previous granular workspace tab. */
+function closeMacroStudio() {
+  document.body.classList.remove('macro-studio-mode');
+  const targetTab = App.lastGranularTab || 'graph';
+  switchTab(targetTab);
+}
+
 /** Switch the active tab in the centre panel. */
 function switchTab(tabName) {
   const previousTab = App.activeTab;
   App.activeTab = tabName;
+
+  if (tabName === 'codebase') {
+    document.body.classList.add('macro-studio-mode');
+  } else {
+    document.body.classList.remove('macro-studio-mode');
+  }
+
   qsa('.tab').forEach(t => {
     const isActive = (t.dataset.tab === tabName);
     t.classList.toggle('active', isActive);
@@ -2676,16 +2702,20 @@ function closeHelpModal() {
 
 function bindKeyboard() {
   document.addEventListener('keydown', e => {
-    // Escape → close modal or clear search
+    // Escape → close modal or exit studio mode or clear search
     if (e.key === 'Escape') {
-      const settingsModal = qs('#settings-modal');
-      if (settingsModal && settingsModal.classList.contains('open')) {
-        closeSettings();
+      if (document.body.classList.contains('macro-studio-mode')) {
+        closeMacroStudio();
         return;
       }
       const exportModal = qs('#export-modal');
       if (exportModal && exportModal.classList.contains('open')) {
         ExportHub.close();
+        return;
+      }
+      const settingsModal = qs('#settings-modal');
+      if (settingsModal && settingsModal.classList.contains('open')) {
+        closeSettings();
         return;
       }
       const helpModal = qs('#help-modal');
@@ -2707,10 +2737,16 @@ function bindKeyboard() {
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
       if (e.key === '1') switchTab('graph');
       if (e.key === '2') switchTab('knowledge');
-      if (e.key === '3') switchTab('codebase');
-      if (e.key === '4') switchTab('review');
-      if (e.key === '5') switchTab('git');
-      if (e.key === '6') switchTab('source');
+      if (e.key === '3') switchTab('review');
+      if (e.key === '4') switchTab('git');
+      if (e.key === '5') switchTab('source');
+      if (e.key === 'm' || e.key === 'M') {
+        if (document.body.classList.contains('macro-studio-mode')) {
+          closeMacroStudio();
+        } else {
+          openMacroStudio();
+        }
+      }
       if (e.key === '[') toggleLeftPanel();
       if (e.key === ']') toggleRightPanel();
       if (e.key === '\\') resetPanelWidths();
@@ -2914,6 +2950,14 @@ async function init() {
       switchTab(tab.dataset.tab);
       if (tab.dataset.tab === 'git') loadGitSummary();
     });
+  });
+
+  // Dedicated Macro Studio Launch & Return buttons
+  qs('#btn-open-macro-studio')?.addEventListener('click', () => {
+    openMacroStudio();
+  });
+  qs('#btn-studio-back')?.addEventListener('click', () => {
+    closeMacroStudio();
   });
 
   // Monaco Save button

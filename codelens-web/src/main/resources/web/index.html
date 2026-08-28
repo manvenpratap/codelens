@@ -247,20 +247,6 @@
         Knowledge Base
       </button>
 
-      <!-- Codebase Visualizations tab - 3D Software City, 3D Galaxy, Treemap, DSM, Chord, Sunburst -->
-      <button
-        class="tab"
-        role="tab"
-        id="tab-codebase"
-        data-tab="codebase"
-        aria-selected="false"
-        aria-controls="codebase-view"
-        title="Codebase-wide Macro Visualizations: 3D City, 3D Galaxy, Treemap, DSM, Chord, Sunburst (Shortcut: 3)"
-      >
-        <span aria-hidden="true">🪐</span>
-        Codebase Viz
-      </button>
-
       <!-- Code Review tab - on-demand AST-based code reviewer -->
       <button
         class="tab"
@@ -269,7 +255,7 @@
         data-tab="review"
         aria-selected="false"
         aria-controls="review-view"
-        title="On-demand Code Review & Logic Auditor (Shortcut: 3)"
+        title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
       >
         <span aria-hidden="true">🧪</span>
         Code Review
@@ -284,7 +270,7 @@
         data-tab="git"
         aria-selected="false"
         aria-controls="git-view"
-        title="Git repository analytics: commit heat, top authors, and file churn"
+        title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
       >
         <span aria-hidden="true">⎇</span>
         Git
@@ -298,10 +284,23 @@
         data-tab="source"
         aria-selected="false"
         aria-controls="source-view"
-        title="Integrated Monaco syntax-highlighted source code editor with line jumping"
+        title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
       >
         <span aria-hidden="true">⎄</span>
         Source
+      </button>
+
+      <!-- Spacer & Dedicated 3D / Macro Visualizer Studio Mode Launch Button -->
+      <div class="tab-bar-spacer"></div>
+      <button
+        class="tab-studio-launch-btn"
+        id="btn-open-macro-studio"
+        aria-label="Launch 3D &amp; Macro Visualizer Studio"
+        title="Launch 3D &amp; Macro Visualizer Studio (3D City, 3D Galaxy, Treemap, DSM, Chord, 2D Tree) (Shortcut: M)"
+      >
+        <span class="studio-btn-icon" aria-hidden="true">🪐</span>
+        <span class="studio-btn-text">3D &amp; Macro Studio</span>
+        <span class="studio-btn-shortcut" aria-hidden="true">M</span>
       </button>
 
     </nav><!-- /.tab-bar -->
@@ -454,12 +453,16 @@
       id="codebase-view"
       role="tabpanel"
       aria-roledescription="viewport"
-      aria-labelledby="tab-codebase"
+      aria-labelledby="btn-open-macro-studio"
       tabindex="0"
     >
 
-      <!-- Top Floating View Modes Switcher Bar (2D Graph, 3D City, 3D Galaxy, Treemap, Sunburst, DSM, Chord) -->
+      <!-- Top Floating View Modes Switcher Bar (3D City, 3D Galaxy, 2D Graph, Treemap, Sunburst, DSM, Chord) -->
       <div id="codebase-hud-bar" class="graph-hud-bar codebase-top-bar" aria-label="Codebase Visualization Level">
+        <button id="btn-studio-back" class="studio-back-btn" title="Back to Granular Workspace (Esc)">
+          <span class="back-arrow">←</span> <span class="back-text">Workspace</span>
+        </button>
+        <div class="hud-divider" style="height:16px; margin:0 2px;"></div>
         <span class="hud-label" style="font-weight:700; color:#34d399; display:flex; align-items:center; gap:5px;">
           <span>🪐</span> Views:
         </span>

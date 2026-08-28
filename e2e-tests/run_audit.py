@@ -61,7 +61,7 @@ def run_full_audit():
 
             # 1. Audit Header & Navigation
             print("  ✓ Checking Header & Tab Navigation...")
-            tabs = ["tab-graph", "tab-knowledge", "tab-codebase", "tab-review", "tab-git", "tab-source"]
+            tabs = ["tab-graph", "tab-knowledge", "tab-review", "tab-git", "tab-source"]
             for t in tabs:
                 btn = page.locator(f"#{t}")
                 if btn.is_visible():
@@ -69,9 +69,9 @@ def run_full_audit():
                     time.sleep(0.2)
                     page.screenshot(path=os.path.join(OUTPUT_DIR, f"{vp['width']}_{t}.png"), timeout=5000, animations="disabled")
 
-            # 2. Audit Codebase Viz Visualizers in Classes and Methods modes
-            print("  ✓ Checking Codebase Viz Visualizers (Classes & Methods)...")
-            page.locator("#tab-codebase").click(no_wait_after=True)
+            # 2. Audit Macro Studio Visualizers in Classes and Methods modes
+            print("  ✓ Checking Macro Studio Visualizers (Classes & Methods)...")
+            page.locator("#btn-open-macro-studio").click(no_wait_after=True)
             time.sleep(0.3)
 
             for lvl, name in VISUALIZERS:
@@ -88,8 +88,13 @@ def run_full_audit():
                         time.sleep(0.5)
                         page.screenshot(path=os.path.join(OUTPUT_DIR, f"{vp['width']}_viz_{lvl}_methods.png"), timeout=5000, animations="disabled")
 
-            # 3. Audit Modals
+            # 3. Return to workspace and audit Modals
             print("  ✓ Checking Modals (Settings, Help, Export Hub)...")
+            back_btn = page.locator("#btn-studio-back")
+            if back_btn.is_visible():
+                back_btn.click(no_wait_after=True)
+                time.sleep(0.2)
+
             # Settings
             page.locator("#settings-btn").click(no_wait_after=True)
             time.sleep(0.3)
@@ -101,7 +106,7 @@ def run_full_audit():
             page.locator("#help-btn").click(no_wait_after=True)
             time.sleep(0.3)
             page.screenshot(path=os.path.join(OUTPUT_DIR, f"{vp['width']}_modal_help.png"), timeout=5000, animations="disabled")
-            page.keyboard.press("Escape")
+            page.locator("#help-modal-close").click(no_wait_after=True)
             time.sleep(0.2)
 
             # Export Hub
