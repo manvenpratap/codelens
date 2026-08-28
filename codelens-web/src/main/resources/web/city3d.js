@@ -30,7 +30,7 @@
       this._filterQuery = '';
       this._hiddenPackages = new Set();
       this._hiddenEntities = new Set();
-      this._hidePojo = false;
+      this._hidePojo = true;
       this._showWireframe = false;
       this._showArcs = true;
       this._autoRotate = false;
@@ -57,6 +57,7 @@
     toggleArcs() {
       this._showArcs = !this._showArcs;
       this._arcLines.forEach(a => { a.visible = this._showArcs; });
+      if (this._beamGroup) this._beamGroup.visible = this._showArcs;
     }
 
     togglePojo() {
@@ -74,15 +75,18 @@
       this._applyFilters();
     }
 
-    toggleEntity(entityId, visible) {
-      if (visible === undefined) {
-        if (this._hiddenEntities.has(entityId)) this._hiddenEntities.delete(entityId);
-        else this._hiddenEntities.add(entityId);
-      } else if (visible) {
-        this._hiddenEntities.delete(entityId);
-      } else {
-        this._hiddenEntities.add(entityId);
-      }
+    toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+      const identifiers = [entityIdOrName, fqn].filter(Boolean);
+      identifiers.forEach(id => {
+        if (visible === undefined) {
+          if (this._hiddenEntities.has(id)) this._hiddenEntities.delete(id);
+          else this._hiddenEntities.add(id);
+        } else if (visible) {
+          this._hiddenEntities.delete(id);
+        } else {
+          this._hiddenEntities.add(id);
+        }
+      });
       this._applyFilters();
     }
 
@@ -106,6 +110,7 @@
       }
       this._initScene();
       this._buildCity();
+      this._applyFilters();
     }
 
     setFilter(query) {
@@ -134,25 +139,49 @@
 
     _applyFilters() {
       const visibleEntityIds = new Set();
+      let hiddenPojoCount = 0;
 
       this._buildings.forEach(b => {
         const d = b.userData;
         const entity = d.entity || {};
         const entityId = entity.id || entity.fqn || '';
-        const name = (entity.label || entity.simpleName || entityId).toLowerCase();
+        const entityLabel = entity.label || entity.simpleName || entity.name || '';
+        const fqn = d.fqn || entity.fqn || entityId;
+        const name = (entityLabel || entityId).toLowerCase();
         const pkg = (d.pkg || '').toLowerCase();
         const matchesSearch = !this._filterQuery || name.includes(this._filterQuery) || pkg.includes(this._filterQuery);
         const matchesPkg = !this._hiddenPackages.has(d.pkg);
-        const matchesEntity = !this._hiddenEntities.has(entityId);
 
-        let matchesPojo = true;
-        if (this._hidePojo && d.isMethod) {
-          if (window.CodeLensClassifier && window.CodeLensClassifier.isPojo(entity, entityId, d.pkg)) {
-            matchesPojo = false;
+        // Check if entity or any alias/parent class is hidden in _hiddenEntities
+        let isEntityHidden = this._hiddenEntities.has(entityId) ||
+                             this._hiddenEntities.has(entityLabel) ||
+                             this._hiddenEntities.has(fqn);
+
+        if (!isEntityHidden && fqn && fqn.includes('.')) {
+          const simple = fqn.split('.').pop();
+          if (simple && this._hiddenEntities.has(simple)) {
+            isEntityHidden = true;
+          }
+          const cleanFqn = fqn.replace(/\(.*\)/, '');
+          const parts = cleanFqn.split('.');
+          const parentClassSimple = parts.length >= 2 ? parts[parts.length - 2] : '';
+          const parentClassFqn = parts.length >= 2 ? parts.slice(0, -1).join('.') : '';
+          if ((parentClassSimple && this._hiddenEntities.has(parentClassSimple)) ||
+              (parentClassFqn && this._hiddenEntities.has(parentClassFqn))) {
+            isEntityHidden = true;
           }
         }
 
-        const visible = matchesSearch && matchesPkg && matchesEntity && matchesPojo;
+        let matchesPojo = true;
+        if (d.isMethod && window.CodeLensClassifier) {
+          const isPojo = window.CodeLensClassifier.isPojo(entity, entityId, d.pkg);
+          if (isPojo) {
+            hiddenPojoCount++;
+            if (this._hidePojo) matchesPojo = false;
+          }
+        }
+
+        const visible = matchesSearch && matchesPkg && !isEntityHidden && matchesPojo;
         b.visible = visible;
         if (b.userData.edgeLine) b.userData.edgeLine.visible = visible;
         if (visible) visibleEntityIds.add(entityId);
@@ -170,6 +199,34 @@
           a.visible = false;
         } else if (a.userData && a.userData.src && a.userData.tgt) {
           a.visible = visibleEntityIds.has(a.userData.src) && visibleEntityIds.has(a.userData.tgt);
+        }
+      });
+      if (this._beamGroup) {
+        this._beamGroup.visible = this._showArcs;
+      }
+
+      this._updatePojoButton(hiddenPojoCount);
+      this._updateArcsButton();
+    }
+
+    _updateArcsButton() {
+      const btn = document.getElementById('btn-codebase-filter-arcs');
+      if (btn) btn.classList.toggle('active', this._showArcs);
+    }
+
+    _updatePojoButton(hiddenCount) {
+      ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+        const btn = document.getElementById(id);
+        const btnText = document.getElementById(`${id}-text`);
+        if (btnText && btn) {
+          if (this._hidePojo && hiddenCount > 0) {
+            btnText.textContent = `Hide POJOs (${hiddenCount})`;
+            btn.title = `${hiddenCount} POJO getters/setters hidden. Click to show all.`;
+          } else {
+            btnText.textContent = 'Hide POJOs';
+            btn.title = this._hidePojo ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+          }
+          btn.classList.toggle('active', this._hidePojo);
         }
       });
     }
@@ -232,36 +289,37 @@
       this._renderer.shadowMap.enabled = true;
       this._renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this._renderer.toneMappingExposure = 1.35;
+      this._renderer.toneMappingExposure = 0.80;  // was 1.35
       this._el.appendChild(this._renderer.domElement);
+
       this._clock = new THREE.Clock();
 
-      // OrbitControls
+      // Controls
       if (THREE.OrbitControls) {
         this._controls = new THREE.OrbitControls(this._camera, this._renderer.domElement);
-        this._controls.enableDamping = true;
-        this._controls.dampingFactor = 0.05;
-        this._controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent camera under-floor
-        this._controls.minDistance = 20;
-        this._controls.maxDistance = 1800;
+        this._controls.enableDamping  = true;
+        this._controls.dampingFactor  = 0.05;
+        this._controls.maxPolarAngle  = Math.PI / 2 - 0.02;
+        this._controls.minDistance    = 20;
+        this._controls.maxDistance    = 1800;
       }
 
-      // Lights
-      this._ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+      // Lights — dimmed from original values
+      this._ambientLight = new THREE.AmbientLight(0xffffff, 0.50);  // was 0.95
       this._scene.add(this._ambientLight);
 
-      this._dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+      this._dirLight = new THREE.DirectionalLight(0xffffff, 0.55);  // was 1.1
       this._dirLight.position.set(250, 450, 250);
       this._dirLight.castShadow = true;
-      this._dirLight.shadow.mapSize.width = 2048;
+      this._dirLight.shadow.mapSize.width  = 2048;
       this._dirLight.shadow.mapSize.height = 2048;
       this._scene.add(this._dirLight);
 
-      this._dirLight2 = new THREE.DirectionalLight(0x34d399, 0.65);
+      this._dirLight2 = new THREE.DirectionalLight(0x34d399, 0.30);  // was 0.65
       this._dirLight2.position.set(-250, 350, -250);
       this._scene.add(this._dirLight2);
 
-      this._topLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.7);
+      this._topLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.35);  // was 0.7
       this._scene.add(this._topLight);
 
       // Grid Floor
@@ -371,10 +429,13 @@
 
           const buildingGeo = new THREE.BoxGeometry(width, height, depth);
           
-          // Retain class color coding across both classes view and methods view
-          const classColorStr = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
-            ? window.CodeLensPalette.getClassColor(cls.id || cls.label, cls.type || (isMethod ? 'METHOD' : 'CLASS'), cIndex)
-            : (window.CodeLensPalette ? window.CodeLensPalette.getColor(cls.id || cls.label, cIndex) : pkgColorStr);
+          // In classes scope: building color matches the module/package legend (pkgColorStr).
+          // In methods scope: building color is coded by class (classColorStr).
+          const classColorStr = isMethod
+            ? ((window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+                ? window.CodeLensPalette.getClassColor(cls.id || cls.label, 'METHOD', cIndex)
+                : pkgColorStr)
+            : pkgColorStr;
           const colorHex = parseInt(classColorStr.replace('#', ''), 16) || pkgColorHex;
 
           const buildingMat = new THREE.MeshStandardMaterial({
@@ -514,7 +575,7 @@
       // Skyline Arcs toggle
       const arcsBtn = document.createElement('button');
       arcsBtn.className = 'hud-btn' + (this._showArcs ? ' active' : '');
-      arcsBtn.innerHTML = '<span class="hud-btn-icon">⌒</span> <span class="hud-btn-text">Call Arcs</span>';
+      arcsBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg></span> <span class="hud-btn-text">Call Arcs</span>';
       arcsBtn.style.background = '#0a0d12';
       arcsBtn.style.border = '1px solid ' + (this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)');
       arcsBtn.style.color = this._showArcs ? '#f8fafc' : '#94a3b8';
@@ -578,7 +639,7 @@
       this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
       this._raycaster.setFromCamera(this._mouse, this._camera);
-      const intersects = this._raycaster.intersectObjects(this._buildings);
+      const intersects = this._raycaster.intersectObjects(this._buildings.filter(b => b.visible));
 
       if (intersects.length > 0) {
         const hit = intersects[0].object;
@@ -672,7 +733,7 @@
       const lerpFactor = 1 - Math.exp(-6 * delta);
 
       // Animate laser energy call beams along arcs
-      if (this._beamGroup && this._callBeams.length > 0) {
+      if (this._showArcs && this._beamGroup && this._beamGroup.visible && this._callBeams.length > 0) {
         const positions = this._beamGroup.geometry.attributes.position.array;
         this._callBeams.forEach((b, idx) => {
           b.progress = (b.progress + b.speed) % 1;
@@ -707,13 +768,12 @@
     setBrightness(val) {
       // val in range [0.2, 2.5], 1.0 is default
       const factor = Math.max(0.2, Math.min(2.5, val));
-      if (this._renderer) {
-        this._renderer.toneMappingExposure = 1.0 * factor;
-      }
-      if (this._ambientLight) this._ambientLight.intensity = 0.95 * factor;
-      if (this._dirLight) this._dirLight.intensity = 1.1 * factor;
-      if (this._dirLight2) this._dirLight2.intensity = 0.65 * factor;
-      if (this._topLight) this._topLight.intensity = 0.7 * factor;
+      if (this._renderer)    this._renderer.toneMappingExposure = 0.80 * factor;  // was 1.0
+      if (this._scene)       this._scene.fog && (this._scene.fog.density = 0.0009 / Math.max(0.3, factor));
+      if (this._ambientLight) this._ambientLight.intensity = 0.50 * factor;   // was 0.95
+      if (this._dirLight)     this._dirLight.intensity     = 0.55 * factor;   // was 1.1
+      if (this._dirLight2)    this._dirLight2.intensity    = 0.30 * factor;   // was 0.65
+      if (this._topLight)     this._topLight.intensity     = 0.35 * factor;   // was 0.7
     }
 
     destroy() {

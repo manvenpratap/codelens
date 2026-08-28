@@ -25,6 +25,7 @@ public class CodeLensConfig {
     private String theme = "dark";
     private String packageMode = "auto";
     private String defaultTab = "graph";
+    private String tabOrder = "[\"graph\",\"knowledge\",\"review\",\"git\",\"source\"]";
 
     // ── Graph Physics & Visuals ──
     private int nodeBaseRadius = 12;
@@ -85,6 +86,24 @@ public class CodeLensConfig {
 
     public String getDefaultTab() { return defaultTab; }
     public void setDefaultTab(String defaultTab) { this.defaultTab = defaultTab != null ? defaultTab : "graph"; }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("tabOrder")
+    public String getTabOrder() { return tabOrder; }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("tabOrder")
+    public void setTabOrderFromJson(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) {
+            this.tabOrder = "[\"graph\",\"knowledge\",\"review\",\"git\",\"source\"]";
+        } else if (node.isArray()) {
+            this.tabOrder = node.toString();
+        } else if (node.isTextual()) {
+            this.tabOrder = node.asText();
+        } else {
+            this.tabOrder = node.toString();
+        }
+    }
+
+    public void setTabOrder(String tabOrder) { this.tabOrder = tabOrder != null ? tabOrder : "[\"graph\",\"knowledge\",\"review\",\"git\",\"source\"]"; }
 
     public int getNodeBaseRadius() { return nodeBaseRadius; }
     public void setNodeBaseRadius(int nodeBaseRadius) { this.nodeBaseRadius = nodeBaseRadius; }
@@ -158,7 +177,22 @@ public class CodeLensConfig {
     public String getPojoCustomPatterns() { return pojoCustomPatterns; }
     public void setPojoCustomPatterns(String pojoCustomPatterns) { this.pojoCustomPatterns = pojoCustomPatterns != null ? pojoCustomPatterns : ""; }
 
+    @com.fasterxml.jackson.annotation.JsonProperty("archetypeRulesJson")
     public String getArchetypeRulesJson() { return archetypeRulesJson; }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("archetypeRulesJson")
+    public void setArchetypeRulesJsonFromJson(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) {
+            this.archetypeRulesJson = "[]";
+        } else if (node.isArray()) {
+            this.archetypeRulesJson = node.toString();
+        } else if (node.isTextual()) {
+            this.archetypeRulesJson = node.asText();
+        } else {
+            this.archetypeRulesJson = node.toString();
+        }
+    }
+
     public void setArchetypeRulesJson(String archetypeRulesJson) { this.archetypeRulesJson = archetypeRulesJson != null ? archetypeRulesJson : "[]"; }
 
     // ── Serialization / Deserialization ──
@@ -183,7 +217,8 @@ public class CodeLensConfig {
         sb.append("# ── UI & Appearance ──\n");
         sb.append("ui.theme=").append(escapeVal(theme)).append("\n");
         sb.append("ui.packageMode=").append(escapeVal(packageMode)).append("\n");
-        sb.append("ui.defaultTab=").append(escapeVal(defaultTab)).append("\n\n");
+        sb.append("ui.defaultTab=").append(escapeVal(defaultTab)).append("\n");
+        sb.append("ui.tabOrder=").append(escapeVal(tabOrder)).append("\n\n");
 
         sb.append("# ── Graph Physics & Visuals ──\n");
         sb.append("graph.nodeBaseRadius=").append(nodeBaseRadius).append("\n");
@@ -257,6 +292,9 @@ public class CodeLensConfig {
         }
         if (props.containsKey("ui.defaultTab")) {
             this.defaultTab = props.getProperty("ui.defaultTab");
+        }
+        if (props.containsKey("ui.tabOrder")) {
+            this.tabOrder = props.getProperty("ui.tabOrder");
         }
 
         if (props.containsKey("graph.nodeBaseRadius")) {

@@ -53,14 +53,14 @@ let GC = {
 };
 
 let PHYSICS = {
-  repulsion:      20000,  // strong anti-overlap charge repulsion
-  springLen:      180,    // compact rest spring length
-  springK:        0.015,  // spring tension
-  clusterK:       0.0018, // community cohesion
-  centerForce:    0.0004, // centering pull
-  damping:        0.80,   // velocity damping
-  maxTicks:       500,    // auto-cooling ticks
-  nodeBaseRadius: 9,      // compact base radius
+  repulsion:      28000,  // stronger anti-overlap charge (was 20000)
+  springLen:      140,    // shorter rest spring → tighter clusters (was 180)
+  springK:        0.022,  // stronger spring tension (was 0.015)
+  clusterK:       0.006,  // much stronger community cohesion (was 0.0018)
+  centerForce:    0.0003, // slightly weaker centering so clusters spread more freely
+  damping:        0.78,   // slightly more damping → less oscillation (was 0.80)
+  maxTicks:       600,    // more stabilization ticks (was 500)
+  nodeBaseRadius: 9,      // unchanged
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -152,8 +152,11 @@ class ForceGraph {
     container.appendChild(this._canvas);
     this._ctx = this._canvas.getContext('2d');
 
-    // Minimap Canvas
-    this._minimapCanvas = document.getElementById('graph-minimap');
+    // Minimap Canvas - inspect container section or fallback to global IDs
+    const parentSec = container ? container.closest('section') : null;
+    this._minimapCanvas = parentSec
+      ? (parentSec.querySelector('#codebase-minimap') || parentSec.querySelector('#graph-minimap'))
+      : (document.getElementById('codebase-minimap') || document.getElementById('graph-minimap'));
     this._minimapCtx = this._minimapCanvas ? this._minimapCanvas.getContext('2d') : null;
 
     // Simulation Data & State
@@ -406,7 +409,7 @@ class ForceGraph {
   }
 
   _applyData(rawNodes, rawEdges) {
-    const { nodes, edges, hiddenCount } = this._filterData(rawNodes, rawEdges);
+    let { nodes, edges, hiddenCount } = this._filterData(rawNodes, rawEdges);
 
     // Update HUD button labels/titles with hidden count in both tabs
     ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
@@ -426,6 +429,21 @@ class ForceGraph {
     const dpr = window.devicePixelRatio || 1;
     const cx = (this._canvas.width / dpr) / 2;
     const cy = (this._canvas.height / dpr) / 2;
+
+    // ── Orphan filtering ──────────────────────────────────────
+    // Build a set of node IDs that appear in at least one edge.
+    // Pure orphans (degree 0, no edges at all) are hidden from the 2D graph
+    // because they float randomly and pollute cluster hulls.
+    // CLASS / TYPE nodes are always retained — they may have no call edges
+    // but represent important structural anchors.
+    const connectedIds = new Set();
+    for (const e of edges) {
+      if (e.source) connectedIds.add(e.source);
+      if (e.target) connectedIds.add(e.target);
+    }
+    const isAnchorType = n => n.type === 'CLASS' || n.type === 'TYPE' || n.type === 'INTERFACE' || n.role === 'root';
+    nodes = nodes.filter(n => connectedIds.has(n.id) || isAnchorType(n));
+    // ─────────────────────────────────────────────────────────
 
     // 1. Build degree map & adjacency
     const inDegrees  = {};
@@ -510,7 +528,7 @@ class ForceGraph {
         memberName: memberName,
         community: comm.cid,
         communityLabel: comm.label,
-        communityColor: classColor,
+        communityColor: comm.color,
         packageColor: comm.color,
         classColor: classColor,
         inDegree: inDegrees[n.id] || 0,
@@ -645,11 +663,54 @@ class ForceGraph {
     if (emptyState) emptyState.style.display = 'flex';
   }
 
+  togglePackage(pkgName, visible) {
+    let comm = this._communityMap.get(pkgName);
+    if (!comm) {
+      comm = this._communities.find(c => c.rawLabel === pkgName || c.label === pkgName);
+    }
+    const cid = comm ? comm.cid : pkgName;
+    if (visible === undefined) {
+      if (this._hiddenCommunities.has(cid)) this._hiddenCommunities.delete(cid);
+      else this._hiddenCommunities.add(cid);
+    } else if (visible) {
+      this._hiddenCommunities.delete(cid);
+    } else {
+      this._hiddenCommunities.add(cid);
+    }
+  }
+
+  toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+    const ids = [entityIdOrName, fqn].filter(Boolean);
+    ids.forEach(id => {
+      if (visible === undefined) {
+        if (this._hiddenClasses.has(id)) this._hiddenClasses.delete(id);
+        else this._hiddenClasses.add(id);
+      } else if (visible) {
+        this._hiddenClasses.delete(id);
+      } else {
+        this._hiddenClasses.add(id);
+      }
+    });
+  }
+
   _isNodeHidden(node) {
     if (!node) return false;
     if (this._hiddenCommunities.has(node.community)) return true;
+    if (node.package && (this._hiddenCommunities.has(node.package) || (this._communityMap.get(node.package) && this._hiddenCommunities.has(this._communityMap.get(node.package).cid)))) return true;
     if (node.className && this._hiddenClasses.has(node.className)) return true;
+    if (node.label && this._hiddenClasses.has(node.label)) return true;
     if (this._hiddenClasses.has(node.id)) return true;
+    if (node.fqn && this._hiddenClasses.has(node.fqn)) return true;
+    if (node.id && node.id.includes('.')) {
+      const clean = node.id.replace(/\(.*\)/, '');
+      const parts = clean.split('.');
+      const parentSimple = parts.length >= 2 ? parts[parts.length - 2] : '';
+      const parentFqn = parts.length >= 2 ? parts.slice(0, -1).join('.') : '';
+      if ((parentSimple && this._hiddenClasses.has(parentSimple)) ||
+          (parentFqn && this._hiddenClasses.has(parentFqn))) {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -735,7 +796,81 @@ class ForceGraph {
       nodes[i]._fy = 0;
     }
 
-    // 1. Repulsion force between all node pairs with strong anti-overlap
+    // 1. Compute dynamic community centroids and core nodes
+    const commCentroids = new Map();
+    for (let i = 0; i < n; i++) {
+      const nd = nodes[i];
+      if (this._isNodeHidden(nd)) continue;
+      const cid = nd.community !== undefined ? nd.community : 0;
+      if (!commCentroids.has(cid)) {
+        commCentroids.set(cid, { x: 0, y: 0, count: 0, coreNode: null });
+      }
+      const c = commCentroids.get(cid);
+      c.x += nd.x;
+      c.y += nd.y;
+      c.count++;
+      if (nd.isBranchCore || !c.coreNode || (nd.hotScore || 0) > (c.coreNode.hotScore || 0)) {
+        c.coreNode = nd;
+      }
+    }
+    for (const [, c] of commCentroids.entries()) {
+      if (c.count > 0) {
+        c.x /= c.count;
+        c.y /= c.count;
+      }
+    }
+
+    // 2. Inter-cluster bouquet repulsion (pushes entire communities apart into distinct blooms)
+    const cids = Array.from(commCentroids.keys());
+    for (let i = 0; i < cids.length; i++) {
+      for (let j = i + 1; j < cids.length; j++) {
+        const ca = commCentroids.get(cids[i]);
+        const cb = commCentroids.get(cids[j]);
+        const dx = cb.x - ca.x;
+        const dy = cb.y - ca.y;
+        const distSq = dx * dx + dy * dy || 1;
+        const dist = Math.sqrt(distSq);
+        const targetSep = 220 + Math.sqrt(ca.count + cb.count) * 55;  // was 160 + sqrt*35
+        if (dist < targetSep * 4.0) {                                  // was 3.0
+          const clusterRep = (PHYSICS.repulsion * 5.5) / (distSq + 80);  // was 3.2 / +100
+          const fx = (dx / dist) * clusterRep;
+          const fy = (dy / dist) * clusterRep;
+          for (let k = 0; k < n; k++) {
+            const nd = nodes[k];
+            if (nd.community === cids[i]) { nd._fx -= fx / Math.max(ca.count, 1); nd._fy -= fy / Math.max(ca.count, 1); }
+            if (nd.community === cids[j]) { nd._fx += fx / Math.max(cb.count, 1); nd._fy += fy / Math.max(cb.count, 1); }
+          }
+        }
+      }
+    }
+
+    // 3. Intra-community blooming cohesion (petals bloom radially around branch core)
+    for (let i = 0; i < n; i++) {
+      const nd = nodes[i];
+      if (this._isNodeHidden(nd)) continue;
+      const cid = nd.community !== undefined ? nd.community : 0;
+      const c = commCentroids.get(cid);
+      if (c && c.count > 1) {
+        const targetX = (c.coreNode && c.coreNode !== nd) ? c.coreNode.x : c.x;
+        const targetY = (c.coreNode && c.coreNode !== nd) ? c.coreNode.y : c.y;
+        const dx = targetX - nd.x;
+        const dy = targetY - nd.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+
+        if (nd.isBranchCore) {
+          const fc = dist * (PHYSICS.clusterK * 2.5);  // was 1.5 — pull core harder
+          nd._fx += (dx / dist) * fc;
+          nd._fy += (dy / dist) * fc;
+        } else {
+          const idealBloomRadius = 28 + Math.min(140, Math.sqrt(c.count) * 18);  // tighter (was 32 + sqrt*24)
+          const fBloom = (dist - idealBloomRadius) * (PHYSICS.clusterK * 5.0);   // was 3.0
+          nd._fx += (dx / dist) * fBloom;
+          nd._fy += (dy / dist) * fBloom;
+        }
+      }
+    }
+
+    // 4. Repulsion force between node pairs (differentiated intra vs inter community)
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
@@ -746,12 +881,14 @@ class ForceGraph {
         const distSq = dx * dx + dy * dy || 0.01;
         const dist = Math.sqrt(distSq);
 
-        const minClearance = ni.radius + nj.radius + 45;
+        const isSameComm = ni.community === nj.community;
+        const minClearance = ni.radius + nj.radius + (isSameComm ? 20 : 90);  // was 24 / 45
         let rep = 0;
         if (dist < minClearance) {
-          rep = (PHYSICS.repulsion * 4.0) / Math.max(dist, 10);
+          rep = (PHYSICS.repulsion * (isSameComm ? 2.5 : 7.0)) / Math.max(dist, 10);  // was 4.5 cross
         } else {
-          rep = (PHYSICS.repulsion * (1 + (ni.degree + nj.degree) * 0.12)) / distSq;
+          const mult = isSameComm ? 0.45 : 2.0;  // was 1.35 cross — push harder at range
+          rep = (PHYSICS.repulsion * mult * (1 + (ni.degree + nj.degree) * 0.08)) / distSq;
         }
 
         const fx = (dx / dist) * rep;
@@ -762,7 +899,7 @@ class ForceGraph {
       }
     }
 
-    // 2. Gentle spring attraction along edges
+    // 5. Spring attraction along edges (tighter intra-class/cluster, flexible cross-cluster)
     const nodeIndex = Object.fromEntries(nodes.map((nd, idx) => [nd.id, idx]));
     for (const e of this._edges) {
       const si = nodeIndex[e.source];
@@ -775,55 +912,28 @@ class ForceGraph {
       const dx = tgt.x - src.x;
       const dy = tgt.y - src.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-      const f = (dist - PHYSICS.springLen) * PHYSICS.springK;
+
+      const isSameClass = src.className && src.className === tgt.className;
+      const isSameComm = src.community === tgt.community;
+      // Longer cross-community spring rest length means edges between packages
+      // don't pull foreign nodes deep into the wrong cluster hull.
+      const targetLen = isSameClass
+        ? (PHYSICS.springLen * 0.40)                  // same class — very tight (was 0.45)
+        : (isSameComm
+            ? PHYSICS.springLen * 0.70               // same community — moderate (was 0.65)
+            : PHYSICS.springLen * 2.2);              // cross-community — long, stays at boundary (was 1.25)
+      const springTension = isSameClass
+        ? (PHYSICS.springK * 2.0)                    // same class — strong pull (was 1.8)
+        : (isSameComm
+            ? PHYSICS.springK * 1.3                  // same community (was 1.2)
+            : PHYSICS.springK * 0.4);                // cross-community — weak, just a guide (was 0.85)
+
+      const f = (dist - targetLen) * springTension;
       const fx = (dx / dist) * f;
       const fy = (dy / dist) * f;
 
       src._fx += fx; src._fy += fy;
       tgt._fx -= fx; tgt._fy -= fy;
-    }
-
-    // 3. Blooming Branch & Core Cohesion force
-    for (let i = 0; i < n; i++) {
-      const nd = nodes[i];
-      if (this._isNodeHidden(nd)) continue;
-
-      // Leaf nodes are drawn in a gentle radial bloom toward their branch core
-      if (!nd.isBranchCore && nd.branchCenterX !== undefined && nd.branchCenterY !== undefined) {
-        const dx = nd.branchCenterX - nd.x;
-        const dy = nd.branchCenterY - nd.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const idealDist = 45 + Math.sqrt(nd.degree || 1) * 35;
-        const f = (dist - idealDist) * (PHYSICS.clusterK * 1.5);
-        nd._fx += (dx / dist) * f;
-        nd._fy += (dy / dist) * f;
-      }
-
-      for (let j = i + 1; j < n; j++) {
-        const ni = nodes[i], nj = nodes[j];
-        if (ni.community === nj.community) {
-          const dx = nj.x - ni.x;
-          const dy = nj.y - ni.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-
-          // Intra-class constellation cohesion
-          if (ni.className && ni.className === nj.className) {
-            if (dist > PHYSICS.springLen * 0.7) {
-              const f = (dist - PHYSICS.springLen * 0.7) * (PHYSICS.springK * 0.45);
-              const fx = (dx / dist) * f;
-              const fy = (dy / dist) * f;
-              ni._fx += fx; ni._fy += fy;
-              nj._fx += fx; nj._fy += fy;
-            }
-          } else if (dist > PHYSICS.springLen * 1.6) {
-            const f = (dist - PHYSICS.springLen) * PHYSICS.clusterK;
-            const fx = (dx / dist) * f;
-            const fy = (dy / dist) * f;
-            ni._fx += fx; ni._fy += fy;
-            nj._fx += fx; nj._fy += fy;
-          }
-        }
-      }
     }
 
     // 4. Integrate velocity and update position
@@ -947,7 +1057,7 @@ class ForceGraph {
     const themeKey = this._activeTheme || 'midnight';
 
     if (themeKey === 'cyberpunk') {
-      // 🟣 CYBERPUNK: Synthwave grid, neon perspective crosshairs, CRT scanlines, purple nebula
+      // CYBERPUNK: Synthwave grid, neon perspective crosshairs, CRT scanlines, purple nebula
       ctx.fillStyle = '#040008';
       ctx.fillRect(0, 0, W, H);
 
@@ -1001,7 +1111,7 @@ class ForceGraph {
       }
 
     } else if (themeKey === 'ember') {
-      // 🔥 EMBER: Molten hearth glow, warm bronze background, golden diamond constellation ticks
+      // EMBER: Molten hearth glow, warm bronze background, golden diamond constellation ticks
       ctx.fillStyle = '#110d08';
       ctx.fillRect(0, 0, W, H);
 
@@ -1018,7 +1128,7 @@ class ForceGraph {
         const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
-        // Diamond spark ticks (◆)
+        // Diamond spark ticks
         ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
         let countX = 0;
         for (let x = offX; x < W; x += step * this._sc, countX++) {
@@ -1037,7 +1147,7 @@ class ForceGraph {
       }
 
     } else if (themeKey === 'arctic') {
-      // ❄️ ARCTIC: Light architectural drafting paper, crisp blue-gray orthogonal grid, blueprint ticks
+      // ARCTIC: Light architectural drafting paper, crisp blue-gray orthogonal grid, blueprint ticks
       ctx.fillStyle = '#f1f5f9';
       ctx.fillRect(0, 0, W, H);
 
@@ -1086,7 +1196,7 @@ class ForceGraph {
       }
 
     } else if (themeKey === 'forest') {
-      // 🌲 FOREST: Deep bioluminescent canopy, tactical sonar radar rings, firefly spore dots
+      // FOREST: Deep bioluminescent canopy, tactical sonar radar rings, firefly spore dots
       ctx.fillStyle = '#040a05';
       ctx.fillRect(0, 0, W, H);
 
@@ -1136,7 +1246,7 @@ class ForceGraph {
       }
 
     } else {
-      // 🌑 MIDNIGHT: Industrial neutral dark charcoal, blueprint dot matrix, precision telemetry crosshairs
+      // MIDNIGHT: Industrial neutral dark charcoal, blueprint dot matrix, precision telemetry crosshairs
       ctx.fillStyle = '#0d1117';
       ctx.fillRect(0, 0, W, H);
 
@@ -1778,7 +1888,7 @@ class ForceGraph {
       return `
         <div class="legend-pkg-wrap" data-cid="${c.cid}">
           <div class="legend-pkg-row ${this._hiddenCommunities.has(c.cid) ? 'dimmed' : ''}" data-cid="${c.cid}">
-            <span class="legend-chevron" data-cid="${c.cid}" title="Toggle class list">▶</span>
+            <span class="legend-chevron" data-cid="${c.cid}" title="Toggle class list"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
             <div class="legend-dot" style="background:${c.color}"></div>
             <span class="legend-label" title="${c.label}">${c.label}</span>
             <span class="legend-count">${c.count}</span>
@@ -1934,7 +2044,7 @@ class ForceGraph {
     };
     const nodeType = node.type || 'METHOD';
     const tColor = typeColors[nodeType] || commColor;
-    const tGlyph = typeGlyphs[nodeType] || '◈';
+    const tGlyph = typeGlyphs[nodeType] || 'M';
 
     // Dynamic colorful card shell
     card.style.borderColor = hexToRgba(commColor, 0.45);
@@ -2340,7 +2450,7 @@ class ForceGraph {
 
     const heatVal = this._heatData[node.id] || 0;
     const heatSnippet = (this._heatMode || heatVal > 0)
-      ? `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);">♨ Churn: ${heatVal}</span>`
+      ? `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Churn: ${heatVal}</span>`
       : '';
 
     const roleName = node.role ? String(node.role).toUpperCase() : 'NODE';
@@ -2365,8 +2475,8 @@ class ForceGraph {
           <span class="tt-name-text" title="${node.label || node.id}">${node.label || node.id.split('.').pop()}</span>
         </div>
         <div class="tt-tags-row">
-          <span class="tt-tag-pill" style="background:${hexToRgba(commColor, 0.22)}; color:${commColor}; border:1px solid ${hexToRgba(commColor, 0.55)}; font-weight:700" title="Module: ${this._formatPackageLabel(node.package || 'default')}">📦 ${this._formatPackageLabel(node.package || 'default')}</span>
-          ${node.className ? `<span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.22)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.55)}; font-weight:700" title="Class: ${node.className}">🏷️ ${node.className}</span>` : ''}
+          <span class="tt-tag-pill" style="background:${hexToRgba(commColor, 0.22)}; color:${commColor}; border:1px solid ${hexToRgba(commColor, 0.55)}; font-weight:700" title="Module: ${this._formatPackageLabel(node.package || 'default')}"><svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg> ${this._formatPackageLabel(node.package || 'default')}</span>
+          ${node.className ? `<span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.22)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.55)}; font-weight:700" title="Class: ${node.className}"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg> ${node.className}</span>` : ''}
           <span class="tt-tag-pill" style="background:${hexToRgba(tColor, 0.2)}; color:${tColor}; border:1px solid ${hexToRgba(tColor, 0.5)}">${nodeType}</span>
           <span class="tt-tag-pill" style="background:${hexToRgba(rColor, 0.2)}; color:${rColor}; border:1px solid ${hexToRgba(rColor, 0.5)}">${roleName}</span>
           ${heatSnippet}
@@ -2435,7 +2545,10 @@ class ForceGraph {
     if (s.showParticles !== undefined)   this._showParticles    = s.showParticles;
     if (s.showMinimap !== undefined) {
       this._showMinimap = s.showMinimap;
-      const mmWrap = document.getElementById('graph-minimap-wrap');
+      const parentSec = this._container ? this._container.closest('section') : null;
+      const mmWrap = parentSec
+        ? (parentSec.querySelector('#codebase-minimap-wrap') || parentSec.querySelector('#graph-minimap-wrap'))
+        : (document.getElementById('codebase-minimap-wrap') || document.getElementById('graph-minimap-wrap'));
       if (mmWrap) mmWrap.style.display = s.showMinimap ? '' : 'none';
     }
     if (s.showLabels !== undefined)      this._showLabels       = s.showLabels;

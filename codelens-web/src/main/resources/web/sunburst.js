@@ -19,6 +19,8 @@ class SunburstRenderer {
     this._current = null;
     this._breadcrumb = [];
     this._segments = [];
+    this._hiddenPackages = new Set();
+    this._hiddenEntities = new Set();
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -28,6 +30,48 @@ class SunburstRenderer {
       onClick: this._onClick.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  togglePackage(pkgName, visible) {
+    if (visible === undefined) {
+      if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+      else this._hiddenPackages.add(pkgName);
+    } else if (visible) {
+      this._hiddenPackages.delete(pkgName);
+    } else {
+      this._hiddenPackages.add(pkgName);
+    }
+    this._layout();
+    this._draw();
+  }
+
+  toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+    const ids = [entityIdOrName, fqn].filter(Boolean);
+    ids.forEach(id => {
+      if (visible === undefined) {
+        if (this._hiddenEntities.has(id)) this._hiddenEntities.delete(id);
+        else this._hiddenEntities.add(id);
+      } else if (visible) {
+        this._hiddenEntities.delete(id);
+      } else {
+        this._hiddenEntities.add(id);
+      }
+    });
+    this._layout();
+    this._draw();
+  }
+
+  _isItemHidden(node, parentPkg) {
+    if (!node) return false;
+    const name = node.name || node.label || '';
+    const fqn = node.fqn || (parentPkg ? `${parentPkg}.${name}` : name);
+    const pkg = node.package || parentPkg || (fqn.includes('.') ? fqn.split('.').slice(0, -1).join('.') : '');
+
+    if (pkg && this._hiddenPackages.has(pkg)) return true;
+    if (name && this._hiddenEntities.has(name)) return true;
+    if (fqn && this._hiddenEntities.has(fqn)) return true;
+    if (node.id && this._hiddenEntities.has(node.id)) return true;
+    return false;
   }
 
   setData(payload) {
@@ -147,14 +191,17 @@ class SunburstRenderer {
   _buildSegments(node, startAngle, endAngle, depth, innerR, ringW, parentColor, childIndex) {
     if (!node.children || node.children.length === 0) return;
 
-    const totalSize = node.children.reduce((s, c) => s + Math.max(c.size, 1), 0);
+    const activeChildren = node.children.filter(c => !this._isItemHidden(c, node.fqn || node.name));
+    if (activeChildren.length === 0) return;
+
+    const totalSize = activeChildren.reduce((s, c) => s + Math.max(c.size, 1), 0);
     if (totalSize <= 0) return;
 
     const minThresholdAngle = 0.003; // below 0.003 rad, aggregate into "Other" wedge rollup
     const prominentChildren = [];
     const smallChildren = [];
 
-    node.children.forEach((child) => {
+    activeChildren.forEach((child) => {
       const fraction = Math.max(child.size, 1) / totalSize;
       const childAngle = (endAngle - startAngle) * fraction;
       if (childAngle >= minThresholdAngle || node.children.length <= 15) {

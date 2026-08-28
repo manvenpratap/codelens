@@ -37,18 +37,19 @@
     </div>
 
     <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
+    <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
     <div id="header-project-bar" class="header-project-bar" style="display:none;">
       <div class="project-pill" id="project-pill" title="Click to view full path / switch project">
-        <span class="project-pill-icon">📦</span>
+        <span class="project-pill-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
         <span class="project-pill-name" id="project-name-display">sample-project</span>
         <span class="project-pill-path" id="project-path-display">/workspace/src</span>
       </div>
       <button id="btn-rescan" class="btn-header-pill" title="Rescan current directory (Cmd+R / F5)">
-        <span class="btn-pill-icon">🔄</span>
+        <span class="btn-pill-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
         <span class="btn-pill-label">Rescan</span>
       </button>
       <button id="btn-open-project" class="btn-header-pill" title="Open or switch Java project directory">
-        <span class="btn-pill-icon">📂</span>
+        <span class="btn-pill-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span>
         <span class="btn-pill-label">Open Project…</span>
       </button>
     </div>
@@ -98,19 +99,19 @@
     <!-- Top-Right Actions Group (Export, Theme Toggle, Settings, Guide) -->
     <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
       <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
-        <span class="action-btn-icon">📊</span>
+        <span class="action-btn-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></span>
         <span class="action-btn-text">Export</span>
       </button>
       <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Toggle Dark / Light Theme" title="Toggle Theme (Dark / Light)">
-        <span id="theme-toggle-icon" class="action-btn-icon">☀️</span>
+        <span id="theme-toggle-icon" class="action-btn-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></span>
         <span id="theme-toggle-label" class="action-btn-text">Light</span>
       </button>
       <button id="settings-btn" class="header-action-btn" aria-label="Open Settings" title="App Settings &amp; Themes">
-        <span class="action-btn-icon">⚙</span>
+        <span class="action-btn-icon"><svg class="svg-icon icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
         <span class="action-btn-text">Settings</span>
       </button>
       <button id="help-btn" class="header-action-btn" aria-label="Open Feature &amp; User Guide" title="Feature Guide &amp; Documentation (?)">
-        <span class="action-btn-icon">❓</span>
+        <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>
         <span class="action-btn-text">Guide</span>
       </button>
     </div>
@@ -137,7 +138,7 @@
     <!-- Full-text search box (Lucene-backed via /api/search) -->
     <nav class="search-box" aria-label="Search entities">
       <div class="search-input-wrap">
-        <span class="search-icon" aria-hidden="true">⌕</span>
+        <span class="search-icon" aria-hidden="true"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
         <label for="search-input" class="visually-hidden">Search types, methods, fields</label>
         <input
           id="search-input"
@@ -163,12 +164,22 @@
     <div class="section-label-row">
       <div class="section-label" id="explorer-label" title="Package Explorer">Explorer</div>
       <div class="explorer-toolbar-actions" role="toolbar" aria-label="Explorer presentation options">
-        <button id="btn-pkg-mode-flat" class="explorer-action-btn active" title="Eclipse Flat Package Presentation (com.example.trading)">📦 Flat</button>
-        <button id="btn-pkg-mode-tree" class="explorer-action-btn" title="Hierarchical Tree Presentation">🌲 Tree</button>
-        <button id="btn-tree-expand-all" class="explorer-action-btn" title="Expand All Packages">⊞</button>
-        <button id="btn-tree-collapse-all" class="explorer-action-btn" title="Collapse All Packages">⊟</button>
+        <button id="btn-pkg-mode-flat" class="explorer-action-btn active" title="Eclipse Flat Package Presentation (com.example.trading)">
+          <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="4" x="3" y="4" rx="1"/><rect width="18" height="4" x="3" y="10" rx="1"/><rect width="18" height="4" x="3" y="16" rx="1"/></svg> Flat
+        </button>
+        <button id="btn-pkg-mode-tree" class="explorer-action-btn" title="Hierarchical Tree Presentation">
+          <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="6" height="6" x="9" y="2" rx="1"/><rect width="6" height="6" x="3" y="16" rx="1"/><rect width="6" height="6" x="15" y="16" rx="1"/><path d="M12 8v4"/><path d="M6 12h12v4"/></svg> Tree
+        </button>
+        <button id="btn-tree-expand-all" class="explorer-action-btn" title="Expand All Packages">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg>
+        </button>
+        <button id="btn-tree-collapse-all" class="explorer-action-btn" title="Collapse All Packages">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 6 12 11 17 6"/><polyline points="7 13 12 18 17 13"/></svg>
+        </button>
       </div>
-      <button id="btn-collapse-left" class="panel-collapse-btn" aria-label="Collapse Explorer Panel" title="Collapse Explorer Panel ([)">◀</button>
+      <button id="btn-collapse-left" class="panel-collapse-btn" aria-label="Collapse Explorer Panel" title="Collapse Explorer Panel ([)">
+        <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
     </div>
 
     <!-- Package / type tree - populated lazily by app.js loadPackageTree() -->
@@ -205,7 +216,7 @@
 
   <!-- Floating left expand strip when left panel is collapsed -->
   <button id="left-expand-strip" class="panel-expand-strip left-expand-strip" aria-label="Expand Explorer Panel" title="Expand Explorer ([)">
-    <span class="expand-strip-icon">▶</span>
+    <span class="expand-strip-icon"><svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
     <span class="expand-strip-text">Explorer</span>
   </button>
 
@@ -225,11 +236,12 @@
         role="tab"
         id="tab-graph"
         data-tab="graph"
+        draggable="true"
         aria-selected="true"
         aria-controls="graph-view"
         title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
       >
-        <span aria-hidden="true">◈</span>
+        <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
         Graph
       </button>
 
@@ -239,11 +251,12 @@
         role="tab"
         id="tab-knowledge"
         data-tab="knowledge"
+        draggable="true"
         aria-selected="false"
         aria-controls="knowledge-view"
         title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
       >
-        <span aria-hidden="true">◉</span>
+        <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
         Knowledge Base
       </button>
 
@@ -253,11 +266,12 @@
         role="tab"
         id="tab-review"
         data-tab="review"
+        draggable="true"
         aria-selected="false"
         aria-controls="review-view"
         title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
       >
-        <span aria-hidden="true">🧪</span>
+        <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
         Code Review
         <span class="tab-badge" aria-label="finding count">0</span>
       </button>
@@ -268,11 +282,12 @@
         role="tab"
         id="tab-git"
         data-tab="git"
+        draggable="true"
         aria-selected="false"
         aria-controls="git-view"
         title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
       >
-        <span aria-hidden="true">⎇</span>
+        <span class="tab-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
         Git
       </button>
 
@@ -282,11 +297,12 @@
         role="tab"
         id="tab-source"
         data-tab="source"
+        draggable="true"
         aria-selected="false"
         aria-controls="source-view"
         title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
       >
-        <span aria-hidden="true">⎄</span>
+        <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
         Source
       </button>
 
@@ -298,7 +314,7 @@
         aria-label="Launch 3D &amp; Macro Visualizer Studio"
         title="Launch 3D &amp; Macro Visualizer Studio (3D City, 3D Galaxy, Treemap, DSM, Chord, 2D Tree) (Shortcut: M)"
       >
-        <span class="studio-btn-icon" aria-hidden="true">🪐</span>
+        <span class="studio-btn-icon" aria-hidden="true"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg></span>
         <span class="studio-btn-text">3D &amp; Macro Studio</span>
         <span class="studio-btn-shortcut" aria-hidden="true">M</span>
       </button>
@@ -327,7 +343,7 @@
         class="graph-empty"
         aria-label="No graph loaded"
       >
-        <div class="graph-empty-icon" aria-hidden="true">◈</div>
+        <div class="graph-empty-icon" aria-hidden="true"><svg class="svg-icon icon-emerald icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
         <div class="graph-empty-text">Select a method or field to visualise</div>
         <div class="graph-empty-sub" id="graph-empty-sub">
           Click any method in the Knowledge Base or Explorer to load its Graphify knowledge graph.
@@ -338,7 +354,7 @@
       <div id="graph-hud-bar" class="graph-hud-bar" aria-label="Graph controls">
         <!-- Quick Node Search Inside Graph -->
         <div class="graph-search-wrap">
-          <span class="graph-search-icon">⌕</span>
+          <span class="graph-search-icon"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
           <input
             id="graph-node-search"
             type="search"
@@ -364,16 +380,16 @@
         <!-- Feature Toggles -->
         <div class="graph-hud-actions">
           <button id="btn-filter-getters" class="hud-btn active" title="Hide trivial POJO getters, setters, and accessor boilerplate">
-            <span class="hud-btn-icon">⚡</span> <span class="hud-btn-text" id="btn-filter-getters-text">Hide POJOs</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span class="hud-btn-text" id="btn-filter-getters-text">Hide POJOs</span>
           </button>
           <button id="btn-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
-            <span class="hud-btn-icon">◈</span> <span class="hud-btn-text">Clusters</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
           </button>
           <button id="btn-toggle-physics" class="hud-btn active" title="Toggle Live Physics Simulation (Space)">
-            <span class="hud-btn-icon">⏻</span> <span class="hud-btn-text">Physics</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg></span> <span class="hud-btn-text">Physics</span>
           </button>
           <button id="btn-heat" class="hud-btn" title="Toggle Commit Churn Heat Overlay">
-            <span class="hud-btn-icon">♨</span> <span class="hud-btn-text">Heat</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> <span class="hud-btn-text">Heat</span>
           </button>
         </div>
 
@@ -381,10 +397,18 @@
 
         <!-- Camera Controls -->
         <div class="graph-camera-controls">
-          <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">+</button>
-          <button class="hud-btn icon-only" id="btn-zoom-out" title="Zoom out (-)">-</button>
-          <button class="hud-btn icon-only" id="btn-fit" title="Fit graph to screen (F)">⊞</button>
-          <button class="hud-btn icon-only" id="btn-reset" title="Clear graph">⊠</button>
+          <button class="hud-btn icon-only" id="btn-zoom-in" title="Zoom in (+)">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="hud-btn icon-only" id="btn-zoom-out" title="Zoom out (-)">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="hud-btn icon-only" id="btn-fit" title="Fit graph to screen (F)">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><polyline points="21 15 21 21 15 21"/><polyline points="3 9 3 3 9 3"/></svg>
+          </button>
+          <button class="hud-btn icon-only" id="btn-reset" title="Clear graph">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
 
@@ -392,7 +416,9 @@
       <div id="graph-community-legend" class="graph-community-legend" style="display:none">
         <div class="legend-header">
           <span class="legend-title">Communities &amp; Packages</span>
-          <button id="btn-legend-close" class="legend-close-btn" title="Minimize Legend">✕</button>
+          <button id="btn-legend-close" class="legend-close-btn" title="Minimize Legend">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div id="graph-legend-list" class="legend-list"></div>
       </div>
@@ -402,10 +428,12 @@
         <div id="node-card-accent-bar" class="node-card-accent-bar"></div>
         <div class="node-card-header">
           <div class="node-card-title-row">
-            <span id="node-card-icon" class="node-card-icon">◈</span>
+            <span id="node-card-icon" class="node-card-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
             <span id="node-card-name" class="node-card-name">MethodName</span>
           </div>
-          <button id="btn-node-card-close" class="node-card-close">✕</button>
+          <button id="btn-node-card-close" class="node-card-close">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div class="node-card-body">
           <div class="node-card-row">
@@ -460,22 +488,37 @@
       <!-- Top Floating View Modes Switcher Bar (3D City, 3D Galaxy, 2D Graph, Treemap, Sunburst, DSM, Chord) -->
       <div id="codebase-hud-bar" class="graph-hud-bar codebase-top-bar" aria-label="Codebase Visualization Level">
         <button id="btn-studio-back" class="studio-back-btn" title="Back to Granular Workspace (Esc)">
-          <span class="back-arrow">←</span> <span class="back-text">Workspace</span>
+          <span class="back-arrow"><svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span>
+          <span class="back-text">Workspace</span>
         </button>
         <div class="hud-divider" style="height:16px; margin:0 2px;"></div>
         <span class="hud-label" style="font-weight:700; color:#34d399; display:flex; align-items:center; gap:5px;">
-          <span>🪐</span> Views:
+          <span><svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg></span> Views:
         </span>
         <div class="graph-level-pills" id="codebase-level-selector" role="group" aria-label="Codebase Level">
-          <button class="level-pill active" data-level="city3d" title="3D Software City (WebGL Monoliths)">🏙️ 3D City</button>
-          <button class="level-pill" data-level="galaxy3d" title="3D Force Galaxy (Orbital Constellation)">🌌 3D Galaxy</button>
+          <button class="level-pill active" data-level="city3d" title="3D Software City (WebGL Monoliths)">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg> 3D City
+          </button>
+          <button class="level-pill" data-level="galaxy3d" title="3D Force Galaxy (Orbital Constellation)">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg> 3D Galaxy
+          </button>
           <span class="level-pill-divider"></span>
-          <button class="level-pill" data-level="graph2d" title="2D Blooming Tree Whole Codebase Graph">🌸 2D Graph</button>
-          <button class="level-pill" data-level="treemap" title="Zoomable Treemap (Code Size and Complexity)">▦ Treemap</button>
-          <button class="level-pill" data-level="sunburst" title="Sunburst (Radial Hierarchy by Size)">◉ Sunburst</button>
+          <button class="level-pill" data-level="graph2d" title="2D Blooming Tree Whole Codebase Graph">
+            <svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><path d="M14.5 9.5 17 7"/><path d="m9.5 14.5-2.5 2.5"/><path d="m14.5 14.5 2.5 2.5"/><path d="m9.5 9.5-2.5-2.5"/></svg> 2D Graph
+          </button>
+          <button class="level-pill" data-level="treemap" title="Zoomable Treemap (Code Size and Complexity)">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Treemap
+          </button>
+          <button class="level-pill" data-level="sunburst" title="Sunburst (Radial Hierarchy by Size)">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst
+          </button>
           <span class="level-pill-divider"></span>
-          <button class="level-pill" data-level="dsm" title="Dependency Structure Matrix (Adjacency Grid)">⊞ DSM</button>
-          <button class="level-pill" data-level="chord" title="Chord Diagram (Inter-class Call Volume)">⌒ Chord</button>
+          <button class="level-pill" data-level="dsm" title="Dependency Structure Matrix (Adjacency Grid)">
+            <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> DSM
+          </button>
+          <button class="level-pill" data-level="chord" title="Chord Diagram (Inter-class Call Volume)">
+            <svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg> Chord
+          </button>
         </div>
       </div>
 
@@ -493,7 +536,16 @@
         <!-- Codebase POJO Filter Toggle (For 2D Graph / Methods scope) -->
         <div id="codebase-pojo-controls" style="display:none;">
           <button id="btn-codebase-filter-getters" class="hud-btn active" title="Hide trivial POJO getters, setters, and accessor boilerplate">
-            <span class="hud-btn-icon">⚡</span> <span class="hud-btn-text" id="btn-codebase-filter-getters-text">Hide POJOs</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span class="hud-btn-text" id="btn-codebase-filter-getters-text">Hide POJOs</span>
+          </button>
+        </div>
+
+        <div class="hud-divider" id="codebase-arcs-divider" style="display:none;"></div>
+
+        <!-- Codebase Call Arcs Toggle (For 3D City and 3D Galaxy) -->
+        <div id="codebase-arcs-controls" style="display:none;">
+          <button id="btn-codebase-filter-arcs" class="hud-btn active" title="Toggle call and relationship arcs in 3D views">
+            <span class="hud-btn-icon"><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg></span> <span class="hud-btn-text" id="btn-codebase-filter-arcs-text">Call Arcs</span>
           </button>
         </div>
 
@@ -502,7 +554,7 @@
         <!-- 3D Views Brightness & Exposure Slider -->
         <div id="codebase-brightness-controls" class="codebase-brightness-controls" style="display:flex; align-items:center; gap:7px;">
           <span class="hud-label" style="display:flex; align-items:center; gap:4px;" title="Adjust 3D Lighting & Scene Exposure">
-            <span>🔆</span> Brightness:
+            <span><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></span> Brightness:
           </span>
           <input
             type="range"
@@ -515,7 +567,9 @@
             title="Adjust 3D View Lighting and Exposure"
           />
           <span id="codebase-brightness-value" style="font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); min-width:32px;">100%</span>
-          <button id="btn-reset-brightness" class="hud-btn icon-only" style="padding:2px 6px; font-size:10px;" title="Reset Brightness to Default (100%)">↺</button>
+          <button id="btn-reset-brightness" class="hud-btn icon-only" style="padding:2px 6px; font-size:10px;" title="Reset Brightness to Default (100%)">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          </button>
         </div>
       </div>
 
@@ -526,7 +580,7 @@
         style="display:none"
         aria-label="No codebase data loaded"
       >
-        <div class="graph-empty-icon" aria-hidden="true">🪐</div>
+        <div class="graph-empty-icon" aria-hidden="true"><svg class="svg-icon icon-mint icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg></div>
         <div class="graph-empty-text">Codebase Visualization</div>
         <div class="graph-empty-sub" id="codebase-empty-sub">
           Run a project scan to generate 3D Software City, 3D Galaxy, Treemap, and Matrix models.
@@ -537,7 +591,9 @@
       <div id="codebase-community-legend" class="graph-community-legend" style="display:none">
         <div class="legend-header">
           <span class="legend-title">Communities &amp; Packages</span>
-          <button id="btn-codebase-legend-close" class="legend-close-btn" title="Minimize Legend">✕</button>
+          <button id="btn-codebase-legend-close" class="legend-close-btn" title="Minimize Legend">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div id="codebase-legend-list" class="legend-list"></div>
       </div>
@@ -547,10 +603,12 @@
         <div class="node-card-accent-bar"></div>
         <div class="node-card-header">
           <div class="node-card-title-row">
-            <span class="node-card-icon">◈</span>
+            <span class="node-card-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
             <span class="node-card-name">MethodName</span>
           </div>
-          <button class="node-card-close">✕</button>
+          <button class="node-card-close">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div class="node-card-body">
           <div class="node-card-row">
@@ -584,6 +642,11 @@
         aria-live="polite"
       ></div>
 
+      <!-- Minimap / Radar Overview for Codebase 2D Graph (Bottom Right) -->
+      <div id="codebase-minimap-wrap" class="graph-minimap-wrap" style="display:none">
+        <canvas id="codebase-minimap" width="150" height="100"></canvas>
+      </div>
+
       <!-- Mount container for codebase visualizers -->
       <div id="codebase-canvas-wrap" style="width:100%; height:100%; position:relative; overflow:hidden;"></div>
     </section><!-- /#codebase-view -->
@@ -599,7 +662,10 @@
       aria-live="polite"
     >
       <div class="kb-help-bar">
-        <span class="kb-help-title">💡 Cyclomatic Complexity (CC):</span>
+        <span class="kb-help-title">
+          <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          Cyclomatic Complexity (CC):
+        </span>
         <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">Green: 1-4 Low</span>
         <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">Amber: 5-10 Moderate</span>
         <span class="cc-pill cc-high" title="High complexity method risk (CC 11+)">Red: 11+ High Risk</span>
@@ -641,7 +707,7 @@
             Run Review
           </button>
           <button id="export-review-report-btn" class="btn-ghost" title="Export full codebase review audit report" style="margin-left:auto;">
-            📥 Export Report
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Report
           </button>
         </div>
         <div id="review-snippet-area" class="review-snippet-area" style="display:none">
@@ -677,7 +743,7 @@
         <div class="git-connect-card">
           <div class="git-connect-header">
             <div class="git-connect-title">
-              <span class="git-icon">⎇</span>
+              <span class="git-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
               <span>Git Repository Connection</span>
             </div>
             <div id="git-validation-status" class="git-validation-status">
@@ -748,7 +814,7 @@
       <div id="editor-container">
         <!-- Monaco editor will mount here -->
         <div class="editor-empty-state" id="editor-empty-state">
-          <div class="editor-empty-icon">⎄</div>
+          <div class="editor-empty-icon"><svg class="svg-icon icon-emerald icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
           <div class="editor-empty-text">No source file open</div>
           <div class="editor-empty-sub">Select any class or method source link in details panel to view code.</div>
         </div>
@@ -770,7 +836,7 @@
 
   <!-- Floating right expand strip when right panel is collapsed -->
   <button id="right-expand-strip" class="panel-expand-strip right-expand-strip" aria-label="Expand Details Panel" title="Expand Details (])">
-    <span class="expand-strip-icon">◀</span>
+    <span class="expand-strip-icon"><svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></span>
     <span class="expand-strip-text">Details</span>
   </button>
 
@@ -784,11 +850,13 @@
     <!-- Right panel header toolbar with collapse toggle -->
     <div class="right-panel-toolbar">
       <div class="right-panel-title-wrap">
-        <span class="right-panel-badge">◈</span>
+        <span class="right-panel-badge"><svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
         <span class="right-panel-title">Inspector</span>
       </div>
       <div class="right-panel-actions">
-        <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">▶</button>
+        <button id="btn-collapse-right" class="panel-collapse-btn" aria-label="Collapse Details Panel" title="Collapse Details Panel (])">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
       </div>
     </div>
 
@@ -797,7 +865,7 @@
 
     <!-- Placeholder shown when no entity is selected -->
     <div class="detail-empty" id="detail-empty-state" aria-label="No entity selected">
-      <div class="detail-empty-icon" aria-hidden="true">◉</div>
+      <div class="detail-empty-icon" aria-hidden="true"><svg class="svg-icon icon-blue icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
       <div class="detail-empty-text">Select a type, method, or field<br>to view its details &amp; graph topology</div>
     </div>
 
@@ -819,15 +887,16 @@
     <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: -</span>
   </div>
   <div class="footer-segment footer-shortcuts">
-    <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)">◧ Explorer</button>
-    <button id="footer-toggle-right" class="footer-panel-toggle" title="Toggle Inspector panel (])">◨ Inspector</button>
+    <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg> Explorer</button>
+    <button id="footer-toggle-right" class="footer-panel-toggle" title="Toggle Inspector panel (])"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg> Inspector</button>
     <span class="shortcut-tip"><kbd class="search-shortcut-key">Ctrl+K</kbd> Search</span>
-    <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
-    <span class="shortcut-tip"><kbd>2</kbd> KB</span>
-    <span class="shortcut-tip"><kbd>3</kbd> Viz</span>
-    <span class="shortcut-tip"><kbd>4</kbd> Review</span>
-    <span class="shortcut-tip"><kbd>5</kbd> Git</span>
-    <span class="shortcut-tip"><kbd>6</kbd> Source</span>
+    <span id="footer-tab-shortcuts" class="footer-tab-shortcuts">
+      <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
+      <span class="shortcut-tip"><kbd>2</kbd> KB</span>
+      <span class="shortcut-tip"><kbd>3</kbd> Review</span>
+      <span class="shortcut-tip"><kbd>4</kbd> Git</span>
+      <span class="shortcut-tip"><kbd>5</kbd> Source</span>
+    </span>
     <span class="shortcut-tip"><kbd>H</kbd> Heat</span>
   </div>
 </footer>
@@ -845,16 +914,28 @@
           <p class="modal-subtitle">Comprehensive walkthrough of workspace screens, 3D/2D visualizations, quality engines, and keyboard shortcuts</p>
         </div>
       </div>
-      <button class="modal-close-btn" id="help-modal-close" aria-label="Close Guide">✕</button>
+      <button class="modal-close-btn" id="help-modal-close" aria-label="Close Guide">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
     <!-- Guide Sub-Navigation Bar -->
     <div class="guide-nav-bar" role="tablist" aria-label="Guide Sections">
-      <button class="guide-tab-btn active" data-guide-tab="overview" role="tab">🚀 Overview &amp; Workflows</button>
-      <button class="guide-tab-btn" data-guide-tab="views" role="tab">🎨 3D &amp; 2D Codebase Views</button>
-      <button class="guide-tab-btn" data-guide-tab="symbols" role="tab">💎 IDE Entity Symbols</button>
-      <button class="guide-tab-btn" data-guide-tab="quality" role="tab">🛡️ Quality &amp; Audit Engine</button>
-      <button class="guide-tab-btn" data-guide-tab="shortcuts" role="tab">⌨️ Keyboard Shortcuts</button>
+      <button class="guide-tab-btn active" data-guide-tab="overview" role="tab">
+        <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Overview &amp; Workflows
+      </button>
+      <button class="guide-tab-btn" data-guide-tab="views" role="tab">
+        <svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg> 3D &amp; 2D Codebase Views
+      </button>
+      <button class="guide-tab-btn" data-guide-tab="symbols" role="tab">
+        <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg> IDE Entity Symbols
+      </button>
+      <button class="guide-tab-btn" data-guide-tab="quality" role="tab">
+        <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Quality &amp; Audit Engine
+      </button>
+      <button class="guide-tab-btn" data-guide-tab="shortcuts" role="tab">
+        <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/></svg> Keyboard Shortcuts
+      </button>
     </div>
 
     <div class="modal-body guide-body">
@@ -898,10 +979,10 @@
               <strong>Method Blast Radius Analysis</strong>: Search or click any method &rarr; Click <code>⬆ Callers</code> in the Inspector &rarr; Expand BFS depth from 1 to 5 hops to trace all entrypoints and public controllers impacted by signature changes.
             </div>
             <div class="flow-step">
-              <strong>Field Mutation Propagation Chains</strong>: Select any field &rarr; Click <code>🔗 Propagation Chain</code> in the Inspector &rarr; Traces <code>Field &larr; Writer Methods &larr; Upstream Calling Triggers</code> across the repository with color-coded node roles.
+              <strong>Field Mutation Propagation Chains</strong>: Select any field &rarr; Click <code>Propagation Chain</code> in the Inspector &rarr; Traces <code>Field &larr; Writer Methods &larr; Upstream Calling Triggers</code> across the repository with color-coded node roles.
             </div>
             <div class="flow-step">
-              <strong>Repository Scan &amp; Folder Exclusions</strong>: Click <strong>Browse…</strong> to pick your Java repository &rarr; Configure <strong>⚙ Settings</strong> exclude patterns (`target, build, .mvn, .git, node_modules, **/test/**`) &rarr; Click <strong>Scan</strong>.
+              <strong>Repository Scan &amp; Folder Exclusions</strong>: Click <strong>Browse…</strong> to pick your Java repository &rarr; Configure <strong>Settings</strong> exclude patterns (`target, build, .mvn, .git, node_modules, **/test/**`) &rarr; Click <strong>Scan</strong>.
             </div>
           </div>
         </section>
@@ -913,35 +994,35 @@
           <h3>Interactive Architectural Renderers</h3>
           <div class="help-grid">
             <div class="help-card">
-              <h4>🏙️ 3D Software City ("CodeCity")</h4>
+              <h4><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg> 3D Software City ("CodeCity")</h4>
               <p>Visualizes packages as elevated ground platforms and classes as skyscraper monoliths. Base footprint = method/field count, Height = lines of code (LOC), Roof color = complexity/churn. Orbit with mouse drag/wheel; adjust <strong>Exposure &amp; Brightness</strong> slider.</p>
             </div>
             <div class="help-card">
-              <h4>🌌 3D Force Galaxy ("Orbital Graph")</h4>
+              <h4><svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg> 3D Force Galaxy ("Orbital Graph")</h4>
               <p>Gravitational star cluster rendering code modules as orbital star systems with 3D quadratic bezier call arcs, animated particle pulses, and glowing celestial spheres.</p>
             </div>
             <div class="help-card">
-              <h4>🌸 2D Blooming Tree Graph</h4>
+              <h4><svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><path d="M14.5 9.5 17 7"/><path d="m9.5 14.5-2.5 2.5"/><path d="m14.5 14.5 2.5 2.5"/><path d="m9.5 9.5-2.5-2.5"/></svg> 2D Blooming Tree Graph</h4>
               <p>Whole-codebase force topology rendering classes and methods as connected nodes with fixed-position hover cards, tooltips, and click-to-detail inspector HUDs.</p>
             </div>
             <div class="help-card">
-              <h4>▦ Zoomable Treemap</h4>
+              <h4><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Zoomable Treemap</h4>
               <p>Squarified area partitioner sizing rectangles by lines of code and coloring by complexity. Click any package or class rectangle to zoom in with breadcrumb navigation.</p>
             </div>
             <div class="help-card">
-              <h4>◉ Sunburst (Radial Hierarchy)</h4>
+              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst (Radial Hierarchy)</h4>
               <p>Concentric ring segments representing Package &rarr; Class &rarr; Method hierarchy. Segment angle reflects size; click ring slices to zoom radially.</p>
             </div>
             <div class="help-card">
-              <h4>⊞ Dependency Structure Matrix (DSM)</h4>
+              <h4><svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> Dependency Structure Matrix (DSM)</h4>
               <p>Sparse grid matrix displaying dependency counts between classes and packages. Highlights cyclic dependencies in red for architecture refactoring.</p>
             </div>
             <div class="help-card">
-              <h4>⌒ Chord Diagram</h4>
+              <h4><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg> Chord Diagram</h4>
               <p>Circular arc visualizer with double-sided bezier ribbon polygons showing inter-package and inter-class call volume with directional linear gradients.</p>
             </div>
             <div class="help-card">
-              <h4>⚡ Granularity &amp; POJO Filter</h4>
+              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Granularity &amp; POJO Filter</h4>
               <p>Toggle between <strong>Classes</strong> and <strong>Methods</strong> scope on the floating bottom toolbar. Enable <strong>Hide POJOs</strong> to filter out trivial getters and setters.</p>
             </div>
           </div>
@@ -1048,156 +1129,249 @@
   <div class="modal-dialog settings-dialog">
     <div class="modal-header">
       <div class="modal-title-row">
-        <span class="modal-icon settings-gear-icon">⚙</span>
+        <span class="modal-icon settings-gear-icon"><svg class="svg-icon icon-slate icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
         <h2 id="settings-modal-title">Settings &amp; Themes</h2>
       </div>
-      <button class="modal-close-btn" id="settings-modal-close" aria-label="Close Settings">✕</button>
+      <button class="modal-close-btn" id="settings-modal-close" aria-label="Close Settings">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body settings-body">
 
-      <!-- ── Theme Picker ─────────────────────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🎨 Theme (High Contrast Dark &amp; Light)</h3>
-        <div class="theme-picker two-theme-picker">
-          <div class="theme-card active" data-theme="dark">
-            <div class="theme-preview"><span style="background:#000000"></span><span style="background:#0a0d12"></span><span style="background:#10b981"></span><span style="background:#34d399"></span><span style="background:#f59e0b"></span></div>
-            <div class="theme-meta"><span class="theme-name">🌑 Dark (OLED Obsidian)</span><span class="theme-tagline">True black substrate &amp; mint emerald contrast</span></div>
+      <!-- Row 1: Themes & Deployment .conf -->
+      <div class="settings-grid-row">
+        <!-- ── Theme Picker ─────────────────────────────────────────────── -->
+        <section class="settings-group">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            Theme &amp; Appearance
+          </h3>
+          <div class="theme-picker two-theme-picker">
+            <div class="theme-card active" data-theme="dark">
+              <div class="theme-preview"><span style="background:#000000"></span><span style="background:#0a0d12"></span><span style="background:#10b981"></span><span style="background:#34d399"></span><span style="background:#f59e0b"></span></div>
+              <div class="theme-meta">
+                <span class="theme-name">
+                  <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                  Dark (OLED Obsidian)
+                </span>
+                <span class="theme-tagline">True black substrate &amp; mint emerald</span>
+              </div>
+            </div>
+            <div class="theme-card" data-theme="light">
+              <div class="theme-preview"><span style="background:#f1f5f9"></span><span style="background:#ffffff"></span><span style="background:#059669"></span><span style="background:#10b981"></span><span style="background:#d97706"></span></div>
+              <div class="theme-meta">
+                <span class="theme-name">
+                  <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                  Light (Pure Daylight)
+                </span>
+                <span class="theme-tagline">Crisp emerald, ultra-readable daylight</span>
+              </div>
+            </div>
           </div>
-          <div class="theme-card" data-theme="light">
-            <div class="theme-preview"><span style="background:#f1f5f9"></span><span style="background:#ffffff"></span><span style="background:#059669"></span><span style="background:#10b981"></span><span style="background:#d97706"></span></div>
-            <div class="theme-meta"><span class="theme-name">☀️ Light (Pure Daylight)</span><span class="theme-tagline">Crisp emerald, ultra-readable daylight</span></div>
+        </section>
+
+        <!-- ── Deployment Configuration (.conf Import / Export) ──────────────── -->
+        <section class="settings-group deployment-config-section">
+          <div class="settings-section-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+              Deployment Config (.conf)
+            </h3>
+            <p class="settings-help-text">Export/import portable settings for fresh deployments.</p>
           </div>
-        </div>
-      </section>
-
-      <!-- ── Graph Physics ────────────────────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🔬 Graph Physics</h3>
-        <div class="settings-row"><label>Node Size</label><input type="range" id="set-node-size" min="5" max="20" step="1" value="9" /><span class="settings-val" id="set-node-size-val">9</span></div>
-        <div class="settings-row"><label>Repulsion</label><input type="range" id="set-repulsion" min="5000" max="50000" step="1000" value="20000" /><span class="settings-val" id="set-repulsion-val">20000</span></div>
-        <div class="settings-row"><label>Spring Length</label><input type="range" id="set-spring-len" min="80" max="400" step="10" value="180" /><span class="settings-val" id="set-spring-len-val">180</span></div>
-        <div class="settings-row"><label>Damping</label><input type="range" id="set-damping" min="0.50" max="0.95" step="0.01" value="0.80" /><span class="settings-val" id="set-damping-val">0.80</span></div>
-      </section>
-
-      <!-- ── Visual & Rendering ───────────────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🎨 Visual &amp; Rendering</h3>
-        <div class="settings-row"><label>Edge Particles</label><label class="toggle-switch"><input type="checkbox" id="set-particles" checked /><span class="toggle-track"></span></label></div>
-        <div class="settings-row"><label>Minimap</label><label class="toggle-switch"><input type="checkbox" id="set-minimap" checked /><span class="toggle-track"></span></label></div>
-        <div class="settings-row"><label>Node Labels</label><label class="toggle-switch"><input type="checkbox" id="set-labels" checked /><span class="toggle-track"></span></label></div>
-        <div class="settings-row"><label>Grid Dots</label><label class="toggle-switch"><input type="checkbox" id="set-grid" checked /><span class="toggle-track"></span></label></div>
-      </section>
-
-      <!-- ── Defaults ─────────────────────────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🗂 Defaults</h3>
-        <div class="settings-row">
-          <label>Default Graph Depth</label>
-          <select id="set-default-depth" class="settings-select">
-            <option value="1">1 hop</option>
-            <option value="2">2 hops</option>
-            <option value="3" selected>3 hops</option>
-            <option value="5">5 hops</option>
-            <option value="15">Max</option>
-          </select>
-        </div>
-        <div class="settings-row"><label>Auto-fit on Load</label><label class="toggle-switch"><input type="checkbox" id="set-auto-fit" checked /><span class="toggle-track"></span></label></div>
-        <div class="settings-row"><label>Community Hulls</label><label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label></div>
-      </section>
-
-      <!-- ── Scan & Folder Filtering ───────────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🔍 Scan &amp; Folder Filtering</h3>
-        <div class="settings-row">
-          <label for="set-exclude-patterns">Exclude Patterns</label>
-          <input
-            type="text"
-            id="set-exclude-patterns"
-            class="settings-input"
-            placeholder="target, build, .mvn, .git, **/test/**"
-            title="Folder names, paths, or glob patterns to ignore during codebase scans (comma-separated)"
-          />
-        </div>
-      </section>
-
-      <!-- ── Package & Community Labels ──────────────────────────────── -->
-      <section class="settings-group">
-        <h3 class="settings-group-title">🏷️ Package &amp; Community Labels</h3>
-        <div class="settings-row">
-          <label for="set-package-mode">Package Auto-Handling</label>
-          <select id="set-package-mode" class="settings-select" title="How package and module names are automatically formatted and displayed">
-            <option value="auto" selected>Auto-Detect &amp; Clean (Recommended)</option>
-            <option value="compact">Abbreviated (e.g. c.e.trading)</option>
-            <option value="fqn">Full Qualified Name (FQN)</option>
-          </select>
-        </div>
-      </section>
-
-      <!-- ── POJO & Accessor Filtering Configuration ────────────────── -->
-      <section class="settings-group">
-        <div class="settings-group-header">
-          <h3 class="settings-group-title">⚡ POJO &amp; Accessor Filtering</h3>
-          <span class="settings-group-badge">Configurable</span>
-        </div>
-        <div class="settings-row">
-          <label for="set-pojo-std">Standard Java Accessors (get/set/is/has)</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="set-pojo-std" checked />
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <div class="settings-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
-          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-            <label for="set-pojo-patterns">Custom POJO Method Patterns</label>
-            <button id="btn-reset-pojo-patterns" class="btn-ghost" style="font-size:10px; padding:2px 6px;" title="Reset POJO patterns to default">Reset Patterns</button>
+          <div class="deployment-config-card">
+            <div class="deployment-config-actions" style="margin-top:6px;">
+              <button id="btn-export-conf" class="btn-primary" title="Export all settings to codelens.conf file">
+                <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export .conf
+              </button>
+              <label class="btn-ghost file-upload-label" id="btn-import-conf-label" title="Import settings from a codelens.conf file">
+                <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import .conf
+                <input type="file" id="input-import-conf" accept=".conf,.properties,.txt" style="display:none;" />
+              </label>
+              <button id="btn-save-server-conf" class="btn-ghost" title="Save current settings to server's deployment file">
+                <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save to Server
+              </button>
+            </div>
+            <div class="deployment-config-status" id="deployment-config-status">
+              <span class="status-dot"></span>
+              <span id="deployment-config-status-text">Server deployment file active (./codelens.conf)</span>
+            </div>
           </div>
-          <input
-            type="text"
-            id="set-pojo-patterns"
-            class="settings-input"
-            style="width:100%; font-family:var(--font-mono); font-size:11px;"
-            placeholder="get*, set*, is*, has*, toString, hashCode, equals, canEqual, getClass"
-            title="Comma-separated method names, prefixes (get*), globs, or regex (/pattern/) to treat as POJO boilerplate"
-          />
-          <span class="settings-help-text">
-            Comma-separated prefixes (e.g. <code>get*</code>, <code>check*</code>), exact names, or regex patterns filtered when <em>Hide POJOs</em> is toggled in 2D &amp; 3D views.
-          </span>
-        </div>
-      </section>
+        </section>
+      </div>
+
+      <!-- Row 2: Physics & Visuals -->
+      <div class="settings-grid-row">
+        <!-- ── Graph Physics ────────────────────────────────────────────── -->
+        <section class="settings-group">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>
+            Graph Physics &amp; Forces
+          </h3>
+          <div class="settings-row"><label>Node Size</label><input type="range" id="set-node-size" min="5" max="20" step="1" value="9" /><span class="settings-val" id="set-node-size-val">9</span></div>
+          <div class="settings-row"><label>Repulsion</label><input type="range" id="set-repulsion" min="5000" max="50000" step="1000" value="20000" /><span class="settings-val" id="set-repulsion-val">20000</span></div>
+          <div class="settings-row"><label>Spring Length</label><input type="range" id="set-spring-len" min="80" max="400" step="10" value="180" /><span class="settings-val" id="set-spring-len-val">180</span></div>
+          <div class="settings-row"><label>Damping</label><input type="range" id="set-damping" min="0.50" max="0.95" step="0.01" value="0.80" /><span class="settings-val" id="set-damping-val">0.80</span></div>
+        </section>
+
+        <!-- ── Visual & Rendering ───────────────────────────────────────── -->
+        <section class="settings-group">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            Visual Overlays &amp; Defaults
+          </h3>
+          <div class="settings-row"><label>Edge Particles</label><label class="toggle-switch"><input type="checkbox" id="set-particles" checked /><span class="toggle-track"></span></label></div>
+          <div class="settings-row"><label>Radar Minimap</label><label class="toggle-switch"><input type="checkbox" id="set-minimap" checked /><span class="toggle-track"></span></label></div>
+          <div class="settings-row"><label>Node Labels</label><label class="toggle-switch"><input type="checkbox" id="set-labels" checked /><span class="toggle-track"></span></label></div>
+          <div class="settings-row"><label>Community Hulls</label><label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label></div>
+          <div class="settings-row">
+            <label>Default Graph Depth</label>
+            <select id="set-default-depth" class="settings-select">
+              <option value="1">1 hop</option>
+              <option value="2">2 hops</option>
+              <option value="3" selected>3 hops</option>
+              <option value="5">5 hops</option>
+              <option value="15">Max</option>
+            </select>
+          </div>
+          <div class="settings-row"><label>Auto-fit on Load</label><label class="toggle-switch"><input type="checkbox" id="set-auto-fit" checked /><span class="toggle-track"></span></label></div>
+        </section>
+      </div>
+
+      <!-- Row 3: POJO & Scan Filters -->
+      <div class="settings-grid-row">
+        <!-- ── POJO & Accessor Filtering Configuration ────────────────── -->
+        <section class="settings-group">
+          <div class="settings-group-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              POJO &amp; Accessor Filtering
+            </h3>
+          </div>
+          <div class="settings-row">
+            <label for="set-pojo-std">Standard Java Accessors (get/set/is/has)</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="set-pojo-std" checked />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="settings-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+              <label for="set-pojo-patterns">Custom POJO Patterns</label>
+              <button id="btn-reset-pojo-patterns" class="btn-ghost" style="font-size:10px; padding:2px 6px;" title="Reset POJO patterns to default">Reset</button>
+            </div>
+            <input
+              type="text"
+              id="set-pojo-patterns"
+              class="settings-input"
+              style="width:100%; font-family:var(--font-mono); font-size:11px;"
+              placeholder="get*, set*, is*, has*, toString, hashCode, equals, canEqual, getClass"
+              title="Comma-separated method names, prefixes (get*), globs, or regex (/pattern/) to treat as POJO boilerplate"
+            />
+            <span class="settings-help-text">
+              Filtered when <em>Hide POJOs</em> is active in 2D and 3D views.
+            </span>
+          </div>
+        </section>
+
+        <!-- ── Scan & Folder Filtering + Package Labels ───────────────────────────────────── -->
+        <section class="settings-group">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Scanning &amp; Packages
+          </h3>
+          <div class="settings-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
+            <label for="set-exclude-patterns">Exclude Folder / File Patterns</label>
+            <input
+              type="text"
+              id="set-exclude-patterns"
+              class="settings-input"
+              style="width:100%;"
+              placeholder="target, build, .mvn, .git, **/test/**"
+              title="Folder names, paths, or glob patterns to ignore during codebase scans (comma-separated)"
+            />
+            <span class="settings-help-text">Comma-separated directory names or globs ignored during analysis.</span>
+          </div>
+          <div class="settings-row" style="margin-top:4px;">
+            <label for="set-package-mode">Package Labels</label>
+            <select id="set-package-mode" class="settings-select" style="width:100%;" title="How package and module names are automatically formatted and displayed">
+              <option value="auto" selected>Auto-Detect &amp; Clean (Recommended)</option>
+              <option value="compact">Abbreviated (e.g. c.e.trading)</option>
+              <option value="fqn">Full Qualified Name (FQN)</option>
+            </select>
+          </div>
+        </section>
+      </div>
 
       <!-- ── Method & Class Archetype Rules Engine ────────────────────── -->
-      <section class="settings-group">
-        <div class="settings-group-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px;">
-          <div>
-            <h3 class="settings-group-title" style="margin-bottom:2px;">🏷️ Method &amp; Class Archetypes</h3>
-            <span class="settings-help-text">Classify methods &amp; classes by pattern (supports <code>{MODULE}</code> dynamic token e.g. <code>{MODULE}ET</code> for <code>AMET</code> in <code>com.tcs.bancs.AM</code>).</span>
+      <section class="settings-group full-width archetype-engine-section">
+        <div class="archetype-section-header">
+          <div class="archetype-header-left">
+            <div class="archetype-title-row">
+              <span class="archetype-title-icon">
+                <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>
+              </span>
+              <h3 class="settings-group-title" style="margin:0;">Method &amp; Class Archetypes</h3>
+              <span id="archetype-count-badge" class="archetype-count-badge">0 active</span>
+            </div>
+            <p class="archetype-section-sub">
+              Classify methods &amp; classes by pattern tokens (supports <code>{MODULE}</code> dynamic token e.g. <code>{MODULE}ET</code> for <code>AMET</code> in <code>com.tcs.bancs.AM</code>, <code>*Controller</code>, <code>*Repository</code>).
+            </p>
           </div>
-          <div style="display:flex; gap:6px;">
-            <button id="btn-add-archetype-rule" class="btn-primary" style="font-size:11px; padding:4px 9px;">➕ Add Rule</button>
+          <div class="archetype-header-actions">
+            <button id="btn-add-archetype-rule" class="btn-primary" style="font-size:11px; padding:5px 12px;" title="Add a custom pattern classification rule">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Archetype
+            </button>
           </div>
         </div>
 
-        <!-- Quick Presets Bar -->
-        <div class="archetype-presets-bar">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Presets:</span>
-          <button id="btn-preset-bancs" class="btn-ghost" style="font-size:10px; padding:2px 7px;" title="Load BaNCS / Banking standard ({MODULE}ET, {MODULE}BT, {MODULE}PS, {MODULE}PB, {MODULE}PA, {MODULE}DG)">🏦 Banking / BaNCS</button>
-          <button id="btn-preset-spring" class="btn-ghost" style="font-size:10px; padding:2px 7px;" title="Load Spring REST Controller / Service / DTO rules">🌱 Spring REST</button>
-          <button id="btn-reset-archetype-rules" class="btn-ghost" style="font-size:10px; padding:2px 7px;" title="Reset all archetype rules to defaults">↺ Reset</button>
+        <!-- Segmented Presets Toolbar -->
+        <div class="archetype-presets-toolbar">
+          <span class="presets-label">
+            <svg class="svg-icon icon-xs icon-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
+            Presets:
+          </span>
+          <div class="presets-btn-group">
+            <button id="btn-preset-bancs" class="preset-pill-btn" title="Load BaNCS / Banking standard ({MODULE}ET, {MODULE}BT, {MODULE}PS, {MODULE}PB, {MODULE}PA, {MODULE}DG)">
+              <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+              Banking / BaNCS
+            </button>
+            <button id="btn-preset-spring" class="preset-pill-btn" title="Load Spring REST Controller / Service / DTO / Mapper rules">
+              <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Spring REST
+            </button>
+            <button id="btn-preset-ddd" class="preset-pill-btn" title="Load Domain-Driven Design / Clean Architecture rules (*Aggregate, *Entity, *VO, *UseCase, *Repository, *Event)">
+              <svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+              Clean Arch / DDD
+            </button>
+            <button id="btn-reset-archetype-rules" class="preset-pill-btn reset" title="Reset all archetype rules to defaults">
+              <svg class="svg-icon icon-slate icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              Reset
+            </button>
+          </div>
         </div>
 
         <!-- Rule Form Wrap (Hidden by default, shown when adding/editing) -->
         <div id="archetype-rule-form-wrap" class="archetype-rule-form-wrap" style="display:none;">
           <input type="hidden" id="rule-form-id" value="" />
           <div class="rule-form-header">
-            <span id="rule-form-title" style="font-weight:700; font-size:12px; color:var(--emerald);">Add Archetype Rule</span>
-            <button id="btn-close-rule-form" class="btn-ghost" style="padding:2px 6px; font-size:11px;">✕</button>
+            <div class="rule-form-title-wrap">
+              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/></svg>
+              <span id="rule-form-title" class="rule-form-title">Add Archetype Rule</span>
+            </div>
+            <div id="rule-form-live-preview" class="rule-form-live-preview"></div>
+            <button id="btn-close-rule-form" class="modal-close-btn" aria-label="Close form">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
+
           <div class="rule-form-grid">
             <div class="rule-form-field">
-              <label>Target</label>
+              <label>Target Scope</label>
               <select id="rule-form-target" class="settings-select">
-                <option value="METHOD" selected>Method</option>
-                <option value="CLASS">Class / Type</option>
+                <option value="METHOD" selected>Method (Methods &amp; Calls)</option>
+                <option value="CLASS">Class / Type (Classes &amp; Types)</option>
                 <option value="ANY">Any Entity</option>
               </select>
             </div>
@@ -1206,74 +1380,68 @@
               <select id="rule-form-match-type" class="settings-select">
                 <option value="PREFIX" selected>Prefix (Starts With)</option>
                 <option value="SUFFIX">Suffix (Ends With)</option>
-                <option value="CONTAINS">Contains</option>
+                <option value="CONTAINS">Contains Substring</option>
                 <option value="GLOB">Wildcard / Glob (*)</option>
-                <option value="REGEX">Regular Expression</option>
+                <option value="REGEX">Regular Expression (/.../)</option>
                 <option value="EXACT">Exact Match</option>
               </select>
             </div>
             <div class="rule-form-field" style="grid-column: span 2;">
-              <label>Pattern (use <code>{MODULE}</code> for dynamic package module, e.g. <code>{MODULE}ET</code>)</label>
-              <input type="text" id="rule-form-pattern" class="settings-input" placeholder="{MODULE}ET, AMET, *Controller, etc." />
+              <label>Pattern <span class="field-hint">(use <code>{MODULE}</code> for dynamic module token, e.g. <code>{MODULE}ET</code>)</span></label>
+              <input type="text" id="rule-form-pattern" class="settings-input" placeholder="{MODULE}ET, *Service, /Order.*/" />
             </div>
+
             <div class="rule-form-field">
               <label>Archetype Name</label>
               <input type="text" id="rule-form-label" class="settings-input" placeholder="Elementary Transaction" />
             </div>
             <div class="rule-form-field">
               <label>Badge Tag</label>
-              <input type="text" id="rule-form-badge" class="settings-input" placeholder="FETCH, MUTATE, BATCH, etc." />
+              <input type="text" id="rule-form-badge" class="settings-input" placeholder="FETCH, MUTATE, CTRL" />
             </div>
+
             <div class="rule-form-field">
               <label>Color Accent</label>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <input type="color" id="rule-form-color" value="#10b981" style="width:32px; height:26px; border:none; background:transparent; cursor:pointer;" />
-                <input type="text" id="rule-form-color-text" class="settings-input" value="#10b981" style="width:75px; font-family:var(--font-mono); font-size:11px;" />
+              <div class="color-picker-wrap">
+                <input type="color" id="rule-form-color" value="#10b981" class="color-swatch-input" />
+                <input type="text" id="rule-form-color-text" class="settings-input color-text-input" value="#10b981" />
               </div>
             </div>
             <div class="rule-form-field">
-              <label>Icon / Emoji</label>
-              <input type="text" id="rule-form-icon" class="settings-input" value="📥" style="width:50px; text-align:center;" />
+              <label>Icon Key</label>
+              <select id="rule-form-icon" class="settings-select">
+                <option value="tag" selected>tag (Default)</option>
+                <option value="download">download (Fetch/Read)</option>
+                <option value="zap">zap (Mutate/Action)</option>
+                <option value="settings">settings (Process/Service)</option>
+                <option value="database">database (Repository/DB)</option>
+                <option value="globe">globe (Controller/API)</option>
+                <option value="box">box (Component/Aggregate)</option>
+                <option value="fileText">fileText (DTO/Schema)</option>
+                <option value="refresh">refresh (Mapper/Sync)</option>
+                <option value="activity">activity (Event/Metric)</option>
+                <option value="skipBack">skipBack (Pre-batch)</option>
+                <option value="skipForward">skipForward (Post-batch)</option>
+              </select>
             </div>
+
             <div class="rule-form-field" style="grid-column: span 2;">
-              <label>Description / Purpose</label>
+              <label>Description / Semantic Purpose</label>
               <input type="text" id="rule-form-desc" class="settings-input" placeholder="Read-only data retrieval transaction" />
             </div>
           </div>
+
           <div class="rule-form-actions">
-            <button id="btn-save-archetype-rule" class="btn-primary" style="font-size:11px; padding:4px 12px;">Save Rule</button>
+            <button id="btn-save-archetype-rule" class="btn-primary" style="font-size:11px; padding:4px 14px;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Save Archetype
+            </button>
             <button id="btn-cancel-archetype-rule" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Cancel</button>
           </div>
         </div>
 
         <!-- Dynamic Archetype Rules List Table -->
         <div id="archetype-rules-list" class="archetype-rules-list"></div>
-      </section>
-
-      <!-- ── Deployment Configuration (.conf Import / Export) ──────────────── -->
-      <section class="settings-section deployment-config-section">
-        <div class="settings-section-header">
-          <h3 class="settings-section-title">📦 Deployment &amp; Environment Configuration (.conf)</h3>
-          <p class="settings-section-sub">Export or import all CodeLens settings, themes, rules, and thresholds to a portable <code>codelens.conf</code> file for deployment migration.</p>
-        </div>
-        <div class="deployment-config-card">
-          <div class="deployment-config-actions">
-            <button id="btn-export-conf" class="btn-primary" title="Export all settings to codelens.conf file">
-              <span>📥</span> Export codelens.conf
-            </button>
-            <label class="btn-ghost file-upload-label" id="btn-import-conf-label" title="Import settings from a codelens.conf file">
-              <span>📤</span> Import codelens.conf
-              <input type="file" id="input-import-conf" accept=".conf,.properties,.txt" style="display:none;" />
-            </label>
-            <button id="btn-save-server-conf" class="btn-ghost" title="Save current settings to server's deployment file">
-              <span>💾</span> Save to Server
-            </button>
-          </div>
-          <div class="deployment-config-status" id="deployment-config-status">
-            <span class="status-dot"></span>
-            <span id="deployment-config-status-text">Server deployment file active (./codelens.conf)</span>
-          </div>
-        </div>
       </section>
 
       <!-- ── Footer ───────────────────────────────────────────────────── -->
@@ -1293,13 +1461,15 @@
   <div class="modal-dialog export-dialog">
     <div class="modal-header">
       <div class="modal-title-row">
-        <span class="modal-icon">📥</span>
+        <span class="modal-icon"><svg class="svg-icon icon-emerald icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></span>
         <div>
           <h2 id="export-modal-title">Codebase Reports &amp; Export Hub</h2>
           <p class="modal-subtitle">Generate and export comprehensive architecture, code quality, and inventory reports</p>
         </div>
       </div>
-      <button class="modal-close-btn" id="export-modal-close" aria-label="Close Export Hub">✕</button>
+      <button class="modal-close-btn" id="export-modal-close" aria-label="Close Export Hub">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body export-body">
 
@@ -1308,28 +1478,28 @@
         <label class="export-label">1. Select Report Type</label>
         <div class="export-type-grid">
           <div class="export-type-card active" data-report="architecture">
-            <div class="export-type-icon">🏛️</div>
+            <div class="export-type-icon"><svg class="svg-icon icon-cyan icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></div>
             <div class="export-type-meta">
               <div class="export-type-title">Architecture &amp; Coupling</div>
               <div class="export-type-desc">Coupling metrics ($Ca/Ce/I$), circular cycles, high blast-radius methods &amp; health score.</div>
             </div>
           </div>
           <div class="export-type-card" data-report="review">
-            <div class="export-type-icon">🛡️</div>
+            <div class="export-type-icon"><svg class="svg-icon icon-purple icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
             <div class="export-type-meta">
               <div class="export-type-title">Code Quality &amp; Security Audit</div>
               <div class="export-type-desc">Comprehensive review of 32 AST &amp; graph rules across all indexed classes with remediation notes.</div>
             </div>
           </div>
           <div class="export-type-card" data-report="metrics">
-            <div class="export-type-icon">📊</div>
+            <div class="export-type-icon"><svg class="svg-icon icon-emerald icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></div>
             <div class="export-type-meta">
               <div class="export-type-title">Codebase Inventory &amp; Metrics</div>
               <div class="export-type-desc">Full metrics breakdown of all classes, methods, fields, lines of code &amp; cyclomatic complexity.</div>
             </div>
           </div>
           <div class="export-type-card" data-report="html-snapshot">
-            <div class="export-type-icon">🌐</div>
+            <div class="export-type-icon"><svg class="svg-icon icon-blue icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
             <div class="export-type-meta">
               <div class="export-type-title">Interactive Graph Snapshot (Standalone)</div>
               <div class="export-type-desc">Self-contained offline HTML visualizer with interactive 2D graph, live physics, search, archetypes &amp; baked data.</div>
@@ -1364,12 +1534,18 @@
     </div>
     <div class="modal-footer export-footer">
       <div class="export-footer-left">
-        <span class="export-hint-text">💡 HTML reports are standalone with dark mode &amp; print styling for PDF generation.</span>
+        <span class="export-hint-text"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> HTML reports are standalone with dark mode &amp; print styling for PDF generation.</span>
       </div>
       <div class="export-footer-actions">
-        <button class="btn btn-ghost" id="btn-export-copy">📋 Copy to Clipboard</button>
-        <button class="btn btn-ghost" id="btn-export-open">↗ Open in Tab / Print</button>
-        <button class="btn btn-primary" id="btn-export-download">📥 Download Report</button>
+        <button class="btn btn-ghost" id="btn-export-copy">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> Copy to Clipboard
+        </button>
+        <button class="btn btn-ghost" id="btn-export-open">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Open in Tab / Print
+        </button>
+        <button class="btn btn-primary" id="btn-export-download">
+          <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Report
+        </button>
       </div>
     </div>
   </div>
@@ -1437,7 +1613,18 @@
      ═══════════════════════════════════════════════════════════════════════════ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Three.js Post-Processing Passes (r128 classic global build) -->
+<!-- Load order matters: shaders first, then passes that depend on them -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/VignetteShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script src="/icons.js"      defer></script>
 <script src="/classifier.js" defer></script>
 <script src="/graph.js"    defer></script>
 <script src="/dsm.js"      defer></script>

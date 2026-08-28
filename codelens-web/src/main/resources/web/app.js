@@ -498,12 +498,12 @@ function renderPackageTree(nodes, container, depth) {
 
     // Toggle arrow
     const toggle = createElement('span', { class: `tree-toggle${canExpand && isOpen ? ' open' : ''}` });
-    toggle.textContent = canExpand ? '▶' : '';
+    toggle.innerHTML = canExpand ? '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' : '';
     item.appendChild(toggle);
 
     // Icon with package color badge
-    const icon = createElement('span', { class: 'tree-icon', style: `color: ${pkgColor};` });
-    icon.textContent = '📦';
+    const icon = createElement('span', { class: 'tree-icon', style: `color: ${pkgColor}; display:inline-flex; align-items:center;` });
+    icon.innerHTML = '<svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>';
     item.appendChild(icon);
 
     // Label: show full FQN in flat mode, or leaf name in hierarchical mode
@@ -776,6 +776,7 @@ function openMacroStudio(level, granularity) {
   if (level) {
     loadWholeCodebaseGraph(level, granularity);
   }
+  requestAnimationFrame(() => triggerRelayout());
 }
 
 /** Close Macro Visualizer Studio and return to previous granular workspace tab. */
@@ -783,6 +784,7 @@ function closeMacroStudio() {
   document.body.classList.remove('macro-studio-mode');
   const targetTab = App.lastGranularTab || 'graph';
   switchTab(targetTab);
+  requestAnimationFrame(() => triggerRelayout());
 }
 
 /** Switch the active tab in the centre panel. */
@@ -795,6 +797,7 @@ function switchTab(tabName) {
   } else {
     document.body.classList.remove('macro-studio-mode');
   }
+  requestAnimationFrame(() => triggerRelayout());
 
   qsa('.tab').forEach(t => {
     const isActive = (t.dataset.tab === tabName);
@@ -832,11 +835,168 @@ function switchTab(tabName) {
       App.graph.resume();
     }
   }
-  if (tabName === 'source' && App.editor) {
-    setTimeout(() => {
-      App.editor.layout();
-    }, 20);
+  if (tabName === 'source') {
+    if (App.currentFilePath && (App._loadedSourceFilePath !== App.currentFilePath || (App.currentLineNum && App._loadedSourceLineNum !== App.currentLineNum) || !App._loadedSourceFilePath)) {
+      openSourceFile(App.currentFilePath, App.currentLineNum || null, true);
+    } else if (App.editor) {
+      setTimeout(() => {
+        App.editor.layout();
+      }, 20);
+    }
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Workspace Tabs - Drag & Drop Customization & Dynamic Shortcut Synchronization
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function restoreTabOrder() {
+  const tabBar = qs('.tab-bar');
+  if (!tabBar) return;
+  const spacer = tabBar.querySelector('.tab-bar-spacer');
+  
+  let savedOrder = null;
+  try {
+    const raw = localStorage.getItem('codelens_tab_order');
+    if (raw) savedOrder = JSON.parse(raw);
+  } catch (_) {}
+
+  if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+    const tabMap = new Map();
+    tabBar.querySelectorAll('.tab').forEach(t => {
+      if (t.dataset.tab) tabMap.set(t.dataset.tab, t);
+    });
+
+    savedOrder.forEach(tabName => {
+      const tabEl = tabMap.get(tabName);
+      if (tabEl && spacer) {
+        tabBar.insertBefore(tabEl, spacer);
+      }
+    });
+  }
+  updateTabTooltipsAndShortcuts();
+}
+
+function saveTabOrder() {
+  const tabBar = qs('.tab-bar');
+  if (!tabBar) return;
+  const order = [...tabBar.querySelectorAll('.tab')].map(t => t.dataset.tab).filter(Boolean);
+  try {
+    localStorage.setItem('codelens_tab_order', JSON.stringify(order));
+  } catch (_) {}
+  updateTabTooltipsAndShortcuts();
+}
+
+function updateTabTooltipsAndShortcuts() {
+  const tabBar = qs('.tab-bar');
+  if (!tabBar) return;
+  const tabs = [...tabBar.querySelectorAll('.tab')];
+  
+  const tabShortLabels = {
+    'graph': 'Graph',
+    'knowledge': 'KB',
+    'review': 'Review',
+    'git': 'Git',
+    'source': 'Source',
+    'codebase': 'Viz'
+  };
+
+  let footerHtml = '';
+
+  tabs.forEach((t, idx) => {
+    const num = idx + 1;
+    t.dataset.shortcut = num;
+    if (!t.getAttribute('data-base-title')) {
+      const curTitle = t.getAttribute('title') || '';
+      t.setAttribute('data-base-title', curTitle.replace(/\s*\(Shortcut:\s*\d+\)/, ''));
+    }
+    const base = t.getAttribute('data-base-title');
+    t.setAttribute('title', `${base} (Shortcut: ${num})`);
+
+    const tabKey = t.dataset.tab;
+    const shortLabel = tabShortLabels[tabKey] || base || tabKey;
+    footerHtml += `<span class="shortcut-tip"><kbd>${num}</kbd> ${shortLabel}</span>`;
+  });
+
+  const footerTabShortcuts = qs('#footer-tab-shortcuts');
+  if (footerTabShortcuts) {
+    footerTabShortcuts.innerHTML = footerHtml;
+  }
+}
+
+function initTabDragAndDrop() {
+  const tabBar = qs('.tab-bar');
+  if (!tabBar) return;
+
+  restoreTabOrder();
+
+  let draggedTab = null;
+
+  tabBar.querySelectorAll('.tab').forEach(tab => {
+    tab.setAttribute('draggable', 'true');
+
+    tab.addEventListener('dragstart', (e) => {
+      draggedTab = tab;
+      tab.classList.add('tab-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tab.dataset.tab || '');
+    });
+
+    tab.addEventListener('dragend', () => {
+      tab.classList.remove('tab-dragging');
+      tabBar.querySelectorAll('.tab').forEach(t => {
+        t.classList.remove('drag-over-left', 'drag-over-right');
+      });
+      draggedTab = null;
+      saveTabOrder();
+    });
+
+    tab.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!draggedTab || draggedTab === tab) return;
+
+      e.dataTransfer.dropEffect = 'move';
+      const rect = tab.getBoundingClientRect();
+      const midPoint = rect.left + rect.width / 2;
+      const isLeft = e.clientX < midPoint;
+
+      tabBar.querySelectorAll('.tab').forEach(t => {
+        if (t !== tab) t.classList.remove('drag-over-left', 'drag-over-right');
+      });
+
+      if (isLeft) {
+        tab.classList.add('drag-over-left');
+        tab.classList.remove('drag-over-right');
+      } else {
+        tab.classList.add('drag-over-right');
+        tab.classList.remove('drag-over-left');
+      }
+    });
+
+    tab.addEventListener('dragleave', (e) => {
+      if (!tab.contains(e.relatedTarget)) {
+        tab.classList.remove('drag-over-left', 'drag-over-right');
+      }
+    });
+
+    tab.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tab.classList.remove('drag-over-left', 'drag-over-right');
+      if (!draggedTab || draggedTab === tab) return;
+
+      const rect = tab.getBoundingClientRect();
+      const midPoint = rect.left + rect.width / 2;
+      const isLeft = e.clientX < midPoint;
+
+      if (isLeft) {
+        tabBar.insertBefore(draggedTab, tab);
+      } else {
+        tabBar.insertBefore(draggedTab, tab.nextSibling);
+      }
+
+      saveTabOrder();
+    });
+  });
 }
 
 /** Load Monaco Editor with offline / blocked tracking prevention fallback. */
@@ -923,10 +1083,13 @@ function renderFallbackViewer(content, lineNum) {
 }
 
 /** Fetch a source file, mount Monaco Editor (or fallback), load the code, and focus on the line. */
-async function openSourceFile(filePath, lineNum = null) {
+async function openSourceFile(filePath, lineNum = null, skipTabSwitch = false) {
   if (!filePath) return;
 
   App.currentFilePath = filePath;
+  App.currentLineNum = lineNum;
+  App._loadedSourceFilePath = filePath;
+  App._loadedSourceLineNum = lineNum;
   updateReviewTargetInfo();
   
   const pathLabel = qs('#editor-file-path');
@@ -939,7 +1102,9 @@ async function openSourceFile(filePath, lineNum = null) {
     const data = await api.readFile(filePath);
 
     // Switch to source tab
-    switchTab('source');
+    if (!skipTabSwitch) {
+      switchTab('source');
+    }
 
     // Hide placeholder/empty state and enable save
     const emptyState = qs('#editor-empty-state');
@@ -1083,18 +1248,30 @@ async function loadKnowledgeBase(pkgFqn) {
 let reviewMode = 'selection';
 
 const SEVERITY_META = {
-  CRITICAL: { icon: '🔴', label: 'Critical', cls: 'sev-critical' },
-  WARNING:  { icon: '🟠', label: 'Warning',  cls: 'sev-warning'  },
-  INFO:     { icon: '🔵', label: 'Info',      cls: 'sev-info'     }
+  CRITICAL: {
+    icon: '<svg class="svg-icon icon-red icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    label: 'Critical',
+    cls: 'sev-critical'
+  },
+  WARNING: {
+    icon: '<svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    label: 'Warning',
+    cls: 'sev-warning'
+  },
+  INFO: {
+    icon: '<svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    label: 'Info',
+    cls: 'sev-info'
+  }
 };
 
 const CATEGORY_META = {
-  CORRECTNESS:       { icon: '🔴', label: 'Correctness & Logic Defects' },
-  EXCEPTION_SAFETY:  { icon: '🟠', label: 'Exception & Resource Safety' },
-  THREAD_SAFETY:     { icon: '🟡', label: 'Thread Safety & Concurrency' },
-  CODE_SMELL:        { icon: '🔵', label: 'Code Smell & Maintainability' },
-  API_CONTRACT:      { icon: '🟣', label: 'API Contract & Design' },
-  IMPACT:            { icon: '⚪', label: 'Impact & Cross-Cutting' }
+  CORRECTNESS:      { icon: '<svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>', label: 'Correctness & Logic Defects' },
+  EXCEPTION_SAFETY: { icon: '<svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>', label: 'Exception & Resource Safety' },
+  THREAD_SAFETY:    { icon: '<svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>', label: 'Thread Safety & Concurrency' },
+  CODE_SMELL:       { icon: '<svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>', label: 'Code Smell & Maintainability' },
+  API_CONTRACT:     { icon: '<svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', label: 'API Contract & Design' },
+  IMPACT:           { icon: '<svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>', label: 'Impact & Cross-Cutting' }
 };
 
 function updateReviewTargetInfo() {
@@ -1104,7 +1281,7 @@ function updateReviewTargetInfo() {
 
   if (reviewMode === 'snippet') {
     if (snippetArea) snippetArea.style.display = 'block';
-    targetInfo.innerHTML = 'Paste your Java code above, then click <strong>⚡ Run Review</strong>.';
+    targetInfo.innerHTML = 'Paste your Java code above, then click <strong>Run Review</strong>.';
   } else {
     if (snippetArea) snippetArea.style.display = 'none';
     if (reviewMode === 'selection') {
@@ -1112,13 +1289,13 @@ function updateReviewTargetInfo() {
         const kindStr = App.selected.kind ? String(App.selected.kind).toUpperCase() : 'UNKNOWN';
         targetInfo.innerHTML = `Target: <strong>${esc(App.selected.id)}</strong> <span style="font-size:10px; color:var(--text-muted)">(${kindStr})</span>`;
       } else {
-        targetInfo.innerHTML = 'Select a class or method in the Explorer, then click <strong>⚡ Run Review</strong>.';
+        targetInfo.innerHTML = 'Select a class or method in the Explorer, then click <strong>Run Review</strong>.';
       }
     } else {
       if (App.currentFilePath) {
         targetInfo.innerHTML = `Target file: <strong>${esc(App.currentFilePath)}</strong>`;
       } else {
-        targetInfo.innerHTML = 'Open a file in the Source tab first, then click <strong>⚡ Run Review</strong>.';
+        targetInfo.innerHTML = 'Open a file in the Source tab first, then click <strong>Run Review</strong>.';
       }
     }
   }
@@ -1194,20 +1371,20 @@ async function runCodeReview() {
     if (findings.length > 0) {
       targetInfo.innerHTML = `Found <strong>${findings.length}</strong> findings.`;
     } else {
-      targetInfo.innerHTML = '✅ <strong>No issues found.</strong> Code looks good!';
+      targetInfo.innerHTML = '<span style="color:#10b981; display:inline-flex; align-items:center; gap:4px;"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> <strong>No issues found.</strong> Code looks good!</span>';
     }
   } catch (e) {
     resultsDiv.innerHTML = `<div class="list-empty">Review failed: ${esc(e.message)}</div>`;
   } finally {
     runBtn.disabled = false;
-    runBtn.innerHTML = '⚡ Run Review';
+    runBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Run Review';
   }
 }
 
 function renderReviewFindings(findings, container) {
   container.innerHTML = '';
   if (findings.length === 0) {
-    container.innerHTML = '<div class="review-empty"><span>✅</span><p>No issues detected. Clean code!</p></div>';
+    container.innerHTML = '<div class="review-empty"><svg class="svg-icon icon-emerald icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><p>No issues detected. Clean code!</p></div>';
     return;
   }
 
@@ -1221,7 +1398,7 @@ function renderReviewFindings(findings, container) {
 
   for (const cat of catOrder) {
     if (!grouped[cat] || grouped[cat].length === 0) continue;
-    const catMeta = CATEGORY_META[cat] || { icon: '❓', label: cat };
+    const catMeta = CATEGORY_META[cat] || { icon: '', label: cat };
 
     const section = createElement('div', { class: 'review-category-group' });
     section.innerHTML = `
@@ -1242,7 +1419,7 @@ function renderReviewFindings(findings, container) {
         </div>
         <div class="finding-entity">${esc(shortFqn(f.entityFqn))}</div>
         <div class="finding-message">${esc(f.message)}</div>
-        <div class="finding-suggestion">💡 ${esc(f.suggestion)}</div>
+        <div class="finding-suggestion"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> ${esc(f.suggestion)}</div>
         ${f.sourceSnippet ? `<pre class="finding-snippet">${esc(f.sourceSnippet)}</pre>` : ''}`;
 
       // Click to navigate to the entity
@@ -1269,6 +1446,10 @@ async function selectType(id) {
   try {
     const data = await api.type(id);
     App.selected = { kind: 'type', id, data };
+    if (data.type && data.type.sourceFile) {
+      App.currentFilePath = data.type.sourceFile;
+      App.currentLineNum = data.type.startLine || 1;
+    }
     renderTypeDetail(data);
     renderKnowledgeBaseForType(data);
     updateReviewTargetInfo();
@@ -1284,6 +1465,13 @@ async function selectMethod(id) {
   try {
     const data = await api.method(id);
     App.selected = { kind: 'method', id, data };
+    if (data.method && data.method.sourceFile) {
+      App.currentFilePath = data.method.sourceFile;
+      App.currentLineNum = data.method.startLine || 1;
+    } else if (data.type && data.type.sourceFile) {
+      App.currentFilePath = data.type.sourceFile;
+      App.currentLineNum = (data.method && data.method.startLine) || (data.type && data.type.startLine) || 1;
+    }
     renderMethodDetail(data);
     updateReviewTargetInfo();
     switchTab('graph');
@@ -1299,6 +1487,13 @@ async function selectField(id) {
   try {
     const data = await api.field(id);
     App.selected = { kind: 'field', id, data };
+    if (data.field && data.field.sourceFile) {
+      App.currentFilePath = data.field.sourceFile;
+      App.currentLineNum = data.field.startLine || 1;
+    } else if (data.type && data.type.sourceFile) {
+      App.currentFilePath = data.type.sourceFile;
+      App.currentLineNum = (data.field && data.field.startLine) || (data.type && data.type.startLine) || 1;
+    }
     renderFieldDetail(data);
     updateReviewTargetInfo();
     switchTab('graph');
@@ -1420,8 +1615,14 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
   if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
 
-  // Toggle brightness slider visibility (only for 3D modes)
+  // Toggle Call Arcs filter button in Codebase HUD (visible for 3D modes: 3D City & 3D Galaxy)
   const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
+  const arcsCtrl = qs('#codebase-arcs-controls');
+  const arcsDiv = qs('#codebase-arcs-divider');
+  if (arcsCtrl) arcsCtrl.style.display = is3D ? 'block' : 'none';
+  if (arcsDiv) arcsDiv.style.display = is3D ? '' : 'none';
+
+  // Toggle brightness slider visibility (only for 3D modes)
   const brightnessCtrl = qs('#codebase-brightness-controls');
   const brightnessDiv = qs('#codebase-brightness-divider');
   if (brightnessCtrl) brightnessCtrl.style.display = is3D ? 'flex' : 'none';
@@ -1431,6 +1632,10 @@ async function loadWholeCodebaseGraph(level, granularity) {
   const canvasToolbar = qs('#codebase-canvas-toolbar');
   const hasBottomControls = (supportsGranularity || showPojoFilter || is3D);
   if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
+
+  // Toggle 2D minimap for codebase visualizer
+  const cbMinimap = qs('#codebase-minimap-wrap');
+  if (cbMinimap) cbMinimap.style.display = (effectiveLevel === 'graph2d' && (!App.settings || App.settings.showMinimap !== false)) ? '' : 'none';
 
   // Fast Resume: If current renderer matches effective level, granularity and cache revision, resume in 0ms!
   if (App.activeAltRenderer &&
@@ -1499,8 +1704,11 @@ async function loadWholeCodebaseGraph(level, granularity) {
           return;
         }
 
+        if (cbMinimap) cbMinimap.style.display = (!App.settings || App.settings.showMinimap !== false) ? '' : 'none';
+
         const tooltip = qs('#codebase-tooltip') || qs('#graph-tooltip');
         const fg = new window.ForceGraph(mountContainer, tooltip);
+        if (App.settings) fg.applySettings(App.settings);
         fg.setData(data.nodes, data.edges);
 
         fg.onNodeClick = async (node) => {
@@ -1527,6 +1735,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
         App.activeAltRenderer = fg;
         renderAltVizInspector(`2D Bloom (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
+        renderCodebaseLegend(data.nodes);
         showBanner(`2D Blooming Tree loaded: ${data.nodes.length} nodes, ${data.edges.length} connections`);
 
       } else if (effectiveLevel === 'treemap') {
@@ -1760,9 +1969,13 @@ function renderCodebaseLegend(nodesOrTreeData) {
     const displayLabel = formatPackageDisplayName(pkg);
     const safePkgId = 'pkg-' + idx;
 
+    const isMethodsView = (App.codebaseGranularity === 'methods');
+
     const classesHtml = Array.from(classMap.entries()).map(([clsName, meta]) => {
-      const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
-        ? window.CodeLensPalette.getClassColor(meta.fqn || clsName, 'CLASS')
+      const classColor = isMethodsView
+        ? ((window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+            ? window.CodeLensPalette.getClassColor(meta.fqn || clsName, 'CLASS')
+            : color)
         : color;
 
       let archBadgeHtml = '';
@@ -1785,7 +1998,7 @@ function renderCodebaseLegend(nodesOrTreeData) {
     return `
       <div class="legend-pkg-wrap" data-pkg="${pkg}">
         <div class="legend-pkg-row" data-pkg="${pkg}">
-          <span class="legend-chevron" data-target="${safePkgId}" title="Expand / collapse classes">▶</span>
+          <span class="legend-chevron" data-target="${safePkgId}" title="Expand / collapse classes"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
           <div class="legend-dot" style="background:${color}"></div>
           <span class="legend-label" title="${pkg}">${displayLabel}</span>
           <span class="legend-count">${totalCount}</span>
@@ -1821,20 +2034,40 @@ function renderCodebaseLegend(nodesOrTreeData) {
       }
       if (App.activeAltRenderer && typeof App.activeAltRenderer.togglePackage === 'function') {
         App.activeAltRenderer.togglePackage(pkg, !isDimmed);
+      } else if (App.graph && typeof App.graph.togglePackage === 'function') {
+        App.graph.togglePackage(pkg, !isDimmed);
+      }
+      if (App.graph && typeof App.graph._requestRender === 'function') {
+        App.graph._requestRender();
       }
     };
   });
 
-  // Wire class item toggle
+  // Wire class item toggle (sub-legend click)
   legendList.querySelectorAll('.legend-class-item').forEach(item => {
     item.onclick = (e) => {
       e.stopPropagation();
       const clsName = item.dataset.class;
       const fqn = item.dataset.fqn;
+      const pkg = item.dataset.pkg;
       item.classList.toggle('dimmed');
       const isDimmed = item.classList.contains('dimmed');
-      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleEntity === 'function') {
-        App.activeAltRenderer.toggleEntity(clsName, !isDimmed);
+
+      if (App.activeAltRenderer) {
+        if (typeof App.activeAltRenderer.toggleEntity === 'function') {
+          App.activeAltRenderer.toggleEntity(clsName, !isDimmed, fqn, pkg);
+        } else if (typeof App.activeAltRenderer.toggleNode === 'function') {
+          App.activeAltRenderer.toggleNode(clsName, !isDimmed, fqn);
+        }
+      } else if (App.graph) {
+        if (typeof App.graph.toggleEntity === 'function') {
+          App.graph.toggleEntity(clsName, !isDimmed, fqn, pkg);
+        } else if (typeof App.graph.toggleNode === 'function') {
+          App.graph.toggleNode(clsName, !isDimmed, fqn);
+        }
+      }
+      if (App.graph && typeof App.graph._requestRender === 'function') {
+        App.graph._requestRender();
       }
     };
   });
@@ -1911,7 +2144,7 @@ function renderDSMCellInspector(info) {
       </div>
 
       <div style="text-align:center; color:${info.isCycle ? '#f87171' : 'var(--primary)'}; font-weight:700; font-size:12px; font-family:var(--font-mono); padding: 6px; background:var(--bg-base); border-radius:4px; border: 1px solid ${info.isCycle ? 'rgba(239,68,68,0.3)' : 'var(--border)'};">
-        ${info.isCycle ? '⚠️ CIRCULAR FEEDBACK' : '⬇ CALLS'} (${info.weight} call${info.weight > 1 ? 's' : ''})
+        ${info.isCycle ? '<span style="display:inline-flex; align-items:center; gap:4px;"><svg class="svg-icon icon-red icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> CIRCULAR FEEDBACK</span>' : 'CALLS'} (${info.weight} call${info.weight > 1 ? 's' : ''})
       </div>
 
       <div style="display:flex; align-items:center; justify-content:space-between;">
@@ -2517,8 +2750,8 @@ function renderFieldDetail(data) {
 
 
   body.appendChild(actionRow([
-    { label: '⚡ Impact (Direct)', title: 'Show direct readers, writers, and immediate propagators of this field', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
-    { label: '🔗 Propagation Chain', title: 'Trace multi-hop upstream triggers and calling entrypoints that modify this field', action: () => { switchTab('graph'); loadFieldPropagationChain(field.id); } },
+    { label: 'Impact (Direct)', title: 'Show direct readers, writers, and immediate propagators of this field', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
+    { label: 'Propagation Chain', title: 'Trace multi-hop upstream triggers and calling entrypoints that modify this field', action: () => { switchTab('graph'); loadFieldPropagationChain(field.id); } },
   ]));
 
   renderNotes(field.fqn, notes);
@@ -2591,7 +2824,7 @@ function renderNoteCards(notes, container, entityFqn) {
     card.innerHTML = `
       <div class="note-content">${esc(note.content)}</div>
       <div class="note-date">${formatDate(note.createdAt)}</div>
-      <button class="note-delete" title="Delete note">✕</button>`;
+      <button class="note-delete" title="Delete note"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
 
     card.querySelector('.note-delete').addEventListener('click', async () => {
       if (!confirm('Delete this note?')) return;
@@ -2735,11 +2968,13 @@ function bindKeyboard() {
     }
     // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
-      if (e.key === '1') switchTab('graph');
-      if (e.key === '2') switchTab('knowledge');
-      if (e.key === '3') switchTab('review');
-      if (e.key === '4') switchTab('git');
-      if (e.key === '5') switchTab('source');
+      if (['1','2','3','4','5'].includes(e.key)) {
+        const tabs = [...qsa('.tab-bar .tab')];
+        const idx = parseInt(e.key, 10) - 1;
+        if (tabs[idx] && tabs[idx].dataset.tab) {
+          switchTab(tabs[idx].dataset.tab);
+        }
+      }
       if (e.key === 'm' || e.key === 'M') {
         if (document.body.classList.contains('macro-studio-mode')) {
           closeMacroStudio();
@@ -2811,7 +3046,7 @@ async function init() {
     saveSettings(s);
     applyAllSettings(s);
     syncSettingsUI(s);
-    showBanner(`Theme switched to ${newTheme === 'light' ? '☀️ Light (Pure Daylight)' : '🌑 Dark (Midnight Obsidian)'}`);
+    showBanner(`Theme switched to ${newTheme === 'light' ? 'Light (Pure Daylight)' : 'Dark (Midnight Obsidian)'}`);
   });
 
   const browseBtn = qs('#browse-btn');
@@ -2829,7 +3064,7 @@ async function init() {
         if (input && (!input.value || input.value.trim() === '')) {
           input.value = rootDir;
         }
-        showBanner(`✓ Folder selected: "${rootDir}" (${e.target.files.length} files detected). Please confirm the full absolute path in the scan bar and click Scan.`);
+        showBanner(`Folder selected: "${rootDir}" (${e.target.files.length} files detected). Please confirm the full absolute path in the scan bar and click Scan.`);
       }
     });
   }
@@ -2944,7 +3179,8 @@ async function init() {
     }
   });
 
-  // Tab bar
+  // Tab bar click & Drag-and-Drop Reordering
+  initTabDragAndDrop();
   qsa('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       switchTab(tab.dataset.tab);
@@ -2970,7 +3206,7 @@ async function init() {
       try {
         const content = App.editor.getValue();
         await api.writeFile(App.currentFilePath, content);
-        showBanner('✓ File saved successfully');
+        showBanner('File saved successfully');
       } catch (e) {
         showError('Failed to save file: ' + e.message);
       } finally {
@@ -3124,6 +3360,17 @@ async function init() {
     });
   }
 
+  // Codebase Call Arcs Filter button
+  const codebaseArcsBtn = qs('#btn-codebase-filter-arcs');
+  if (codebaseArcsBtn) {
+    codebaseArcsBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleArcs === 'function') {
+        const isShown = App.activeAltRenderer.toggleArcs();
+        codebaseArcsBtn.classList.toggle('active', isShown);
+      }
+    });
+  }
+
   // Codebase Legend close button
   const codebaseLegendCloseBtn = qs('#btn-codebase-legend-close');
   if (codebaseLegendCloseBtn) {
@@ -3200,11 +3447,11 @@ function updateGitValidationBadge(info) {
   if (info.idle) {
     badge.innerHTML = '<span class="git-status-dot idle"></span><span class="git-status-text">Not validated</span>';
   } else if (info.valid) {
-    badge.innerHTML = `<span class="git-status-dot valid"></span><span class="git-status-text">✓ Valid (${esc(info.branch || 'HEAD')})</span>`;
+    badge.innerHTML = `<span class="git-status-dot valid"></span><span class="git-status-text">Valid (${esc(info.branch || 'HEAD')})</span>`;
   } else if (info.running) {
     badge.innerHTML = '<span class="git-status-dot running"></span><span class="git-status-text">Analyzing…</span>';
   } else {
-    badge.innerHTML = `<span class="git-status-dot invalid"></span><span class="git-status-text" title="${esc(info.error || '')}">✗ ${esc(info.error || 'Invalid repository')}</span>`;
+    badge.innerHTML = `<span class="git-status-dot invalid"></span><span class="git-status-text" title="${esc(info.error || '')}">Invalid repository</span>`;
   }
 }
 
@@ -3238,7 +3485,7 @@ async function validateGitRepoPath() {
   } finally {
     if (validateBtn) {
       validateBtn.disabled = false;
-      validateBtn.textContent = '✓ Validate Repo';
+      validateBtn.textContent = 'Validate Repo';
     }
   }
 }
@@ -3272,7 +3519,7 @@ async function startGitAnalysis() {
     showError('Git analysis failed to start: ' + e.message);
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
-      analyzeBtn.innerHTML = '⚡ Analyze Git History';
+      analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze Git History';
     }
   }
 }
@@ -3323,7 +3570,7 @@ function pollGitAnalysisStatus() {
         if (textMsg) textMsg.textContent = `Failed: ${status.errorDetail || 'Unknown error'}`;
         if (analyzeBtn) {
           analyzeBtn.disabled = false;
-          analyzeBtn.innerHTML = '⚡ Analyze Git History';
+          analyzeBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze Git History';
         }
       }
     } catch (_) {}
@@ -3422,7 +3669,8 @@ function renderEntityHeader(kind, name, fqn) {
       ? window.CodeLensClassifier.classifyMethod(name, fqn)
       : window.CodeLensClassifier.classifyType(name, fqn);
     if (arch) {
-      archBadge = `<span class="archetype-badge" style="background:${arch.color}22; border:1px solid ${arch.color}; color:${arch.color}; margin-left:6px; font-weight:700; font-size:11px;" title="${esc(arch.description)}">${arch.icon} ${esc(arch.label)} (${esc(arch.badge)})</span>`;
+      const iconSvg = window.Icons ? window.Icons.get(arch.icon || 'tag', { size: 'xs' }) : '';
+      archBadge = `<span class="archetype-badge" style="background:${arch.color}22; border:1px solid ${arch.color}; color:${arch.color}; margin-left:6px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${esc(arch.description)}">${iconSvg} <span>${esc(arch.label)} (${esc(arch.badge)})</span></span>`;
     }
   }
 
@@ -3434,16 +3682,16 @@ function renderEntityHeader(kind, name, fqn) {
     <div class="entity-name">${esc(name)}</div>
     <div class="entity-fqn" title="Click to copy fully qualified name" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
       <span>${esc(fqn)}</span>
-      <span class="copy-hint-icon" style="opacity:0.6;font-size:11px;" title="Copy to clipboard">📋</span>
+      <span class="copy-hint-icon" style="opacity:0.6; display:inline-flex; align-items:center;" title="Copy to clipboard"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>
     </div>`;
   header.style.display = '';
   const fqnEl = header.querySelector('.entity-fqn');
   if (fqnEl) {
     fqnEl.onclick = () => {
       navigator.clipboard.writeText(fqn).then(() => {
-        showBanner(`✓ Copied ${kind}: ${name}`);
+        showBanner(`Copied ${kind}: ${name}`);
       }).catch(() => {
-        showBanner(`✓ Copied ${fqn}`);
+        showBanner(`Copied ${fqn}`);
       });
     };
   }
@@ -3524,33 +3772,65 @@ function setLoading() {
     </div>`;
 }
 
-/** Show a brief success banner at the bottom of the screen. */
-function showBanner(msg) {
-  const el = createElement('div', { class: 'banner-toast' });
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => {
-    el.classList.add('fade-out');
-    setTimeout(() => el.remove(), 400);
-  }, 3500);
+/* ── Toast notification queue ──────────────────────────────── */
+
+/** Lazily create / return the single toast container element. */
+function _getToastContainer() {
+  let el = document.getElementById('toast-container');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast-container';
+    document.body.appendChild(el);
+  }
+  return el;
 }
+
+/**
+ * Show a queued toast notification.
+ * @param {string} msg   — the message to display
+ * @param {'success'|'error'|'info'|'warning'} type — visual variant
+ * @param {number}  duration — auto-dismiss delay in ms (default 3500)
+ */
+function showToast(msg, type = 'success', duration = 3500) {
+  const container = _getToastContainer();
+
+  // Icon SVGs per type
+  const icons = {
+    success: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  };
+
+  const toast = document.createElement('div');
+  toast.className = `toast-item toast-${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${msg}</span>`;
+  container.appendChild(toast);
+
+  // Auto-dismiss
+  const dismiss = () => {
+    toast.classList.add('toast-exit');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  };
+  const timer = setTimeout(dismiss, duration);
+
+  // Click to dismiss early
+  toast.style.pointerEvents = 'auto';
+  toast.style.cursor = 'pointer';
+  toast.addEventListener('click', () => { clearTimeout(timer); dismiss(); }, { once: true });
+}
+
+/** Show a brief success banner (queued). */
+function showBanner(msg) { showToast(msg, 'success', 3500); }
+
+/** Show a temporary error toast (queued). */
+function showError(msg)  { showToast(msg, 'error',   4500); }
 
 /** Flash a red border on an input briefly. */
 function flashInput(el) {
   el.style.borderColor = 'var(--red)';
   el.focus();
   setTimeout(() => { el.style.borderColor = ''; }, 1200);
-}
-
-/** Show a temporary error toast. */
-function showError(msg) {
-  const el = createElement('div', { class: 'error-toast' });
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => {
-    el.classList.add('fade-out');
-    setTimeout(() => el.remove(), 400);
-  }, 4000);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3942,6 +4222,14 @@ function triggerRelayout() {
   if (App.graph && typeof App.graph._resize === 'function') {
     App.graph._resize();
   }
+  if (App.activeAltRenderer) {
+    if (typeof App.activeAltRenderer._onResize === 'function') {
+      App.activeAltRenderer._onResize();
+    } else if (typeof App.activeAltRenderer.resize === 'function') {
+      App.activeAltRenderer.resize();
+    }
+  }
+  window.dispatchEvent(new Event('resize'));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3950,7 +4238,7 @@ function triggerRelayout() {
 
 const THEMES = {
   dark: {
-    label: 'Dark', icon: '🌑', tagline: 'OLED Obsidian. True black canvas & crisp mint emerald contrast.',
+    label: 'Dark', icon: 'moon', tagline: 'OLED Obsidian. True black canvas & crisp mint emerald contrast.',
     css: {
       '--bg-base': '#000000', '--bg-panel': '#0a0d12', '--bg-surface': '#12161f',
       '--bg-elevated': '#181e28', '--bg-modal': '#0a0d12', '--bg-glass': 'rgba(10,13,18,0.88)',
@@ -3983,7 +4271,7 @@ const THEMES = {
     preview: ['#000000','#0a0d12','#10b981','#34d399','#f59e0b'],
   },
   light: {
-    label: 'Light', icon: '☀️', tagline: 'Pure Daylight. Crisp emerald contrast, ultra-readable typography.',
+    label: 'Light', icon: 'sun', tagline: 'Pure Daylight. Crisp emerald contrast, ultra-readable typography.',
     css: {
       '--bg-base': '#f1f5f9', '--bg-panel': '#ffffff', '--bg-surface': '#f8fafc',
       '--bg-elevated': '#e2e8f0', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(241,245,249,0.95)',
@@ -4070,7 +4358,15 @@ function applyTheme(themeKey) {
   // Update top-bar theme toggle button
   const toggleIcon = qs('#theme-toggle-icon');
   const toggleLabel = qs('#theme-toggle-label');
-  if (toggleIcon) toggleIcon.textContent = isLight ? '🌙' : '☀️';
+  if (toggleIcon) {
+    if (window.Icons) {
+      toggleIcon.innerHTML = isLight ? window.Icons.get('moon', { color: 'purple' }) : window.Icons.get('sun', { color: 'amber' });
+    } else {
+      toggleIcon.innerHTML = isLight
+        ? '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+        : '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+    }
+  }
   if (toggleLabel) toggleLabel.textContent = isLight ? 'Dark' : 'Light';
 
   // Apply graph canvas theme
@@ -4164,37 +4460,86 @@ function syncSettingsUI(settings) {
   renderArchetypeRulesList();
 }
 
+function updateFormLivePreview() {
+  const previewEl = qs('#rule-form-live-preview');
+  if (!previewEl) return;
+  const label = qs('#rule-form-label')?.value.trim() || 'New Archetype';
+  const badge = qs('#rule-form-badge')?.value.trim() || label;
+  const color = qs('#rule-form-color')?.value.trim() || '#10b981';
+  const iconKey = qs('#rule-form-icon')?.value.trim() || 'tag';
+  const iconSvg = window.Icons ? window.Icons.get(iconKey, { size: 'xs' }) : '';
+  previewEl.innerHTML = `
+    <span class="archetype-badge-pill preview-badge" style="background:${color}20; color:${color}; border:1px solid ${color}55;">
+      ${iconSvg}
+      <span class="archetype-badge-tag">${esc(badge)}</span>
+    </span>
+  `;
+}
+
 function renderArchetypeRulesList() {
   const container = qs('#archetype-rules-list');
   if (!container || !window.CodeLensClassifier) return;
 
   const rules = window.CodeLensClassifier.getRules();
+  const countBadge = qs('#archetype-count-badge');
+  const activeCount = rules.filter(r => r.enabled).length;
+  if (countBadge) {
+    countBadge.textContent = `${activeCount} / ${rules.length} active`;
+    countBadge.className = `archetype-count-badge ${activeCount > 0 ? 'active' : 'empty'}`;
+  }
+
   if (rules.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted); font-size:12px; padding:8px 0;">No archetype rules defined. Click "+ Add Rule" or choose a Preset above.</div>';
+    container.innerHTML = `
+      <div class="archetype-empty-state">
+        <svg class="svg-icon icon-slate icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>
+        <p class="archetype-empty-title">No Archetype Rules Configured</p>
+        <p class="archetype-empty-sub">Choose a preset above (Banking, Spring REST, Clean Arch) or click "+ Add Archetype" to create custom rules.</p>
+      </div>`;
     return;
   }
 
-  container.innerHTML = rules.map(r => `
-    <div class="archetype-rule-item ${r.enabled ? '' : 'disabled'}" data-id="${r.id}">
-      <div class="archetype-rule-left">
-        <label class="toggle-switch" title="${r.enabled ? 'Disable rule' : 'Enable rule'}" style="flex-shrink:0;">
-          <input type="checkbox" class="rule-toggle" data-id="${r.id}" ${r.enabled ? 'checked' : ''}>
-          <span class="slider"></span>
-        </label>
-        <span class="archetype-rule-badge" style="background:${r.color}22; color:${r.color}; border:1px solid ${r.color}66;">
-          ${r.icon || '◈'} ${r.badge || r.label}
-        </span>
-        <div class="archetype-rule-info">
-          <span class="archetype-rule-name">${esc(r.label)}</span>
-          <span class="archetype-rule-pattern"><code>${esc(r.pattern)}</code> <span class="archetype-rule-scope">(${r.scope || 'METHOD'})</span></span>
+  container.innerHTML = rules.map(r => {
+    const color = r.color || '#10b981';
+    const scope = (r.scope || r.target || 'METHOD').toUpperCase();
+    const matchType = (r.matchType || 'PREFIX').toUpperCase();
+    const iconSvg = window.Icons ? window.Icons.get(r.icon || 'tag', { size: 'xs' }) : '';
+
+    return `
+      <div class="archetype-card ${r.enabled ? 'is-active' : 'is-disabled'}" data-id="${r.id}" style="border-left-color:${color};">
+        <div class="archetype-card-toggle">
+          <label class="toggle-switch" title="${r.enabled ? 'Disable rule' : 'Enable rule'}">
+            <input type="checkbox" class="rule-toggle" data-id="${r.id}" ${r.enabled ? 'checked' : ''}>
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="archetype-card-badge-wrap">
+          <span class="archetype-badge-pill" style="background:${color}1f; color:${color}; border-color:${color}55;">
+            ${iconSvg}
+            <span class="archetype-badge-tag">${esc(r.badge || r.label)}</span>
+          </span>
+        </div>
+        <div class="archetype-card-body">
+          <div class="archetype-card-header-row">
+            <span class="archetype-card-title">${esc(r.label)}</span>
+            <span class="archetype-scope-chip scope-${scope.toLowerCase()}">${scope}</span>
+            <span class="archetype-match-chip">${matchType}</span>
+          </div>
+          <div class="archetype-card-sub-row">
+            <code class="archetype-pattern-code" title="Pattern: ${esc(r.pattern)}">${esc(r.pattern)}</code>
+            ${r.description ? `<span class="archetype-card-desc" title="${esc(r.description)}">${esc(r.description)}</span>` : ''}
+          </div>
+        </div>
+        <div class="archetype-card-actions">
+          <button class="rule-action-btn rule-btn-edit" data-id="${r.id}" title="Edit Archetype">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </button>
+          <button class="rule-action-btn rule-btn-delete" data-id="${r.id}" title="Delete Archetype">
+            <svg class="svg-icon icon-xs icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
         </div>
       </div>
-      <div class="archetype-rule-actions">
-        <button class="rule-btn rule-btn-edit" data-id="${r.id}" title="Edit Rule">✏️</button>
-        <button class="rule-btn rule-btn-delete" data-id="${r.id}" title="Delete Rule">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   // Wire rule toggles
   container.querySelectorAll('.rule-toggle').forEach(chk => {
@@ -4215,7 +4560,7 @@ function renderArchetypeRulesList() {
       const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Edit Archetype Rule';
       const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = rule.label || '';
       const badgeEl = qs('#rule-form-badge'); if (badgeEl) badgeEl.value = rule.badge || '';
-      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = rule.icon || '⚡';
+      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = rule.icon || 'tag';
       const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = rule.color || '#3b82f6';
       const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = rule.color || '#3b82f6';
       const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = rule.scope || rule.target || 'METHOD';
@@ -4224,6 +4569,7 @@ function renderArchetypeRulesList() {
       const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = rule.description || '';
       const form = qs('#archetype-rule-form-wrap');
       if (form) form.style.display = 'block';
+      updateFormLivePreview();
     };
   });
 
@@ -4267,7 +4613,7 @@ function initSettings() {
   const settings = loadSettings();
   applyAllSettings(settings);
 
-  // Wire ⚙ button
+  // Wire settings button
   const settingsBtn = qs('#settings-btn');
   if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
 
@@ -4425,6 +4771,17 @@ function initSettings() {
     });
   }
 
+  const btnPresetDdd = qs('#btn-preset-ddd');
+  if (btnPresetDdd) {
+    btnPresetDdd.addEventListener('click', () => {
+      if (window.CodeLensClassifier) {
+        window.CodeLensClassifier.loadPreset('ddd');
+        renderArchetypeRulesList();
+        showBanner('Loaded Domain-Driven Design / Clean Architecture archetypes');
+      }
+    });
+  }
+
   const btnResetArchetypes = qs('#btn-reset-archetype-rules');
   if (btnResetArchetypes) {
     btnResetArchetypes.addEventListener('click', () => {
@@ -4445,7 +4802,7 @@ function initSettings() {
       const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Add Archetype Rule';
       const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = '';
       const badgeEl = qs('#rule-form-badge'); if (badgeEl) badgeEl.value = '';
-      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = '⚡';
+      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = 'tag';
       const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = '#10b981';
       const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = '#10b981';
       const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = 'METHOD';
@@ -4453,6 +4810,7 @@ function initSettings() {
       const patternEl = qs('#rule-form-pattern'); if (patternEl) patternEl.value = '{MODULE}';
       const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = '';
       formWrap.style.display = 'block';
+      updateFormLivePreview();
     });
   }
 
@@ -4473,9 +4831,21 @@ function initSettings() {
   const colorInput = qs('#rule-form-color');
   const colorTextInput = qs('#rule-form-color-text');
   if (colorInput && colorTextInput) {
-    colorInput.addEventListener('input', () => { colorTextInput.value = colorInput.value; });
-    colorTextInput.addEventListener('input', () => { colorInput.value = colorTextInput.value; });
+    colorInput.addEventListener('input', () => {
+      colorTextInput.value = colorInput.value;
+      updateFormLivePreview();
+    });
+    colorTextInput.addEventListener('input', () => {
+      colorInput.value = colorTextInput.value;
+      updateFormLivePreview();
+    });
   }
+
+  ['#rule-form-label', '#rule-form-badge', '#rule-form-icon'].forEach(sel => {
+    const el = qs(sel);
+    if (el) el.addEventListener('input', updateFormLivePreview);
+    if (el) el.addEventListener('change', updateFormLivePreview);
+  });
 
   const btnSaveRule = qs('#btn-save-archetype-rule');
   if (btnSaveRule && formWrap) {
@@ -4484,7 +4854,7 @@ function initSettings() {
       const id = idEl ? idEl.value.trim() : '';
       const label = qs('#rule-form-label') ? qs('#rule-form-label').value.trim() : '';
       const badge = qs('#rule-form-badge') ? qs('#rule-form-badge').value.trim() : '';
-      const icon = qs('#rule-form-icon') ? qs('#rule-form-icon').value.trim() || '⚡' : '⚡';
+      const icon = qs('#rule-form-icon') ? qs('#rule-form-icon').value.trim() || 'tag' : 'tag';
       const color = qs('#rule-form-color') ? qs('#rule-form-color').value.trim() || '#10b981' : '#10b981';
       const targetEl = qs('#rule-form-target') || qs('#rule-form-scope');
       const scope = targetEl ? targetEl.value : 'METHOD';
@@ -4573,6 +4943,7 @@ function buildFullConfigObject() {
     pojoIncludeStandardAccessors: pojoCfg.includeStandardAccessors !== false,
     pojoCustomPatterns: Array.isArray(pojoCfg.customPatterns) ? pojoCfg.customPatterns.join(', ') : (pojoCfg.customPatterns || 'get*, set*, is*, has*, with*'),
     archetypeRulesJson: JSON.stringify(rules),
+    tabOrder: JSON.parse(localStorage.getItem('codelens_tab_order') || '["graph","knowledge","review","git","source"]'),
   };
 }
 
@@ -4589,7 +4960,7 @@ async function exportDeploymentConf() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      showBanner('✓ Exported codelens.conf deployment file');
+      showBanner('Exported codelens.conf deployment file');
       return;
     }
   } catch (_) {}
@@ -4611,7 +4982,7 @@ async function exportDeploymentConf() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  showBanner('✓ Exported codelens.conf');
+  showBanner('Exported codelens.conf');
 }
 
 async function importDeploymentConf(file) {
@@ -4635,7 +5006,7 @@ async function importDeploymentConf(file) {
 
     applyImportedConfig(configData || parseClientConf(text));
     if (statusEl) statusEl.textContent = 'Active: Imported from ' + file.name;
-    showBanner('✓ Settings imported and restored from ' + file.name);
+    showBanner('Settings imported and restored from ' + file.name);
   } catch (e) {
     if (statusEl) statusEl.textContent = 'Failed to import: ' + e.message;
     showError('Failed to import configuration: ' + e.message);
@@ -4700,6 +5071,19 @@ function applyImportedConfig(cfg) {
     }
   }
 
+  // Tab Order
+  if (cfg.tabOrder || cfg['ui.tabOrder']) {
+    try {
+      const order = typeof (cfg.tabOrder || cfg['ui.tabOrder']) === 'string'
+        ? JSON.parse(cfg.tabOrder || cfg['ui.tabOrder'])
+        : (cfg.tabOrder || cfg['ui.tabOrder']);
+      if (Array.isArray(order) && order.length > 0) {
+        localStorage.setItem('codelens_tab_order', JSON.stringify(order));
+        restoreTabOrder();
+      }
+    } catch (_) {}
+  }
+
   // Scan path
   const scanPath = cfg.defaultScanPath || cfg['scan.defaultPath'];
   if (scanPath && qs('#scan-path-input')) {
@@ -4722,8 +5106,8 @@ async function saveDeploymentConfToServer() {
     });
 
     if (res.ok) {
-      if (statusEl) statusEl.textContent = '✓ Successfully saved to server (./codelens.conf)';
-      showBanner('✓ Saved deployment configuration to server');
+      if (statusEl) statusEl.textContent = 'Successfully saved to server (./codelens.conf)';
+      showBanner('Saved deployment configuration to server');
     } else {
       const err = await res.json();
       throw new Error(err.error || 'Server returned error');
@@ -4880,7 +5264,7 @@ const ExportHub = {
         if (a.parentNode) document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
       }, 300);
-      showBanner(`✓ Downloaded ${filename}`);
+      showBanner(`Downloaded ${filename}`);
     } catch (err) {
       const url = isSnapshot ? '/api/reports/download?type=html-snapshot' : `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
       const a = document.createElement('a');
@@ -4900,9 +5284,9 @@ const ExportHub = {
     navigator.clipboard.writeText(ExportHub.cachedContent).then(() => {
       const copyBtn = qs('#btn-export-copy');
       if (copyBtn) {
-        const orig = copyBtn.textContent;
-        copyBtn.textContent = '✔ Copied!';
-        setTimeout(() => { copyBtn.textContent = orig; }, 2000);
+        const orig = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+        setTimeout(() => { copyBtn.innerHTML = orig; }, 2000);
       }
       showBanner('Report copied to clipboard!');
     }).catch(err => {

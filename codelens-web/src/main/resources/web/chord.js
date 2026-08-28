@@ -16,6 +16,8 @@ class ChordRenderer {
     this._data = null;
     this._arcs = [];
     this._chords = [];
+    this._hiddenPackages = new Set();
+    this._hiddenEntities = new Set();
     this._hovered = -1;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -24,6 +26,50 @@ class ChordRenderer {
       onMouseLeave: this._onMouseLeave.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  togglePackage(pkgName, visible) {
+    if (visible === undefined) {
+      if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+      else this._hiddenPackages.add(pkgName);
+    } else if (visible) {
+      this._hiddenPackages.delete(pkgName);
+    } else {
+      this._hiddenPackages.add(pkgName);
+    }
+    this._buildChordData();
+    this._draw();
+  }
+
+  toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+    const ids = [entityIdOrName, fqn].filter(Boolean);
+    ids.forEach(id => {
+      if (visible === undefined) {
+        if (this._hiddenEntities.has(id)) this._hiddenEntities.delete(id);
+        else this._hiddenEntities.add(id);
+      } else if (visible) {
+        this._hiddenEntities.delete(id);
+      } else {
+        this._hiddenEntities.add(id);
+      }
+    });
+    this._buildChordData();
+    this._draw();
+  }
+
+  _isNodeHidden(node) {
+    if (!node) return false;
+    const fqn = node.id || node.fqn || '';
+    const name = node.label || (fqn.includes('.') ? fqn.split('.').pop() : fqn);
+    let pkg = node.package;
+    if (!pkg && fqn.includes('.')) {
+      pkg = fqn.split('.').slice(0, -1).join('.');
+    }
+    pkg = pkg || 'default';
+
+    if (this._hiddenPackages.has(pkg)) return true;
+    if (this._hiddenEntities.has(name) || this._hiddenEntities.has(fqn)) return true;
+    return false;
   }
 
   setData(payload) {
@@ -88,8 +134,16 @@ class ChordRenderer {
   }
 
   _buildChordData() {
-    const { nodes, edges } = this._data;
-    if (!nodes || nodes.length === 0) return;
+    const rawNodes = this._data.nodes || [];
+    const rawEdges = this._data.edges || [];
+    if (rawNodes.length === 0) return;
+
+    const nodes = rawNodes.filter(n => !this._isNodeHidden(n));
+    if (nodes.length === 0) {
+      this._arcs = [];
+      this._chords = [];
+      return;
+    }
 
     const n = nodes.length;
     const nodeIndex = {};
@@ -97,7 +151,7 @@ class ChordRenderer {
 
     // Build adjacency matrix
     const matrix = Array.from({ length: n }, () => new Array(n).fill(0));
-    for (const edge of edges) {
+    for (const edge of rawEdges) {
       const si = nodeIndex[edge.source];
       const ti = nodeIndex[edge.target];
       if (si !== undefined && ti !== undefined) {
@@ -240,27 +294,69 @@ class ChordRenderer {
       ctx.stroke();
     }
 
+    // Compute connected/related arc indices for hover state
+    const relatedArcs = new Set();
+    if (hovered >= 0) {
+      for (const chord of this._chords) {
+        if (chord.source === hovered) relatedArcs.add(chord.target);
+        if (chord.target === hovered) relatedArcs.add(chord.source);
+      }
+    }
+
     // Draw arcs
     for (const arc of this._arcs) {
-      const dimmed = hovered >= 0 && arc.index !== hovered;
-      const isHot = arc.index === hovered;
+      const isHovered = (hovered >= 0 && arc.index === hovered);
+      const isRelated = (hovered >= 0 && relatedArcs.has(arc.index));
+      const isDimmed = (hovered >= 0 && !isHovered && !isRelated);
 
       ctx.beginPath();
       ctx.arc(cx, cy, r + aw / 2, arc.startAngle, arc.endAngle);
       ctx.strokeStyle = arc.color;
-      ctx.globalAlpha = dimmed ? 0.2 : 1;
-      ctx.lineWidth = isHot ? aw + 4 : aw;
+      if (isHovered) {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = aw + 6;
+      } else if (isRelated) {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = aw + 2;
+      } else if (isDimmed) {
+        ctx.globalAlpha = 0.12;
+        ctx.lineWidth = aw;
+      } else {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = aw;
+      }
       ctx.lineCap = 'butt';
       ctx.stroke();
 
+      // Outer accent ring for hovered and related arcs
+      if (isHovered) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + aw + 3, arc.startAngle, arc.endAngle);
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      } else if (isRelated) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + aw + 2, arc.startAngle, arc.endAngle);
+        ctx.strokeStyle = arc.color;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
       // Label
       const midAngle = (arc.startAngle + arc.endAngle) / 2;
-      const labelR = r + aw + 12;
+      const labelR = r + aw + 13;
       const lx = cx + Math.cos(midAngle) * labelR;
       const ly = cy + Math.sin(midAngle) * labelR;
 
       const arcSpan = arc.endAngle - arc.startAngle;
-      if (arcSpan > 0.08) { // Only label arcs big enough
+      if (isHovered || isRelated || (arcSpan > 0.08 && !isDimmed)) { // Always label hovered and related nodes
         ctx.save();
         ctx.translate(lx, ly);
         let rotation = midAngle;
@@ -272,9 +368,26 @@ class ChordRenderer {
           ctx.rotate(rotation);
           ctx.textAlign = 'left';
         }
-        ctx.fillStyle = dimmed ? 'rgba(148,163,184,0.3)' : '#e2e8f0';
+
+        if (isHovered) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '700 12px "Plus Jakarta Sans", system-ui, sans-serif';
+          ctx.shadowColor = arc.color;
+          ctx.shadowBlur = 8;
+        } else if (isRelated) {
+          ctx.fillStyle = arc.color;
+          ctx.font = '600 11.5px "Plus Jakarta Sans", system-ui, sans-serif';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+          ctx.shadowBlur = 5;
+        } else if (isDimmed) {
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+          ctx.font = '400 10.5px "Plus Jakarta Sans", system-ui, sans-serif';
+        } else {
+          ctx.fillStyle = '#e2e8f0';
+          ctx.font = '500 11px "Plus Jakarta Sans", system-ui, sans-serif';
+        }
+
         ctx.globalAlpha = 1;
-        ctx.font = `500 11px "Plus Jakarta Sans", system-ui, sans-serif`;
         ctx.textBaseline = 'middle';
         ctx.fillText(arc.node.label || arc.node.id, 0, 0);
         ctx.restore();

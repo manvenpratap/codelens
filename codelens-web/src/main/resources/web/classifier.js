@@ -30,7 +30,7 @@
       badge: 'FETCH',
       category: 'READ_ONLY',
       color: '#10b981',
-      icon: '📥',
+      icon: 'download',
       description: 'Elementary transactions only meant for fetching data',
       enabled: true
     },
@@ -44,7 +44,7 @@
       badge: 'MUTATE',
       category: 'MUTATION',
       color: '#f59e0b',
-      icon: '⚡',
+      icon: 'zap',
       description: 'Business transactions meant for create/update data',
       enabled: true
     },
@@ -58,7 +58,7 @@
       badge: 'BATCH',
       category: 'BATCH',
       color: '#8b5cf6',
-      icon: '⚙️',
+      icon: 'settings',
       description: 'Batch processor / background jobs',
       enabled: true
     },
@@ -72,7 +72,7 @@
       badge: 'PRE-BATCH',
       category: 'PRE_PROCESS',
       color: '#3b82f6',
-      icon: '⏮️',
+      icon: 'skipBack',
       description: 'Process before batch execution',
       enabled: true
     },
@@ -86,7 +86,7 @@
       badge: 'POST-BATCH',
       category: 'POST_PROCESS',
       color: '#ec4899',
-      icon: '⏭️',
+      icon: 'skipForward',
       description: 'Process after batch execution',
       enabled: true
     },
@@ -100,7 +100,7 @@
       badge: 'DATA-GRABBER',
       category: 'DATA_ACCESS',
       color: '#06b6d4',
-      icon: '📦',
+      icon: 'box',
       description: 'Data grabber / data retrieval components',
       enabled: true
     }
@@ -117,7 +117,7 @@
       badge: 'CTRL',
       category: 'CONTROLLER',
       color: '#3b82f6',
-      icon: '🌐',
+      icon: 'globe',
       description: 'Spring REST / Web MVC Controller',
       enabled: true
     },
@@ -131,7 +131,7 @@
       badge: 'SRV',
       category: 'SERVICE',
       color: '#10b981',
-      icon: '⚙️',
+      icon: 'settings',
       description: 'Spring Business Service Layer',
       enabled: true
     },
@@ -145,7 +145,7 @@
       badge: 'REPO',
       category: 'DATA_ACCESS',
       color: '#8b5cf6',
-      icon: '🗄️',
+      icon: 'database',
       description: 'Spring Data JPA / Mongo Repository',
       enabled: true
     },
@@ -159,7 +159,7 @@
       badge: 'DTO',
       category: 'DTO',
       color: '#06b6d4',
-      icon: '📄',
+      icon: 'fileText',
       description: 'Data Transfer Object / Schema',
       enabled: true
     },
@@ -173,8 +173,95 @@
       badge: 'MAPPER',
       category: 'MAPPER',
       color: '#f59e0b',
-      icon: '🔄',
+      icon: 'refresh',
       description: 'MapStruct / Object transformation mapper',
+      enabled: true
+    }
+  ];
+
+  const DDD_PRESET_RULES = [
+    {
+      id: 'rule-ddd-aggregate',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Aggregate',
+      label: 'Aggregate Root',
+      badge: 'AGGREGATE',
+      category: 'DOMAIN',
+      color: '#8b5cf6',
+      icon: 'box',
+      description: 'Domain-Driven Design Aggregate Root',
+      enabled: true
+    },
+    {
+      id: 'rule-ddd-entity',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Entity',
+      label: 'Domain Entity',
+      badge: 'ENTITY',
+      category: 'DOMAIN',
+      color: '#3b82f6',
+      icon: 'database',
+      description: 'Domain Entity with business identity',
+      enabled: true
+    },
+    {
+      id: 'rule-ddd-vo',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*VO',
+      label: 'Value Object',
+      badge: 'VAL-OBJ',
+      category: 'DOMAIN',
+      color: '#06b6d4',
+      icon: 'tag',
+      description: 'Immutable Domain Value Object',
+      enabled: true
+    },
+    {
+      id: 'rule-ddd-usecase',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*UseCase',
+      label: 'Use Case / Interactor',
+      badge: 'USE-CASE',
+      category: 'APPLICATION',
+      color: '#10b981',
+      icon: 'zap',
+      description: 'Application Use Case / Command Handler',
+      enabled: true
+    },
+    {
+      id: 'rule-ddd-repo',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Repository',
+      label: 'Domain Repository',
+      badge: 'REPO',
+      category: 'INFRA',
+      color: '#ec4899',
+      icon: 'database',
+      description: 'Domain Repository Contract / Gateway',
+      enabled: true
+    },
+    {
+      id: 'rule-ddd-event',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'SUFFIX',
+      pattern: '*Event',
+      label: 'Domain Event',
+      badge: 'EVENT',
+      category: 'EVENT',
+      color: '#f59e0b',
+      icon: 'activity',
+      description: 'Domain Event Notification',
       enabled: true
     }
   ];
@@ -356,6 +443,8 @@
         presetRules = JSON.parse(JSON.stringify(BANCS_PRESET_RULES));
       } else if (name === 'spring' || name === 'mvc') {
         presetRules = JSON.parse(JSON.stringify(SPRING_PRESET_RULES));
+      } else if (name === 'ddd' || name === 'clean' || name === 'domain') {
+        presetRules = JSON.parse(JSON.stringify(DDD_PRESET_RULES));
       } else {
         presetRules = JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
       }
@@ -370,7 +459,7 @@
         enabled: true,
         category: 'CUSTOM',
         color: '#3b82f6',
-        icon: '🏷️',
+        icon: 'tag',
         ...rule,
         target: target,
         scope: target
@@ -443,7 +532,7 @@
             badge: rule.badge || rule.label.toUpperCase(),
             category: rule.category || 'CUSTOM',
             color: rule.color || '#10b981',
-            icon: rule.icon || '🏷️',
+            icon: rule.icon || 'tag',
             description: rule.description || ''
           };
         }

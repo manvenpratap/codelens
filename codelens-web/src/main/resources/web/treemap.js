@@ -97,6 +97,8 @@ class TreemapRenderer {
     this._breadcrumb = [];
     this._rects = [];
     this._containers = [];
+    this._hiddenPackages = new Set();
+    this._hiddenEntities = new Set();
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -106,6 +108,48 @@ class TreemapRenderer {
       onClick: this._onClick.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  togglePackage(pkgName, visible) {
+    if (visible === undefined) {
+      if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+      else this._hiddenPackages.add(pkgName);
+    } else if (visible) {
+      this._hiddenPackages.delete(pkgName);
+    } else {
+      this._hiddenPackages.add(pkgName);
+    }
+    this._layout();
+    this._draw();
+  }
+
+  toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+    const ids = [entityIdOrName, fqn].filter(Boolean);
+    ids.forEach(id => {
+      if (visible === undefined) {
+        if (this._hiddenEntities.has(id)) this._hiddenEntities.delete(id);
+        else this._hiddenEntities.add(id);
+      } else if (visible) {
+        this._hiddenEntities.delete(id);
+      } else {
+        this._hiddenEntities.add(id);
+      }
+    });
+    this._layout();
+    this._draw();
+  }
+
+  _isItemHidden(node, parentPkg) {
+    if (!node) return false;
+    const name = node.name || node.label || '';
+    const fqn = node.fqn || (parentPkg ? `${parentPkg}.${name}` : name);
+    const pkg = node.package || parentPkg || (fqn.includes('.') ? fqn.split('.').slice(0, -1).join('.') : '');
+
+    if (pkg && this._hiddenPackages.has(pkg)) return true;
+    if (name && this._hiddenEntities.has(name)) return true;
+    if (fqn && this._hiddenEntities.has(fqn)) return true;
+    if (node.id && this._hiddenEntities.has(node.id)) return true;
+    return false;
   }
 
   setData(payload) {
@@ -193,7 +237,7 @@ class TreemapRenderer {
 
     if (this._current === this._root) {
       // Top-level: Packages containing their classes
-      const packages = this._root.children || [];
+      const packages = (this._root.children || []).filter(p => !this._hiddenPackages.has(p.fqn || p.name));
       const pkgRects = this._calcSquarify(packages, padding, padding, availW, availH);
 
       for (let pIdx = 0; pIdx < pkgRects.length; pIdx++) {
@@ -214,8 +258,9 @@ class TreemapRenderer {
         const innerW = pr.w - 12;
         const innerH = pr.h - headerH - 8;
 
-        if (innerW > 10 && innerH > 10 && pkgNode.children && pkgNode.children.length > 0) {
-          const classRects = this._calcSquarify(pkgNode.children, innerX, innerY, innerW, innerH);
+        const activeClasses = (pkgNode.children || []).filter(c => !this._isItemHidden(c, pkgNode.fqn || pkgNode.name));
+        if (innerW > 10 && innerH > 10 && activeClasses.length > 0) {
+          const classRects = this._calcSquarify(activeClasses, innerX, innerY, innerW, innerH);
           classRects.forEach((cr, cIdx) => {
             const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
               ? window.CodeLensPalette.getClassColor(cr.node.fqn || cr.node.name, 'CLASS', cIdx)
@@ -472,8 +517,7 @@ class TreemapRenderer {
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
 
-      const icon = c.type === 'package' ? '📦 ' : '🏛️ ';
-      const label = icon + (c.name || '');
+      const label = (c.type === 'package' ? '' : '') + (c.name || '');
       const maxW = c.w - 70;
       let displayLabel = label;
       if (ctx.measureText(label).width > maxW && maxW > 20) {

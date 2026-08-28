@@ -23,11 +23,52 @@ class DSMRenderer {
     this._sortMode = 'cluster'; // 'cluster' | 'alpha' | 'layered' | 'cycles'
     this._filterCyclesOnly = false;
     this._searchQuery = '';
+    this._hiddenPackages = new Set();
+    this._hiddenEntities = new Set();
     this._selectedCell = null;
     this._onScopeChange = null;
     this._onSelectCell = null;
     this._onSelectEntity = null;
     this._tooltip = null;
+  }
+
+  togglePackage(pkgName, visible) {
+    if (visible === undefined) {
+      if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
+      else this._hiddenPackages.add(pkgName);
+    } else if (visible) {
+      this._hiddenPackages.delete(pkgName);
+    } else {
+      this._hiddenPackages.add(pkgName);
+    }
+    this._render();
+  }
+
+  toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
+    const ids = [entityIdOrName, fqn].filter(Boolean);
+    ids.forEach(id => {
+      if (visible === undefined) {
+        if (this._hiddenEntities.has(id)) this._hiddenEntities.delete(id);
+        else this._hiddenEntities.add(id);
+      } else if (visible) {
+        this._hiddenEntities.delete(id);
+      } else {
+        this._hiddenEntities.add(id);
+      }
+    });
+    this._render();
+  }
+
+  _isItemHidden(clsFqn, pkgName) {
+    if (!clsFqn) return false;
+    const parts = clsFqn.split('(')[0].split('.');
+    const simple = parts[parts.length - 1];
+    const pkg = pkgName || (parts.length > 1 ? parts.slice(0, -1).join('.') : 'default');
+
+    if (pkg && this._hiddenPackages.has(pkg)) return true;
+    if (this._hiddenEntities.has(simple) || this._hiddenEntities.has(clsFqn)) return true;
+    if (this._hiddenEntities.has(clsFqn.split('(')[0])) return true;
+    return false;
   }
 
   onScopeChange(callback) {
@@ -62,20 +103,33 @@ class DSMRenderer {
     if (this._el) this._el.remove();
     if (!this._data || !this._data.classes || this._data.classes.length === 0) return;
 
-    const rawClasses = this._data.classes;
+    const allRawClasses = this._data.classes;
     let rawMatrix = this._data.matrix;
     const packages = this._data.packages || {};
-    const n = rawClasses.length;
+    const totalN = allRawClasses.length;
 
     // Fast sparse matrix support: reconstruct grid from sparse cells payload if matrix is sparse/omitted
     if ((!rawMatrix || rawMatrix.length === 0) && this._data.cells && Array.isArray(this._data.cells)) {
-      rawMatrix = Array.from({ length: n }, () => new Array(n).fill(0));
+      rawMatrix = Array.from({ length: totalN }, () => new Array(totalN).fill(0));
       for (const cell of this._data.cells) {
-        if (cell.r < n && cell.c < n) {
+        if (cell.r < totalN && cell.c < totalN) {
           rawMatrix[cell.r][cell.c] = cell.v;
         }
       }
     }
+
+    // Filter active items based on hidden packages / entities
+    const keepIndices = [];
+    allRawClasses.forEach((c, idx) => {
+      const pkg = packages[c] || (c.includes('.') ? c.split('.').slice(0, -1).join('.') : 'default');
+      if (!this._isItemHidden(c, pkg)) keepIndices.push(idx);
+    });
+
+    if (keepIndices.length === 0) return;
+
+    const rawClasses = keepIndices.map(i => allRawClasses[i]);
+    const matrix = keepIndices.map(i => keepIndices.map(j => (rawMatrix && rawMatrix[i] ? rawMatrix[i][j] : 0)));
+    const n = rawClasses.length;
 
     // Detect cycles in original matrix: cells where both (i,j) and (j,i) > 0 and i !== j
     const cycles = new Set();
@@ -180,17 +234,26 @@ class DSMRenderer {
         <!-- Architectural Ordering Selector -->
         <div class="dsm-sort-pills" title="Architectural Ordering & Clustering">
           <span class="dsm-sort-label">Order:</span>
-          <button class="dsm-sort-btn ${this._sortMode === 'cluster' ? 'active' : ''}" data-sort="cluster">📦 Cluster</button>
-          <button class="dsm-sort-btn ${this._sortMode === 'layered' ? 'active' : ''}" data-sort="layered">📐 Layered</button>
-          <button class="dsm-sort-btn ${this._sortMode === 'cycles' ? 'active' : ''}" data-sort="cycles">🔄 Cycles</button>
-          <button class="dsm-sort-btn ${this._sortMode === 'alpha' ? 'active' : ''}" data-sort="alpha">🔤 A-Z</button>
+          <button class="dsm-sort-btn ${this._sortMode === 'cluster' ? 'active' : ''}" data-sort="cluster">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Cluster
+          </button>
+          <button class="dsm-sort-btn ${this._sortMode === 'layered' ? 'active' : ''}" data-sort="layered">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> Layered
+          </button>
+          <button class="dsm-sort-btn ${this._sortMode === 'cycles' ? 'active' : ''}" data-sort="cycles">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Cycles
+          </button>
+          <button class="dsm-sort-btn ${this._sortMode === 'alpha' ? 'active' : ''}" data-sort="alpha">
+            <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 16 4-10 4 10"/><path d="M4.5 13h5"/><path d="M14 6h7l-7 10h7"/></svg> A-Z
+          </button>
         </div>
       </div>
 
       <div class="dsm-toolbar-right">
         <!-- Filter Cycles Only Toggle -->
         <button class="dsm-filter-btn ${this._filterCyclesOnly ? 'active' : ''}" id="dsm-cycle-toggle" title="Filter to show only circular dependencies">
-          ⚠️ ${this._filterCyclesOnly ? 'Showing Cycles Only' : 'Highlight Cycles'}
+          <svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ${this._filterCyclesOnly ? 'Showing Cycles Only' : 'Highlight Cycles'}
         </button>
 
         <!-- Live Search Box -->
@@ -317,7 +380,7 @@ class DSMRenderer {
         sepRow.className = 'dsm-pkg-separator';
         const sepCell = document.createElement('td');
         sepCell.colSpan = n + 1;
-        sepCell.innerHTML = `<span class="dsm-pkg-sep-tag">📦 ${this._escHtml(rowPkg)}</span>`;
+        sepCell.innerHTML = `<span class="dsm-pkg-sep-tag"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg> ${this._escHtml(rowPkg)}</span>`;
         sepRow.appendChild(sepCell);
         tbody.appendChild(sepRow);
       }
@@ -440,7 +503,7 @@ class DSMRenderer {
         <span class="dsm-legend-item"><span class="dsm-legend-swatch dsm-legend-diag"></span>Self / Diagonal</span>
       </div>
       <div class="dsm-legend-right">
-        <span class="dsm-hint-txt">💡 Click any cell or header to inspect deep call relationships</span>
+        <span class="dsm-hint-txt"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> Click any cell or header to inspect deep call relationships</span>
       </div>
     `;
     wrap.appendChild(legend);
@@ -541,7 +604,7 @@ class DSMRenderer {
 
     this._tooltip.innerHTML = `
       <div class="dsm-tip-header ${isCycle ? 'dsm-tip-cycle' : ''}">
-        ${isCycle ? '⚠️ CIRCULAR DEPENDENCY CYCLE' : '🔗 DIRECT DEPENDENCY'}
+        ${isCycle ? '<svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> CIRCULAR DEPENDENCY CYCLE' : '<svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> DIRECT DEPENDENCY'}
       </div>
       <div class="dsm-tip-body">
         <div class="dsm-tip-row">

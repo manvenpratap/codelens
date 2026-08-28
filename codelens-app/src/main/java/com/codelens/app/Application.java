@@ -74,6 +74,9 @@ public class Application {
             db.close();
             System.out.println("  Goodbye.");
         }, "codelens-shutdown"));
+
+        // Keep main thread alive
+        Thread.currentThread().join();
     }
 
     private static void printBanner(int port) {
