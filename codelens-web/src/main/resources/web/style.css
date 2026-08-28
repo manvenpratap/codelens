@@ -1102,36 +1102,61 @@ body.resizing .panel-resizer {
   min-width: 0;
 }
 
-/* Tab bar */
+/* Tab bar & View Switcher */
 .tab-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 6px 14px;
   flex-shrink: 0;
-  height: 44px;
+  height: 48px;
+  position: relative;
+  z-index: 10;
 }
-.tab {
-  display: flex;
+
+.tab-nav-segment {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  height: 44px;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md, 8px);
+  padding: 3px;
+}
+body.theme-light .tab-nav-segment {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  height: 32px;
   cursor: grab;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
   font-family: var(--font-display);
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
   background: transparent;
-  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+  transition: all var(--dur-fast) var(--ease);
   white-space: nowrap;
   user-select: none;
   position: relative;
 }
-.tab:hover  { color: var(--text-primary); }
+.tab:hover  {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+body.theme-light .tab:hover {
+  color: #0f172a;
+  background: rgba(0, 0, 0, 0.04);
+}
 .tab:active { cursor: grabbing; }
 .tab.tab-dragging {
   opacity: 0.40;
@@ -1142,8 +1167,8 @@ body.resizing .panel-resizer {
   content: '';
   position: absolute;
   left: -2px;
-  top: 8px;
-  bottom: 8px;
+  top: 4px;
+  bottom: 4px;
   width: 3px;
   background: var(--primary);
   border-radius: 2px;
@@ -1155,8 +1180,8 @@ body.resizing .panel-resizer {
   content: '';
   position: absolute;
   right: -2px;
-  top: 8px;
-  bottom: 8px;
+  top: 4px;
+  bottom: 4px;
   width: 3px;
   background: var(--primary);
   border-radius: 2px;
@@ -1165,24 +1190,57 @@ body.resizing .panel-resizer {
   z-index: 10;
 }
 .tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--primary);
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   font-weight: 600;
 }
-.tab .tab-badge {
-  font-size: 11px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 1px 6px;
+body.theme-light .tab.active {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tab-shortcut {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  font-weight: 700;
   color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 1px 4.5px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.tab:hover .tab-shortcut,
+.tab.active .tab-shortcut {
+  opacity: 1;
+}
+body.theme-light .tab-shortcut {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+
+.tab .tab-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 12px;
+  padding: 1px 6px;
+  color: #c084fc;
   font-variant-numeric: tabular-nums;
-  transition: all var(--dur-fast) var(--ease);
+  line-height: 1.2;
 }
 .tab.active .tab-badge {
-  background: var(--primary-subtle);
-  border-color: var(--primary-border);
-  color: var(--primary);
+  background: rgba(168, 85, 247, 0.25);
+  border-color: #c084fc;
+  color: #f3e8ff;
 }
 
 /* Tab bar spacer & Studio launch button */
@@ -1195,14 +1253,14 @@ body.resizing .panel-resizer {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.12));
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  border-radius: var(--radius-sm, 6px);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(59, 130, 246, 0.14));
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: var(--radius-full, 9999px);
   color: #34d399;
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 5px 14px;
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
   user-select: none;
@@ -1210,10 +1268,10 @@ body.resizing .panel-resizer {
 }
 
 .tab-studio-launch-btn:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(59, 130, 246, 0.22));
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(59, 130, 246, 0.25));
   border-color: #34d399;
-  color: #f8fafc;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
   transform: translateY(-1px);
 }
 

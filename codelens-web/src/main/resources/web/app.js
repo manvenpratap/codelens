@@ -902,6 +902,7 @@ function switchTab(tabName) {
 function restoreTabOrder() {
   const tabBar = qs('.tab-bar');
   if (!tabBar) return;
+  const navSegment = tabBar.querySelector('.tab-nav-segment') || tabBar;
   const spacer = tabBar.querySelector('.tab-bar-spacer');
   
   let savedOrder = null;
@@ -918,8 +919,12 @@ function restoreTabOrder() {
 
     savedOrder.forEach(tabName => {
       const tabEl = tabMap.get(tabName);
-      if (tabEl && spacer) {
-        tabBar.insertBefore(tabEl, spacer);
+      if (tabEl) {
+        if (navSegment !== tabBar) {
+          navSegment.appendChild(tabEl);
+        } else if (spacer) {
+          tabBar.insertBefore(tabEl, spacer);
+        }
       }
     });
   }

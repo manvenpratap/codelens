@@ -230,83 +230,89 @@
   <main id="centre-panel" class="app-viewport" role="main" aria-roledescription="viewport" aria-label="Workspace">
 
     <!-- -- Tab navigation bar ----------------------------------------------- -->
-    <nav class="tab-bar" role="tablist" aria-label="Workspace tabs">
+    <nav class="tab-bar" aria-label="Workspace views">
+      <div class="tab-nav-segment" role="tablist" aria-label="Workspace tabs">
+        <!-- Graph view tab - call hierarchy & field impact graphs -->
+        <button
+          class="tab active"
+          role="tab"
+          id="tab-graph"
+          data-tab="graph"
+          draggable="true"
+          aria-selected="true"
+          aria-controls="graph-view"
+          title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
+        >
+          <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
+          <span class="tab-label">Graph</span>
+          <kbd class="tab-shortcut">1</kbd>
+        </button>
 
-      <!-- Graph view tab - call hierarchy & field impact graphs -->
-      <button
-        class="tab active"
-        role="tab"
-        id="tab-graph"
-        data-tab="graph"
-        draggable="true"
-        aria-selected="true"
-        aria-controls="graph-view"
-        title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
-      >
-        <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
-        Graph
-      </button>
+        <!-- Knowledge base tab - structured list of all types/methods/fields -->
+        <button
+          class="tab"
+          role="tab"
+          id="tab-knowledge"
+          data-tab="knowledge"
+          draggable="true"
+          aria-selected="false"
+          aria-controls="knowledge-view"
+          title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
+        >
+          <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+          <span class="tab-label">Knowledge Base</span>
+          <kbd class="tab-shortcut">2</kbd>
+        </button>
 
-      <!-- Knowledge base tab - structured list of all types/methods/fields -->
-      <button
-        class="tab"
-        role="tab"
-        id="tab-knowledge"
-        data-tab="knowledge"
-        draggable="true"
-        aria-selected="false"
-        aria-controls="knowledge-view"
-        title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
-      >
-        <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
-        Knowledge Base
-      </button>
+        <!-- Code Review tab - on-demand AST-based code reviewer -->
+        <button
+          class="tab"
+          role="tab"
+          id="tab-review"
+          data-tab="review"
+          draggable="true"
+          aria-selected="false"
+          aria-controls="review-view"
+          title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
+        >
+          <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span class="tab-label">Code Review</span>
+          <span class="tab-badge" aria-label="finding count">0</span>
+          <kbd class="tab-shortcut">3</kbd>
+        </button>
 
-      <!-- Code Review tab - on-demand AST-based code reviewer -->
-      <button
-        class="tab"
-        role="tab"
-        id="tab-review"
-        data-tab="review"
-        draggable="true"
-        aria-selected="false"
-        aria-controls="review-view"
-        title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
-      >
-        <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-        Code Review
-        <span class="tab-badge" aria-label="finding count">0</span>
-      </button>
+        <!-- Git tab - blame annotation, top authors, hot files -->
+        <button
+          class="tab"
+          role="tab"
+          id="tab-git"
+          data-tab="git"
+          draggable="true"
+          aria-selected="false"
+          aria-controls="git-view"
+          title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
+        >
+          <span class="tab-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
+          <span class="tab-label">Git</span>
+          <kbd class="tab-shortcut">4</kbd>
+        </button>
 
-      <!-- Git tab - blame annotation, top authors, hot files -->
-      <button
-        class="tab"
-        role="tab"
-        id="tab-git"
-        data-tab="git"
-        draggable="true"
-        aria-selected="false"
-        aria-controls="git-view"
-        title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
-      >
-        <span class="tab-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
-        Git
-      </button>
-
-      <!-- Source tab - Monaco code editor view -->
-      <button
-        class="tab"
-        role="tab"
-        id="tab-source"
-        data-tab="source"
-        draggable="true"
-        aria-selected="false"
-        aria-controls="source-view"
-        title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
-      >
-        <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
-        Source
-      </button>
+        <!-- Source tab - Monaco code editor view -->
+        <button
+          class="tab"
+          role="tab"
+          id="tab-source"
+          data-tab="source"
+          draggable="true"
+          aria-selected="false"
+          aria-controls="source-view"
+          title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
+        >
+          <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+          <span class="tab-label">Source</span>
+          <kbd class="tab-shortcut">5</kbd>
+        </button>
+      </div>
 
       <!-- Spacer & Dedicated 3D / Macro Visualizer Studio Mode Launch Button -->
       <div class="tab-bar-spacer"></div>
@@ -320,7 +326,6 @@
         <span class="studio-btn-text">3D &amp; Macro Studio</span>
         <span class="studio-btn-shortcut" aria-hidden="true">M</span>
       </button>
-
     </nav><!-- /.tab-bar -->
 
 
