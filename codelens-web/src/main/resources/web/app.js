@@ -2652,9 +2652,20 @@ function ease(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
    8. Keyboard shortcuts
    ───────────────────────────────────────────────────────────────────────────── */
 
+function openHelpModal(triggerEl = null) {
+  const modal = qs('#help-modal');
+  if (!modal) return;
+  showAccessibleModal(modal, triggerEl || qs('#help-btn'));
+}
+
+function closeHelpModal() {
+  const modal = qs('#help-modal');
+  if (!modal) return;
+  hideAccessibleModal(modal);
+}
+
 function bindKeyboard() {
   document.addEventListener('keydown', e => {
-    const helpModal = qs('#help-modal');
     // Escape → close modal or clear search
     if (e.key === 'Escape') {
       const settingsModal = qs('#settings-modal');
@@ -2662,9 +2673,14 @@ function bindKeyboard() {
         closeSettings();
         return;
       }
+      const exportModal = qs('#export-modal');
+      if (exportModal && exportModal.classList.contains('open')) {
+        ExportHub.close();
+        return;
+      }
+      const helpModal = qs('#help-modal');
       if (helpModal && helpModal.classList.contains('open')) {
-        helpModal.classList.remove('open');
-        helpModal.setAttribute('aria-hidden', 'true');
+        closeHelpModal();
         return;
       }
       qs('#search-input').value = '';
@@ -2689,9 +2705,13 @@ function bindKeyboard() {
       if (e.key === ']') toggleRightPanel();
       if (e.key === '\\') resetPanelWidths();
       if (e.key === '?') {
+        const helpModal = qs('#help-modal');
         if (helpModal) {
-          helpModal.classList.toggle('open');
-          helpModal.setAttribute('aria-hidden', helpModal.classList.contains('open') ? 'false' : 'true');
+          if (helpModal.classList.contains('open')) {
+            closeHelpModal();
+          } else {
+            openHelpModal();
+          }
         }
       }
     }
@@ -2933,23 +2953,14 @@ async function init() {
   const helpModal = qs('#help-modal');
   const helpClose = qs('#help-modal-close');
   if (helpBtn && helpModal) {
-    helpBtn.addEventListener('click', () => {
-      helpModal.classList.add('open');
-      helpModal.setAttribute('aria-hidden', 'false');
-    });
+    helpBtn.addEventListener('click', (e) => openHelpModal(e.currentTarget));
   }
   if (helpClose && helpModal) {
-    helpClose.addEventListener('click', () => {
-      helpModal.classList.remove('open');
-      helpModal.setAttribute('aria-hidden', 'true');
-    });
+    helpClose.addEventListener('click', closeHelpModal);
   }
   if (helpModal) {
     helpModal.addEventListener('click', (e) => {
-      if (e.target === helpModal) {
-        helpModal.classList.remove('open');
-        helpModal.setAttribute('aria-hidden', 'true');
-      }
+      if (e.target === helpModal) closeHelpModal();
     });
   }
 
@@ -3514,6 +3525,48 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+let _lastFocusedTrigger = null;
+
+/** Open a modal with full accessibility and focus tracking. */
+function showAccessibleModal(modal, triggerEl = null) {
+  if (!modal) return;
+  if (triggerEl && typeof triggerEl.focus === 'function') {
+    _lastFocusedTrigger = triggerEl;
+  } else if (document.activeElement && !modal.contains(document.activeElement)) {
+    _lastFocusedTrigger = document.activeElement;
+  }
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+
+  // Focus close button or first interactive element inside modal
+  const closeBtn = modal.querySelector('.modal-close-btn, button, [tabindex]:not([tabindex="-1"])');
+  if (closeBtn && typeof closeBtn.focus === 'function') {
+    setTimeout(() => {
+      try { closeBtn.focus(); } catch (_) {}
+    }, 50);
+  }
+}
+
+/** Close a modal cleanly without a11y focus collisions. */
+function hideAccessibleModal(modal) {
+  if (!modal) return;
+  // Blur any descendant before setting aria-hidden to prevent browser assistive technology violations
+  if (document.activeElement && modal.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+
+  // Restore focus to opener trigger element if available
+  if (_lastFocusedTrigger && typeof _lastFocusedTrigger.focus === 'function') {
+    const trigger = _lastFocusedTrigger;
+    _lastFocusedTrigger = null;
+    setTimeout(() => {
+      try { trigger.focus(); } catch (_) {}
+    }, 50);
+  }
 }
 
 /** Shorten a FQN for display: "com.example.trading.OrderService" → "OrderService". */
@@ -4130,19 +4183,17 @@ function renderArchetypeRulesList() {
   });
 }
 
-function openSettings() {
+function openSettings(e) {
   const modal = qs('#settings-modal');
   if (!modal) return;
   syncSettingsUI(loadSettings());
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
+  showAccessibleModal(modal, e?.currentTarget || qs('#settings-btn'));
 }
 
 function closeSettings() {
   const modal = qs('#settings-modal');
   if (!modal) return;
-  modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
+  hideAccessibleModal(modal);
 }
 
 function resetSettings() {
@@ -4414,7 +4465,7 @@ const ExportHub = {
   cachedContent: '',
   loading: false,
 
-  open(defaultType = 'architecture', defaultFormat = 'markdown') {
+  open(defaultType = 'architecture', defaultFormat = 'markdown', triggerEl = null) {
     const modal = qs('#export-modal');
     if (!modal) return;
 
@@ -4423,15 +4474,13 @@ const ExportHub = {
     ExportHub.syncUI();
     ExportHub.fetchPreview();
 
-    modal.classList.add('open');
-    modal.setAttribute('aria-hidden', 'false');
+    showAccessibleModal(modal, triggerEl || qs('#export-btn') || qs('#export-review-report-btn'));
   },
 
   close() {
     const modal = qs('#export-modal');
     if (!modal) return;
-    modal.classList.remove('open');
-    modal.setAttribute('aria-hidden', 'true');
+    hideAccessibleModal(modal);
   },
 
   syncUI() {
@@ -4588,10 +4637,10 @@ const ExportHub = {
 
 function initExportHub() {
   const exportBtn = qs('#export-btn');
-  if (exportBtn) exportBtn.addEventListener('click', () => ExportHub.open('architecture', 'markdown'));
+  if (exportBtn) exportBtn.addEventListener('click', (e) => ExportHub.open('architecture', 'markdown', e.currentTarget));
 
   const exportReviewBtn = qs('#export-review-report-btn');
-  if (exportReviewBtn) exportReviewBtn.addEventListener('click', () => ExportHub.open('review', 'markdown'));
+  if (exportReviewBtn) exportReviewBtn.addEventListener('click', (e) => ExportHub.open('review', 'markdown', e.currentTarget));
 
   const closeBtn = qs('#export-modal-close');
   if (closeBtn) closeBtn.addEventListener('click', () => ExportHub.close());
