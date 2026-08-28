@@ -406,8 +406,8 @@
         </div>
       </div>
 
-      <!-- Graphify Top Floating HUD Bar (Search, Depth, Clusters, Physics, Heat, Zoom) -->
-      <div id="graph-hud-bar" class="graph-hud-bar" aria-label="Graph controls">
+      <!-- Graphify Top Floating HUD Bar (Quick Search + Depth Selector) -->
+      <div id="graph-hud-bar" class="graph-hud-bar graph-top-bar" aria-label="Graph query controls">
         <!-- Quick Node Search Inside Graph -->
         <div class="graph-search-wrap">
           <span class="graph-search-icon"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
@@ -426,13 +426,18 @@
         <!-- Depth traversal pills -->
         <div class="graph-depth-pills" role="group" aria-label="Preset Depths">
           <span class="hud-label">Depth:</span>
-          <button class="depth-pill" data-depth="1" title="1 hop (direct relations)">1</button>
-          <button class="depth-pill" data-depth="2" title="2 hops">2</button>
-          <button class="depth-pill active" data-depth="3" title="3 hops (default)">3</button>
-          <button class="depth-pill" data-depth="5" title="5 hops">5</button>
-          <button class="depth-pill" data-depth="15" title="Max reach">Max</button>
+          <div class="graph-level-pills">
+            <button class="depth-pill" data-depth="1" title="1 hop (direct relations)">1</button>
+            <button class="depth-pill" data-depth="2" title="2 hops">2</button>
+            <button class="depth-pill active" data-depth="3" title="3 hops (default)">3</button>
+            <button class="depth-pill" data-depth="5" title="5 hops">5</button>
+            <button class="depth-pill" data-depth="15" title="Max reach">Max</button>
+          </div>
         </div>
+      </div>
 
+      <!-- Graphify Bottom Floating Controls Toolbar (Feature Toggles, Archetypes, Camera/Zoom) -->
+      <div id="graph-canvas-toolbar" class="graph-hud-bar graph-bottom-bar" aria-label="In-Canvas Display Options">
         <!-- Feature Toggles -->
         <div class="graph-hud-actions">
           <button id="btn-filter-getters" class="hud-btn active" title="Hide trivial POJO getters, setters, and accessor boilerplate">
@@ -452,7 +457,7 @@
         <div class="hud-divider"></div>
 
         <!-- Archetype Multi-Select Dropdown -->
-        <div class="archetype-multiselect-dropdown" id="graph-archetype-wrap">
+        <div class="archetype-multiselect-dropdown drop-up" id="graph-archetype-wrap">
           <button type="button" class="hud-btn archetype-multiselect-btn" id="graph-archetype-btn" aria-haspopup="true" aria-expanded="false" title="Filter graph by semantic archetype (Multi-Select)">
             <span class="hud-btn-icon"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
             <span class="archetype-btn-label" id="graph-archetype-label">Archetypes (All)</span>
@@ -489,6 +494,7 @@
           </button>
         </div>
       </div>
+
 
       <!-- Graphify Community / Package Legend HUD (Top Right) -->
       <div id="graph-community-legend" class="graph-community-legend" style="display:none">

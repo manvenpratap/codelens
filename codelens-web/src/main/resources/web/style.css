@@ -2129,32 +2129,32 @@ body.theme-light .studio-back-btn .back-arrow {
 .graph-empty-sub  { font-size: 12px; color: var(--text-muted); max-width: 320px; text-align: center; line-height: 1.5; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Graphify HUD Bar (Top Floating Bar)
+   Graphify HUD Bars (Top Query Bar & Bottom In-Canvas Toolbar)
    ───────────────────────────────────────────────────────────────────────────── */
 .graph-hud-bar {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 6px 12px;
+  gap: 8px;
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full, 9999px);
+  padding: 5px 14px;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
   z-index: var(--z-hud, 60);
   pointer-events: auto;
+  white-space: nowrap;
 }
 
-/* Dedicated Top View Switcher in Codebase Viz */
+/* Dedicated Top View Switcher / Query Bar in Graph & Codebase Viz */
+.graph-top-bar,
 .codebase-top-bar {
   top: 12px;
   left: 50%;
   right: auto;
+  bottom: auto;
   transform: translateX(-50%);
   width: auto;
   max-width: calc(100% - 28px);
@@ -2179,22 +2179,39 @@ body.theme-light .studio-back-btn .back-arrow {
 }
 
 /* Dedicated Bottom Floating In-Canvas Display Options Toolbar */
+.graph-bottom-bar,
 .codebase-bottom-bar {
   top: auto;
-  bottom: 16px;
-  right: 16px;
-  left: auto;
-  transform: none;
+  bottom: 14px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
   width: auto;
-  max-width: calc(100% - 32px);
+  max-width: calc(100% - 28px);
   background: rgba(13, 17, 23, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-full, 9999px);
-  padding: 5px 14px;
+  padding: 5px 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
   z-index: 150;
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.graph-camera-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.graph-hud-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 
 .archetype-multiselect-dropdown {
   position: relative;
@@ -2209,8 +2226,9 @@ body.theme-light .studio-back-btn .back-arrow {
   font-size: 11px;
   font-family: var(--font-display);
   font-weight: 600;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  height: 24px;
+  border-radius: var(--radius-full, 9999px);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-primary);
@@ -2227,6 +2245,7 @@ body.theme-light .studio-back-btn .back-arrow {
   border-color: rgba(168, 85, 247, 0.45);
   color: #c084fc;
 }
+
 .archetype-multiselect-btn .chevron-down {
   transition: transform var(--dur-fast) var(--ease);
 }
@@ -2473,22 +2492,25 @@ body.theme-light .hud-select {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-base);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  padding: 4px 8px;
-  min-width: 140px;
-  max-width: 200px;
-  flex: 1;
+  border-radius: var(--radius-full, 9999px);
+  padding: 3px 10px;
+  min-width: 130px;
+  max-width: 180px;
+  height: 24px;
+  box-sizing: border-box;
   transition: all var(--dur-fast) var(--ease);
 }
 .graph-search-wrap:focus-within {
   border-color: var(--primary-bg);
-  outline: 2px solid var(--primary-bg);
+  outline: 1px solid var(--primary-bg);
 }
 .graph-search-icon {
   color: var(--text-muted);
   font-size: 11px;
+  display: flex;
+  align-items: center;
 }
 #graph-node-search {
   background: transparent;
@@ -2496,10 +2518,12 @@ body.theme-light .hud-select {
   color: var(--text-primary);
   font-size: 11px;
   width: 100%;
+  outline: none;
 }
 #graph-node-search::placeholder {
   color: var(--text-muted);
 }
+
 
 .graph-node-search-results {
   position: absolute;
@@ -2561,16 +2585,16 @@ body.theme-light .hud-select {
 .depth-pill {
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 7px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full, 9999px);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
 }
 .depth-pill:hover {
-  background: var(--bg-surface);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 .depth-pill.active {
@@ -2632,7 +2656,7 @@ body.theme-light .level-pill.active {
 
 .graph-hud-actions,
 .graph-camera-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
 }
@@ -2641,15 +2665,19 @@ body.theme-light .level-pill.active {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 3px 9px;
+  height: 24px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-full, 9999px);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
+  font-family: var(--font-display);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
+  white-space: nowrap;
 }
 .hud-btn:hover {
   background: var(--bg-elevated);
@@ -2657,14 +2685,17 @@ body.theme-light .level-pill.active {
   border-color: var(--border-hover);
 }
 .hud-btn.active {
-  background: var(--primary-subtle);
-  border-color: var(--primary-border);
-  color: var(--primary);
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
 }
 .hud-btn.icon-only {
-  padding: 3px 6px;
-  font-size: 12px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  justify-content: center;
 }
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Graphify Community / Package Legend (Top Right HUD)
@@ -6382,9 +6413,9 @@ body.theme-light .hud-btn.active {
 }
 
 body.theme-light .depth-pill {
-  background: #f8fafc;
-  color: #1e293b;
-  border-color: #cbd5e1;
+  background: transparent;
+  color: #475569;
+  border-color: transparent;
 }
 body.theme-light .depth-pill:hover {
   background: #e2e8f0;
@@ -6395,6 +6426,7 @@ body.theme-light .depth-pill.active {
   color: #ffffff;
   border-color: #2563eb;
 }
+
 
 body.theme-light .graph-minimap-wrap {
   border-color: #cbd5e1;
