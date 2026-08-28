@@ -4104,14 +4104,17 @@ function renderArchetypeRulesList() {
       const id = btn.dataset.id;
       const rule = window.CodeLensClassifier.getRules().find(r => r.id === id);
       if (!rule) return;
-      qs('#rule-form-id').value = rule.id;
-      qs('#rule-form-label').value = rule.label || '';
-      qs('#rule-form-badge').value = rule.badge || '';
-      qs('#rule-form-icon').value = rule.icon || '⚡';
-      qs('#rule-form-color').value = rule.color || '#3b82f6';
-      qs('#rule-form-scope').value = rule.scope || 'METHOD';
-      qs('#rule-form-pattern').value = rule.pattern || '';
-      qs('#rule-form-desc').value = rule.description || '';
+      const idEl = qs('#rule-form-id'); if (idEl) idEl.value = rule.id;
+      const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Edit Archetype Rule';
+      const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = rule.label || '';
+      const badgeEl = qs('#rule-form-badge'); if (badgeEl) badgeEl.value = rule.badge || '';
+      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = rule.icon || '⚡';
+      const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = rule.color || '#3b82f6';
+      const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = rule.color || '#3b82f6';
+      const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = rule.scope || rule.target || 'METHOD';
+      const matchTypeEl = qs('#rule-form-match-type'); if (matchTypeEl && rule.matchType) matchTypeEl.value = rule.matchType;
+      const patternEl = qs('#rule-form-pattern'); if (patternEl) patternEl.value = rule.pattern || '';
+      const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = rule.description || '';
       const form = qs('#archetype-rule-form-wrap');
       if (form) form.style.display = 'block';
     };
@@ -4333,15 +4336,25 @@ function initSettings() {
   const formWrap = qs('#archetype-rule-form-wrap');
   if (btnAddRule && formWrap) {
     btnAddRule.addEventListener('click', () => {
-      qs('#rule-form-id').value = '';
-      qs('#rule-form-label').value = '';
-      qs('#rule-form-badge').value = '';
-      qs('#rule-form-icon').value = '⚡';
-      qs('#rule-form-color').value = '#3b82f6';
-      qs('#rule-form-scope').value = 'METHOD';
-      qs('#rule-form-pattern').value = '{MODULE}';
-      qs('#rule-form-desc').value = '';
+      const idEl = qs('#rule-form-id'); if (idEl) idEl.value = '';
+      const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Add Archetype Rule';
+      const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = '';
+      const badgeEl = qs('#rule-form-badge'); if (badgeEl) badgeEl.value = '';
+      const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = '⚡';
+      const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = '#10b981';
+      const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = '#10b981';
+      const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = 'METHOD';
+      const matchTypeEl = qs('#rule-form-match-type'); if (matchTypeEl) matchTypeEl.value = 'PREFIX';
+      const patternEl = qs('#rule-form-pattern'); if (patternEl) patternEl.value = '{MODULE}';
+      const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = '';
       formWrap.style.display = 'block';
+    });
+  }
+
+  const btnCloseRule = qs('#btn-close-rule-form');
+  if (btnCloseRule && formWrap) {
+    btnCloseRule.addEventListener('click', () => {
+      formWrap.style.display = 'none';
     });
   }
 
@@ -4352,17 +4365,28 @@ function initSettings() {
     });
   }
 
+  const colorInput = qs('#rule-form-color');
+  const colorTextInput = qs('#rule-form-color-text');
+  if (colorInput && colorTextInput) {
+    colorInput.addEventListener('input', () => { colorTextInput.value = colorInput.value; });
+    colorTextInput.addEventListener('input', () => { colorInput.value = colorTextInput.value; });
+  }
+
   const btnSaveRule = qs('#btn-save-archetype-rule');
   if (btnSaveRule && formWrap) {
     btnSaveRule.addEventListener('click', () => {
-      const id = qs('#rule-form-id').value.trim();
-      const label = qs('#rule-form-label').value.trim();
-      const badge = qs('#rule-form-badge').value.trim();
-      const icon = qs('#rule-form-icon').value.trim() || '⚡';
-      const color = qs('#rule-form-color').value.trim() || '#3b82f6';
-      const scope = qs('#rule-form-scope').value;
-      const pattern = qs('#rule-form-pattern').value.trim();
-      const description = qs('#rule-form-desc').value.trim();
+      const idEl = qs('#rule-form-id');
+      const id = idEl ? idEl.value.trim() : '';
+      const label = qs('#rule-form-label') ? qs('#rule-form-label').value.trim() : '';
+      const badge = qs('#rule-form-badge') ? qs('#rule-form-badge').value.trim() : '';
+      const icon = qs('#rule-form-icon') ? qs('#rule-form-icon').value.trim() || '⚡' : '⚡';
+      const color = qs('#rule-form-color') ? qs('#rule-form-color').value.trim() || '#10b981' : '#10b981';
+      const targetEl = qs('#rule-form-target') || qs('#rule-form-scope');
+      const scope = targetEl ? targetEl.value : 'METHOD';
+      const matchTypeEl = qs('#rule-form-match-type');
+      const matchType = matchTypeEl ? matchTypeEl.value : 'PREFIX';
+      const pattern = qs('#rule-form-pattern') ? qs('#rule-form-pattern').value.trim() : '';
+      const description = qs('#rule-form-desc') ? qs('#rule-form-desc').value.trim() : '';
 
       if (!label || !pattern) {
         alert('Please provide at least a Rule Label and Pattern.');
@@ -4371,9 +4395,9 @@ function initSettings() {
 
       if (window.CodeLensClassifier) {
         if (id) {
-          window.CodeLensClassifier.updateRule(id, { label, badge: badge || label, icon, color, scope, pattern, description });
+          window.CodeLensClassifier.updateRule(id, { label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description });
         } else {
-          window.CodeLensClassifier.addRule({ label, badge: badge || label, icon, color, scope, pattern, description, enabled: true });
+          window.CodeLensClassifier.addRule({ label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description, enabled: true });
         }
         formWrap.style.display = 'none';
         renderArchetypeRulesList();
