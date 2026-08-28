@@ -26,7 +26,101 @@
 <body>
 <div id="app" class="app-viewport" role="application" aria-roledescription="viewport" aria-label="CodeLens Java Codebase Intelligence">
 
-  <!-- Header: logo, scan controls, live stats -->
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       HERO LANDING PAGE - shown when no project is loaded / switching projects
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="hero-landing-page" class="hero-page" style="display:none;" aria-label="CodeLens Welcome">
+
+    <!-- Top-right hero actions -->
+    <div class="hero-top-actions">
+      <button id="hero-theme-toggle-btn" class="hero-icon-btn" aria-label="Toggle theme" title="Toggle Dark / Light Theme">
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+      </button>
+      <button id="hero-settings-btn" class="hero-icon-btn" aria-label="Settings" title="Open Settings">
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+
+    <!-- Hero main content -->
+    <div class="hero-content">
+
+      <!-- Logo + Branding -->
+      <div class="hero-brand">
+        <img src="/assets/app-icon.png" alt="CodeLens Logo" class="hero-logo" />
+        <h1 class="hero-title">CodeLens</h1>
+        <p class="hero-subtitle">Java Architecture Intelligence</p>
+      </div>
+
+      <!-- Scan Card -->
+      <div class="hero-scan-card">
+        <div class="hero-scan-card-header">
+          <svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span>Open a Java Project</span>
+        </div>
+        <div class="hero-scan-input-row">
+          <input
+            id="hero-scan-path-input"
+            type="text"
+            class="hero-scan-input"
+            placeholder="Paste absolute path to Java source directory…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Java source directory path"
+          />
+          <input type="file" id="hero-folder-picker" webkitdirectory directory multiple style="display:none;" aria-hidden="true" />
+          <button id="hero-browse-btn" class="btn-ghost hero-browse-btn" title="Browse for folder">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+            Browse…
+          </button>
+          <button id="hero-scan-btn" class="btn-primary hero-scan-btn" title="Start scan">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Scan
+          </button>
+        </div>
+        <!-- Recent Projects -->
+        <div class="hero-recent-section" id="hero-recent-section">
+          <div class="hero-recent-label">Recent Projects</div>
+          <div id="hero-recent-projects" class="hero-recent-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature highlights -->
+      <div class="hero-features">
+        <div class="hero-feature-tile">
+          <div class="hero-feature-icon">
+            <svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="21"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
+          </div>
+          <div class="hero-feature-name">Call Graphs</div>
+          <div class="hero-feature-desc">Interactive force-directed call-chain visualisation</div>
+        </div>
+        <div class="hero-feature-tile">
+          <div class="hero-feature-icon">
+            <svg class="svg-icon icon-purple icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <div class="hero-feature-name">3D Architecture</div>
+          <div class="hero-feature-desc">City-map &amp; galaxy views of codebase structure</div>
+        </div>
+        <div class="hero-feature-tile">
+          <div class="hero-feature-icon">
+            <svg class="svg-icon icon-amber icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 9-2 2 2 2"/><path d="m15 9 2 2-2 2"/><path d="M11 20 9 4"/></svg>
+          </div>
+          <div class="hero-feature-name">Archetype Classification</div>
+          <div class="hero-feature-desc">Smart labelling of classes &amp; methods by role</div>
+        </div>
+        <div class="hero-feature-tile">
+          <div class="hero-feature-icon">
+            <svg class="svg-icon icon-emerald icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div class="hero-feature-name">AST Code Review</div>
+          <div class="hero-feature-desc">32-rule quality &amp; security audit on every class</div>
+        </div>
+      </div>
+
+    </div><!-- /.hero-content -->
+  </div><!-- /#hero-landing-page -->
+
   <!-- Header: logo, project bar / scan controls, live stats, and actions -->
   <header id="header" role="banner">
 
@@ -37,9 +131,8 @@
     </div>
 
     <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
-    <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
     <div id="header-project-bar" class="header-project-bar" style="display:none;">
-      <div class="project-pill" id="project-pill" title="Click to view full path / switch project">
+      <div class="project-pill" id="project-pill" title="Current project path">
         <span class="project-pill-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
         <span class="project-pill-name" id="project-name-display">sample-project</span>
         <span class="project-pill-path" id="project-path-display">/workspace/src</span>
@@ -48,41 +141,19 @@
         <span class="btn-pill-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
         <span class="btn-pill-label">Rescan</span>
       </button>
-      <button id="btn-open-project" class="btn-header-pill" title="Open or switch Java project directory">
+      <button id="btn-open-project" class="btn-header-pill" title="Switch to a different Java project">
         <span class="btn-pill-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span>
-        <span class="btn-pill-label">Open…</span>
+        <span class="btn-pill-label">Switch Project</span>
       </button>
     </div>
 
-    <!-- Scan source path input + action button -->
-    <section id="header-scan-bar" class="scan-section" aria-label="Scan controls">
-      <label for="scan-path-input" class="visually-hidden">Java source directory path</label>
-      <input
-        id="scan-path-input"
-        type="text"
-        placeholder="Enter Java source directory path (e.g. /workspace/project/src)"
-        autocomplete="off"
-        spellcheck="false"
-        aria-describedby="scan-hint"
-      />
-      <input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none" aria-hidden="true" />
-      <button id="browse-btn" class="btn-ghost" aria-label="Browse directory" title="Select source root folder">
-        Browse…
-      </button>
-      <button id="scan-btn" class="btn-primary" aria-label="Start source scan" title="Start AST parsing and repository indexation">
-        Scan
-      </button>
-      <button id="scan-cancel-btn" class="btn-ghost" style="display:none;" title="Close scan bar">
-        Cancel
-      </button>
-      <span id="scan-hint" class="visually-hidden">
-        Press Enter or click Scan to index the Java source directory
-      </span>
-    </section>
+    <!-- Hidden scan inputs retained for legacy JS compatibility -->
+    <input type="text" id="scan-path-input" style="display:none;" aria-hidden="true" />
+    <input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none" aria-hidden="true" />
 
-    <!-- Top-Right Actions Group (Export, Theme Toggle, Settings, Guide) -->
+    <!-- Top-Right Actions Group (Theme Toggle, Settings) -->
     <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
-      <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
+      <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Reports (open from Settings)" style="display:none;">
         <span class="action-btn-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></span>
         <span class="action-btn-text">Export</span>
       </button>
@@ -94,10 +165,8 @@
         <span class="action-btn-icon"><svg class="svg-icon icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
         <span class="action-btn-text">Settings</span>
       </button>
-      <button id="help-btn" class="header-action-btn" aria-label="Open Feature &amp; User Guide" title="Feature Guide &amp; Documentation (?)">
-        <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>
-        <span class="action-btn-text">Guide</span>
-      </button>
+      <!-- help-btn hidden; Guide content moved to Settings modal -->
+      <button id="help-btn" style="display:none;" aria-hidden="true"></button>
     </div>
 
     <!-- Scan progress bar - sits flush on the bottom border of the header.
@@ -114,6 +183,7 @@
   </header><!-- /#header -->
 
 
+
   <!-- -------------------------------------------------------------------------
        LEFT PANEL - package explorer tree + full-text search
        ------------------------------------------------------------------------- -->
@@ -122,7 +192,9 @@
     <!-- Full-text search box (Lucene-backed via /api/search) -->
     <nav class="search-box" aria-label="Search entities">
       <div class="search-input-wrap">
-        <span class="search-icon" aria-hidden="true"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+        <button id="search-btn-icon" class="search-icon-btn" aria-label="Execute search" title="Search types, methods, fields (Enter)">
+          <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
         <label for="search-input" class="visually-hidden">Search types, methods, fields</label>
         <input
           id="search-input"
@@ -132,6 +204,9 @@
           spellcheck="false"
           aria-label="Search types, methods and fields"
         />
+        <button id="search-clear-btn" class="search-clear-btn" aria-label="Clear search" title="Clear search (Esc)" style="display:none;">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </nav>
 
@@ -192,9 +267,10 @@
         <span class="stat-label">modules</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-pill" id="stat-pill-classes" title="Total indexed Java classes">
+      <div class="stat-pill stat-pill-interactive" id="stat-pill-classes" title="Total indexed Java classes with archetype breakup (Click to view breakdown)" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
         <span class="stat-count" id="stat-classes">0</span>
         <span class="stat-label">classes</span>
+        <svg class="svg-icon icon-xs stat-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       </div>
       <div class="stat-divider"></div>
       <div class="stat-pill stat-pill-interactive" id="stat-pill-methods" title="Total indexed methods with archetype breakup (Click to view breakdown)" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
@@ -208,14 +284,25 @@
         <span class="stat-label">fields</span>
       </div>
 
-      <!-- Interactive Archetypes Breakup Popover -->
+      <!-- Interactive Class Archetypes Breakup Popover -->
+      <div class="methods-archetypes-popover" id="classes-archetypes-popover" style="display:none;" role="dialog" aria-label="Class Archetypes Breakup">
+        <div class="archetypes-popover-header">
+          <span class="popover-title">Class Archetypes Breakup</span>
+          <span class="popover-total" id="popover-classes-total">0 classes</span>
+        </div>
+        <div class="archetypes-popover-list" id="popover-classes-list">
+          <!-- Populated dynamically with each class archetype badge, name, color, and count -->
+        </div>
+      </div>
+
+      <!-- Interactive Method Archetypes Breakup Popover -->
       <div class="methods-archetypes-popover" id="methods-archetypes-popover" style="display:none;" role="dialog" aria-label="Method Archetypes Breakup">
         <div class="archetypes-popover-header">
           <span class="popover-title">Method Archetypes Breakup</span>
           <span class="popover-total" id="popover-methods-total">0 methods</span>
         </div>
-        <div class="archetypes-popover-list" id="popover-archetypes-list">
-          <!-- Populated dynamically with each archetype badge, name, color, and count -->
+        <div class="archetypes-popover-list" id="popover-methods-list">
+          <!-- Populated dynamically with each method archetype badge, name, color, and count -->
         </div>
       </div>
     </div>
@@ -248,82 +335,90 @@
 
     <!-- -- Tab navigation bar ----------------------------------------------- -->
     <nav class="tab-bar" aria-label="Workspace views">
-      <div class="tab-nav-segment" role="tablist" aria-label="Workspace tabs">
-        <!-- Graph view tab - call hierarchy & field impact graphs -->
-        <button
-          class="tab active"
-          role="tab"
-          id="tab-graph"
-          data-tab="graph"
-          draggable="true"
-          aria-selected="true"
-          aria-controls="graph-view"
-          title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
-        >
-          <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
-          <span class="tab-label">Graph</span>
-        </button>
+      <div class="main-views-switcher" role="group" aria-label="Workspace Views">
+        <span class="views-hud-label">
+          <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+          <span>Views:</span>
+        </span>
+        <div class="tab-nav-segment graph-level-pills" role="tablist" aria-label="Workspace tabs">
+          <!-- Graph view tab - call hierarchy & field impact graphs -->
+          <button
+            class="tab level-pill active"
+            role="tab"
+            id="tab-graph"
+            data-tab="graph"
+            draggable="true"
+            aria-selected="true"
+            aria-controls="graph-view"
+            title="Interactive force-directed call hierarchy and field propagation graph (Shortcut: 1)"
+          >
+            <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
+            <span class="tab-label">Graph</span>
+          </button>
 
-        <!-- Knowledge base tab - structured list of all types/methods/fields -->
-        <button
-          class="tab"
-          role="tab"
-          id="tab-knowledge"
-          data-tab="knowledge"
-          draggable="true"
-          aria-selected="false"
-          aria-controls="knowledge-view"
-          title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
-        >
-          <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
-          <span class="tab-label">Knowledge Base</span>
-        </button>
+          <!-- Knowledge base tab - structured list of all types/methods/fields -->
+          <button
+            class="tab level-pill"
+            role="tab"
+            id="tab-knowledge"
+            data-tab="knowledge"
+            draggable="true"
+            aria-selected="false"
+            aria-controls="knowledge-view"
+            title="Structured Knowledge Base view with members, signatures, and complexity (Shortcut: 2)"
+          >
+            <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+            <span class="tab-label">Knowledge Base</span>
+          </button>
 
-        <!-- Code Review tab - on-demand AST-based code reviewer -->
-        <button
-          class="tab"
-          role="tab"
-          id="tab-review"
-          data-tab="review"
-          draggable="true"
-          aria-selected="false"
-          aria-controls="review-view"
-          title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
-        >
-          <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-          <span class="tab-label">Code Review</span>
-          <span class="tab-badge" aria-label="finding count">0</span>
-        </button>
+          <!-- Code Review tab - on-demand AST-based code reviewer -->
+          <button
+            class="tab level-pill"
+            role="tab"
+            id="tab-review"
+            data-tab="review"
+            draggable="true"
+            aria-selected="false"
+            aria-controls="review-view"
+            title="On-demand Code Review &amp; Logic Auditor (Shortcut: 3)"
+          >
+            <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <span class="tab-label">Code Review</span>
+            <span class="tab-badge" aria-label="finding count">0</span>
+          </button>
 
-        <!-- Git tab - blame annotation, top authors, hot files -->
-        <button
-          class="tab"
-          role="tab"
-          id="tab-git"
-          data-tab="git"
-          draggable="true"
-          aria-selected="false"
-          aria-controls="git-view"
-          title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
-        >
-          <span class="tab-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
-          <span class="tab-label">Git</span>
-        </button>
+          <span class="level-pill-divider"></span>
 
-        <!-- Source tab - Monaco code editor view -->
-        <button
-          class="tab"
-          role="tab"
-          id="tab-source"
-          data-tab="source"
-          draggable="true"
-          aria-selected="false"
-          aria-controls="source-view"
-          title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
-        >
-          <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
-          <span class="tab-label">Source</span>
-        </button>
+          <!-- Git tab - blame annotation, top authors, hot files -->
+          <button
+            class="tab level-pill"
+            role="tab"
+            id="tab-git"
+            data-tab="git"
+            draggable="true"
+            aria-selected="false"
+            aria-controls="git-view"
+            title="Git repository analytics: commit heat, top authors, and file churn (Shortcut: 4)"
+          >
+            <span class="tab-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
+            <span class="tab-label">Git</span>
+          </button>
+
+          <!-- Source tab - Monaco code editor view -->
+          <button
+            class="tab level-pill"
+            role="tab"
+            id="tab-source"
+            data-tab="source"
+            draggable="true"
+            aria-selected="false"
+            aria-controls="source-view"
+            title="Integrated Monaco syntax-highlighted source code editor (Shortcut: 5)"
+          >
+            <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <span class="tab-label">Source</span>
+          </button>
+        </div>
       </div>
 
       <!-- Spacer & Dedicated 3D / Macro Visualizer Studio Mode Launch Button -->
@@ -1559,11 +1654,68 @@
         <div id="archetype-rules-list" class="archetype-rules-list"></div>
       </section>
 
+      <!-- ── Reports & Export ─────────────────────────────────────────────── -->
+      <div class="settings-grid-row">
+        <section class="settings-group settings-export-section">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg>
+            Reports &amp; Export
+          </h3>
+          <p class="settings-help-text">Generate architecture, quality audit &amp; inventory reports in Markdown, HTML, JSON or CSV.</p>
+          <div class="settings-export-actions">
+            <button id="settings-export-open-btn" class="btn-primary" style="font-size:12px; padding:6px 16px;" title="Open Export Hub">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Open Export Hub
+            </button>
+          </div>
+          <div class="settings-export-cards">
+            <div class="settings-export-card">
+              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+              <span>Architecture &amp; Coupling</span>
+            </div>
+            <div class="settings-export-card">
+              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              <span>Code Quality Audit</span>
+            </div>
+            <div class="settings-export-card">
+              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+              <span>Inventory &amp; Metrics</span>
+            </div>
+            <div class="settings-export-card">
+              <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <span>Interactive Snapshot</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Feature Guide & Shortcuts ──────────────────────────────── -->
+        <section class="settings-group settings-guide-section">
+          <h3 class="settings-group-title">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+            Feature Guide &amp; Shortcuts
+          </h3>
+          <div class="settings-guide-shortcuts">
+            <div class="guide-shortcut-row"><kbd>Ctrl/⌘ K</kbd><span>Focus search</span></div>
+            <div class="guide-shortcut-row"><kbd>Ctrl/⌘ R</kbd><span>Re-scan codebase</span></div>
+            <div class="guide-shortcut-row"><kbd>Esc</kbd><span>Clear search / close modal</span></div>
+            <div class="guide-shortcut-row"><kbd>1</kbd><span>Graph view</span></div>
+            <div class="guide-shortcut-row"><kbd>2</kbd><span>Knowledge Base view</span></div>
+            <div class="guide-shortcut-row"><kbd>3</kbd><span>Code Review view</span></div>
+            <div class="guide-shortcut-row"><kbd>4</kbd><span>Git view</span></div>
+          </div>
+          <button id="settings-guide-open-btn" class="btn-ghost" style="font-size:12px; padding:5px 12px; margin-top:10px;" title="Open full Feature Guide">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+            Open Full Guide
+          </button>
+        </section>
+      </div>
+
       <!-- ── Footer ───────────────────────────────────────────────────── -->
       <div class="settings-footer">
         <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
         <div class="settings-footer-msg" id="settings-footer-msg"></div>
       </div>
+
 
     </div>
   </div>

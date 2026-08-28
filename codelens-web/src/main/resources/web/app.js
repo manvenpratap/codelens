@@ -168,21 +168,127 @@ function enc(fqn) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   3. Scan workflow
+   Hero Landing Page helpers
    ───────────────────────────────────────────────────────────────────────────── */
+
+/** Show the hero landing page and hide all workspace UI */
+function showHeroPage() {
+  const hero = qs('#hero-landing-page');
+  const header = qs('#header');
+  const leftPanel = qs('#left-panel');
+  const centrePanel = qs('#centre-panel');
+  const rightPanel = qs('#right-panel');
+  if (hero) hero.style.display = 'flex';
+  if (header) header.style.display = 'none';
+  if (leftPanel) leftPanel.style.display = 'none';
+  if (centrePanel) centrePanel.style.display = 'none';
+  if (rightPanel) rightPanel.style.display = 'none';
+  // Populate recent projects list
+  renderHeroRecentProjects();
+}
+
+/** Hide the hero landing page and show all workspace UI */
+function hideHeroPage() {
+  const hero = qs('#hero-landing-page');
+  const header = qs('#header');
+  const leftPanel = qs('#left-panel');
+  const centrePanel = qs('#centre-panel');
+  const rightPanel = qs('#right-panel');
+  if (hero) hero.style.display = 'none';
+  if (header) header.style.display = '';
+  if (leftPanel) leftPanel.style.display = '';
+  if (centrePanel) centrePanel.style.display = '';
+  if (rightPanel) rightPanel.style.display = '';
+}
+
+/** Add a path to the recent-projects list stored in localStorage (max 8 entries) */
+function addToRecentProjects(path) {
+  if (!path) return;
+  const key = 'codelens_recent_paths';
+  let recents = [];
+  try { recents = JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) {}
+  // Remove duplicates
+  recents = recents.filter(p => p !== path);
+  recents.unshift(path);
+  if (recents.length > 8) recents = recents.slice(0, 8);
+  localStorage.setItem(key, JSON.stringify(recents));
+}
+
+/** Render recent project buttons inside the hero scan card */
+function renderHeroRecentProjects() {
+  const container = qs('#hero-recent-projects');
+  const section   = qs('#hero-recent-section');
+  if (!container) return;
+
+  let recents = [];
+  try { recents = JSON.parse(localStorage.getItem('codelens_recent_paths') || '[]'); } catch (_) {}
+
+  if (recents.length === 0) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  if (section) section.style.display = '';
+
+  container.innerHTML = '';
+  recents.forEach(path => {
+    const cleanPath = path.replace(/[\\/]+$/, '');
+    const parts = cleanPath.split(/[\\/]/);
+    const name = parts[parts.length - 1] || 'Project';
+    const btn = document.createElement('button');
+    btn.className = 'hero-recent-item';
+    btn.title = path;
+    btn.innerHTML = `
+      <svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+      <span class="hero-recent-name">${name}</span>
+      <span class="hero-recent-path">${path}</span>
+    `;
+    btn.addEventListener('click', () => {
+      const heroInput = qs('#hero-scan-path-input');
+      if (heroInput) heroInput.value = path;
+      startHeroScan(path);
+    });
+    container.appendChild(btn);
+  });
+}
+
+/** Start a scan from the hero page then transition to workspace */
+async function startHeroScan(targetPath) {
+  let path = (typeof targetPath === 'string' && targetPath.trim()) ? targetPath.trim()
+           : qs('#hero-scan-path-input')?.value?.trim() || '';
+  if (!path) {
+    const heroInput = qs('#hero-scan-path-input');
+    if (heroInput) {
+      heroInput.focus();
+      heroInput.classList.add('input-error');
+      setTimeout(() => heroInput.classList.remove('input-error'), 1500);
+    }
+    showBanner('Please enter or select the path to your Java source directory.');
+    return;
+  }
+  // Sync to legacy input so startScan works unchanged
+  const scanInput = qs('#scan-path-input');
+  if (scanInput) scanInput.value = path;
+
+  addToRecentProjects(path);
+
+  // Transition hero → workspace immediately (scan will run behind the scenes)
+  hideHeroPage();
+  startScan(path);
+}
 
 /** Start a scan with the specified or active project path. */
 async function startScan(targetPath) {
+
   let path = (typeof targetPath === 'string' && targetPath.trim()) ? targetPath.trim() : '';
   if (!path) {
     path = qs('#scan-path-input')?.value?.trim() || App.currentPath || localStorage.getItem('codelens_last_path') || '';
   }
   if (!path) {
-    showHeaderScanBar();
-    flashInput(qs('#scan-path-input'));
+    showHeroPage();
     showBanner('Please enter or select the path to your Java source directory.');
     return;
   }
+
 
   const scanInput = qs('#scan-path-input');
   if (scanInput) scanInput.value = path;
@@ -685,6 +791,10 @@ function selectPackage(pkg, itemEl) {
 let searchDebounce = null;
 function onSearchInput(e) {
   const q = e.target.value.trim();
+  const clearBtn = qs('#search-clear-btn');
+  if (clearBtn) {
+    clearBtn.style.display = q ? 'inline-flex' : 'none';
+  }
 
   clearTimeout(searchDebounce);
   if (!q) {
@@ -696,13 +806,30 @@ function onSearchInput(e) {
 }
 
 async function runSearch(q) {
+  const query = (q || '').trim();
+  if (!query) {
+    showExplorer();
+    return;
+  }
+
   showSearchResults();
   const resultsEl = qs('#search-results');
   resultsEl.innerHTML = '<div class="list-empty">Searching…</div>';
 
   try {
-    const hits = await api.search(q);
+    let hits = await api.search(query);
     resultsEl.innerHTML = '';
+
+    // If entity kind filter is active in explorer chips, filter results
+    if (App.filter && App.filter !== 'all') {
+      hits = hits.filter(hit => {
+        if (App.filter === 'CLASS') return hit.kind === 'TYPE' || hit.kind === 'CLASS';
+        if (App.filter === 'INTERFACE') return hit.kind === 'INTERFACE';
+        if (App.filter === 'ENUM') return hit.kind === 'ENUM';
+        if (App.filter === 'RECORD') return hit.kind === 'RECORD';
+        return true;
+      });
+    }
 
     if (hits.length === 0) {
       resultsEl.innerHTML = '<div class="list-empty">No results found.</div>';
@@ -719,9 +846,12 @@ async function runSearch(q) {
         <div class="sr-fqn">${esc(hit.fqn)}</div>`;
 
       item.addEventListener('click', () => {
-        qs('#search-input').value = '';
+        const input = qs('#search-input');
+        if (input) input.value = '';
+        const clearBtn = qs('#search-clear-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
         showExplorer();
-        if      (hit.kind === 'TYPE')   selectType(hit.id);
+        if      (hit.kind === 'TYPE' || hit.kind === 'CLASS' || hit.kind === 'INTERFACE' || hit.kind === 'ENUM' || hit.kind === 'RECORD') selectType(hit.id);
         else if (hit.kind === 'METHOD') selectMethod(hit.id);
         else if (hit.kind === 'FIELD')  selectField(hit.id);
       });
@@ -733,8 +863,29 @@ async function runSearch(q) {
   }
 }
 
-function showExplorer()     { qs('#explorer-tree').style.display = ''; qs('#search-results').style.display = 'none'; }
-function showSearchResults() { qs('#explorer-tree').style.display = 'none'; qs('#search-results').style.display = ''; }
+function showExplorer() {
+  const tree = qs('#explorer-tree');
+  const results = qs('#search-results');
+  const label = qs('#explorer-label');
+  if (tree) tree.style.display = 'block';
+  if (results) {
+    results.style.display = 'none';
+    results.classList.remove('active');
+  }
+  if (label) label.textContent = 'Explorer';
+}
+
+function showSearchResults() {
+  const tree = qs('#explorer-tree');
+  const results = qs('#search-results');
+  const label = qs('#explorer-label');
+  if (tree) tree.style.display = 'none';
+  if (results) {
+    results.style.display = 'block';
+    results.classList.add('active');
+  }
+  if (label) label.textContent = 'Search Results';
+}
 
 /* ── Filter chips ────────────────────────────────────────────────────────────── */
 
@@ -3140,8 +3291,8 @@ async function loadStats() {
     // Also support fallback elements if any
     animateCounter(qs('#stat-types'),   s.types   || 0);
 
-    // Compute & update method archetypes breakup
-    updateMethodArchetypesBreakup(s);
+    // Compute & update archetypes breakup for both classes and methods
+    updateArchetypesBreakup(s);
 
     if ((s.types || s.classes) > 0) {
       updateHeaderProjectBar();
@@ -3151,85 +3302,160 @@ async function loadStats() {
   }
 }
 
-/** Update the method archetypes breakup inside the explorer footer popover */
-function updateMethodArchetypesBreakup(stats) {
+/** Update the class and method archetypes breakup inside the explorer footer popovers */
+function updateArchetypesBreakup(stats) {
   const methodList = stats?.methodsList || [];
-  const popoverList = qs('#popover-archetypes-list');
-  const popoverTotal = qs('#popover-methods-total');
+  const typeList = stats?.typesList || [];
   const methodsCount = stats?.methods || methodList.length || 0;
-
-  if (popoverTotal) {
-    popoverTotal.textContent = `${methodsCount.toLocaleString()} method${methodsCount === 1 ? '' : 's'}`;
-  }
-
-  if (!popoverList) return;
+  const classesCount = stats?.classes || stats?.types || typeList.length || 0;
 
   const items = getAvailableArchetypeItems();
   const counts = new Map();
   items.forEach(it => counts.set(it.id, 0));
 
-  if (window.CodeLensClassifier && methodList.length > 0) {
-    methodList.forEach(m => {
-      const res = window.CodeLensClassifier.classifyMethod(m.name, m.fqn, m.type);
-      const ruleId = res ? res.ruleId : 'UNCLASSIFIED';
-      counts.set(ruleId, (counts.get(ruleId) || 0) + 1);
-    });
+  let classifiedClassesCount = 0;
+  let classifiedMethodsCount = 0;
+
+  if (window.CodeLensClassifier) {
+    // Classify methods
+    if (methodList.length > 0) {
+      methodList.forEach(m => {
+        const res = window.CodeLensClassifier.classifyMethod(m.name, m.fqn, m.type);
+        if (res && res.ruleId) {
+          counts.set(res.ruleId, (counts.get(res.ruleId) || 0) + 1);
+          classifiedMethodsCount++;
+        }
+      });
+    }
+
+    // Classify classes
+    if (typeList.length > 0) {
+      typeList.forEach(t => {
+        const res = window.CodeLensClassifier.classifyType(t.name, t.fqn, t.package);
+        if (res && res.ruleId) {
+          counts.set(res.ruleId, (counts.get(res.ruleId) || 0) + 1);
+          classifiedClassesCount++;
+        }
+      });
+    }
   }
 
-  // Sort items by count descending
-  const sortedItems = [...items].sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0));
+  const renderBreakupRows = (rulesList, totalCount, classifiedCount) => {
+    const unclassifiedCount = Math.max(0, totalCount - classifiedCount);
+    const sorted = [...rulesList].sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0));
 
-  popoverList.innerHTML = sortedItems.map(item => {
-    const count = counts.get(item.id) || 0;
-    const pct = methodsCount > 0 ? ((count / methodsCount) * 100).toFixed(1) : '0.0';
-    const color = item.color || '#64748b';
-    return `
-      <div class="archetype-breakup-row" data-id="${esc(item.id)}" title="${esc(item.label)}: ${count} methods (${pct}%)">
-        <div class="archetype-breakup-left">
-          <span class="archetype-breakup-badge" style="background:${color}22; color:${color}; border:1px solid ${color}55;">[${esc(item.badge)}]</span>
-          <span class="archetype-breakup-name">${esc(item.label)}</span>
+    let rowsHtml = sorted.map(item => {
+      const count = counts.get(item.id) || 0;
+      const pct = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : '0.0';
+      const color = item.color || '#64748b';
+      return `
+        <div class="archetype-breakup-row" data-id="${esc(item.id)}" title="${esc(item.label)}: ${count.toLocaleString()} (${pct}%)">
+          <div class="archetype-breakup-left">
+            <span class="archetype-breakup-badge" style="background:${color}22; color:${color}; border:1px solid ${color}55;">[${esc(item.badge)}]</span>
+            <span class="archetype-breakup-name">${esc(item.label)}</span>
+          </div>
+          <div class="archetype-breakup-right">
+            <span class="archetype-breakup-count">${count.toLocaleString()}</span>
+            <span class="archetype-breakup-pct">${pct}%</span>
+          </div>
         </div>
-        <div class="archetype-breakup-right">
-          <span class="archetype-breakup-count">${count.toLocaleString()}</span>
-          <span class="archetype-breakup-pct">${pct}%</span>
+      `;
+    }).join('');
+
+    if (unclassifiedCount > 0) {
+      const pct = totalCount > 0 ? ((unclassifiedCount / totalCount) * 100).toFixed(1) : '0.0';
+      rowsHtml += `
+        <div class="archetype-breakup-row" data-id="UNCLASSIFIED" title="Unclassified / Plain: ${unclassifiedCount.toLocaleString()} (${pct}%)">
+          <div class="archetype-breakup-left">
+            <span class="archetype-breakup-badge" style="background:#64748b22; color:#64748b; border:1px solid #64748b55;">[NONE]</span>
+            <span class="archetype-breakup-name">Unclassified / Plain</span>
+          </div>
+          <div class="archetype-breakup-right">
+            <span class="archetype-breakup-count">${unclassifiedCount.toLocaleString()}</span>
+            <span class="archetype-breakup-pct">${pct}%</span>
+          </div>
         </div>
-      </div>
-    `;
-  }).join('');
-}
+      `;
+    }
 
-/** Initialize interactive click and keyboard triggers for the archetypes breakup popover */
-function initArchetypePopover() {
-  const pill = qs('#stat-pill-methods');
-  const popover = qs('#methods-archetypes-popover');
-  if (!pill || !popover) return;
-
-  const toggle = (e) => {
-    e.stopPropagation();
-    const isVisible = popover.style.display !== 'none';
-    popover.style.display = isVisible ? 'none' : 'flex';
-    pill.classList.toggle('popover-open', !isVisible);
-    pill.setAttribute('aria-expanded', !isVisible ? 'true' : 'false');
+    return rowsHtml;
   };
 
-  pill.addEventListener('click', toggle);
-  pill.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggle(e);
-    } else if (e.key === 'Escape') {
-      popover.style.display = 'none';
-      pill.classList.remove('popover-open');
-      pill.setAttribute('aria-expanded', 'false');
-    }
+  // 1. Update Classes Popover
+  const classesList = qs('#popover-classes-list');
+  const classesTotal = qs('#popover-classes-total');
+  if (classesTotal) {
+    classesTotal.textContent = `${classesCount.toLocaleString()} classes`;
+  }
+  if (classesList) {
+    const classRules = items.filter(it => it.scope === 'CLASS');
+    classesList.innerHTML = renderBreakupRows(classRules, classesCount, classifiedClassesCount);
+  }
+
+  // 2. Update Methods Popover
+  const methodsList = qs('#popover-methods-list') || qs('#popover-archetypes-list');
+  const methodsTotal = qs('#popover-methods-total');
+  if (methodsTotal) {
+    methodsTotal.textContent = `${methodsCount.toLocaleString()} methods`;
+  }
+  if (methodsList) {
+    const methodRules = items.filter(it => it.scope === 'METHOD');
+    methodsList.innerHTML = renderBreakupRows(methodRules, methodsCount, classifiedMethodsCount);
+  }
+}
+
+/** Initialize interactive click and keyboard triggers for both archetype breakup popovers */
+function initArchetypePopover() {
+  const popoverPairs = [
+    { pill: qs('#stat-pill-classes'), popover: qs('#classes-archetypes-popover') },
+    { pill: qs('#stat-pill-methods'), popover: qs('#methods-archetypes-popover') }
+  ];
+
+  popoverPairs.forEach(({ pill, popover }) => {
+    if (!pill || !popover) return;
+
+    const toggle = (e) => {
+      e.stopPropagation();
+      const isVisible = popover.style.display !== 'none';
+
+      // Close all popovers first
+      popoverPairs.forEach(p => {
+        if (p.popover) p.popover.style.display = 'none';
+        if (p.pill) {
+          p.pill.classList.remove('popover-open');
+          p.pill.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      if (!isVisible) {
+        updateArchetypesBreakup(App.stats || {});
+        popover.style.display = 'flex';
+        pill.classList.add('popover-open');
+        pill.setAttribute('aria-expanded', 'true');
+      }
+    };
+
+    pill.addEventListener('click', toggle);
+    pill.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle(e);
+      } else if (e.key === 'Escape') {
+        popover.style.display = 'none';
+        pill.classList.remove('popover-open');
+        pill.setAttribute('aria-expanded', 'false');
+      }
+    });
   });
 
   document.addEventListener('click', (e) => {
-    if (!popover.contains(e.target) && !pill.contains(e.target)) {
-      popover.style.display = 'none';
-      pill.classList.remove('popover-open');
-      pill.setAttribute('aria-expanded', 'false');
-    }
+    popoverPairs.forEach(({ pill, popover }) => {
+      if (popover && pill && !popover.contains(e.target) && !pill.contains(e.target)) {
+        popover.style.display = 'none';
+        pill.classList.remove('popover-open');
+        pill.setAttribute('aria-expanded', 'false');
+      }
+    });
   });
 }
 
@@ -3267,18 +3493,11 @@ function updateHeaderProjectBar(path) {
   }
 }
 
-/** Reveal the scan input bar to switch or open a different project */
+/** Reveal the scan input bar to switch or open a different project (now shows hero page) */
 function showHeaderScanBar() {
-  const projectBar = qs('#header-project-bar');
-  const scanBar = qs('#header-scan-bar');
-  if (projectBar) projectBar.style.display = 'none';
-  if (scanBar) scanBar.style.display = 'flex';
-  const input = qs('#scan-path-input');
-  if (input) {
-    input.focus();
-    input.select();
-  }
+  showHeroPage();
 }
+
 
 /** Smoothly count up a stat value. */
 function animateCounter(el, target) {
@@ -3402,7 +3621,76 @@ function adaptOsShortcuts() {
 async function init() {
   adaptOsShortcuts();
 
-  // Wire up scan button and Enter key
+  // ── Hero Page wiring ──────────────────────────────────────────────────────
+  // Hero scan button
+  qs('#hero-scan-btn')?.addEventListener('click', () => startHeroScan());
+
+  // Hero browse button — triggers native dialog then falls back to file picker
+  const heroBrowseBtn    = qs('#hero-browse-btn');
+  const heroFolderPicker = qs('#hero-folder-picker');
+  const heroScanInput    = qs('#hero-scan-path-input');
+
+  if (heroFolderPicker) {
+    heroFolderPicker.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        const firstFile = e.target.files[0];
+        const relPath   = firstFile.webkitRelativePath || '';
+        const rootDir   = relPath.split('/')[0] || relPath.split('\\')[0] || '';
+        if (heroScanInput && (!heroScanInput.value || heroScanInput.value.trim() === '')) {
+          heroScanInput.value = rootDir;
+        }
+        showBanner(`Folder selected: "${rootDir}". Confirm the full path and click Scan.`);
+      }
+    });
+  }
+
+  if (heroBrowseBtn) {
+    heroBrowseBtn.addEventListener('click', async () => {
+      const originalText = heroBrowseBtn.textContent.trim();
+      heroBrowseBtn.disabled = true;
+      try {
+        const current = heroScanInput?.value?.trim() || '';
+        const res = await api.browse(current);
+        if (res && res.path && res.path.trim() !== '') {
+          const selectedPath = res.path.trim();
+          if (heroScanInput) heroScanInput.value = selectedPath;
+          showBanner(`Selected: ${selectedPath}`);
+        } else if (heroFolderPicker) {
+          heroFolderPicker.click();
+        }
+      } catch (_) {
+        if (heroFolderPicker) heroFolderPicker.click();
+      } finally {
+        heroBrowseBtn.disabled = false;
+      }
+    });
+  }
+
+  if (heroScanInput) {
+    heroScanInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); startHeroScan(); }
+    });
+  }
+
+  // Hero theme toggle (mirrors main toggle)
+  qs('#hero-theme-toggle-btn')?.addEventListener('click', () => {
+    const s = loadSettings();
+    const isCurrentlyLight = s.theme === 'light' || document.body.classList.contains('theme-light');
+    const newTheme = isCurrentlyLight ? 'dark' : 'light';
+    s.theme = newTheme;
+    saveSettings(s);
+    applyAllSettings(s);
+    syncSettingsUI(s);
+    showBanner(`Theme: ${newTheme === 'light' ? 'Light' : 'Dark'}`);
+  });
+
+  // Hero settings button
+  qs('#hero-settings-btn')?.addEventListener('click', () => {
+    const modal = qs('#settings-modal');
+    if (modal) showAccessibleModal(modal, qs('#hero-settings-btn'));
+  });
+
+  // Wire up scan button and Enter key (legacy hidden scan input)
   qs('#scan-btn')?.addEventListener('click', () => startScan());
 
   // Wire up header project bar controls
@@ -3411,12 +3699,13 @@ async function init() {
     startScan();
   });
   qs('#btn-open-project')?.addEventListener('click', showHeaderScanBar);
-  qs('#project-pill')?.addEventListener('click', showHeaderScanBar);
+  qs('#project-pill')?.addEventListener('click', () => {/* tooltip only – no action */});
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
     if (App.stats && App.stats.types > 0) {
       updateHeaderProjectBar();
     }
   });
+
 
   // Wire up quick theme toggle in header toolbar
   qs('#theme-toggle-btn')?.addEventListener('click', () => {
@@ -3506,8 +3795,68 @@ async function init() {
     if (e.key === 'Enter') startScan();
   });
 
-  // Search input
-  qs('#search-input').addEventListener('input', onSearchInput);
+  // Search input and interactive search buttons
+  const searchInput = qs('#search-input');
+  const searchBtnIcon = qs('#search-btn-icon');
+  const searchClearBtn = qs('#search-clear-btn');
+
+  const executeSearch = () => {
+    if (!searchInput) return;
+    const q = searchInput.value.trim();
+    if (q) {
+      if (searchClearBtn) searchClearBtn.style.display = 'inline-flex';
+      runSearch(q);
+    } else {
+      if (searchClearBtn) searchClearBtn.style.display = 'none';
+      showExplorer();
+    }
+  };
+
+  if (searchInput) {
+    searchInput.addEventListener('input', onSearchInput);
+    searchInput.addEventListener('search', (e) => {
+      const q = e.target.value.trim();
+      if (searchClearBtn) searchClearBtn.style.display = q ? 'inline-flex' : 'none';
+      if (!q) showExplorer();
+      else runSearch(q);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(searchDebounce);
+        executeSearch();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        searchInput.value = '';
+        if (searchClearBtn) searchClearBtn.style.display = 'none';
+        showExplorer();
+        searchInput.blur();
+      }
+    });
+  }
+
+  if (searchBtnIcon) {
+    searchBtnIcon.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (searchInput) {
+        searchInput.focus();
+        clearTimeout(searchDebounce);
+        executeSearch();
+      }
+    });
+  }
+
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      searchClearBtn.style.display = 'none';
+      showExplorer();
+    });
+  }
 
   // Filter chips
   qsa('.chip').forEach(chip => {
@@ -3661,18 +4010,34 @@ async function init() {
   // Eagerly initialize graph canvas instance
   ensureGraph();
 
+  // ── Initial view decision: show hero page or go straight to workspace ───
   // Check if server already has data (e.g. re-open after prior scan)
+  let serverHasData = false;
   try {
     const status = await api.scanStatus();
     if (status.status === 'SCANNING') {
       setScanUI('scanning');
-      if (status.sourcePath) qs('#scan-path-input').value = status.sourcePath;
+      if (status.sourcePath) {
+        const si = qs('#scan-path-input');
+        if (si) si.value = status.sourcePath;
+      }
       pollScanStatus();
+      serverHasData = true;
+    } else if (status.status === 'COMPLETE' && status.sourcePath) {
+      serverHasData = true;
     }
   } catch (_) { /* first run */ }
 
+  const lastPath = localStorage.getItem('codelens_last_path');
+  if (!serverHasData && !lastPath) {
+    // Fresh start — show hero page, hide workspace panels
+    showHeroPage();
+  }
+  // (else: workspace panels remain visible by default from HTML)
+
   await loadStats();
   await loadPackageTree();
+
 
   // Initialize adjustable panel resizers
   initPanelResizers();
@@ -3683,11 +4048,26 @@ async function init() {
   // Initialize report export hub
   initExportHub();
 
+  // Wire Settings modal → Export Hub shortcut button
+  qs('#settings-export-open-btn')?.addEventListener('click', () => {
+    const settingsModal = qs('#settings-modal');
+    if (settingsModal) settingsModal.setAttribute('aria-hidden', 'true');
+    ExportHub.open('architecture', 'markdown');
+  });
+
+  // Wire Settings modal → Feature Guide full-open button
+  qs('#settings-guide-open-btn')?.addEventListener('click', () => {
+    const settingsModal = qs('#settings-modal');
+    if (settingsModal) settingsModal.setAttribute('aria-hidden', 'true');
+    openHelpModal();
+  });
+
   // Initialize code review controls
   initReviewControls();
 
   // Initialize Git connection controls
   initGitControls();
+
 
   // Pre-load git branch metadata in the status footer
   updateFooterGitBranch();
@@ -3864,25 +4244,75 @@ function populateArchetypeDropdowns() {
 
   const selectedSet = App.activeArchetypeFilter;
 
+  const classItems = items.filter(it => it.scope === 'CLASS');
+  const methodItems = items.filter(it => it.scope === 'METHOD');
+  const otherItems = items.filter(it => it.scope !== 'CLASS' && it.scope !== 'METHOD');
+
+  const renderItemHtml = (item) => {
+    const isChecked = selectedSet.has(item.id);
+    const iconSvg = window.Icons ? window.Icons.get(item.icon, { size: 'xs' }) : '';
+    const color = item.color;
+    return `
+      <label class="archetype-panel-item" data-id="${esc(item.id)}">
+        <input type="checkbox" class="archetype-item-chk" data-id="${esc(item.id)}" ${isChecked ? 'checked' : ''} />
+        <span class="archetype-item-pill" style="background:${color}18; color:${color}; border:1px solid ${color}44;">
+          ${iconSvg}
+          <span class="archetype-item-badge">[${esc(item.badge)}]</span>
+          <span class="archetype-item-label">${esc(item.label)}</span>
+        </span>
+      </label>
+    `;
+  };
+
+  let html = '';
+  if (classItems.length > 0) {
+    html += `
+      <div class="archetype-panel-group">
+        <div class="archetype-panel-group-header">
+          <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+          <span>Class Archetypes</span>
+          <span class="archetype-group-count">${classItems.length}</span>
+        </div>
+        <div class="archetype-panel-group-items">
+          ${classItems.map(renderItemHtml).join('')}
+        </div>
+      </div>
+    `;
+  }
+  if (methodItems.length > 0) {
+    html += `
+      <div class="archetype-panel-group">
+        <div class="archetype-panel-group-header">
+          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <span>Method Archetypes</span>
+          <span class="archetype-group-count">${methodItems.length}</span>
+        </div>
+        <div class="archetype-panel-group-items">
+          ${methodItems.map(renderItemHtml).join('')}
+        </div>
+      </div>
+    `;
+  }
+  if (otherItems.length > 0) {
+    html += `
+      <div class="archetype-panel-group">
+        <div class="archetype-panel-group-header">
+          <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <span>Other</span>
+          <span class="archetype-group-count">${otherItems.length}</span>
+        </div>
+        <div class="archetype-panel-group-items">
+          ${otherItems.map(renderItemHtml).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   ['graph-archetype-items', 'codebase-archetype-items'].forEach(containerId => {
     const container = document.getElementById(containerId);
-    if (!container) return;
-
-    container.innerHTML = items.map(item => {
-      const isChecked = selectedSet.has(item.id);
-      const iconSvg = window.Icons ? window.Icons.get(item.icon, { size: 'xs' }) : '';
-      const color = item.color;
-      return `
-        <label class="archetype-panel-item" data-id="${esc(item.id)}">
-          <input type="checkbox" class="archetype-item-chk" data-id="${esc(item.id)}" ${isChecked ? 'checked' : ''} />
-          <span class="archetype-item-pill" style="background:${color}18; color:${color}; border:1px solid ${color}44;">
-            ${iconSvg}
-            <span class="archetype-item-badge">[${esc(item.badge)}]</span>
-            <span class="archetype-item-label">${esc(item.label)}</span>
-          </span>
-        </label>
-      `;
-    }).join('');
+    if (container) {
+      container.innerHTML = html;
+    }
   });
 
   updateArchetypeButtonLabels(items);
@@ -5171,7 +5601,11 @@ function renderArchetypeRulesList() {
     return;
   }
 
-  container.innerHTML = rules.map(r => {
+  const classRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'CLASS');
+  const methodRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'METHOD');
+  const otherRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() !== 'CLASS' && (r.scope || r.target || '').toUpperCase() !== 'METHOD');
+
+  const renderCard = r => {
     const color = r.color || '#10b981';
     const scope = (r.scope || r.target || 'METHOD').toUpperCase();
     const matchType = (r.matchType || 'PREFIX').toUpperCase();
@@ -5212,7 +5646,44 @@ function renderArchetypeRulesList() {
         </div>
       </div>
     `;
-  }).join('');
+  };
+
+  let listHtml = '';
+  if (classRules.length > 0) {
+    listHtml += `
+      <div class="archetype-rules-group-section">
+        <div class="archetype-rules-group-title">
+          <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+          <span>Class Archetypes (${classRules.length})</span>
+        </div>
+        <div class="archetype-rules-group-cards">${classRules.map(renderCard).join('')}</div>
+      </div>
+    `;
+  }
+  if (methodRules.length > 0) {
+    listHtml += `
+      <div class="archetype-rules-group-section">
+        <div class="archetype-rules-group-title">
+          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <span>Method Archetypes (${methodRules.length})</span>
+        </div>
+        <div class="archetype-rules-group-cards">${methodRules.map(renderCard).join('')}</div>
+      </div>
+    `;
+  }
+  if (otherRules.length > 0) {
+    listHtml += `
+      <div class="archetype-rules-group-section">
+        <div class="archetype-rules-group-title">
+          <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <span>Other Archetypes (${otherRules.length})</span>
+        </div>
+        <div class="archetype-rules-group-cards">${otherRules.map(renderCard).join('')}</div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = listHtml;
 
   // Wire rule toggles
   container.querySelectorAll('.rule-toggle').forEach(chk => {

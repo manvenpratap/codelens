@@ -101,7 +101,35 @@
       category: 'DATA_ACCESS',
       color: '#06b6d4',
       icon: 'box',
-      description: 'Data grabber / data retrieval components',
+      description: 'Data grabber / data retrieval components ({MODULE}DG, *DG)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-pc',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'GLOB',
+      pattern: 'PC_*',
+      label: 'Persistent Class',
+      badge: 'PERSISTENT',
+      category: 'PERSISTENCE',
+      color: '#6366f1',
+      icon: 'database',
+      description: 'Persistent classes with Get() self-returning entity accessors (PC_*, {MODULE}PC*)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-mo',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'GLOB',
+      pattern: 'MO_*',
+      label: 'Message Object',
+      badge: 'MSG-OBJECT',
+      category: 'MESSAGE_DTO',
+      color: '#14b8a6',
+      icon: 'fileText',
+      description: 'Message objects with attributes and POJO methods without Get() self-retrieval (MO_*, {MODULE}MO*)',
       enabled: true
     }
   ];
@@ -415,7 +443,16 @@
         const raw = localStorage.getItem(RULES_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const existingIds = new Set(parsed.map(r => r.id));
+            const missingDefaults = DEFAULT_ARCHETYPE_RULES.filter(r => !existingIds.has(r.id));
+            if (missingDefaults.length > 0) {
+              const merged = [...parsed, ...missingDefaults];
+              this.saveRules(merged);
+              return merged;
+            }
+            return parsed;
+          }
         }
       } catch (_) {}
       return JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
@@ -563,7 +600,11 @@
       name = name.replace(/\(.*\)$/, '').trim();
       if (!name) return null;
 
-      const activeRules = this._rules.filter(r => r.enabled && ((r.target || r.scope) === targetType || (r.target || r.scope) === 'ANY'));
+      const activeRules = this._rules.filter(r => {
+        if (!r || !r.enabled) return false;
+        const scope = String(r.scope || r.target || 'METHOD').toUpperCase();
+        return scope === targetType || scope === 'ANY' || (targetType === 'CLASS' && scope === 'TYPE');
+      });
 
       for (const rule of activeRules) {
         if (this._matchesRule(name, rule, fullFqn, packageFqn)) {
@@ -576,6 +617,48 @@
             icon: rule.icon || 'tag',
             description: rule.description || ''
           };
+        }
+      }
+
+      // Structural fallback for class archetypes if not already pattern-matched
+      if (targetType === 'CLASS' && typeof nameOrNode === 'object' && nameOrNode !== null) {
+        const methods = Array.isArray(nameOrNode.methods)
+          ? nameOrNode.methods
+          : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
+
+        const simpleName = nameOrNode.simpleName || nameOrNode.name || name;
+        const hasGetSelf = methods.some(m => {
+          const mName = (m.simpleName || m.name || '').replace(/\(.*\)$/, '').trim();
+          const ret = m.returnType || m.type || '';
+          return (mName === 'Get' || mName === 'get') && (!ret || ret === simpleName || ret.endsWith('.' + simpleName));
+        });
+
+        if (hasGetSelf) {
+          const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
+          if (pcRule) {
+            return {
+              ruleId: pcRule.id,
+              label: pcRule.label,
+              badge: pcRule.badge || 'PERSISTENT',
+              category: pcRule.category || 'PERSISTENCE',
+              color: pcRule.color || '#6366f1',
+              icon: pcRule.icon || 'database',
+              description: pcRule.description || 'Persistent Class with Get() self-returning accessor'
+            };
+          }
+        } else if (name.startsWith('MO_') || name.endsWith('MO')) {
+          const moRule = activeRules.find(r => r.id === 'rule-bancs-mo' || (r.badge === 'MSG-OBJECT' && r.enabled));
+          if (moRule) {
+            return {
+              ruleId: moRule.id,
+              label: moRule.label,
+              badge: moRule.badge || 'MSG-OBJECT',
+              category: moRule.category || 'MESSAGE_DTO',
+              color: moRule.color || '#14b8a6',
+              icon: moRule.icon || 'fileText',
+              description: moRule.description || 'Message Object with attributes and POJO methods without Get()'
+            };
+          }
         }
       }
 

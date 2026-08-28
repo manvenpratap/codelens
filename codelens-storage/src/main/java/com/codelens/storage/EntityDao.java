@@ -575,6 +575,23 @@ public class EntityDao {
         return list;
     }
 
+    public List<Map<String, String>> findTypeSignatures() throws SQLException {
+        List<Map<String, String>> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, package_fqn, kind FROM types")) {
+            while (rs.next()) {
+                Map<String, String> m = new HashMap<>(4);
+                m.put("name", rs.getString(1));
+                m.put("fqn", rs.getString(2));
+                m.put("package", rs.getString(3));
+                m.put("kind", rs.getString(4));
+                list.add(m);
+            }
+        }
+        return list;
+    }
+
     private int singleInt(Statement s, String sql) throws SQLException {
         try (ResultSet rs = s.executeQuery(sql)) {
             return rs.next() ? rs.getInt(1) : 0;
