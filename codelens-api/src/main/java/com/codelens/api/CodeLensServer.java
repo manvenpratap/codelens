@@ -619,7 +619,7 @@ public class CodeLensServer {
         String entityFqn = decode(ctx.pathParam("entityFqn"));
         var meta = dao.findGitMetaByEntity(entityFqn);
         if (meta.isEmpty()) {
-            ctx.status(404).json(Map.of("error", "No git metadata for entity"));
+            ctx.status(200).json(Map.of("found", false));
             return;
         }
         ctx.json(meta.get());

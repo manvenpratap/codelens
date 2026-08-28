@@ -3,7 +3,7 @@
  *
  * Renders Package > Class > Method as concentric ring segments.
  * Arc angle = proportion of total lines of code.
- * Color = cyclomatic complexity.
+ * Color = cohesive hierarchy palette.
  * Click a segment to zoom in (it becomes the center).
  * Reuses the /api/graph/treemap hierarchical data.
  */
@@ -103,11 +103,25 @@ class SunburstRenderer {
     wrap.setAttribute('aria-label', 'Codebase Hierarchy Sunburst Visualizer');
     wrap.setAttribute('tabindex', '0');
 
-    // Breadcrumb
+    // Header toolbar with breadcrumb & reset button
+    const toolbar = document.createElement('div');
+    toolbar.className = 'sunburst-toolbar';
+
     const bc = document.createElement('div');
     bc.className = 'sunburst-breadcrumb';
     bc.id = 'sunburst-breadcrumb';
-    wrap.appendChild(bc);
+    toolbar.appendChild(bc);
+
+    const rightGroup = document.createElement('div');
+    rightGroup.className = 'sunburst-toolbar-right';
+    rightGroup.innerHTML = `
+      <button class="sunburst-reset-btn" id="sunburst-root-btn" title="Reset view to top-level codebase">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        <span>Reset View</span>
+      </button>
+    `;
+    toolbar.appendChild(rightGroup);
+    wrap.appendChild(toolbar);
 
     // Canvas
     const canvas = document.createElement('canvas');
@@ -120,11 +134,27 @@ class SunburstRenderer {
     tooltip.style.display = 'none';
     wrap.appendChild(tooltip);
 
-    // Center label
+    // Center interactive label overlay
     const center = document.createElement('div');
     center.className = 'sunburst-center';
     center.id = 'sunburst-center-label';
+    center.title = 'Click to zoom out';
+    center.addEventListener('click', () => {
+      if (this._breadcrumb.length > 1) {
+        const parent = this._breadcrumb[this._breadcrumb.length - 2];
+        this._triggerTransition(parent, this._breadcrumb.slice(0, -1));
+      }
+    });
     wrap.appendChild(center);
+
+    const rootBtn = rightGroup.querySelector('#sunburst-root-btn');
+    if (rootBtn) {
+      rootBtn.addEventListener('click', () => {
+        if (this._current !== this._root) {
+          this._triggerTransition(this._root, [this._root]);
+        }
+      });
+    }
 
     this._container.appendChild(wrap);
     this._el = wrap;
@@ -143,7 +173,7 @@ class SunburstRenderer {
   _onResize() {
     if (!this._canvas || !this._el) return;
     const w = this._el.clientWidth;
-    const h = this._el.clientHeight - 36;
+    const h = this._el.clientHeight - 38; // 38px toolbar offset
     this._canvas.width = w * this._dpr;
     this._canvas.height = Math.max(h, 200) * this._dpr;
     this._canvas.style.width = w + 'px';
@@ -160,8 +190,8 @@ class SunburstRenderer {
     const h = this._canvas.height / this._dpr;
     const cx = w / 2;
     const cy = h / 2;
-    const maxRadius = Math.min(cx, cy) - 30;
-    const innerRadius = maxRadius * 0.18;
+    const maxRadius = Math.min(cx, cy) - 24;
+    const innerRadius = maxRadius * 0.22;
 
     this._cx = cx;
     this._cy = cy;
@@ -169,12 +199,12 @@ class SunburstRenderer {
     this._innerRadius = innerRadius;
 
     // Determine max depth from current node
-    const maxDepth = this._getMaxDepth(this._current, 0);
-    const ringWidth = (maxRadius - innerRadius) / Math.max(maxDepth, 1);
+    const maxDepth = Math.max(this._getMaxDepth(this._current, 0), 1);
+    const ringWidth = (maxRadius - innerRadius) / maxDepth;
     this._ringWidth = ringWidth;
 
     // Build segments recursively
-    this._buildSegments(this._current, 0, 2 * Math.PI, 0, innerRadius, ringWidth);
+    this._buildSegments(this._current, 0, 2 * Math.PI, 0, innerRadius, ringWidth, null, 0);
     this._renderBreadcrumb();
     this._updateCenterLabel();
   }
@@ -197,30 +227,30 @@ class SunburstRenderer {
     const totalSize = activeChildren.reduce((s, c) => s + Math.max(c.size, 1), 0);
     if (totalSize <= 0) return;
 
-    const minThresholdAngle = 0.003; // below 0.003 rad, aggregate into "Other" wedge rollup
+    const minThresholdAngle = 0.005; // Group hairline slivers into "Other" rollup
     const prominentChildren = [];
     const smallChildren = [];
 
     activeChildren.forEach((child) => {
       const fraction = Math.max(child.size, 1) / totalSize;
       const childAngle = (endAngle - startAngle) * fraction;
-      if (childAngle >= minThresholdAngle || node.children.length <= 15) {
+      if (childAngle >= minThresholdAngle || activeChildren.length <= 10) {
         prominentChildren.push(child);
       } else {
         smallChildren.push(child);
       }
     });
 
-    // If there are small children, aggregate them into a single node
     const finalChildren = [...prominentChildren];
     if (smallChildren.length > 0) {
       const smallSizeSum = smallChildren.reduce((s, c) => s + Math.max(c.size, 1), 0);
       const otherNode = {
-        name: `Other (+${smallChildren.length} items)`,
+        name: `+${smallChildren.length} more items`,
+        simpleName: `+${smallChildren.length} more`,
         size: smallSizeSum,
         complexity: 1,
         kind: 'OTHER',
-        children: smallChildren // kept for zoom-in!
+        children: smallChildren
       };
       finalChildren.push(otherNode);
     }
@@ -229,11 +259,11 @@ class SunburstRenderer {
     finalChildren.forEach((child, idx) => {
       const fraction = Math.max(child.size, 1) / totalSize;
       const childAngle = (endAngle - startAngle) * fraction;
-      const gap = 0.004;
+      const gap = 0.003;
 
       let segColor;
       if (child.kind === 'OTHER') {
-        segColor = '#64748b'; // subtle slate for aggregated items
+        segColor = '#64748b'; // subtle slate
       } else if (depth === 0) {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
           ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
@@ -241,9 +271,9 @@ class SunburstRenderer {
       } else if (depth === 1) {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
           ? window.CodeLensPalette.getClassColor(child.fqn || child.name, 'CLASS', idx)
-          : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
-              ? window.CodeLensPalette.getColor(child.fqn || child.name, idx)
-              : '#3b82f6');
+          : ((window.CodeLensPalette && window.CodeLensPalette.tintColor)
+              ? window.CodeLensPalette.tintColor(parentColor || '#3b82f6', idx)
+              : this._tintColor(parentColor || '#3b82f6', idx));
       } else {
         segColor = (window.CodeLensPalette && window.CodeLensPalette.tintColor)
           ? window.CodeLensPalette.tintColor(parentColor || '#3b82f6', idx)
@@ -259,9 +289,10 @@ class SunburstRenderer {
           outerRadius: innerR + ringW,
           depth,
           color: segColor,
+          parentTotalSize: totalSize,
         });
 
-        // Recurse for children (only if prominent)
+        // Recurse for children
         if (child.kind !== 'OTHER' && child.children && child.children.length > 0) {
           this._buildSegments(child, angle + gap, angle + childAngle - gap, depth + 1, innerR + ringW, ringW, segColor, idx);
         }
@@ -308,7 +339,7 @@ class SunburstRenderer {
     this._layout();
 
     let startTime = null;
-    const duration = 250;
+    const duration = 240;
     const animate = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
@@ -337,21 +368,21 @@ class SunburstRenderer {
     const cy = this._cy;
     const hovered = this._hovered;
 
-    // Draw center circle
+    // ── Center circle disc background ─────────────────────────────────────────
     ctx.beginPath();
     ctx.arc(cx, cy, this._innerRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(22, 27, 34, 0.95)';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
     ctx.globalAlpha = 1.0 * alphaMult;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Draw segments
+    // ── Segments rendering ───────────────────────────────────────────────────
     for (const seg of this._segments) {
       const node = seg.node;
 
-      // Highlight logic: if hovered, dim non-ancestors & non-descendants
+      // Ancestor/descendant highlight logic
       let dimmed = false;
       let isHot = false;
       if (hovered) {
@@ -370,48 +401,117 @@ class SunburstRenderer {
       ctx.closePath();
 
       ctx.fillStyle = seg.color;
-      ctx.globalAlpha = (dimmed ? 0.15 : (isHot ? 1.0 : 0.82)) * alphaMult;
+      ctx.globalAlpha = (dimmed ? 0.18 : (isHot ? 1.0 : 0.88)) * alphaMult;
       ctx.fill();
 
-      ctx.strokeStyle = isHot ? '#ffffff' : 'rgba(15, 23, 42, 0.6)';
-      ctx.lineWidth = isHot ? 2 : 0.75;
-      ctx.stroke();
+      // Stroke border
+      if (isHot) {
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#0284c7';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.strokeStyle = 'rgba(10, 15, 26, 0.75)';
+        ctx.lineWidth = 0.75;
+        ctx.stroke();
+      }
 
-      // Arc Segment Text Label (only for segments wide enough - LOD threshold: arc length > 35)
-      const arcLength = (seg.endAngle - seg.startAngle) * seg.innerRadius;
+      // ── Smart Non-Overlapping Label Rendering Engine ──────────────────────────
+      const angularSpan = seg.endAngle - seg.startAngle;
+      const midR = (seg.innerRadius + seg.outerRadius) / 2;
       const ringH = seg.outerRadius - seg.innerRadius;
+      const arcLength = angularSpan * midR;
 
-      if (arcLength > 35 && ringH > 12 && !dimmed) {
+      if (!dimmed && angularSpan > 0.03) {
+        // Derive clean concise display name (never huge unparsed FQN)
+        let label = node.simpleName || node.name || '';
+        if (label === '<init>') {
+          label = 'constructor';
+        } else if (label.includes('.') && seg.depth === 0) {
+          const parts = label.split('.');
+          label = parts.slice(-2).join('.'); // show last two package parts
+        } else if (label.includes('.')) {
+          label = label.split('.').pop();
+        }
+
         const midAngle = (seg.startAngle + seg.endAngle) / 2;
-        const midR = (seg.innerRadius + seg.outerRadius) / 2;
         const lx = cx + Math.cos(midAngle) * midR;
         const ly = cy + Math.sin(midAngle) * midR;
 
-        ctx.save();
-        ctx.translate(lx, ly);
-        let rotation = midAngle;
-        if (midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2) {
-          rotation += Math.PI;
-        }
-        ctx.rotate(rotation);
+        // Decide text layout orientation: Tangential (along curve) vs Radial (along ray)
+        const isTangential = (arcLength >= ringH * 0.9 && arcLength >= 42 && angularSpan >= 0.07);
+        const isRadial = (!isTangential && ringH >= 38 && arcLength >= 14 && angularSpan >= 0.035);
 
-        const fontSize = Math.max(8, Math.min(11, ringH * 0.6));
-        ctx.font = `500 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
-        ctx.fillStyle = '#f8fafc';
-        ctx.globalAlpha = (dimmed ? 0.2 : 0.9) * alphaMult;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        if (isTangential) {
+          ctx.save();
+          ctx.translate(lx, ly);
 
-        let label = node.name || '';
-        const maxWidth = arcLength * 0.8;
-        if (ctx.measureText(label).width > maxWidth) {
-          while (label.length > 2 && ctx.measureText(label + '..').width > maxWidth) {
-            label = label.slice(0, -1);
+          let rotation = midAngle + Math.PI / 2;
+          // Keep text right-side up (flip when in lower hemisphere)
+          if (midAngle > 0 && midAngle < Math.PI) {
+            rotation -= Math.PI;
           }
-          label += '..';
+          ctx.rotate(rotation);
+
+          const fontSize = Math.max(9, Math.min(12, ringH * 0.52));
+          ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+          ctx.shadowBlur = 4;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.globalAlpha = 0.96 * alphaMult;
+
+          const maxW = arcLength * 0.82;
+          let measured = ctx.measureText(label).width;
+          if (measured > maxW) {
+            while (label.length > 2 && ctx.measureText(label + '..').width > maxW) {
+              label = label.slice(0, -1);
+            }
+            label += '..';
+          }
+
+          if (label.length > 2) {
+            ctx.fillText(label, 0, 0);
+          }
+          ctx.restore();
+
+        } else if (isRadial) {
+          ctx.save();
+          ctx.translate(lx, ly);
+
+          let rotation = midAngle;
+          // Keep text reading from center outward / left-to-right
+          if (midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2) {
+            rotation += Math.PI;
+          }
+          ctx.rotate(rotation);
+
+          const fontSize = Math.max(8.5, Math.min(11, arcLength * 0.55));
+          ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+          ctx.shadowBlur = 4;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.globalAlpha = 0.96 * alphaMult;
+
+          const maxLen = ringH * 0.80; // strictly confined within ring thickness!
+          let measured = ctx.measureText(label).width;
+          if (measured > maxLen) {
+            while (label.length > 2 && ctx.measureText(label + '..').width > maxLen) {
+              label = label.slice(0, -1);
+            }
+            label += '..';
+          }
+
+          if (label.length > 2) {
+            ctx.fillText(label, 0, 0);
+          }
+          ctx.restore();
         }
-        ctx.fillText(label, 0, 0);
-        ctx.restore();
       }
     }
 
@@ -419,7 +519,6 @@ class SunburstRenderer {
   }
 
   _isAncestor(potentialAncestor, node) {
-    // Simple check via FQN prefix
     if (!potentialAncestor || !node) return false;
     if (potentialAncestor === node) return true;
     if (potentialAncestor.children) {
@@ -444,7 +543,6 @@ class SunburstRenderer {
     if (angle < 0) angle += 2 * Math.PI;
 
     let found = null;
-    // Iterate in reverse to find innermost matching segment (most specific)
     for (let i = this._segments.length - 1; i >= 0; i--) {
       const seg = this._segments[i];
       if (dist >= seg.innerRadius && dist <= seg.outerRadius &&
@@ -461,18 +559,48 @@ class SunburstRenderer {
 
     if (found) {
       const node = found.node;
-      this._tooltip.style.display = 'block';
-      this._tooltip.style.left = (e.clientX - this._container.getBoundingClientRect().left + 12) + 'px';
-      this._tooltip.style.top = (e.clientY - this._container.getBoundingClientRect().top - 10) + 'px';
+      const pct = ((node.size / Math.max(found.parentTotalSize || this._current.size || 1, 1)) * 100).toFixed(1);
+      const kind = (node.kind || (found.depth === 0 ? 'PACKAGE' : found.depth === 1 ? 'CLASS' : 'METHOD')).toUpperCase();
       const hasChildren = node.children && node.children.length > 0;
+
+      let kindClass = 'kind-package';
+      if (kind === 'CLASS' || kind === 'RECORD' || kind === 'INTERFACE') kindClass = 'kind-class';
+      else if (kind === 'METHOD' || kind === 'CONSTRUCTOR') kindClass = 'kind-method';
+      else if (kind === 'FIELD') kindClass = 'kind-field';
+
+      this._tooltip.style.display = 'block';
+      this._tooltip.style.left = (e.clientX - this._container.getBoundingClientRect().left + 14) + 'px';
+      this._tooltip.style.top = (e.clientY - this._container.getBoundingClientRect().top - 10) + 'px';
+
       this._tooltip.innerHTML = `
-        <div class="sunburst-tip-name">${this._escHtml(node.name)}</div>
-        <div class="sunburst-tip-row"><span>Size:</span> <span>${node.size} lines</span></div>
-        <div class="sunburst-tip-row"><span>Complexity:</span> <span>${node.complexity || '-'}</span></div>
-        ${node.fqn ? `<div class="sunburst-tip-row"><span>FQN:</span> <span class="sunburst-tip-mono">${this._escHtml(node.fqn)}</span></div>` : ''}
-        ${hasChildren ? '<div class="sunburst-tip-hint">Click to zoom in</div>' : ''}
+        <div class="sunburst-tip-header">
+          <span class="sunburst-tip-badge ${kindClass}">${kind}</span>
+          <span class="sunburst-tip-name">${this._escHtml(node.simpleName || node.name)}</span>
+        </div>
+        <div class="sunburst-tip-row">
+          <span>Size:</span>
+          <span><strong>${node.size}</strong> lines (${pct}%)</span>
+        </div>
+        ${node.complexity !== undefined && node.complexity > 0 ? `
+        <div class="sunburst-tip-row">
+          <span>Complexity:</span>
+          <span><strong>CC ${node.complexity}</strong> (${node.complexity <= 4 ? 'Low' : node.complexity <= 10 ? 'Med' : 'High'})</span>
+        </div>` : ''}
+        ${node.children ? `
+        <div class="sunburst-tip-row">
+          <span>Contains:</span>
+          <span><strong>${node.children.length}</strong> children</span>
+        </div>` : ''}
+        ${node.fqn ? `
+        <div class="sunburst-tip-row" style="margin-top:2px">
+          <span class="sunburst-tip-mono">${this._escHtml(node.fqn)}</span>
+        </div>` : ''}
+        <div class="sunburst-tip-hint">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>${hasChildren ? 'Click to zoom in hierarchy' : 'Click to inspect in sidebar'}</span>
+        </div>
       `;
-      this._canvas.style.cursor = hasChildren ? 'pointer' : 'default';
+      this._canvas.style.cursor = 'pointer';
     } else {
       this._tooltip.style.display = 'none';
       this._canvas.style.cursor = 'default';
@@ -490,6 +618,13 @@ class SunburstRenderer {
     const node = this._hovered.node;
     if (node.children && node.children.length > 0) {
       this._triggerTransition(node, [...this._breadcrumb, node]);
+    } else if (node.fqn || node.id) {
+      // Trigger selection in right inspector panel
+      if (node.kind === 'METHOD' || (!node.kind && this._hovered.depth >= 2)) {
+        if (window.selectMethod) window.selectMethod(node.id || node.fqn);
+      } else {
+        if (window.selectType) window.selectType(node.id || node.fqn);
+      }
     }
   }
 
@@ -502,13 +637,15 @@ class SunburstRenderer {
       if (i > 0) {
         const sep = document.createElement('span');
         sep.className = 'sunburst-bc-sep';
-        sep.textContent = '/';
+        sep.textContent = '>';
         bc.appendChild(sep);
       }
 
       const btn = document.createElement('button');
       btn.className = 'sunburst-bc-btn';
-      btn.textContent = node === this._root ? 'Root' : (node.name || '?');
+      const label = node === this._root ? 'Codebase' : (node.simpleName || node.name || '?');
+      btn.innerHTML = `<span>${this._escHtml(label)}</span>`;
+
       if (i === this._breadcrumb.length - 1) {
         btn.classList.add('active');
       } else {
@@ -524,15 +661,22 @@ class SunburstRenderer {
     const label = this._el.querySelector('#sunburst-center-label');
     if (!label) return;
     const node = this._current;
-    const name = node === this._root ? 'Codebase' : (node.name || '?');
+    const name = node === this._root ? 'Codebase' : (node.simpleName || node.name || '?');
     const totalSize = node.size || 0;
-    label.innerHTML = `<div class="sunburst-center-name">${this._escHtml(name)}</div><div class="sunburst-center-size">${totalSize} lines</div>`;
+    const childCount = node.children ? node.children.length : 0;
+    const isZoomed = this._breadcrumb.length > 1;
 
-    // Position center label over the center of the canvas
+    label.innerHTML = `
+      <div class="sunburst-center-name">${this._escHtml(name)}</div>
+      <div class="sunburst-center-size">${totalSize} lines · ${childCount} items</div>
+      ${isZoomed ? '<div class="sunburst-center-hint">↺ Zoom Out</div>' : ''}
+    `;
+
+    // Position center label over canvas center
     const w = this._canvas.width / this._dpr;
     const h = this._canvas.height / this._dpr;
     label.style.left = (w / 2) + 'px';
-    label.style.top = (36 + h / 2) + 'px'; // 36 = breadcrumb height offset
+    label.style.top = (38 + h / 2) + 'px';
   }
 
   _escHtml(s) {

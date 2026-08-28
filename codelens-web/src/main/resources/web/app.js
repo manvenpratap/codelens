@@ -1209,7 +1209,8 @@ async function openSourceFile(filePath, lineNum = null, skipTabSwitch = false) {
 /** Load and render all types for a given package in the KB tab. */
 async function loadKnowledgeBase(pkgFqn) {
   const view = qs('#knowledge-view');
-  view.innerHTML = `<div class="kb-section-header">Types in ${esc(pkgFqn)}</div>`;
+  if (!view) return;
+  view.innerHTML = '';
 
   try {
     const types = await api.typesByPackage(pkgFqn);
@@ -1219,33 +1220,99 @@ async function loadKnowledgeBase(pkgFqn) {
       return (t.kind || '').toUpperCase() === activeKind;
     });
 
+    // ── Package Hero Card ─────────────────────────────────────────────────────
+    const hero = createElement('div', { class: 'kb-hero-card fade-in' });
+    hero.innerHTML = `
+      <div class="kb-hero-top">
+        <div class="kb-hero-title-group">
+          <span class="kb-kind-badge kind-package">PACKAGE</span>
+          <span class="kb-hero-name">${esc(pkgFqn)}</span>
+        </div>
+        <div class="kb-hero-actions">
+          <button class="kb-action-btn" id="kb-pkg-graph" title="View in Graph">
+            <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Graph
+          </button>
+        </div>
+      </div>
+      <div class="kb-hero-meta-row">
+        <div class="kb-meta-item"><span class="kb-meta-label">Total Types:</span> <span class="kb-meta-val">${types.length}</span></div>
+        <div class="kb-meta-divider"></div>
+        <div class="kb-meta-item"><span class="kb-meta-label">Showing:</span> <span class="kb-meta-val">${filteredTypes.length}</span></div>
+        <div class="kb-meta-divider"></div>
+        <div class="kb-meta-item"><span class="kb-meta-label">Filter:</span> <span class="kb-meta-val">${activeKind}</span></div>
+      </div>
+    `;
+    hero.querySelector('#kb-pkg-graph')?.addEventListener('click', () => {
+      switchTab('graph');
+    });
+    view.appendChild(hero);
+
     if (filteredTypes.length === 0) {
       const msg = activeKind === 'ALL'
-        ? 'No types in this package.'
-        : `No ${activeKind.toLowerCase()}s in this package (active filter: ${activeKind}).`;
-      view.innerHTML += `<div class="list-empty">${msg}</div>`;
+        ? 'No types found in this package.'
+        : `No ${activeKind.toLowerCase()}s found in this package (active filter: ${activeKind}).`;
+      const empty = createElement('div', { class: 'kb-empty-container fade-in' });
+      empty.innerHTML = `
+        <div class="kb-empty-icon">
+          <svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="kb-empty-title">No Matching Types</div>
+        <div class="kb-empty-desc">${esc(msg)}</div>
+      `;
+      view.appendChild(empty);
       return;
     }
 
+    const typesSection = createElement('div', { class: 'kb-section fade-in' });
+    typesSection.innerHTML = `
+      <div class="kb-section-title">
+        <div class="kb-section-title-left">
+          <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          <span>Declared Types</span>
+        </div>
+        <span class="kb-section-badge">${filteredTypes.length}</span>
+      </div>
+      <div class="kb-list" id="kb-types-list"></div>
+    `;
+    const typesList = typesSection.querySelector('#kb-types-list');
+
     for (const t of filteredTypes) {
-      const item = createElement('div', { class: 'kb-item fade-in' });
-      item.innerHTML = `
-        <span class="kb-item-icon">${kindIcon(t.kind)}</span>
-        <div class="kb-item-body">
-          <div class="kb-item-name">${esc(t.simpleName)}</div>
-          <div class="kb-item-meta">
-            ${t.lineCount > 0 ? t.lineCount + ' lines' : ''}
-            ${t.fieldCount  > 0 ? '· ' + t.fieldCount  + ' fields'  : ''}
-            ${t.methodCount > 0 ? '· ' + t.methodCount + ' methods' : ''}
+      const tKind = (t.kind || 'CLASS').toUpperCase();
+      const tKindClass = `kind-${tKind.toLowerCase()}`;
+      const row = createElement('div', { class: 'kb-row' });
+      row.innerHTML = `
+        <div class="kb-row-left">
+          <div class="kb-row-icon icon-type" title="${esc(tKind)}">
+            <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </div>
+          <div class="kb-row-info">
+            <div class="kb-row-name-wrap">
+              <span class="kb-row-name">${esc(t.simpleName)}</span>
+              <span class="kb-kind-badge ${tKindClass}">${esc(tKind)}</span>
+            </div>
+            <div class="kb-row-meta">
+              ${t.lineCount > 0 ? `<span>${t.lineCount} lines</span>` : ''}
+              ${t.fieldCount > 0 ? `<span>· ${t.fieldCount} fields</span>` : ''}
+              ${t.methodCount > 0 ? `<span>· ${t.methodCount} methods</span>` : ''}
+            </div>
           </div>
         </div>
-        <span class="kb-item-badge badge-${(t.kind || '').toLowerCase()}">${t.kind}</span>`;
-
-      item.addEventListener('click', () => selectType(t.id));
-      view.appendChild(item);
+        <div class="kb-row-right">
+          <span class="kb-type-pill">Explore &rarr;</span>
+        </div>
+      `;
+      row.addEventListener('click', () => selectType(t.id));
+      typesList.appendChild(row);
     }
+    view.appendChild(typesSection);
   } catch (e) {
-    view.innerHTML += `<div class="list-empty">Error: ${e.message}</div>`;
+    const errorCard = createElement('div', { class: 'kb-empty-container fade-in' });
+    errorCard.innerHTML = `
+      <div class="kb-empty-title" style="color:var(--red)">Failed to load package</div>
+      <div class="kb-empty-desc">${esc(e.message)}</div>
+    `;
+    view.appendChild(errorCard);
   }
 }
 
@@ -2507,7 +2574,7 @@ function renderTypeDetail(data) {
   const gitSec = createElement('div', { class: 'git-meta-detail-section' });
   body.appendChild(gitSec);
   api.gitMeta(type.fqn).then(gm => {
-    if (gm && gm.commitCount !== undefined) {
+    if (gm && gm.commitCount !== undefined && gm.found !== false) {
       gitSec.innerHTML = `
         <div class="rp-section" style="margin-top:12px">Git Statistics</div>
         <div class="meta-grid">
@@ -2559,71 +2626,219 @@ function renderTypeDetail(data) {
 }
 
 function renderKnowledgeBaseForType(data) {
-  const { type, fields = [], methods = [] } = data;
+  const { type, fields = [], methods = [], notes = [] } = data;
   const view = qs('#knowledge-view');
+  if (!view) return;
   view.innerHTML = '';
 
   const isRecord = (type.kind || '').toUpperCase() === 'RECORD';
+  const kind = (type.kind || 'CLASS').toUpperCase();
+  const kindClass = `kind-${kind.toLowerCase()}`;
 
-  const header = createElement('div', { class: 'kb-section-header' });
-  header.innerHTML = `<span class="kb-type-pill badge-${(type.kind || '').toLowerCase()}">${esc(type.kind)}</span> ${esc(type.simpleName)} <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px;">(${esc(type.packageFqn || 'default package')})</span>`;
-  view.appendChild(header);
-
-  if (fields.length > 0) {
-    const fieldsHeader = createElement('div', {
-      class: 'kb-section-header',
-      style: 'font-size:11px;padding:10px 16px 4px;font-weight:700;'
-    });
-    fieldsHeader.textContent = isRecord ? 'Record Components / Fields' : 'Fields';
-    view.appendChild(fieldsHeader);
-
-    for (const f of fields) {
-      const item = createElement('div', { class: 'kb-item fade-in' });
-      item.innerHTML = `
-        <span class="kb-item-icon">■</span>
-        <div class="kb-item-body">
-          <div class="kb-item-name">${esc(f.simpleName)}</div>
-          <div class="kb-item-meta">${esc(f.fieldType || '')} · ${esc(f.modifiers || '')} ${f.startLine ? '· line ' + f.startLine : ''}</div>
-        </div>
-        <span class="kb-item-badge badge-enum">${esc(f.fieldType || '')}</span>`;
-      item.addEventListener('click', () => selectField(f.id || f.fqn));
-      view.appendChild(item);
-    }
+  // ── Hero Card ───────────────────────────────────────────────────────────────
+  const hero = createElement('div', { class: 'kb-hero-card fade-in' });
+  
+  let extendsClause = '';
+  if (type.superClass && type.superClass !== 'java.lang.Object') {
+    const superShort = type.superClass.split('.').pop();
+    extendsClause = `<div class="kb-meta-item"><span class="kb-meta-label">Extends:</span> <span class="kb-meta-val" title="${esc(type.superClass)}">${esc(superShort)}</span></div><div class="kb-meta-divider"></div>`;
   }
 
-  if (methods.length > 0) {
-    const methodsHeader = createElement('div', {
-      class: 'kb-section-header',
-      style: 'font-size:11px;padding:10px 16px 4px;font-weight:700;'
-    });
-    methodsHeader.textContent = isRecord ? 'Methods & Accessors' : 'Methods';
-    view.appendChild(methodsHeader);
+  let ifacesClause = '';
+  if (type.interfaces && type.interfaces.length > 0) {
+    const ifaceShorts = type.interfaces.map(i => i.split('.').pop()).join(', ');
+    ifacesClause = `<div class="kb-meta-item"><span class="kb-meta-label">Implements:</span> <span class="kb-meta-val" title="${esc(type.interfaces.join(', '))}">${esc(ifaceShorts)}</span></div><div class="kb-meta-divider"></div>`;
+  }
 
-    for (const m of methods) {
-      const item = createElement('div', { class: 'kb-item fade-in' });
-      const paramStr = (m.parameters || []).map(p => p.type + ' ' + p.name).join(', ');
-      const cc = m.cyclomaticComplexity || 1;
-      const ccColour = cc <= 4 ? 'var(--emerald)' : cc <= 10 ? 'var(--amber)' : 'var(--red)';
-      item.innerHTML = `
-        <span class="kb-item-icon">◆</span>
-        <div class="kb-item-body">
-          <div class="kb-item-name">${esc(m.simpleName)}</div>
-          <div class="kb-item-meta">${esc(m.returnType || 'void')} · CC:
-            <span style="color:${ccColour};font-weight:700">${cc}</span>
-            ${m.startLine ? '· line ' + m.startLine : ''}
+  hero.innerHTML = `
+    <div class="kb-hero-top">
+      <div class="kb-hero-title-group">
+        <span class="kb-kind-badge ${kindClass}">${esc(kind)}</span>
+        <span class="kb-hero-name">${esc(type.simpleName)}</span>
+        <span class="kb-pkg-pill" title="Package FQN">${esc(type.packageFqn || 'default package')}</span>
+      </div>
+      <div class="kb-hero-actions">
+        <button class="kb-action-btn" id="kb-btn-graph" title="Explore in Graph">
+          <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Graph
+        </button>
+        <button class="kb-action-btn" id="kb-btn-source" title="Open source file">
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          Source
+        </button>
+        <button class="kb-action-btn" id="kb-btn-review" title="Run Code Review">
+          <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Review
+        </button>
+      </div>
+    </div>
+    <div class="kb-hero-meta-row">
+      <div class="kb-meta-item"><span class="kb-meta-label">LOC:</span> <span class="kb-meta-val">${type.lineCount || (type.endLine && type.startLine ? type.endLine - type.startLine + 1 : '-')}</span></div>
+      <div class="kb-meta-divider"></div>
+      <div class="kb-meta-item"><span class="kb-meta-label">Methods:</span> <span class="kb-meta-val">${methods.length}</span></div>
+      <div class="kb-meta-divider"></div>
+      <div class="kb-meta-item"><span class="kb-meta-label">${isRecord ? 'Components' : 'Fields'}:</span> <span class="kb-meta-val">${fields.length}</span></div>
+      <div class="kb-meta-divider"></div>
+      ${extendsClause}
+      ${ifacesClause}
+      <div class="kb-meta-item"><span class="kb-meta-label">File:</span> <span class="kb-meta-val">${esc(type.sourceFile ? type.sourceFile.split(/[\\\/]/).pop() : '-')}${type.startLine ? ':' + type.startLine : ''}</span></div>
+    </div>
+  `;
+
+  // Wire hero action buttons
+  hero.querySelector('#kb-btn-graph')?.addEventListener('click', () => {
+    switchTab('graph');
+    if (type.id) selectType(type.id);
+  });
+  hero.querySelector('#kb-btn-source')?.addEventListener('click', () => {
+    if (type.sourceFile) openSourceFile(type.sourceFile, type.startLine || 1);
+  });
+  hero.querySelector('#kb-btn-review')?.addEventListener('click', () => {
+    switchTab('review');
+    updateReviewTargetInfo();
+  });
+
+  view.appendChild(hero);
+
+  // ── Complexity Legend Bar ───────────────────────────────────────────────────
+  const legendBar = createElement('div', { class: 'kb-help-bar' });
+  legendBar.innerHTML = `
+    <div class="kb-help-left">
+      <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Complexity Metric:</span>
+      <div class="kb-help-pills">
+        <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">CC 1–4 Low</span>
+        <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">CC 5–10 Med</span>
+        <span class="cc-pill cc-high" title="High risk method (CC 11+)">CC 11+ High</span>
+      </div>
+    </div>
+    <div style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono)">
+      Showing all declared members
+    </div>
+  `;
+  view.appendChild(legendBar);
+
+  // ── Members Grid (2-column on desktop) ──────────────────────────────────────
+  if (fields.length > 0 || methods.length > 0) {
+    const isSingleCol = (fields.length === 0 || methods.length === 0);
+    const membersGrid = createElement('div', { class: `kb-members-grid ${isSingleCol ? 'single-col' : ''}` });
+
+    // ── Fields / Record Components Section ────────────────────────────────────
+    if (fields.length > 0) {
+      const fieldsSection = createElement('div', { class: 'kb-section fade-in' });
+      fieldsSection.innerHTML = `
+        <div class="kb-section-title">
+          <div class="kb-section-title-left">
+            <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            <span>${isRecord ? 'Record Components' : 'Fields'}</span>
           </div>
-          <div class="kb-item-meta" style="color:var(--text-muted)">(${esc(paramStr)})</div>
+          <span class="kb-section-badge">${fields.length}</span>
         </div>
-        <span class="kb-item-badge badge-iface">${esc(m.modifiers || '')}</span>`;
-      item.addEventListener('click', () => selectMethod(m.id || m.fqn));
-      view.appendChild(item);
+        <div class="kb-list" id="kb-fields-list"></div>
+      `;
+      const fieldsList = fieldsSection.querySelector('#kb-fields-list');
+
+      for (const f of fields) {
+        const row = createElement('div', { class: 'kb-row' });
+        row.innerHTML = `
+          <div class="kb-row-left">
+            <div class="kb-row-icon icon-field" title="Field">
+              <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="2"/></svg>
+            </div>
+            <div class="kb-row-info">
+              <div class="kb-row-name-wrap">
+                <span class="kb-row-name">${esc(f.simpleName)}</span>
+                ${f.modifiers ? `<span class="kb-mod-pill">${esc(f.modifiers)}</span>` : ''}
+              </div>
+              <div class="kb-row-meta">
+                <span>Type: <strong style="color:var(--cyan-bright)">${esc(f.fieldType || 'Object')}</strong></span>
+                ${f.startLine ? `<span>· Line ${f.startLine}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="kb-row-right">
+            <span class="kb-type-pill" title="${esc(f.fieldType || '')}">${esc(f.fieldType || 'Object')}</span>
+          </div>
+        `;
+        row.addEventListener('click', () => selectField(f.id || f.fqn));
+        fieldsList.appendChild(row);
+      }
+      membersGrid.appendChild(fieldsSection);
     }
+
+    // ── Methods & Constructors Section ────────────────────────────────────────
+    if (methods.length > 0) {
+      const methodsSection = createElement('div', { class: 'kb-section fade-in' });
+      methodsSection.innerHTML = `
+        <div class="kb-section-title">
+          <div class="kb-section-title-left">
+            <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>${isRecord ? 'Methods & Accessors' : 'Methods & Constructors'}</span>
+          </div>
+          <span class="kb-section-badge">${methods.length}</span>
+        </div>
+        <div class="kb-list" id="kb-methods-list"></div>
+      `;
+      const methodsList = methodsSection.querySelector('#kb-methods-list');
+
+      for (const m of methods) {
+        const isConstructor = m.simpleName === '<init>' || m.simpleName === type.simpleName;
+        const displayName = isConstructor ? type.simpleName : m.simpleName;
+        const cc = m.cyclomaticComplexity || 1;
+        const ccTier = cc <= 4 ? 'cc-low' : cc <= 10 ? 'cc-med' : 'cc-high';
+        const ccLabel = cc <= 4 ? 'Low' : cc <= 10 ? 'Med' : 'High';
+
+        let paramsFormatted = '()';
+        if (m.parameters && m.parameters.length > 0) {
+          paramsFormatted = '(' + m.parameters.map(p => {
+            const pType = (p.type || '').split('.').pop();
+            return `<span class="kb-param-type">${esc(pType)}</span> <span class="kb-param-name">${esc(p.name || '')}</span>`;
+          }).join(', ') + ')';
+        }
+
+        const row = createElement('div', { class: 'kb-row' });
+        row.innerHTML = `
+          <div class="kb-row-left">
+            <div class="kb-row-icon icon-method" title="${isConstructor ? 'Constructor' : 'Method'}">
+              <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
+            </div>
+            <div class="kb-row-info">
+              <div class="kb-row-name-wrap">
+                <span class="kb-row-name">${esc(displayName)}</span>
+                ${isConstructor ? '<span class="kb-mod-pill" style="color:var(--amber);background:rgba(245,158,11,0.1)">constructor</span>' : ''}
+                ${m.modifiers ? `<span class="kb-mod-pill">${esc(m.modifiers)}</span>` : ''}
+              </div>
+              <div class="kb-row-meta">
+                <span>${paramsFormatted}</span>
+                ${m.startLine ? `<span>· Line ${m.startLine}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="kb-row-right">
+            <span class="kb-cc-pill ${ccTier}" title="Cyclomatic Complexity: ${cc}">CC: ${cc} (${ccLabel})</span>
+            <span class="kb-type-pill" title="Return type">${esc(m.returnType || (isConstructor ? 'void' : 'void'))}</span>
+          </div>
+        `;
+        row.addEventListener('click', () => selectMethod(m.id || m.fqn));
+        methodsList.appendChild(row);
+      }
+      membersGrid.appendChild(methodsSection);
+    }
+
+    view.appendChild(membersGrid);
   }
 
+  // Empty members state
   if (fields.length === 0 && methods.length === 0) {
-    const emptyEl = createElement('div', { class: 'list-empty' });
-    emptyEl.textContent = `No members declared in this ${esc((type.kind || 'type').toLowerCase())}.`;
-    view.appendChild(emptyEl);
+    const empty = createElement('div', { class: 'kb-empty-container fade-in' });
+    empty.innerHTML = `
+      <div class="kb-empty-icon">
+        <svg class="svg-icon icon-indigo icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div class="kb-empty-title">No Members Declared</div>
+      <div class="kb-empty-desc">This ${esc((type.kind || 'type').toLowerCase())} does not define any fields or methods.</div>
+    `;
+    view.appendChild(empty);
   }
 }
 
@@ -2668,7 +2883,7 @@ function renderMethodDetail(data) {
   const gitSec = createElement('div', { class: 'git-meta-detail-section' });
   body.appendChild(gitSec);
   api.gitMeta(method.fqn).then(gm => {
-    if (gm && gm.commitCount !== undefined) {
+    if (gm && gm.commitCount !== undefined && gm.found !== false) {
       gitSec.innerHTML = `
         <div class="rp-section" style="margin-top:12px">Git Statistics</div>
         <div class="meta-grid">
@@ -2743,7 +2958,7 @@ function renderFieldDetail(data) {
   const gitSec = createElement('div', { class: 'git-meta-detail-section' });
   body.appendChild(gitSec);
   api.gitMeta(field.fqn).then(gm => {
-    if (gm && gm.commitCount !== undefined) {
+    if (gm && gm.commitCount !== undefined && gm.found !== false) {
       gitSec.innerHTML = `
         <div class="rp-section" style="margin-top:12px">Git Statistics</div>
         <div class="meta-grid">

@@ -662,16 +662,22 @@
       aria-live="polite"
     >
       <div class="kb-help-bar">
-        <span class="kb-help-title">
-          <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          Cyclomatic Complexity (CC):
-        </span>
-        <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">Green: 1-4 Low</span>
-        <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">Amber: 5-10 Moderate</span>
-        <span class="cc-pill cc-high" title="High complexity method risk (CC 11+)">Red: 11+ High Risk</span>
+        <div class="kb-help-left">
+          <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Cyclomatic Complexity (CC):</span>
+          <div class="kb-help-pills">
+            <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">CC 1–4 Low</span>
+            <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">CC 5–10 Med</span>
+            <span class="cc-pill cc-high" title="High risk method (CC 11+)">CC 11+ High</span>
+          </div>
+        </div>
       </div>
-      <div class="list-empty">
-        Select a package or type from the explorer to browse its members.
+      <div class="kb-empty-container">
+        <div class="kb-empty-icon">
+          <svg class="svg-icon icon-indigo icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </div>
+        <div class="kb-empty-title">Knowledge Base Explorer</div>
+        <div class="kb-empty-desc">Select a class, record, interface, or package from the sidebar explorer to inspect its architecture, fields, methods, and complexity metrics.</div>
       </div>
     </section><!-- /#knowledge-view -->
 
