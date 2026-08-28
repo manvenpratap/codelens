@@ -1051,10 +1051,10 @@ function switchTab(tabName) {
    ───────────────────────────────────────────────────────────────────────────── */
 
 function restoreTabOrder() {
-  const tabBar = qs('.tab-bar');
+  const tabBar = qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar') || qs('#header');
   if (!tabBar) return;
-  const navSegment = tabBar.querySelector('.tab-nav-segment') || tabBar;
-  const spacer = tabBar.querySelector('.tab-bar-spacer');
+  const navSegment = tabBar.classList.contains('tab-nav-segment') ? tabBar : (tabBar.querySelector('.tab-nav-segment') || tabBar);
+  const spacer = tabBar.querySelector('.tab-bar-spacer') || qs('.header-flex-spacer');
   
   let savedOrder = null;
   try {
@@ -1075,6 +1075,8 @@ function restoreTabOrder() {
           navSegment.appendChild(tabEl);
         } else if (spacer) {
           tabBar.insertBefore(tabEl, spacer);
+        } else {
+          tabBar.appendChild(tabEl);
         }
       }
     });
@@ -1083,7 +1085,7 @@ function restoreTabOrder() {
 }
 
 function saveTabOrder() {
-  const tabBar = qs('.tab-bar');
+  const tabBar = qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar') || qs('#header');
   if (!tabBar) return;
   const order = [...tabBar.querySelectorAll('.tab')].map(t => t.dataset.tab).filter(Boolean);
   try {
@@ -1093,7 +1095,7 @@ function saveTabOrder() {
 }
 
 function updateTabTooltipsAndShortcuts() {
-  const tabBar = qs('.tab-bar');
+  const tabBar = qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar') || qs('#header');
   if (!tabBar) return;
   const tabs = [...tabBar.querySelectorAll('.tab')];
   
@@ -1130,7 +1132,7 @@ function updateTabTooltipsAndShortcuts() {
 }
 
 function initTabDragAndDrop() {
-  const tabBar = qs('.tab-bar');
+  const tabBar = qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar') || qs('#header');
   if (!tabBar) return;
 
   restoreTabOrder();
@@ -1193,16 +1195,18 @@ function initTabDragAndDrop() {
       const midPoint = rect.left + rect.width / 2;
       const isLeft = e.clientX < midPoint;
 
+      const container = tab.parentElement || tabBar;
       if (isLeft) {
-        tabBar.insertBefore(draggedTab, tab);
+        container.insertBefore(draggedTab, tab);
       } else {
-        tabBar.insertBefore(draggedTab, tab.nextSibling);
+        container.insertBefore(draggedTab, tab.nextSibling);
       }
 
       saveTabOrder();
     });
   });
 }
+
 
 /** Load Monaco Editor with offline / blocked tracking prevention fallback. */
 function initMonaco() {
