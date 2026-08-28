@@ -4103,6 +4103,14 @@ function showToast(msg, type = 'success', duration = 3500) {
   toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${msg}</span>`;
   container.appendChild(toast);
 
+  // Trigger logo emit animation
+  const logo = qs('.logo-image') || qs('.logo');
+  if (logo) {
+    logo.classList.remove('logo-pulse');
+    void logo.offsetWidth; // trigger reflow
+    logo.classList.add('logo-pulse');
+  }
+
   // Auto-dismiss
   const dismiss = () => {
     toast.classList.add('toast-exit');
