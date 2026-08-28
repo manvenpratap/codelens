@@ -789,13 +789,30 @@ body.resizing .panel-resizer {
   padding: 2px 6px;
   flex-shrink: 0;
 }
+
+.explorer-stats-footer {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  padding: 5px 8px;
+  justify-content: space-around;
+  flex-shrink: 0;
+  z-index: 5;
+}
+body.theme-light .explorer-stats-footer {
+  background: #f8fafc;
+  border-top-color: #e2e8f0;
+}
+
 .stat-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   background: transparent;
   border: none;
-  padding: 3px 8px;
+  padding: 3px 6px;
   font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;

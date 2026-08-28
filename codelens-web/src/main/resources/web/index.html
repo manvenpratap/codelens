@@ -80,24 +80,6 @@
       </span>
     </section>
 
-    <!-- Live entity count statistics - updated by app.js after each scan -->
-    <div class="stats-row" role="status" aria-live="polite" aria-label="Index statistics">
-      <div class="stat-pill" title="Total indexed Java classes, interfaces, enums, and records">
-        <span class="stat-count" id="stat-types">0</span>
-        <span class="stat-label">types</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat-pill" title="Total indexed methods with cyclomatic complexity and call signatures">
-        <span class="stat-count" id="stat-methods">0</span>
-        <span class="stat-label">methods</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat-pill" title="Total indexed member and static fields">
-        <span class="stat-count" id="stat-fields">0</span>
-        <span class="stat-label">fields</span>
-      </div>
-    </div>
-
     <!-- Top-Right Actions Group (Export, Theme Toggle, Settings, Guide) -->
     <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
       <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Architecture, Quality Audit &amp; Inventory Reports">
@@ -202,6 +184,24 @@
       aria-label="Search results"
       aria-live="polite"
     ></div>
+
+    <!-- Live entity count statistics footer at bottom of explorer sidebar -->
+    <div class="stats-row explorer-stats-footer" role="status" aria-live="polite" aria-label="Index statistics">
+      <div class="stat-pill" title="Total indexed Java classes, interfaces, enums, and records">
+        <span class="stat-count" id="stat-types">0</span>
+        <span class="stat-label">types</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-pill" title="Total indexed methods with cyclomatic complexity and call signatures">
+        <span class="stat-count" id="stat-methods">0</span>
+        <span class="stat-label">methods</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-pill" title="Total indexed member and static fields">
+        <span class="stat-count" id="stat-fields">0</span>
+        <span class="stat-label">fields</span>
+      </div>
+    </div>
 
   </aside><!-- /#left-panel -->
 
