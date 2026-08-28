@@ -3988,12 +3988,66 @@ body.macro-studio-mode .tab-bar {
   color: var(--red);
 }
 
+/* ── Deployment Configuration (.conf) ───────────────────────────── */
+
+.deployment-config-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deployment-config-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.file-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  margin: 0;
+  user-select: none;
+}
+
+.deployment-config-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.deployment-config-status .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emerald, #10b981);
+  box-shadow: 0 0 6px var(--emerald, #10b981);
+}
+
 /* ── Settings Footer ────────────────────────────────────────────── */
 
 .settings-footer {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding-top: 4px;
+}
+
+.settings-footer-msg {
+  font-size: 11px;
+  color: var(--primary);
+  min-height: 16px;
+  transition: all var(--dur-fast) var(--ease);
 }
 
 .settings-reset-btn {

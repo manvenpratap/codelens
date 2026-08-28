@@ -4510,6 +4510,243 @@ function initSettings() {
       }
     });
   }
+
+  // Wire Deployment Config (.conf) Export, Import, and Save
+  const btnExportConf = qs('#btn-export-conf');
+  if (btnExportConf) btnExportConf.addEventListener('click', exportDeploymentConf);
+
+  const inputImportConf = qs('#input-import-conf');
+  if (inputImportConf) {
+    inputImportConf.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        importDeploymentConf(file);
+        inputImportConf.value = '';
+      }
+    });
+  }
+
+  const btnSaveServerConf = qs('#btn-save-server-conf');
+  if (btnSaveServerConf) btnSaveServerConf.addEventListener('click', saveDeploymentConfToServer);
+
+  // Sync settings with server on startup
+  syncSettingsFromServer();
+}
+
+// ── Deployment Configuration (.conf) Management ──────────────────────────────
+
+function buildFullConfigObject() {
+  const s = loadSettings();
+  const pojoCfg = (window.CodeLensClassifier && window.CodeLensClassifier.getPojoConfig()) || {};
+  const rules = (window.CodeLensClassifier && window.CodeLensClassifier.getRules()) || [];
+
+  return {
+    port: 7878,
+    dataDir: './codelens-data',
+    defaultScanPath: qs('#scan-path-input')?.value || '',
+    excludePatterns: s.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out',
+    theme: s.theme || 'dark',
+    packageMode: s.packageMode || 'auto',
+    defaultTab: App.activeTab || 'graph',
+    nodeBaseRadius: s.nodeBaseRadius || 12,
+    repulsion: s.repulsion || 350,
+    springLen: s.springLen || 120,
+    damping: s.damping !== undefined ? s.damping : 0.85,
+    showParticles: s.showParticles !== undefined ? s.showParticles : true,
+    showMinimap: s.showMinimap !== undefined ? s.showMinimap : true,
+    showLabels: s.showLabels !== undefined ? s.showLabels : true,
+    showGrid: s.showGrid !== undefined ? s.showGrid : true,
+    showHulls: s.showHulls !== undefined ? s.showHulls : true,
+    defaultDepth: s.defaultDepth || 3,
+    autoFit: s.autoFit !== undefined ? s.autoFit : true,
+    defaultMacroLevel: App.codebaseMacroLevel || 'city3d',
+    defaultMacroGranularity: App.codebaseGranularity || 'arch',
+    macroBrightness: App.activeAltRenderer?._exposure || 1.0,
+    macroShowArcs: true,
+    macroAutoRotate: false,
+    macroShowWireframe: false,
+    cyclomaticComplexityThreshold: 15,
+    cognitiveComplexityThreshold: 15,
+    methodLinesThreshold: 50,
+    classLinesThreshold: 500,
+    parameterCountThreshold: 6,
+    pojoIncludeStandardAccessors: pojoCfg.includeStandardAccessors !== false,
+    pojoCustomPatterns: Array.isArray(pojoCfg.customPatterns) ? pojoCfg.customPatterns.join(', ') : (pojoCfg.customPatterns || 'get*, set*, is*, has*, with*'),
+    archetypeRulesJson: JSON.stringify(rules),
+  };
+}
+
+async function exportDeploymentConf() {
+  try {
+    const res = await fetch('/api/config/export');
+    if (res.ok) {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'codelens.conf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showBanner('✓ Exported codelens.conf deployment file');
+      return;
+    }
+  } catch (_) {}
+
+  const cfg = buildFullConfigObject();
+  let conf = '# ═══════════════════════════════════════════════════════════════════════════════\n';
+  conf += '# CodeLens Deployment Configuration (codelens.conf)\n';
+  conf += '# Generated: ' + new Date().toISOString() + '\n';
+  conf += '# ═══════════════════════════════════════════════════════════════════════════════\n\n';
+  for (const [k, v] of Object.entries(cfg)) {
+    conf += `${k}=${v}\n`;
+  }
+  const blob = new Blob([conf], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'codelens.conf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showBanner('✓ Exported codelens.conf');
+}
+
+async function importDeploymentConf(file) {
+  if (!file) return;
+  const statusEl = qs('#deployment-config-status-text');
+  if (statusEl) statusEl.textContent = 'Importing ' + file.name + '…';
+
+  try {
+    const text = await file.text();
+    const res = await fetch('/api/config/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: text,
+    });
+
+    let configData = null;
+    if (res.ok) {
+      const data = await res.json();
+      configData = data.config;
+    }
+
+    applyImportedConfig(configData || parseClientConf(text));
+    if (statusEl) statusEl.textContent = 'Active: Imported from ' + file.name;
+    showBanner('✓ Settings imported and restored from ' + file.name);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Failed to import: ' + e.message;
+    showError('Failed to import configuration: ' + e.message);
+  }
+}
+
+function parseClientConf(text) {
+  const lines = text.split('\n');
+  const cfg = {};
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eqIdx = line.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = line.substring(0, eqIdx).trim();
+    const val = line.substring(eqIdx + 1).trim();
+    cfg[key] = val;
+  }
+  return cfg;
+}
+
+function applyImportedConfig(cfg) {
+  if (!cfg) return;
+  const s = loadSettings();
+
+  if (cfg.theme || cfg['ui.theme']) s.theme = cfg.theme || cfg['ui.theme'];
+  if (cfg.packageMode || cfg['ui.packageMode']) s.packageMode = cfg.packageMode || cfg['ui.packageMode'];
+  if (cfg.nodeBaseRadius || cfg['graph.nodeBaseRadius']) s.nodeBaseRadius = parseInt(cfg.nodeBaseRadius || cfg['graph.nodeBaseRadius']);
+  if (cfg.repulsion || cfg['graph.repulsion']) s.repulsion = parseInt(cfg.repulsion || cfg['graph.repulsion']);
+  if (cfg.springLen || cfg['graph.springLen']) s.springLen = parseInt(cfg.springLen || cfg['graph.springLen']);
+  if (cfg.damping || cfg['graph.damping']) s.damping = parseFloat(cfg.damping || cfg['graph.damping']);
+  if (cfg.showParticles !== undefined || cfg['graph.showParticles'] !== undefined) s.showParticles = String(cfg.showParticles ?? cfg['graph.showParticles']) === 'true';
+  if (cfg.showMinimap !== undefined || cfg['graph.showMinimap'] !== undefined) s.showMinimap = String(cfg.showMinimap ?? cfg['graph.showMinimap']) === 'true';
+  if (cfg.showLabels !== undefined || cfg['graph.showLabels'] !== undefined) s.showLabels = String(cfg.showLabels ?? cfg['graph.showLabels']) === 'true';
+  if (cfg.showGrid !== undefined || cfg['graph.showGrid'] !== undefined) s.showGrid = String(cfg.showGrid ?? cfg['graph.showGrid']) === 'true';
+  if (cfg.showHulls !== undefined || cfg['graph.showHulls'] !== undefined) s.showHulls = String(cfg.showHulls ?? cfg['graph.showHulls']) === 'true';
+  if (cfg.defaultDepth || cfg['graph.defaultDepth']) s.defaultDepth = parseInt(cfg.defaultDepth || cfg['graph.defaultDepth']);
+  if (cfg.autoFit !== undefined || cfg['graph.autoFit'] !== undefined) s.autoFit = String(cfg.autoFit ?? cfg['graph.autoFit']) === 'true';
+  if (cfg.excludePatterns || cfg['scan.excludePatterns']) s.excludePatterns = cfg.excludePatterns || cfg['scan.excludePatterns'];
+
+  saveSettings(s);
+  applyAllSettings(s);
+
+  // Apply POJO Config
+  if (window.CodeLensClassifier) {
+    const pojoStd = cfg.pojoIncludeStandardAccessors ?? cfg['pojo.includeStandardAccessors'];
+    const pojoPatterns = cfg.pojoCustomPatterns ?? cfg['pojo.customPatterns'];
+    const pCfg = {};
+    if (pojoStd !== undefined) pCfg.includeStandardAccessors = String(pojoStd) === 'true';
+    if (pojoPatterns) pCfg.customPatterns = typeof pojoPatterns === 'string' ? pojoPatterns.split(',').map(x => x.trim()).filter(Boolean) : pojoPatterns;
+    window.CodeLensClassifier.setPojoConfig(pCfg);
+
+    // Archetypes
+    const archJson = cfg.archetypeRulesJson ?? cfg['archetypes.rulesJson'];
+    if (archJson) {
+      try {
+        const rules = typeof archJson === 'string' ? JSON.parse(archJson) : archJson;
+        if (Array.isArray(rules)) {
+          window.CodeLensClassifier.setRules(rules);
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Scan path
+  const scanPath = cfg.defaultScanPath || cfg['scan.defaultPath'];
+  if (scanPath && qs('#scan-path-input')) {
+    qs('#scan-path-input').value = scanPath;
+  }
+
+  syncSettingsUI(s);
+}
+
+async function saveDeploymentConfToServer() {
+  const statusEl = qs('#deployment-config-status-text');
+  if (statusEl) statusEl.textContent = 'Saving configuration to server…';
+
+  try {
+    const cfg = buildFullConfigObject();
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+
+    if (res.ok) {
+      if (statusEl) statusEl.textContent = '✓ Successfully saved to server (./codelens.conf)';
+      showBanner('✓ Saved deployment configuration to server');
+    } else {
+      const err = await res.json();
+      throw new Error(err.error || 'Server returned error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Error saving to server: ' + e.message;
+    showError('Failed to save to server: ' + e.message);
+  }
+}
+
+async function syncSettingsFromServer() {
+  try {
+    const res = await fetch('/api/config');
+    if (res.ok) {
+      const serverConfig = await res.json();
+      if (serverConfig) {
+        const local = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (!local) {
+          applyImportedConfig(serverConfig);
+        }
+      }
+    }
+  } catch (_) {}
 }
 
 // ── Export Reports Hub ───────────────────────────────────────────────────────

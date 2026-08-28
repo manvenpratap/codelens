@@ -19,6 +19,7 @@ import javax.swing.JFileChooser;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -185,6 +186,13 @@ public class CodeLensServer {
         app.get("/api/reports/metrics",       this::getMetricsReport);
         app.get("/api/reports/html-snapshot", this::getHtmlSnapshotReport);
         app.get("/api/reports/download",      this::downloadReport);
+
+        // ── Configuration & Deployment Settings (.conf) ──────────────────────
+        app.get("/api/config",          this::getConfig);
+        app.post("/api/config",         this::saveConfig);
+        app.get("/api/config/export",   this::exportConfig);
+        app.post("/api/config/import",  this::importConfig);
+        app.post("/api/config/reset",   this::resetConfig);
 
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
@@ -1024,6 +1032,85 @@ public class CodeLensServer {
         } catch (Exception e) {
             log.error("Failed to download report: {}", e.getMessage(), e);
             ctx.status(500).json(Map.of("error", "Failed to download report: " + e.getMessage()));
+        }
+    }
+
+    // ── Configuration & Deployment Management ──────────────────────────────────
+    private CodeLensConfig activeConfig;
+    private File activeConfigFile;
+
+    public void setConfig(CodeLensConfig config, File configFile) {
+        this.activeConfig = config;
+        this.activeConfigFile = configFile;
+    }
+
+    public CodeLensConfig getActiveConfig() {
+        if (activeConfig == null) {
+            activeConfig = new CodeLensConfig();
+        }
+        return activeConfig;
+    }
+
+    private void getConfig(Context ctx) {
+        ctx.json(getActiveConfig());
+    }
+
+    private void saveConfig(Context ctx) {
+        try {
+            CodeLensConfig updated = ctx.bodyAsClass(CodeLensConfig.class);
+            this.activeConfig = updated;
+            File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
+            activeConfig.saveToFile(targetFile);
+            log.info("Persisted configuration to {}", targetFile.getAbsolutePath());
+            ctx.json(Map.of("status", "ok", "message", "Configuration saved successfully", "config", activeConfig));
+        } catch (Exception e) {
+            log.error("Failed to save configuration: {}", e.getMessage(), e);
+            ctx.status(400).json(Map.of("error", "Failed to save configuration: " + e.getMessage()));
+        }
+    }
+
+    private void exportConfig(Context ctx) {
+        String conf = getActiveConfig().toConfString();
+        ctx.contentType("text/plain; charset=utf-8")
+           .header("Content-Disposition", "attachment; filename=\"codelens.conf\"")
+           .result(conf);
+    }
+
+    private void importConfig(Context ctx) {
+        try {
+            String confContent;
+            var uploadedFile = ctx.uploadedFile("file");
+            if (uploadedFile != null) {
+                confContent = new String(uploadedFile.content().readAllBytes(), StandardCharsets.UTF_8);
+            } else {
+                confContent = ctx.body();
+            }
+
+            if (confContent == null || confContent.isBlank()) {
+                ctx.status(400).json(Map.of("error", "No configuration content provided"));
+                return;
+            }
+
+            CodeLensConfig imported = CodeLensConfig.fromConfString(confContent);
+            this.activeConfig = imported;
+            File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
+            activeConfig.saveToFile(targetFile);
+            log.info("Successfully imported and saved configuration from .conf to {}", targetFile.getAbsolutePath());
+            ctx.json(Map.of("status", "ok", "message", "Configuration imported and restored successfully", "config", activeConfig));
+        } catch (Exception e) {
+            log.error("Failed to import configuration: {}", e.getMessage(), e);
+            ctx.status(400).json(Map.of("error", "Failed to parse/import configuration: " + e.getMessage()));
+        }
+    }
+
+    private void resetConfig(Context ctx) {
+        this.activeConfig = new CodeLensConfig();
+        try {
+            File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
+            activeConfig.saveToFile(targetFile);
+            ctx.json(Map.of("status", "ok", "message", "Configuration reset to factory defaults", "config", activeConfig));
+        } catch (Exception e) {
+            ctx.status(500).json(Map.of("error", "Failed to save reset configuration: " + e.getMessage()));
         }
     }
 }

@@ -1250,9 +1250,36 @@
         <div id="archetype-rules-list" class="archetype-rules-list"></div>
       </section>
 
+      <!-- ── Deployment Configuration (.conf Import / Export) ──────────────── -->
+      <section class="settings-section deployment-config-section">
+        <div class="settings-section-header">
+          <h3 class="settings-section-title">📦 Deployment &amp; Environment Configuration (.conf)</h3>
+          <p class="settings-section-sub">Export or import all CodeLens settings, themes, rules, and thresholds to a portable <code>codelens.conf</code> file for deployment migration.</p>
+        </div>
+        <div class="deployment-config-card">
+          <div class="deployment-config-actions">
+            <button id="btn-export-conf" class="btn-primary" title="Export all settings to codelens.conf file">
+              <span>📥</span> Export codelens.conf
+            </button>
+            <label class="btn-ghost file-upload-label" id="btn-import-conf-label" title="Import settings from a codelens.conf file">
+              <span>📤</span> Import codelens.conf
+              <input type="file" id="input-import-conf" accept=".conf,.properties,.txt" style="display:none;" />
+            </label>
+            <button id="btn-save-server-conf" class="btn-ghost" title="Save current settings to server's deployment file">
+              <span>💾</span> Save to Server
+            </button>
+          </div>
+          <div class="deployment-config-status" id="deployment-config-status">
+            <span class="status-dot"></span>
+            <span id="deployment-config-status-text">Server deployment file active (./codelens.conf)</span>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Footer ───────────────────────────────────────────────────── -->
       <div class="settings-footer">
         <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
+        <div class="settings-footer-msg" id="settings-footer-msg"></div>
       </div>
 
     </div>
