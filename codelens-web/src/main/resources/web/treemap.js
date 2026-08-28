@@ -100,6 +100,7 @@ class TreemapRenderer {
     this._hiddenPackages = new Set();
     this._hiddenEntities = new Set();
     this._archetypeFilter = 'ALL';
+    this._hidePojo = true;
     this._hovered = null;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
@@ -111,8 +112,23 @@ class TreemapRenderer {
     };
   }
 
+  toggleHideGetters() {
+    this._hidePojo = !this._hidePojo;
+    ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle('active', this._hidePojo);
+        btn.title = this._hidePojo ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+      }
+    });
+    this._layout();
+    this._draw();
+    return this._hidePojo;
+  }
+
   setArchetypeFilter(ruleId) {
     this._archetypeFilter = ruleId || 'ALL';
+    this._layout();
     this._draw();
   }
 
@@ -155,6 +171,15 @@ class TreemapRenderer {
     if (name && this._hiddenEntities.has(name)) return true;
     if (fqn && this._hiddenEntities.has(fqn)) return true;
     if (node.id && this._hiddenEntities.has(node.id)) return true;
+
+    const isMethod = node.kind === 'METHOD' || node.type === 'METHOD' || fqn.includes('(') || name.includes('(');
+
+    if (this._hidePojo && isMethod && window.CodeLensClassifier) {
+      if (typeof window.CodeLensClassifier.isPojoAccessor === 'function' && window.CodeLensClassifier.isPojoAccessor(name, fqn)) {
+        return true;
+      }
+    }
+
     return false;
   }
 

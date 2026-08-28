@@ -1729,10 +1729,10 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
   if (granDiv) granDiv.style.display = supportsGranularity ? '' : 'none';
 
-  // Toggle POJO filter button in Codebase HUD (visible across all visualizations where method-level scope is present)
+  // Toggle POJO filter button in Codebase HUD (visible across all visualizations where method-level scope is present, including Sunburst and Treemap)
   const pojoCtrl = qs('#codebase-pojo-controls');
   const pojoDiv = qs('#codebase-pojo-divider');
-  const showPojoFilter = (supportsGranularity && isMethods);
+  const showPojoFilter = (supportsGranularity && isMethods) || (effectiveLevel === 'sunburst') || (effectiveLevel === 'treemap');
   if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
   if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
 
