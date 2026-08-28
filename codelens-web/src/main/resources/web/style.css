@@ -1481,10 +1481,29 @@ body.macro-studio-mode .tab-bar {
   overflow: hidden;
   animation: fadeInDown var(--dur-fast) var(--ease);
 }
+#codebase-archetype-wrap .archetype-multiselect-panel,
+.archetype-multiselect-dropdown.drop-up .archetype-multiselect-panel {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: auto;
+  right: 0;
+  animation: fadeInUp var(--dur-fast) var(--ease);
+}
 body.theme-light .archetype-multiselect-panel {
   background: rgba(255, 255, 255, 0.98);
   border-color: #cbd5e1;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .archetype-panel-header {

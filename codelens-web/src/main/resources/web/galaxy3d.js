@@ -728,16 +728,6 @@
       });
       this._toolbar.appendChild(orbitBtn);
 
-      const arcsBtn = mkBtn('Call Arcs',
-        `<svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg>`,
-        this._showArcs);
-      arcsBtn.addEventListener('click', () => {
-        this.toggleArcs();
-        arcsBtn.style.borderColor = this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)';
-        arcsBtn.style.color       = this._showArcs ? '#f8fafc'  : '#94a3b8';
-      });
-      this._toolbar.appendChild(arcsBtn);
-
       const planeBtn = mkBtn('Cluster Planes',
         `<svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
         true);

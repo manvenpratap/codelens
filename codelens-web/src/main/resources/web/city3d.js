@@ -589,25 +589,6 @@
       });
       this._toolbar.appendChild(searchBox);
 
-      // Skyline Arcs toggle
-      const arcsBtn = document.createElement('button');
-      arcsBtn.className = 'hud-btn' + (this._showArcs ? ' active' : '');
-      arcsBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg></span> <span class="hud-btn-text">Call Arcs</span>';
-      arcsBtn.style.background = '#0a0d12';
-      arcsBtn.style.border = '1px solid ' + (this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)');
-      arcsBtn.style.color = this._showArcs ? '#f8fafc' : '#94a3b8';
-      arcsBtn.style.borderRadius = '6px';
-      arcsBtn.style.padding = '5px 10px';
-      arcsBtn.style.fontSize = '11px';
-      arcsBtn.style.cursor = 'pointer';
-      arcsBtn.addEventListener('click', () => {
-        this.toggleArcs();
-        arcsBtn.classList.toggle('active', this._showArcs);
-        arcsBtn.style.borderColor = this._showArcs ? '#10b981' : 'rgba(255,255,255,0.15)';
-        arcsBtn.style.color = this._showArcs ? '#f8fafc' : '#94a3b8';
-      });
-      this._toolbar.appendChild(arcsBtn);
-
       // Auto Orbit toggle
       const orbitBtn = document.createElement('button');
       orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
