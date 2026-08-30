@@ -3941,6 +3941,10 @@ async function init() {
   qs('#btn-studio-back')?.addEventListener('click', () => {
     closeMacroStudio();
   });
+  qs('#btn-graph-back-kb')?.addEventListener('click', () => {
+    switchTab('knowledge');
+  });
+
 
   // Monaco Save button
   const saveBtn = qs('#editor-save-btn');

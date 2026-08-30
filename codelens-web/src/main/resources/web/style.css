@@ -2040,18 +2040,21 @@ body.macro-studio-mode .tab-bar {
 }
 
 /* Studio Back Button */
-.studio-back-btn {
+.studio-back-btn,
+.graph-back-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
+  border-radius: var(--radius-full, 9999px);
   color: #f8fafc;
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 3px 10px;
+  height: 24px;
+  box-sizing: border-box;
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
   white-space: nowrap;
@@ -2064,6 +2067,13 @@ body.macro-studio-mode .tab-bar {
   transform: translateX(-1px);
 }
 
+.graph-back-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #60a5fa;
+  transform: translateX(-1px);
+}
+
 .studio-back-btn .back-arrow {
   color: #34d399;
   font-weight: 700;
@@ -2071,7 +2081,15 @@ body.macro-studio-mode .tab-bar {
   align-items: center;
 }
 
-body.theme-light .studio-back-btn {
+.graph-back-btn .back-arrow {
+  color: #60a5fa;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+body.theme-light .studio-back-btn,
+body.theme-light .graph-back-btn {
   background: #f1f5f9;
   border-color: #cbd5e1;
   color: #0f172a;
@@ -2085,9 +2103,21 @@ body.theme-light .studio-back-btn:hover {
   transform: translateX(-1px);
 }
 
+body.theme-light .graph-back-btn:hover {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0284c7;
+  transform: translateX(-1px);
+}
+
 body.theme-light .studio-back-btn .back-arrow {
   color: #059669;
 }
+
+body.theme-light .graph-back-btn .back-arrow {
+  color: #0284c7;
+}
+
 
 /* Tab content areas */
 .tab-content {
