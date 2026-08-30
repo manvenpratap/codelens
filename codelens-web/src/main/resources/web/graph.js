@@ -622,32 +622,46 @@ class ForceGraph {
 
   toggleHeat() {
     this._heatMode = !this._heatMode;
-    const btn = document.getElementById('btn-heat');
-    if (btn) {
-      btn.classList.toggle('active', this._heatMode);
-      btn.setAttribute('aria-pressed', String(this._heatMode));
-    }
+    ['btn-heat', 'btn-codebase-heat'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle('active', this._heatMode);
+        btn.setAttribute('aria-pressed', String(this._heatMode));
+      }
+    });
     if (this._heatMode && Object.keys(this._heatData).length === 0) {
       if (typeof window.loadGitHeatData === 'function') {
         window.loadGitHeatData();
       }
     }
+    this._markDirty();
+    this.requestRender();
     return this._heatMode;
   }
 
   togglePhysics() {
     this._physicsEnabled = !this._physicsEnabled;
-    const btn = document.getElementById('btn-toggle-physics');
-    if (btn) btn.classList.toggle('active', this._physicsEnabled);
+    ['btn-toggle-physics', 'btn-codebase-toggle-physics'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', this._physicsEnabled);
+    });
+    if (this._physicsEnabled) {
+      this.restartPhysics();
+    }
     return this._physicsEnabled;
   }
 
   toggleHulls() {
     this._showHulls = !this._showHulls;
-    const btn = document.getElementById('btn-toggle-hulls');
-    if (btn) btn.classList.toggle('active', this._showHulls);
+    ['btn-toggle-hulls', 'btn-codebase-toggle-hulls'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', this._showHulls);
+    });
+    this._markDirty();
+    this.requestRender();
     return this._showHulls;
   }
+
 
   clear() {
     this._nodes = [];
@@ -1781,33 +1795,55 @@ class ForceGraph {
   /* ── 5. Graphify HUD & Controls ──────────────────────────────────────────── */
 
   _initHudControls() {
+    const isCodebase = Boolean(this._container && this._container.closest('#codebase-view'));
+
     // Zoom & Fit Buttons
-    const btnFit = document.getElementById('btn-fit');
-    if (btnFit) btnFit.onclick = () => this.fitToScreen();
+    const fitIds = isCodebase ? ['btn-codebase-fit', 'btn-fit'] : ['btn-fit', 'btn-codebase-fit'];
+    const zoomInIds = isCodebase ? ['btn-codebase-zoom-in', 'btn-zoom-in'] : ['btn-zoom-in', 'btn-codebase-zoom-in'];
+    const zoomOutIds = isCodebase ? ['btn-codebase-zoom-out', 'btn-zoom-out'] : ['btn-zoom-out', 'btn-codebase-zoom-out'];
+    const resetIds = isCodebase ? ['btn-codebase-reset', 'btn-reset'] : ['btn-reset', 'btn-codebase-reset'];
+    const hullsIds = isCodebase ? ['btn-codebase-toggle-hulls', 'btn-toggle-hulls'] : ['btn-toggle-hulls', 'btn-codebase-toggle-hulls'];
+    const physicsIds = isCodebase ? ['btn-codebase-toggle-physics', 'btn-toggle-physics'] : ['btn-toggle-physics', 'btn-codebase-toggle-physics'];
+    const heatIds = isCodebase ? ['btn-codebase-heat', 'btn-heat'] : ['btn-heat', 'btn-codebase-heat'];
+    const pojoIds = isCodebase ? ['btn-codebase-filter-getters', 'btn-filter-getters'] : ['btn-filter-getters', 'btn-codebase-filter-getters'];
 
-    const btnZoomIn = document.getElementById('btn-zoom-in');
-    if (btnZoomIn) btnZoomIn.onclick = () => this.zoomBy(1.25);
+    const bindClick = (ids, fn) => {
+      ids.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.onclick = fn;
+      });
+    };
 
-    const btnZoomOut = document.getElementById('btn-zoom-out');
-    if (btnZoomOut) btnZoomOut.onclick = () => this.zoomBy(0.8);
+    bindClick(fitIds, () => this.fitToScreen());
+    bindClick(zoomInIds, () => this.zoomBy(1.25));
+    bindClick(zoomOutIds, () => this.zoomBy(0.8));
+    bindClick(resetIds, () => {
+      if (isCodebase) this.fitToScreen();
+      else this.clear();
+    });
 
-    const btnReset = document.getElementById('btn-reset');
-    if (btnReset) btnReset.onclick = () => this.clear();
+    bindClick(hullsIds, () => this.toggleHulls());
+    bindClick(physicsIds, () => this.togglePhysics());
+    bindClick(heatIds, () => this.toggleHeat());
+    bindClick(pojoIds, () => this.toggleHideGetters());
 
-    const btnHulls = document.getElementById('btn-toggle-hulls');
-    if (btnHulls) btnHulls.onclick = () => this.toggleHulls();
-
-    const btnPhysics = document.getElementById('btn-toggle-physics');
-    if (btnPhysics) btnPhysics.onclick = () => this.togglePhysics();
-
-    const btnHeat = document.getElementById('btn-heat');
-    if (btnHeat) btnHeat.onclick = () => this.toggleHeat();
-
-    const btnFilterGetters = document.getElementById('btn-filter-getters');
-    if (btnFilterGetters) {
-      btnFilterGetters.onclick = () => this.toggleHideGetters();
-      btnFilterGetters.classList.toggle('active', this._hideGetters);
-    }
+    // Initialize active states for buttons
+    hullsIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', Boolean(this._showHulls));
+    });
+    physicsIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', Boolean(this._physicsEnabled));
+    });
+    heatIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', Boolean(this._heatMode));
+    });
+    pojoIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', Boolean(this._hideGetters));
+    });
 
     // Node card close
     const btnNodeCardClose = document.getElementById('btn-node-card-close');
@@ -1822,6 +1858,7 @@ class ForceGraph {
       };
     }
   }
+
 
   _renderCommunityLegend() {
     // Find legend in local container or fallback to global ID

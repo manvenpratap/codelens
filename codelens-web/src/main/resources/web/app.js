@@ -1879,17 +1879,15 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
   // Toggle visibility of granularity selector (supported for 3D City, 3D Galaxy, 2D Graph, DSM, and Chord)
   const granCtrl = qs('#codebase-granularity-wrap') || qs('#codebase-granularity-selector');
-  const granDiv = qs('#codebase-granularity-divider');
+  const granDiv = qs('#codebase-graph-toggles-divider');
   const supportsGranularity = ['city3d', 'galaxy3d', 'graph2d', 'dsm', 'chord'].includes(effectiveLevel);
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
-  if (granDiv) granDiv.style.display = supportsGranularity ? '' : 'none';
 
-  // Toggle POJO filter button in Codebase HUD (visible across all visualizations where method-level scope is present, including Sunburst and Treemap)
-  const pojoCtrl = qs('#codebase-pojo-controls');
-  const pojoDiv = qs('#codebase-pojo-divider');
-  const showPojoFilter = (supportsGranularity && isMethods) || (effectiveLevel === 'sunburst') || (effectiveLevel === 'treemap');
-  if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'block' : 'none';
-  if (pojoDiv) pojoDiv.style.display = showPojoFilter ? '' : 'none';
+  // Toggle 2D Graph specific controls (POJO filter, Clusters/Hulls, Physics, Heat)
+  const isGraph2D = (effectiveLevel === 'graph2d');
+  const graphTogglesCtrl = qs('#codebase-graph-toggles');
+  if (graphTogglesCtrl) graphTogglesCtrl.style.display = isGraph2D ? 'inline-flex' : 'none';
+  if (granDiv) granDiv.style.display = isGraph2D ? '' : 'none';
 
   // Toggle Call Arcs filter button in Codebase HUD (visible for 3D modes: 3D City & 3D Galaxy)
   const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
@@ -1904,10 +1902,18 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (brightnessCtrl) brightnessCtrl.style.display = is3D ? 'flex' : 'none';
   if (brightnessDiv) brightnessDiv.style.display = is3D ? '' : 'none';
 
+  // Toggle camera controls (visible for 2D Graph and 3D modes)
+  const cameraCtrl = qs('#codebase-camera-controls');
+  const cameraDiv = qs('#codebase-camera-divider');
+  const showCameraControls = isGraph2D || is3D;
+  if (cameraCtrl) cameraCtrl.style.display = showCameraControls ? 'inline-flex' : 'none';
+  if (cameraDiv) cameraDiv.style.display = showCameraControls ? '' : 'none';
+
   // Toggle visibility of bottom canvas toolbar
   const canvasToolbar = qs('#codebase-canvas-toolbar');
-  const hasBottomControls = (supportsGranularity || showPojoFilter || is3D);
+  const hasBottomControls = (supportsGranularity || is3D || isGraph2D);
   if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
+
 
   // Toggle 2D minimap for codebase visualizer
   const cbMinimap = qs('#codebase-minimap-wrap');
@@ -1985,6 +1991,11 @@ async function loadWholeCodebaseGraph(level, granularity) {
         const tooltip = qs('#codebase-tooltip') || qs('#graph-tooltip');
         const fg = new window.ForceGraph(mountContainer, tooltip);
         if (App.settings) fg.applySettings(App.settings);
+        if (App.gitSummary && App.gitSummary.hotEntities) {
+          const heatMap = {};
+          for (const e of App.gitSummary.hotEntities) heatMap[e.entityFqn] = e.commitCount;
+          fg.setHeatData(heatMap);
+        }
         fg.setData(data.nodes, data.edges);
 
         fg.onNodeClick = async (node) => {
@@ -2010,6 +2021,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
         };
 
         App.activeAltRenderer = fg;
+
         renderAltVizInspector(`2D Bloom (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
         renderCodebaseLegend(data.nodes);
         showBanner(`2D Blooming Tree loaded: ${data.nodes.length} nodes, ${data.edges.length} connections`);
@@ -4125,6 +4137,73 @@ async function init() {
     });
   }
 
+  // Codebase Clusters / Hulls button
+  const codebaseHullsBtn = qs('#btn-codebase-toggle-hulls');
+  if (codebaseHullsBtn) {
+    codebaseHullsBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleHulls === 'function') {
+        App.activeAltRenderer.toggleHulls();
+      }
+    });
+  }
+
+  // Codebase Physics button
+  const codebasePhysicsBtn = qs('#btn-codebase-toggle-physics');
+  if (codebasePhysicsBtn) {
+    codebasePhysicsBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.togglePhysics === 'function') {
+        App.activeAltRenderer.togglePhysics();
+      }
+    });
+  }
+
+  // Codebase Heat button
+  const codebaseHeatBtn = qs('#btn-codebase-heat');
+  if (codebaseHeatBtn) {
+    codebaseHeatBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleHeat === 'function') {
+        App.activeAltRenderer.toggleHeat();
+      }
+    });
+  }
+
+  // Codebase Camera Controls (Zoom In, Zoom Out, Fit, Reset)
+  const cbZoomInBtn = qs('#btn-codebase-zoom-in');
+  if (cbZoomInBtn) {
+    cbZoomInBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.zoomBy === 'function') {
+        App.activeAltRenderer.zoomBy(1.25);
+      }
+    });
+  }
+
+  const cbZoomOutBtn = qs('#btn-codebase-zoom-out');
+  if (cbZoomOutBtn) {
+    cbZoomOutBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.zoomBy === 'function') {
+        App.activeAltRenderer.zoomBy(0.8);
+      }
+    });
+  }
+
+  const cbFitBtn = qs('#btn-codebase-fit');
+  if (cbFitBtn) {
+    cbFitBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.fitToScreen === 'function') {
+        App.activeAltRenderer.fitToScreen();
+      }
+    });
+  }
+
+  const cbResetBtn = qs('#btn-codebase-reset');
+  if (cbResetBtn) {
+    cbResetBtn.addEventListener('click', () => {
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.fitToScreen === 'function') {
+        App.activeAltRenderer.fitToScreen();
+      }
+    });
+  }
+
   // Codebase Call Arcs Filter button
   const codebaseArcsBtn = qs('#btn-codebase-filter-arcs');
   if (codebaseArcsBtn) {
@@ -4144,6 +4223,7 @@ async function init() {
       if (legend) legend.style.display = 'none';
     });
   }
+
 
   if (resetBrightnessBtn) {
     resetBrightnessBtn.addEventListener('click', () => {
@@ -4741,7 +4821,11 @@ async function loadGitHeatData() {
       heatMap[e.entityFqn] = e.commitCount;
     }
     App.graph?.setHeatData(heatMap);
+    if (App.activeAltRenderer && typeof App.activeAltRenderer.setHeatData === 'function') {
+      App.activeAltRenderer.setHeatData(heatMap);
+    }
     return heatMap;
+
   } catch (_) { /* non-fatal */ }
 }
 window.loadGitHeatData = loadGitHeatData;
