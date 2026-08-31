@@ -53,15 +53,16 @@ let GC = {
 };
 
 let PHYSICS = {
-  repulsion:      28000,  // stronger anti-overlap charge (was 20000)
-  springLen:      140,    // shorter rest spring → tighter clusters (was 180)
-  springK:        0.022,  // stronger spring tension (was 0.015)
-  clusterK:       0.006,  // much stronger community cohesion (was 0.0018)
-  centerForce:    0.0003, // slightly weaker centering so clusters spread more freely
-  damping:        0.78,   // slightly more damping → less oscillation (was 0.80)
-  maxTicks:       600,    // more stabilization ticks (was 500)
+  repulsion:      14000,  // calibrated anti-overlap charge (reduced to prevent violent explosive kicks)
+  springLen:      110,    // balanced rest spring for tighter, cleaner blooms
+  springK:        0.030,  // spring tension
+  clusterK:       0.007,  // community cohesion
+  centerForce:    0.0004, // smooth centering
+  damping:        0.80,   // base velocity damping
+  maxTicks:       180,    // fast stabilization (anneals to 0 in ~1s on screen)
   nodeBaseRadius: 9,      // unchanged
 };
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Geometry & Convex Hull Helpers
@@ -809,10 +810,22 @@ class ForceGraph {
   /* ── Physics Simulation ─────────────────────────────────────────────────── */
 
   _runInitialStabilization() {
-    const ticks = this._nodes.length > 100 ? 12 : 25;
+    // Warm up offline for 80-100 ticks so the violent initial explosion/rotation is completely avoided
+    const ticks = this._nodes.length > 100 ? 80 : 100;
     for (let i = 0; i < ticks; i++) {
       this._simulateTick();
     }
+  }
+
+  restartPhysics(extraTicks = 90) {
+    const maxT = PHYSICS.maxTicks || 180;
+    this._ticks = Math.max(0, maxT - extraTicks);
+    this._physicsEnabled = true;
+    for (const n of this._nodes) {
+      n.vx *= 0.2;
+      n.vy *= 0.2;
+    }
+    this._startLoop();
   }
 
   _simulateTick() {
@@ -823,6 +836,12 @@ class ForceGraph {
     const dpr = window.devicePixelRatio || 1;
     const cx = (this._canvas.width / dpr) / 2;
     const cy = (this._canvas.height / dpr) / 2;
+
+    const maxT = PHYSICS.maxTicks || 180;
+    const progress = Math.min(1, this._ticks / maxT);
+    // Smooth quadratic alpha cooling curve (anneals forces to 0 gently)
+    const alpha = Math.max(0.01, (1 - progress) * (1 - progress));
+    const currentDamping = PHYSICS.damping + (0.92 - PHYSICS.damping) * progress;
 
     // Reset force accumulators
     for (let i = 0; i < n; i++) {
@@ -864,9 +883,9 @@ class ForceGraph {
         const dy = cb.y - ca.y;
         const distSq = dx * dx + dy * dy || 1;
         const dist = Math.sqrt(distSq);
-        const targetSep = 220 + Math.sqrt(ca.count + cb.count) * 55;  // was 160 + sqrt*35
-        if (dist < targetSep * 4.0) {                                  // was 3.0
-          const clusterRep = (PHYSICS.repulsion * 5.5) / (distSq + 80);  // was 3.2 / +100
+        const targetSep = 180 + Math.sqrt(ca.count + cb.count) * 45;
+        if (dist < targetSep * 3.0) {
+          const clusterRep = ((PHYSICS.repulsion * 3.0) / (distSq + 120)) * alpha;
           const fx = (dx / dist) * clusterRep;
           const fy = (dy / dist) * clusterRep;
           for (let k = 0; k < n; k++) {
@@ -892,12 +911,12 @@ class ForceGraph {
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
 
         if (nd.isBranchCore) {
-          const fc = dist * (PHYSICS.clusterK * 2.5);  // was 1.5 — pull core harder
+          const fc = dist * (PHYSICS.clusterK * 2.0) * alpha;
           nd._fx += (dx / dist) * fc;
           nd._fy += (dy / dist) * fc;
         } else {
-          const idealBloomRadius = 28 + Math.min(140, Math.sqrt(c.count) * 18);  // tighter (was 32 + sqrt*24)
-          const fBloom = (dist - idealBloomRadius) * (PHYSICS.clusterK * 5.0);   // was 3.0
+          const idealBloomRadius = 26 + Math.min(120, Math.sqrt(c.count) * 16);
+          const fBloom = (dist - idealBloomRadius) * (PHYSICS.clusterK * 3.5) * alpha;
           nd._fx += (dx / dist) * fBloom;
           nd._fy += (dy / dist) * fBloom;
         }
@@ -916,13 +935,13 @@ class ForceGraph {
         const dist = Math.sqrt(distSq);
 
         const isSameComm = ni.community === nj.community;
-        const minClearance = ni.radius + nj.radius + (isSameComm ? 20 : 90);  // was 24 / 45
+        const minClearance = ni.radius + nj.radius + (isSameComm ? 18 : 60);
         let rep = 0;
         if (dist < minClearance) {
-          rep = (PHYSICS.repulsion * (isSameComm ? 2.5 : 7.0)) / Math.max(dist, 10);  // was 4.5 cross
+          rep = ((PHYSICS.repulsion * (isSameComm ? 1.8 : 4.0)) / Math.max(dist, 10)) * alpha;
         } else {
-          const mult = isSameComm ? 0.45 : 2.0;  // was 1.35 cross — push harder at range
-          rep = (PHYSICS.repulsion * mult * (1 + (ni.degree + nj.degree) * 0.08)) / distSq;
+          const mult = isSameComm ? 0.35 : 1.2;
+          rep = ((PHYSICS.repulsion * mult * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
         }
 
         const fx = (dx / dist) * rep;
@@ -949,18 +968,16 @@ class ForceGraph {
 
       const isSameClass = src.className && src.className === tgt.className;
       const isSameComm = src.community === tgt.community;
-      // Longer cross-community spring rest length means edges between packages
-      // don't pull foreign nodes deep into the wrong cluster hull.
       const targetLen = isSameClass
-        ? (PHYSICS.springLen * 0.40)                  // same class — very tight (was 0.45)
+        ? (PHYSICS.springLen * 0.40)
         : (isSameComm
-            ? PHYSICS.springLen * 0.70               // same community — moderate (was 0.65)
-            : PHYSICS.springLen * 2.2);              // cross-community — long, stays at boundary (was 1.25)
-      const springTension = isSameClass
-        ? (PHYSICS.springK * 2.0)                    // same class — strong pull (was 1.8)
+            ? PHYSICS.springLen * 0.70
+            : PHYSICS.springLen * 1.8);
+      const springTension = (isSameClass
+        ? (PHYSICS.springK * 2.0)
         : (isSameComm
-            ? PHYSICS.springK * 1.3                  // same community (was 1.2)
-            : PHYSICS.springK * 0.4);                // cross-community — weak, just a guide (was 0.85)
+            ? PHYSICS.springK * 1.3
+            : PHYSICS.springK * 0.4)) * alpha;
 
       const f = (dist - targetLen) * springTension;
       const fx = (dx / dist) * f;
@@ -970,30 +987,57 @@ class ForceGraph {
       tgt._fx -= fx; tgt._fy -= fy;
     }
 
-    // 4. Integrate velocity and update position
+    // 6. Integrate velocity and update position
     for (let i = 0; i < n; i++) {
       const nd = nodes[i];
       if (nd.pinned) { nd.vx = 0; nd.vy = 0; continue; }
 
       // Soft centering pull
-      nd._fx += (cx - nd.x) * PHYSICS.centerForce;
-      nd._fy += (cy - nd.y) * PHYSICS.centerForce;
+      nd._fx += (cx - nd.x) * PHYSICS.centerForce * alpha;
+      nd._fy += (cy - nd.y) * PHYSICS.centerForce * alpha;
 
-      nd.vx = (nd.vx + nd._fx) * PHYSICS.damping;
-      nd.vy = (nd.vy + nd._fy) * PHYSICS.damping;
+      nd.vx = (nd.vx + nd._fx) * currentDamping;
+      nd.vy = (nd.vy + nd._fy) * currentDamping;
 
-      // Limit speed
+      // Decaying speed limit prevents orbital slingshotting
+      const maxSpeed = 2.5 + 6.5 * alpha;
       const speed = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
-      if (speed > 14) {
-        nd.vx = (nd.vx / speed) * 14;
-        nd.vy = (nd.vy / speed) * 14;
+      if (speed > maxSpeed) {
+        nd.vx = (nd.vx / speed) * maxSpeed;
+        nd.vy = (nd.vy / speed) * maxSpeed;
       }
 
       nd.x += nd.vx;
       nd.y += nd.vy;
     }
 
-    // 5. Hard Collision Separation (Single-pass for high FPS)
+    // 7. Angular Momentum Cancellation (Prevents vigorous spinning / orbiting around centroid)
+    for (const [cid, c] of commCentroids.entries()) {
+      if (c.count <= 2) continue;
+      let sumNumerator = 0;
+      let sumDenominator = 0;
+      for (let i = 0; i < n; i++) {
+        const nd = nodes[i];
+        if (nd.community !== cid || this._isNodeHidden(nd) || nd.pinned) continue;
+        const rx = nd.x - c.x;
+        const ry = nd.y - c.y;
+        sumNumerator += (rx * nd.vy - ry * nd.vx);
+        sumDenominator += (rx * rx + ry * ry);
+      }
+      if (sumDenominator > 10) {
+        const omega = sumNumerator / sumDenominator;
+        for (let i = 0; i < n; i++) {
+          const nd = nodes[i];
+          if (nd.community !== cid || this._isNodeHidden(nd) || nd.pinned) continue;
+          const rx = nd.x - c.x;
+          const ry = nd.y - c.y;
+          nd.vx -= (-omega * ry) * 0.70;
+          nd.vy -= (omega * rx) * 0.70;
+        }
+      }
+    }
+
+    // 8. Hard Collision Separation (Single-pass for high FPS)
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
@@ -1002,7 +1046,7 @@ class ForceGraph {
         const dx = nj.x - ni.x;
         const dy = nj.y - ni.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const requiredDist = ni.radius + nj.radius + 34;
+        const requiredDist = ni.radius + nj.radius + 28;
 
         if (dist < requiredDist) {
           const overlap = (requiredDist - dist) * 0.5;
@@ -1023,6 +1067,7 @@ class ForceGraph {
 
     this._ticks++;
   }
+
 
   pause() {
     this._paused = true;
