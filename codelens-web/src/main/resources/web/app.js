@@ -177,15 +177,11 @@ function enc(fqn) {
 /** Show the hero landing page and hide all workspace UI */
 function showHeroPage() {
   const hero = qs('#hero-landing-page');
-  const header = qs('#header');
-  const leftPanel = qs('#left-panel');
-  const centrePanel = qs('#centre-panel');
-  const rightPanel = qs('#right-panel');
+  const app = qs('#app');
+  const footer = qs('#app-footer');
   if (hero) hero.style.display = 'flex';
-  if (header) header.style.display = 'none';
-  if (leftPanel) leftPanel.style.display = 'none';
-  if (centrePanel) centrePanel.style.display = 'none';
-  if (rightPanel) rightPanel.style.display = 'none';
+  if (app) app.style.display = 'none';
+  if (footer) footer.style.display = 'none';
   // Populate recent projects list
   renderHeroRecentProjects();
 }
@@ -193,16 +189,13 @@ function showHeroPage() {
 /** Hide the hero landing page and show all workspace UI */
 function hideHeroPage() {
   const hero = qs('#hero-landing-page');
-  const header = qs('#header');
-  const leftPanel = qs('#left-panel');
-  const centrePanel = qs('#centre-panel');
-  const rightPanel = qs('#right-panel');
+  const app = qs('#app');
+  const footer = qs('#app-footer');
   if (hero) hero.style.display = 'none';
-  if (header) header.style.display = '';
-  if (leftPanel) leftPanel.style.display = '';
-  if (centrePanel) centrePanel.style.display = '';
-  if (rightPanel) rightPanel.style.display = '';
+  if (app) app.style.display = '';
+  if (footer) footer.style.display = '';
 }
+
 
 /** Add a path to the recent-projects list stored in localStorage (max 8 entries) */
 function addToRecentProjects(path) {

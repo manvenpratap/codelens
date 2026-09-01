@@ -967,8 +967,36 @@ body.theme-light .scan-stat-card {
   padding: 8px 10px;
 }
 .scan-advice-banner.advice-warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.scan-advice-banner.advice-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.advice-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.advice-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.advice-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.advice-desc {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
 /* Detected Disk Changes Section */
 .scan-changes-section {
+
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1111,14 +1139,15 @@ body.theme-light .scan-summary-footer {
 .hero-page {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: var(--bg-void);
   overflow-y: auto;
-  padding: 24px;
+  overflow-x: hidden;
+  padding: 40px 24px 60px 24px;
 }
 
 /* Subtle radial glow in the dark theme */
@@ -1135,6 +1164,7 @@ body:not(.theme-light) .hero-page {
   right: 24px;
   display: flex;
   gap: 8px;
+  z-index: 10;
 }
 .hero-icon-btn {
   width: 38px;
@@ -1163,8 +1193,10 @@ body:not(.theme-light) .hero-page {
   align-items: center;
   width: 100%;
   max-width: 680px;
-  gap: 32px;
+  gap: 28px;
+  margin: auto 0;
 }
+
 
 /* Logo & branding */
 .hero-brand {
@@ -1189,11 +1221,12 @@ body:not(.theme-light) .hero-page {
   color: var(--text-primary);
   letter-spacing: -0.5px;
   margin: 0;
-  background: linear-gradient(135deg, var(--primary-bg) 0%, var(--primary-glow) 100%);
+  background: linear-gradient(135deg, #ffffff 20%, #6ee7b7 65%, #38bdf8 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
 .hero-subtitle {
   font-size: 13px;
   color: var(--text-muted);
@@ -1458,7 +1491,14 @@ body.theme-light .hero-last-scan-card {
 body.theme-light .hero-page {
   background: #f1f5f9;
 }
+body.theme-light .hero-title {
+  background: linear-gradient(135deg, #0f172a 10%, #0369a1 70%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 body.theme-light .hero-scan-card {
+
   background: #ffffff;
   border-color: #e2e8f0;
   box-shadow: 0 4px 24px rgba(0,0,0,0.08);

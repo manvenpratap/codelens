@@ -1005,7 +1005,10 @@ public class EntityDao {
         try (Connection c = db.getConnection()) {
             c.setAutoCommit(false);
             try (PreparedStatement psRels = c.prepareStatement(
-                    "DELETE FROM relationships WHERE source_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?) OR target_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)");
+                    "DELETE FROM relationships WHERE from_entity_fqn IN (SELECT fqn FROM types WHERE source_file = ?) " +
+                    "OR to_entity_fqn IN (SELECT fqn FROM types WHERE source_file = ?) " +
+                    "OR from_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)) " +
+                    "OR to_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?))");
                  PreparedStatement psFields = c.prepareStatement(
                     "DELETE FROM fields WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)");
                  PreparedStatement psMethods = c.prepareStatement(
@@ -1018,7 +1021,10 @@ public class EntityDao {
                 for (String path : sourceFiles) {
                     psRels.setString(1, path);
                     psRels.setString(2, path);
+                    psRels.setString(3, path);
+                    psRels.setString(4, path);
                     psRels.executeUpdate();
+
 
                     psFields.setString(1, path);
                     psFields.executeUpdate();

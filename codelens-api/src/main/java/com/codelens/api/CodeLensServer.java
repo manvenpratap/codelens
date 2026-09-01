@@ -528,10 +528,11 @@ public class CodeLensServer {
 
             // Recompute scan totals from DB
             Map<String, Object> stats = dao.getStats();
-            int totalTypes = stats.containsKey("totalTypes") ? ((Number) stats.get("totalTypes")).intValue() : 0;
-            int totalMethods = stats.containsKey("totalMethods") ? ((Number) stats.get("totalMethods")).intValue() : 0;
-            int totalFields = stats.containsKey("totalFields") ? ((Number) stats.get("totalFields")).intValue() : 0;
-            int totalRels = stats.containsKey("totalRelationships") ? ((Number) stats.get("totalRelationships")).intValue() : 0;
+            int totalTypes = stats.containsKey("types") ? ((Number) stats.get("types")).intValue() : 0;
+            int totalMethods = stats.containsKey("methods") ? ((Number) stats.get("methods")).intValue() : 0;
+            int totalFields = stats.containsKey("fields") ? ((Number) stats.get("fields")).intValue() : 0;
+            int totalRels = stats.containsKey("relationships") ? ((Number) stats.get("relationships")).intValue() : 0;
+
 
             Map<String, FileMeta> allMeta = dao.getAllFileMeta();
             progress.setTotalFiles(allMeta.size());
