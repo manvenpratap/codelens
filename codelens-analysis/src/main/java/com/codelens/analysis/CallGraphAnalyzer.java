@@ -35,49 +35,84 @@ public class CallGraphAnalyzer {
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Rebuilds the call graph from scratch.
-     *
-     * @param allMethodFqns    every method FQN discovered during the scan
-     * @param callRelationships CALLS relationships (may include "~" prefixed targets)
-     */
-    public synchronized void rebuild(List<String> allMethodFqns,
-                                     List<CodeRelationship> callRelationships) {
-        Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
-        Map<String, List<String>> byName = new HashMap<>();
+    /** Functional interface for streaming call edges during graph construction. */
+    @FunctionalInterface
+    public interface EdgeConsumer {
+        void accept(String from, String to);
+    }
 
-        // Populate vertex set
+    /** Functional interface for providing an edge stream. */
+    @FunctionalInterface
+    public interface EdgeStreamer {
+        void stream(EdgeConsumer consumer) throws Exception;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Rebuilds the call graph by streaming edges directly from a database cursor.
+     */
+    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer) throws Exception {
+        Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
+        Map<String, List<String>> byName = new HashMap<>(allMethodFqns.size());
+
+        // Populate vertex set with interned strings to deduplicate repeated package/class prefixes
         for (String fqn : allMethodFqns) {
-            g.addVertex(fqn);
-            String simpleName = simpleMethodName(fqn);
-            byName.computeIfAbsent(simpleName, k -> new ArrayList<>()).add(fqn);
+            String interned = fqn.intern();
+            g.addVertex(interned);
+            String simpleName = simpleMethodName(interned).intern();
+            byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
         }
 
-        // Populate edges, resolving "~" prefixed targets where possible
-        for (CodeRelationship rel : callRelationships) {
-            if (!"CALLS".equals(rel.getKind())) continue;
+        // Stream edges, resolving "~" prefixed targets
+        if (edgeStreamer != null) {
+            edgeStreamer.stream((rawFrom, rawTo) -> {
+                if (rawFrom == null || rawTo == null) return;
+                String from = rawFrom.intern();
+                String to   = rawTo;
 
-            String from = rel.getFromEntityFqn();
-            String to   = rel.getToEntityFqn();
+                if (to.startsWith("~")) {
+                    to = resolve(to, byName);
+                }
+                if (to == null || to.startsWith("~")) return;
+                to = to.intern();
 
-            // Resolve unresolved target
-            if (to.startsWith("~")) {
-                to = resolve(to, byName);
-            }
-            if (to == null || to.startsWith("~")) continue; // still unresolved
+                g.addVertex(from);
+                g.addVertex(to);
 
-            // Add vertices if not already present (external methods)
-            g.addVertex(from);
-            g.addVertex(to);
-
-            try { g.addEdge(from, to); }
-            catch (Exception e) { /* duplicate edge – ignore */ }
+                try { g.addEdge(from, to); }
+                catch (Exception ignored) { /* duplicate edge */ }
+            });
         }
 
         this.callGraph = g;
         log.info("Call graph rebuilt: {} vertices, {} edges",
             g.vertexSet().size(), g.edgeSet().size());
     }
+
+    /**
+     * Rebuilds the call graph from scratch (in-memory list overload for tests / backwards compatibility).
+     *
+     * @param allMethodFqns    every method FQN discovered during the scan
+     * @param callRelationships CALLS relationships (may include "~" prefixed targets)
+     */
+    public synchronized void rebuild(List<String> allMethodFqns,
+                                     List<CodeRelationship> callRelationships) {
+        try {
+            rebuild(allMethodFqns, consumer -> {
+                if (callRelationships != null) {
+                    for (CodeRelationship rel : callRelationships) {
+                        if ("CALLS".equals(rel.getKind())) {
+                            consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.error("Failed to rebuild call graph", e);
+        }
+    }
+
 
     /**
      * Identifies if a method FQN represents a trivial POJO accessor / getter / setter / boilerplate method.

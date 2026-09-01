@@ -12,23 +12,19 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Walks a Java source directory, parses every .java file with JavaParser,
- * and collects all discovered entities into a single {@link ScanResult}.
- *
- * Usage:
- * <pre>
- *   JavaSourceScanner scanner = new JavaSourceScanner();
- *   ScanResult result = scanner.scan("/path/to/src", progressCallback);
- * </pre>
+ * Walks a Java source directory, parses .java files with bounded multi-threading,
+ * and streams discovered entities in chunks to a {@link BatchConsumer} to keep
+ * Java heap memory usage strictly bounded even for 50,000+ classes.
  */
 public class JavaSourceScanner {
 
     private static final Logger log = LoggerFactory.getLogger(JavaSourceScanner.class);
 
-    /** Holds all entities extracted from a full scan. */
+    /** Holds summary metrics and (optionally) in-memory entities for small scans. */
     public static class ScanResult {
         public final List<CodePackage>      packages      = new ArrayList<>();
         public final List<CodeType>         types         = new ArrayList<>();
@@ -38,6 +34,10 @@ public class JavaSourceScanner {
         public int totalFiles;
         public int parsedFiles;
         public int errorFiles;
+        public int typesFound;
+        public int methodsFound;
+        public int fieldsFound;
+        public int relationshipsFound;
     }
 
     /** Callback invoked after each file is processed: (processedCount, totalCount, filePath). */
@@ -46,20 +46,33 @@ public class JavaSourceScanner {
         void onFile(int processed, int total, String filePath);
     }
 
+    /** Consumer invoked when a batch of parsed entities is ready to be flushed to DB/storage. */
+    @FunctionalInterface
+    public interface BatchConsumer {
+        void onBatch(List<CodePackage> packages,
+                     List<CodeType> types,
+                     List<CodeField> fields,
+                     List<CodeMethod> methods,
+                     List<CodeRelationship> relationships) throws Exception;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public static final List<String> DEFAULT_EXCLUDE_PATTERNS = List.of(
         "target", "build", ".mvn", ".git", ".gradle", ".idea", ".vscode", "node_modules", "bin", "out", "dist"
     );
 
-    private final JavaParser parser;
+    private static final int PARSER_THREADS = Math.max(2, Math.min(Runtime.getRuntime().availableProcessors(), 8));
 
-    public JavaSourceScanner() {
+    private static final ThreadLocal<JavaParser> THREAD_PARSER = ThreadLocal.withInitial(() -> {
         ParserConfiguration cfg = new ParserConfiguration();
-        // Java 17 language level; falls back gracefully for older syntax
         cfg.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
-        this.parser = new JavaParser(cfg);
-    }
+        cfg.setStoreTokens(false);
+        cfg.setAttributeComments(false);
+        return new JavaParser(cfg);
+    });
+
+    public JavaSourceScanner() {}
 
     /**
      * Helper to compile wildcard and folder exclude patterns into PathMatchers.
@@ -124,18 +137,23 @@ public class JavaSourceScanner {
      * Performs a full directory scan with default exclude patterns.
      */
     public ScanResult scan(String sourceRoot, ProgressCallback progressCallback) throws IOException {
-        return scan(sourceRoot, DEFAULT_EXCLUDE_PATTERNS, progressCallback);
+        return scan(sourceRoot, DEFAULT_EXCLUDE_PATTERNS, null, progressCallback);
     }
 
     /**
      * Performs a full directory scan with custom folder/file exclude patterns.
-     *
-     * @param sourceRoot       absolute path to the root of the Java source tree
-     * @param excludePatterns  folder names, paths, or glob patterns to ignore
-     * @param progressCallback invoked once per file (may be null)
-     * @return ScanResult with all discovered entities
      */
     public ScanResult scan(String sourceRoot, List<String> excludePatterns, ProgressCallback progressCallback) throws IOException {
+        return scan(sourceRoot, excludePatterns, null, progressCallback);
+    }
+
+    /**
+     * Performs a full directory scan with custom folder/file exclude patterns and streaming BatchConsumer.
+     */
+    public ScanResult scan(String sourceRoot,
+                           List<String> excludePatterns,
+                           BatchConsumer batchConsumer,
+                           ProgressCallback progressCallback) throws IOException {
         Path root = Paths.get(sourceRoot);
         if (!Files.exists(root)) {
             throw new IllegalArgumentException("Source root does not exist: " + sourceRoot);
@@ -185,86 +203,174 @@ public class JavaSourceScanner {
         log.info("Found {} Java files under {} (after applying {} exclude patterns)",
             javaFiles.size(), sourceRoot, effectiveExcludes.size());
 
-        // ── Phase 2: parse each file ──────────────────────────────────────────
-        ScanResult result   = new ScanResult();
-        result.totalFiles   = javaFiles.size();
-        AstVisitor visitor  = new AstVisitor();
-        AtomicInteger count = new AtomicInteger(0);
+        // ── Phase 2: bounded parallel parsing & streaming ─────────────────────
+        ScanResult result    = new ScanResult();
+        result.totalFiles    = javaFiles.size();
+        AtomicInteger count  = new AtomicInteger(0);
+        AtomicInteger parsed = new AtomicInteger(0);
+        AtomicInteger errors = new AtomicInteger(0);
+        AtomicInteger totalTypes = new AtomicInteger(0);
+        AtomicInteger totalMethods = new AtomicInteger(0);
+        AtomicInteger totalFields = new AtomicInteger(0);
+        AtomicInteger totalRels = new AtomicInteger(0);
 
-        // Track seen packages to avoid duplicates
-        Set<String> seenPackages = new HashSet<>();
+        ConcurrentMap<String, CodePackage> packageMap = new ConcurrentHashMap<>();
+        ConcurrentMap<String, AtomicInteger> typesPerPkg = new ConcurrentHashMap<>();
 
-        for (Path javaFile : javaFiles) {
-            try {
-                AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
-                ctx.sourceFile = javaFile.toAbsolutePath().toString();
+        ExecutorService pool = new ThreadPoolExecutor(
+            PARSER_THREADS, PARSER_THREADS,
+            0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(PARSER_THREADS * 4),
+            new ThreadFactory() {
+                private int idx = 0;
+                @Override
+                public synchronized Thread newThread(Runnable r) {
+                    Thread t = new Thread(r, "codelens-ast-worker-" + (++idx));
+                    t.setDaemon(true);
+                    return t;
+                }
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy()
+        );
 
-                ParseResult<CompilationUnit> parseResult = parser.parse(javaFile);
+        // Partition files into work chunks to reduce task submission overhead
+        int chunkSize = Math.max(10, Math.min(100, javaFiles.size() / (PARSER_THREADS * 8) + 1));
+        List<List<Path>> chunks = new ArrayList<>();
+        for (int i = 0; i < javaFiles.size(); i += chunkSize) {
+            chunks.add(javaFiles.subList(i, Math.min(i + chunkSize, javaFiles.size())));
+        }
 
-                if (parseResult.isSuccessful() && parseResult.getResult().isPresent()) {
-                    CompilationUnit cu = parseResult.getResult().get();
-                    visitor.visit(cu, ctx);
+        List<Future<?>> futures = new ArrayList<>();
+        Object flushLock = new Object();
 
-                    // Merge packages (deduplicate)
-                    for (CodePackage pkg : ctx.packages) {
-                        if (seenPackages.add(pkg.getFqn())) {
-                            result.packages.add(pkg);
+        for (List<Path> chunk : chunks) {
+            futures.add(pool.submit(() -> {
+                JavaParser parser = THREAD_PARSER.get();
+                AstVisitor visitor = new AstVisitor();
+
+                List<CodePackage> batchPkgs = new ArrayList<>();
+                List<CodeType> batchTypes = new ArrayList<>();
+                List<CodeField> batchFields = new ArrayList<>();
+                List<CodeMethod> batchMethods = new ArrayList<>();
+                List<CodeRelationship> batchRels = new ArrayList<>();
+
+                for (Path javaFile : chunk) {
+                    try {
+                        AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
+                        ctx.sourceFile = javaFile.toAbsolutePath().toString();
+
+                        ParseResult<CompilationUnit> parseResult = parser.parse(javaFile);
+
+                        if (parseResult.isSuccessful() && parseResult.getResult().isPresent()) {
+                            CompilationUnit cu = parseResult.getResult().get();
+                            visitor.visit(cu, ctx);
+
+                            for (CodePackage pkg : ctx.packages) {
+                                packageMap.computeIfAbsent(pkg.getFqn(), k -> {
+                                    CodePackage cp = new CodePackage(pkg.getFqn());
+                                    cp.setFileCount(0);
+                                    return cp;
+                                }).setFileCount(packageMap.get(pkg.getFqn()).getFileCount() + 1);
+                            }
+
+                            for (CodeType t : ctx.types) {
+                                if (t.getPackageFqn() != null) {
+                                    typesPerPkg.computeIfAbsent(t.getPackageFqn(), k -> new AtomicInteger(0)).incrementAndGet();
+                                }
+                            }
+
+                            batchPkgs.addAll(ctx.packages);
+                            batchTypes.addAll(ctx.types);
+                            batchFields.addAll(ctx.fields);
+                            batchMethods.addAll(ctx.methods);
+                            batchRels.addAll(ctx.relationships);
+
+                            totalTypes.addAndGet(ctx.types.size());
+                            totalMethods.addAndGet(ctx.methods.size());
+                            totalFields.addAndGet(ctx.fields.size());
+                            totalRels.addAndGet(ctx.relationships.size());
+                            parsed.incrementAndGet();
                         } else {
-                            // Increment file count on existing entry
-                            result.packages.stream()
-                                .filter(p -> p.getFqn().equals(pkg.getFqn()))
-                                .findFirst()
-                                .ifPresent(p -> p.setFileCount(p.getFileCount() + 1));
+                            log.warn("Parse errors in {}: {}", javaFile, parseResult.getProblems());
+                            errors.incrementAndGet();
                         }
+                    } catch (Exception e) {
+                        log.error("Failed to parse {}: {}", javaFile, e.getMessage());
+                        errors.incrementAndGet();
                     }
 
-                    result.types.addAll(ctx.types);
-                    result.fields.addAll(ctx.fields);
-                    result.methods.addAll(ctx.methods);
-                    result.relationships.addAll(ctx.relationships);
-                    result.parsedFiles++;
-
-                } else {
-                    log.warn("Parse errors in {}: {}", javaFile, parseResult.getProblems());
-                    result.errorFiles++;
+                    int done = count.incrementAndGet();
+                    if (progressCallback != null) {
+                        progressCallback.onFile(done, javaFiles.size(), javaFile.toString());
+                    }
                 }
 
+                // Flush chunk batch
+                try {
+                    synchronized (flushLock) {
+                        if (batchConsumer != null) {
+                            batchConsumer.onBatch(batchPkgs, batchTypes, batchFields, batchMethods, batchRels);
+                        } else {
+                            result.packages.addAll(batchPkgs);
+                            result.types.addAll(batchTypes);
+                            result.fields.addAll(batchFields);
+                            result.methods.addAll(batchMethods);
+                            result.relationships.addAll(batchRels);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Error flushing parsed batch to consumer", e);
+                }
+            }));
+        }
+
+        pool.shutdown();
+        try {
+            for (Future<?> f : futures) {
+                f.get();
+            }
+            pool.awaitTermination(1, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.error("Scanning pool error", e);
+            throw new IOException("Scanning execution interrupted", e);
+        }
+
+        // ── Phase 3: populate final package summary ───────────────────────────
+        List<CodePackage> finalPackages = new ArrayList<>();
+        for (Map.Entry<String, CodePackage> entry : packageMap.entrySet()) {
+            CodePackage pkg = entry.getValue();
+            AtomicInteger tCount = typesPerPkg.get(entry.getKey());
+            pkg.setTypeCount(tCount != null ? tCount.get() : 0);
+            finalPackages.add(pkg);
+        }
+
+        if (batchConsumer != null && !finalPackages.isEmpty()) {
+            try {
+                synchronized (flushLock) {
+                    batchConsumer.onBatch(finalPackages, Collections.emptyList(), Collections.emptyList(),
+                                          Collections.emptyList(), Collections.emptyList());
+                }
             } catch (Exception e) {
-                log.error("Failed to parse {}: {}", javaFile, e.getMessage());
-                result.errorFiles++;
-            }
-
-            int done = count.incrementAndGet();
-            if (progressCallback != null) {
-                progressCallback.onFile(done, javaFiles.size(), javaFile.toString());
+                log.error("Error flushing final package statistics", e);
             }
         }
 
-        // ── Phase 3: update type counts on packages ────────────────────────
-        Map<String, Integer> typesPerPkg = new HashMap<>();
-        for (CodeType t : result.types) {
-            typesPerPkg.merge(t.getPackageFqn(), 1, Integer::sum);
-        }
-        for (CodePackage pkg : result.packages) {
-            pkg.setTypeCount(typesPerPkg.getOrDefault(pkg.getFqn(), 0));
-            pkg.setFileCount(
-                Math.max(pkg.getFileCount(),
-                         (int) javaFiles.stream()
-                             .filter(f -> isFileInPackage(f, root, pkg.getFqn()))
-                             .count()));
+        result.parsedFiles = parsed.get();
+        result.errorFiles = errors.get();
+        result.typesFound = totalTypes.get();
+        result.methodsFound = totalMethods.get();
+        result.fieldsFound = totalFields.get();
+        result.relationshipsFound = totalRels.get();
+
+        if (result.packages.isEmpty()) {
+            result.packages.addAll(finalPackages);
         }
 
-        log.info("Scan complete: {} types, {} methods, {} fields, {} relationships, {} errors",
-            result.types.size(), result.methods.size(), result.fields.size(),
-            result.relationships.size(), result.errorFiles);
+        log.info("Scan complete: {} types, {} methods, {} fields, {} relationships, {} errors across {} files",
+            result.typesFound, result.methodsFound, result.fieldsFound,
+            result.relationshipsFound, result.errorFiles, result.parsedFiles);
 
         return result;
     }
-
-    /** Rough check: does this file sit in the directory corresponding to the given package? */
-    private boolean isFileInPackage(Path file, Path root, String pkgFqn) {
-        String pkgPath = pkgFqn.replace('.', '/');
-        String fileStr = file.toString().replace('\\', '/');
-        return fileStr.contains(pkgPath + "/");
-    }
 }
+

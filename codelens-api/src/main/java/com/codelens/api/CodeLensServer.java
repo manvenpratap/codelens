@@ -200,14 +200,13 @@ public class CodeLensServer {
             ctx.status(500).json(Map.of("error", e.getMessage()));
         });
 
-        // Build call graph from database on startup
+        // Build call graph from database on startup with streaming cursor
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            List<CodeRelationship> allRels = dao.findAllRelationships();
-            callGraph.rebuild(allMethodFqns, allRels);
-            fieldImpact.rebuild(allRels);
-            log.info("Initialized in-memory call graph from database with {} methods and {} relationships",
-                allMethodFqns.size(), allRels.size());
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+            log.info("Initialized in-memory call graph from database with {} methods",
+                allMethodFqns.size());
         } catch (Exception e) {
             log.error("Failed to initialize call graph from database on startup: {}", e.getMessage(), e);
         }
@@ -277,13 +276,28 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
     private void runScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
         try {
-            // Phase 1: parse sources
-            progress.setCurrentPhase("AST Parsing");
-            progress.setMessage("Scanning Java source files…");
+            // Phase 1: prepare database and lucene index
+            progress.setCurrentPhase("Preparing Storage");
+            progress.setMessage("Clearing existing database & index data…");
+            db.clearAll();
+            lucene.prepareIndexRebuild();
+
+            // Phase 2: bounded streaming scan
+            progress.setCurrentPhase("AST Parsing & Storage");
+            progress.setMessage("Scanning Java source files in parallel…");
+
             JavaSourceScanner scanner = new JavaSourceScanner();
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
                 excludePatterns,
+                (pkgs, types, fields, methods, rels) -> {
+                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackages(pkgs);
+                    if (types != null && !types.isEmpty()) dao.batchInsertTypes(types);
+                    if (fields != null && !fields.isEmpty()) dao.batchInsertFields(fields);
+                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethods(methods);
+                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationships(rels);
+                    lucene.indexBatch(types, methods, fields);
+                },
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
                     progress.setProcessedFiles(done);
@@ -295,43 +309,31 @@ public class CodeLensServer {
                     progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
                 });
 
-            // Phase 2: persist to H2
-            progress.setCurrentPhase("Database Storage");
-            progress.setMessage("Persisting AST & relationships to database…");
-            progress.setCurrentDetail(String.format("%d types · %d methods · %d fields · %d rels",
-                result.types.size(), result.methods.size(), result.fields.size(), result.relationships.size()));
-            db.clearAll();
-            dao.batchInsertPackages(result.packages);
-            dao.batchInsertTypes(result.types);
-            dao.batchInsertFields(result.fields);
-            dao.batchInsertMethods(result.methods);
-            dao.batchInsertRelationships(result.relationships);
+            // Phase 3: finish Lucene commit
+            progress.setCurrentPhase("Finalizing Index");
+            progress.setMessage("Committing search index to disk…");
+            lucene.finishIndexRebuild();
 
-            // Phase 3: rebuild Lucene index
-            progress.setCurrentPhase("Lucene Indexing");
-            progress.setMessage("Rebuilding full-text search index…");
-            progress.setCurrentDetail("Indexing " + (result.types.size() + result.methods.size() + result.fields.size()) + " symbols");
-            lucene.rebuildIndex(result.types, result.methods, result.fields);
-
-            // Phase 4: rebuild in-memory call graph
+            // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
             progress.setCurrentPhase("Graph Analysis");
             progress.setMessage("Computing call graph & field propagation…");
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            List<CodeRelationship> allRels = dao.findAllRelationships();
-            progress.setCurrentDetail(String.format("Analyzing %d call paths", allRels.size()));
-            callGraph.rebuild(allMethodFqns, allRels);
-            fieldImpact.rebuild(allRels);
+            progress.setCurrentDetail(String.format("Analyzing %d methods & call paths", allMethodFqns.size()));
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
 
             // Main scan finishes immediately after graph and indexing
-            progress.setTypesFound(result.types.size());
-            progress.setMethodsFound(result.methods.size());
-            progress.setFieldsFound(result.fields.size());
-            progress.setRelationshipsFound(result.relationships.size());
+            progress.setTypesFound(result.typesFound);
+            progress.setMethodsFound(result.methodsFound);
+            progress.setFieldsFound(result.fieldsFound);
+            progress.setRelationshipsFound(result.relationshipsFound);
             progress.setCurrentPhase("Complete");
             progress.setCurrentDetail("Ready");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
-            log.info("Scan finished: {}", progress.getMessage());
+            log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files",
+                result.typesFound, result.methodsFound, result.fieldsFound,
+                result.relationshipsFound, result.parsedFiles);
 
         } catch (Exception e) {
             log.error("Scan failed", e);
@@ -341,6 +343,7 @@ public class CodeLensServer {
             progress.setEndTime(System.currentTimeMillis());
         }
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Stats

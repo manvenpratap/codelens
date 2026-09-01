@@ -68,6 +68,7 @@ public class LuceneService {
         analyzer  = new StandardAnalyzer();
         IndexWriterConfig cfg = new IndexWriterConfig(analyzer);
         cfg.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+        cfg.setRAMBufferSizeMB(64.0);
         writer    = new IndexWriter(directory, cfg);
         log.info("Lucene index initialised at {}", indexDir);
     }
@@ -86,6 +87,38 @@ public class LuceneService {
     // Indexing
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** Prepares for a full index rebuild by clearing existing documents. */
+    public synchronized void prepareIndexRebuild() throws IOException {
+        writer.deleteAll();
+    }
+
+    /** Indexes a batch of types, methods, and fields incrementally. */
+    public synchronized void indexBatch(List<CodeType>   types,
+                                        List<CodeMethod> methods,
+                                        List<CodeField>  fields) throws IOException {
+        if (types != null) {
+            for (CodeType t : types) {
+                writer.addDocument(buildTypeDoc(t));
+            }
+        }
+        if (methods != null) {
+            for (CodeMethod m : methods) {
+                writer.addDocument(buildMethodDoc(m));
+            }
+        }
+        if (fields != null) {
+            for (CodeField f : fields) {
+                writer.addDocument(buildFieldDoc(f));
+            }
+        }
+    }
+
+    /** Commits all indexed batches to disk. */
+    public synchronized void finishIndexRebuild() throws IOException {
+        writer.commit();
+        log.info("Lucene index rebuild completed and committed to disk");
+    }
+
     /**
      * Replaces the entire index content with the given entity lists.
      * Called once per scan, after the H2 batch insert succeeds.
@@ -93,23 +126,15 @@ public class LuceneService {
     public void rebuildIndex(List<CodeType>   types,
                              List<CodeMethod> methods,
                              List<CodeField>  fields) throws IOException {
-        // Wipe and reopen to clear stale entries from a previous scan
-        writer.deleteAll();
-
-        for (CodeType t : types) {
-            writer.addDocument(buildTypeDoc(t));
-        }
-        for (CodeMethod m : methods) {
-            writer.addDocument(buildMethodDoc(m));
-        }
-        for (CodeField f : fields) {
-            writer.addDocument(buildFieldDoc(f));
-        }
-
-        writer.commit();
+        prepareIndexRebuild();
+        indexBatch(types, methods, fields);
+        finishIndexRebuild();
         log.info("Lucene index rebuilt: {} types, {} methods, {} fields",
-            types.size(), methods.size(), fields.size());
+            types != null ? types.size() : 0,
+            methods != null ? methods.size() : 0,
+            fields != null ? fields.size() : 0);
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Search

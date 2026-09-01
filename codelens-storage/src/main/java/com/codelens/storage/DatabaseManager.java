@@ -38,16 +38,21 @@ public class DatabaseManager {
         Files.createDirectories(Paths.get(dataDir));
 
         HikariConfig cfg = new HikariConfig();
-        // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs
+        // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs.
+        // CACHE_SIZE=131072 (128MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=5000");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=131072;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE");
         cfg.setUsername("sa");
         cfg.setPassword("");
-        cfg.setMaximumPoolSize(10);
+        cfg.setMaximumPoolSize(12);
         cfg.setMinimumIdle(2);
-        cfg.setConnectionTimeout(10_000);
+        cfg.setConnectionTimeout(30_000);
+        cfg.setValidationTimeout(5_000);
+        cfg.setMaxLifetime(1800_000);
+        cfg.setLeakDetectionThreshold(60_000);
         cfg.setPoolName("CodeLens-H2");
         dataSource = new HikariDataSource(cfg);
+
 
         createSchema();
         log.info("H2 database initialised at {}/codelens_db", dataDir);

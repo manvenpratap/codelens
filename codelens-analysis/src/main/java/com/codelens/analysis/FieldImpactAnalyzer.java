@@ -22,24 +22,38 @@ public class FieldImpactAnalyzer {
     private static final Logger log = LoggerFactory.getLogger(FieldImpactAnalyzer.class);
 
     /** Immutable snapshot of field-related relationships. */
-    private List<CodeRelationship> fieldRels = Collections.emptyList();
-    private List<CodeRelationship> callRels  = Collections.emptyList();
+    private List<CodeRelationship> fieldRels      = Collections.emptyList();
+    private Set<String>            callingMethods = Collections.emptySet();
 
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Update the internal relationship snapshot.
-     * Called after each scan completes.
+     * Update the internal relationship snapshot with lean field relationships and caller set.
+     */
+    public synchronized void rebuild(List<CodeRelationship> fieldRelationships, Set<String> callingMethodFqns) {
+        this.fieldRels = fieldRelationships != null ? fieldRelationships : Collections.emptyList();
+        this.callingMethods = callingMethodFqns != null ? callingMethodFqns : Collections.emptySet();
+        log.info("FieldImpactAnalyzer updated: {} field rels, {} calling methods", fieldRels.size(), callingMethods.size());
+    }
+
+    /**
+     * Update the internal relationship snapshot from all relationships (legacy/test overload).
      */
     public synchronized void rebuild(List<CodeRelationship> allRelationships) {
-        this.fieldRels = allRelationships.stream()
-            .filter(r -> "READS_FIELD".equals(r.getKind())
-                      || "WRITES_FIELD".equals(r.getKind()))
-            .collect(Collectors.toList());
-        this.callRels = allRelationships.stream()
-            .filter(r -> "CALLS".equals(r.getKind()))
-            .collect(Collectors.toList());
-        log.info("FieldImpactAnalyzer updated: {} field rels", fieldRels.size());
+        if (allRelationships == null) {
+            rebuild(Collections.emptyList(), Collections.emptySet());
+            return;
+        }
+        List<CodeRelationship> fields = new ArrayList<>();
+        Set<String> callers = new HashSet<>();
+        for (CodeRelationship r : allRelationships) {
+            if ("READS_FIELD".equals(r.getKind()) || "WRITES_FIELD".equals(r.getKind())) {
+                fields.add(r);
+            } else if ("CALLS".equals(r.getKind())) {
+                callers.add(r.getFromEntityFqn());
+            }
+        }
+        rebuild(fields, callers);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -73,14 +87,12 @@ public class FieldImpactAnalyzer {
         }
 
         // Propagators: readers that also call another method
-        Set<String> callingMethods = callRels.stream()
-            .map(CodeRelationship::getFromEntityFqn)
-            .collect(Collectors.toSet());
         for (String reader : readers) {
             if (callingMethods.contains(reader)) {
                 propagators.add(reader);
             }
         }
+
 
         // Build graph view
         List<CallGraphAnalyzer.GraphNode> nodes = new ArrayList<>();

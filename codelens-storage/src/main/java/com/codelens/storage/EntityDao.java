@@ -31,6 +31,8 @@ public class EntityDao {
         this.db = db;
     }
 
+    public static final int BATCH_CHUNK_SIZE = 2000;
+
     // =========================================================================
     // PACKAGES
     // =========================================================================
@@ -41,6 +43,7 @@ public class EntityDao {
                      " KEY(id) VALUES (?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            int count = 0;
             for (CodePackage p : packages) {
                 ps.setString(1, p.getId());
                 ps.setString(2, p.getFqn());
@@ -49,9 +52,15 @@ public class EntityDao {
                 ps.setInt(5, p.getFileCount());
                 ps.setInt(6, p.getTypeCount());
                 ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
             }
-            ps.executeBatch();
-            c.commit();
+            if (count % BATCH_CHUNK_SIZE != 0) {
+                ps.executeBatch();
+                c.commit();
+            }
         }
     }
 
@@ -79,6 +88,7 @@ public class EntityDao {
             "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            int count = 0;
             for (CodeType t : types) {
                 ps.setString(1,  t.getId());
                 ps.setString(2,  t.getFqn());
@@ -95,9 +105,15 @@ public class EntityDao {
                 ps.setInt(13,    t.getFieldCount());
                 ps.setInt(14,    t.getMethodCount());
                 ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
             }
-            ps.executeBatch();
-            c.commit();
+            if (count % BATCH_CHUNK_SIZE != 0) {
+                ps.executeBatch();
+                c.commit();
+            }
         }
     }
 
@@ -136,6 +152,7 @@ public class EntityDao {
             "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            int count = 0;
             for (CodeField f : fields) {
                 ps.setString(1, f.getId());
                 ps.setString(2, f.getFqn());
@@ -146,9 +163,15 @@ public class EntityDao {
                 ps.setString(7, f.getInitializer());
                 ps.setInt(8,    f.getStartLine());
                 ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
             }
-            ps.executeBatch();
-            c.commit();
+            if (count % BATCH_CHUNK_SIZE != 0) {
+                ps.executeBatch();
+                c.commit();
+            }
         }
     }
 
@@ -199,6 +222,7 @@ public class EntityDao {
             "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            int count = 0;
             for (CodeMethod m : methods) {
                 ps.setString(1,  m.getId());
                 ps.setString(2,  m.getFqn());
@@ -212,9 +236,15 @@ public class EntityDao {
                 ps.setInt(10,    m.getCyclomaticComplexity());
                 ps.setString(11, m.getBodyHash());
                 ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
             }
-            ps.executeBatch();
-            c.commit();
+            if (count % BATCH_CHUNK_SIZE != 0) {
+                ps.executeBatch();
+                c.commit();
+            }
         }
     }
 
@@ -273,6 +303,7 @@ public class EntityDao {
             "KEY(id) VALUES (?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            int count = 0;
             for (CodeRelationship r : rels) {
                 ps.setString(1, r.getId());
                 ps.setString(2, r.getFromEntityFqn());
@@ -280,9 +311,15 @@ public class EntityDao {
                 ps.setString(4, r.getKind());
                 ps.setInt(5,    r.getSourceLine());
                 ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
             }
-            ps.executeBatch();
-            c.commit();
+            if (count % BATCH_CHUNK_SIZE != 0) {
+                ps.executeBatch();
+                c.commit();
+            }
         }
     }
 
@@ -308,6 +345,56 @@ public class EntityDao {
         }
         return list;
     }
+
+    /**
+     * Streams call relationships (kind='CALLS') directly from database cursor to avoid loading
+     * millions of DTO objects in RAM simultaneously.
+     */
+    public void streamCallRelationships(java.util.function.BiConsumer<String, String> consumer) throws SQLException {
+        String sql = "SELECT from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS'";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    consumer.accept(rs.getString("from_entity_fqn"), rs.getString("to_entity_fqn"));
+                }
+            }
+        }
+    }
+
+    /**
+     * Efficiently fetches only field-level relationships (READS_FIELD, WRITES_FIELD).
+     */
+    public List<CodeRelationship> findFieldRelationships() throws SQLException {
+        String sql = "SELECT * FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD')";
+        List<CodeRelationship> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(relFromRs(rs));
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Returns the distinct set of method FQNs that make at least one call.
+     */
+    public Set<String> findCallingMethodFqns() throws SQLException {
+        String sql = "SELECT DISTINCT from_entity_fqn FROM relationships WHERE kind = 'CALLS'";
+        Set<String> set = new HashSet<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) set.add(rs.getString("from_entity_fqn"));
+            }
+        }
+        return set;
+    }
+
 
     // =========================================================================
     // ANALYST NOTES
