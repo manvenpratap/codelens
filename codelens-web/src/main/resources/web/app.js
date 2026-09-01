@@ -5840,12 +5840,14 @@ function syncSettingsUI(settings) {
     if (pojoStdChk) pojoStdChk.checked = (pojoCfg.includeStandardAccessors !== false && pojoCfg.enableStandardGettersSetters !== false);
     const pojoPatternsArea = qs('#set-pojo-patterns');
     if (pojoPatternsArea) {
-      const patterns = Array.isArray(pojoCfg.customPatterns)
+      const raw = Array.isArray(pojoCfg.customPatterns) && pojoCfg.customPatterns.length > 0
         ? pojoCfg.customPatterns
-        : (typeof pojoCfg.patterns === 'string' ? pojoCfg.patterns.split(',').map(s => s.trim()).filter(Boolean) : []);
-      pojoPatternsArea.value = patterns.join('\n');
+        : (typeof pojoCfg.patterns === 'string' ? pojoCfg.patterns.split(/[,\n]+/) : []);
+      const patterns = raw.map(s => s.trim()).filter(Boolean);
+      pojoPatternsArea.value = patterns.join(', ');
     }
   }
+
 
   // Archetype Rules list rendering
   renderArchetypeRulesList();
@@ -6158,8 +6160,8 @@ function initSettings() {
   if (pojoPatternsArea) {
     pojoPatternsArea.addEventListener('input', () => {
       if (window.CodeLensClassifier) {
-        const lines = pojoPatternsArea.value.split('\n').map(s => s.trim()).filter(Boolean);
-        window.CodeLensClassifier.setPojoConfig({ customPatterns: lines });
+        const patterns = pojoPatternsArea.value.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+        window.CodeLensClassifier.setPojoConfig({ customPatterns: patterns, patterns: patterns.join(', ') });
       }
     });
   }
@@ -6172,15 +6174,17 @@ function initSettings() {
         const cfg = window.CodeLensClassifier.getPojoConfig() || {};
         if (pojoStdChk) pojoStdChk.checked = (cfg.includeStandardAccessors !== false && cfg.enableStandardGettersSetters !== false);
         if (pojoPatternsArea) {
-          const patterns = Array.isArray(cfg.customPatterns)
+          const raw = Array.isArray(cfg.customPatterns) && cfg.customPatterns.length > 0
             ? cfg.customPatterns
-            : (typeof cfg.patterns === 'string' ? cfg.patterns.split(',').map(s => s.trim()).filter(Boolean) : []);
-          pojoPatternsArea.value = patterns.join('\n');
+            : (typeof cfg.patterns === 'string' ? cfg.patterns.split(/[,\n]+/) : []);
+          const patterns = raw.map(s => s.trim()).filter(Boolean);
+          pojoPatternsArea.value = patterns.join(', ');
         }
         showBanner('POJO detection criteria reset to default');
       }
     });
   }
+
 
   // Wire Archetype Rule Presets
   const btnPresetBancs = qs('#btn-preset-bancs');

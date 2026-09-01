@@ -378,6 +378,9 @@
 
     savePojoConfig(cfg) {
       this._pojoConfig = { ...this._pojoConfig, ...cfg };
+      if (Array.isArray(this._pojoConfig.customPatterns)) {
+        this._pojoConfig.patterns = this._pojoConfig.customPatterns.join(', ');
+      }
       localStorage.setItem(POJO_STORAGE_KEY, JSON.stringify(this._pojoConfig));
     }
 
@@ -414,16 +417,19 @@
       if (standardObjectMethods.includes(name)) return true;
 
       // 2. Standard Java getter/setter heuristics
-      if (this._pojoConfig.enableStandardGettersSetters) {
+      if (this._pojoConfig.enableStandardGettersSetters || this._pojoConfig.includeStandardAccessors) {
         if (name.length > 3 && name.startsWith('get') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
         if (name.length > 3 && name.startsWith('set') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
         if (name.length > 2 && name.startsWith('is') && /^[A-Z0-9_]/.test(name.charAt(2))) return true;
         if (name.length > 3 && name.startsWith('has') && /^[A-Z0-9_]/.test(name.charAt(3))) return true;
       }
 
-      // 3. User configured POJO patterns
-      const customPatterns = (this._pojoConfig.patterns || '')
-        .split(',')
+      // 3. User configured POJO patterns (supports comma or newline separation)
+      const rawPatterns = Array.isArray(this._pojoConfig.customPatterns) && this._pojoConfig.customPatterns.length > 0
+        ? this._pojoConfig.customPatterns
+        : (typeof this._pojoConfig.patterns === 'string' ? this._pojoConfig.patterns.split(/[,\n]+/) : []);
+
+      const customPatterns = rawPatterns
         .map(p => p.trim())
         .filter(Boolean);
 
@@ -432,6 +438,7 @@
           return true;
         }
       }
+
 
       return false;
     }
