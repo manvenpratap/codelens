@@ -364,6 +364,9 @@ function updateScanProgress(s) {
     fText.textContent = `[${s.currentPhase || 'SCAN'}] ${s.message || ''} (${pct}%)`;
   }
   if (fInd) { fInd.className = 'status-indicator busy'; }
+
+  // Update persistent coverage popover & header badge
+  updateScanSummaryUI(s);
 }
 
 /** Called when scan finishes successfully. */
@@ -383,6 +386,9 @@ async function onScanComplete(s) {
   // Update header bar into loaded project view
   updateHeaderProjectBar(s.sourcePath || qs('#scan-path-input')?.value?.trim());
 
+  // Update persistent coverage popover & header badge
+  updateScanSummaryUI(s);
+
   // Refresh stats and tree
   await loadStats();
   await loadPackageTree();
@@ -398,6 +404,7 @@ async function onScanComplete(s) {
 
   showBanner(`Scan complete - ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields`);
 }
+
 
 /** Toggle scan button and spinner states. */
 function setScanUI(state) {
@@ -3310,6 +3317,14 @@ async function loadStats() {
     // Compute & update archetypes breakup for both classes and methods
     updateArchetypesBreakup(s);
 
+    // Refresh persistent scan summary
+    try {
+      const scanStatus = await api.scanStatus();
+      if (scanStatus) {
+        updateScanSummaryUI(scanStatus);
+      }
+    } catch (_) {}
+
     if ((s.types || s.classes) > 0) {
       updateHeaderProjectBar();
     }
@@ -3317,6 +3332,7 @@ async function loadStats() {
     console.warn('Stats load failed:', e);
   }
 }
+
 
 /** Update the class and method archetypes breakup inside the explorer footer popovers */
 function updateArchetypesBreakup(stats) {
@@ -3475,6 +3491,155 @@ function initArchetypePopover() {
   });
 }
 
+/** Update persistent scan summary coverage popover & header badge */
+function updateScanSummaryUI(s) {
+  if (!s) return;
+  App.lastScanProgress = s;
+
+  const total = s.totalFiles || 0;
+  const processed = s.processedFiles || 0;
+  const parsed = s.parsedFiles || (s.status === 'COMPLETE' ? processed : 0);
+  const errors = s.errorFiles || 0;
+  const remaining = Math.max(0, total - processed);
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : (s.status === 'COMPLETE' ? 100 : 0);
+
+  // 1. Update Header Badge
+  const badge = qs('#scan-status-badge');
+  const badgeText = qs('#scan-status-text');
+
+  if (badge && badgeText) {
+    badge.className = 'scan-status-badge';
+    if (s.status === 'SCANNING') {
+      badge.classList.add('status-scanning');
+      badgeText.textContent = `Scanning (${pct}%)`;
+    } else if (s.status === 'ERROR') {
+      badge.classList.add('status-error');
+      badgeText.textContent = 'Scan Failed';
+    } else if (errors > 0 || (total > 0 && parsed < total)) {
+      badge.classList.add('status-warning');
+      badgeText.textContent = `${pct}% (${errors > 0 ? errors + ' errors' : remaining + ' remaining'})`;
+    } else {
+      badge.classList.add('status-success');
+      badgeText.textContent = `${pct}% Parsed (${parsed || total} files)`;
+    }
+  }
+
+  // 2. Update Popover Header & Badge
+  const popoverBadge = qs('#scan-popover-status-badge');
+  if (popoverBadge) {
+    popoverBadge.className = 'scan-summary-badge';
+    if (s.status === 'SCANNING') {
+      popoverBadge.classList.add('badge-warning');
+      popoverBadge.textContent = 'In Progress';
+    } else if (s.status === 'ERROR') {
+      popoverBadge.classList.add('badge-error');
+      popoverBadge.textContent = 'Failed';
+    } else if (errors > 0 || remaining > 0) {
+      popoverBadge.classList.add('badge-warning');
+      popoverBadge.textContent = 'Partial / Issues';
+    } else {
+      popoverBadge.classList.add('badge-success');
+      popoverBadge.textContent = 'Complete';
+    }
+  }
+
+  // 3. Update Popover Paths & Progress
+  const popoverPath = qs('#scan-popover-path');
+  if (popoverPath) popoverPath.textContent = s.sourcePath || App.currentPath || 'Unknown';
+
+  const rateEl = qs('#scan-popover-completion-rate');
+  if (rateEl) {
+    if (s.status === 'SCANNING') rateEl.textContent = `${pct}% Indexing…`;
+    else if (errors > 0) rateEl.textContent = `${pct}% Indexed (${errors} error${errors > 1 ? 's' : ''})`;
+    else if (remaining > 0) rateEl.textContent = `${pct}% Indexed (${remaining} skipped/remaining)`;
+    else rateEl.textContent = '100% Fully Indexed';
+  }
+
+  const ratioEl = qs('#scan-popover-files-ratio');
+  if (ratioEl) ratioEl.textContent = `${parsed} / ${total} Files`;
+
+  const fillEl = qs('#scan-popover-progress-fill');
+  if (fillEl) {
+    fillEl.style.width = `${pct}%`;
+    fillEl.className = 'scan-progress-fill';
+    if (errors > 0) fillEl.classList.add('status-error');
+    else if (remaining > 0 || s.status === 'SCANNING') fillEl.classList.add('status-warning');
+  }
+
+  // 4. Update Stat Grid
+  const setNum = (id, val) => {
+    const el = qs('#' + id);
+    if (el) el.textContent = typeof val === 'number' ? val.toLocaleString() : (val || 0);
+  };
+  setNum('scan-stat-parsed-files', parsed);
+  setNum('scan-stat-remaining-files', remaining);
+  setNum('scan-stat-error-files', errors);
+  setNum('scan-stat-types', s.typesFound || App.stats?.types || 0);
+  setNum('scan-stat-methods', s.methodsFound || App.stats?.methods || 0);
+  setNum('scan-stat-fields', s.fieldsFound || App.stats?.fields || 0);
+  setNum('scan-stat-rels', s.relationshipsFound || 0);
+
+  // Format Duration
+  const durEl = qs('#scan-stat-duration');
+  if (durEl) {
+    let dur = s.durationMs || 0;
+    if (!dur && s.startTime && s.endTime) dur = s.endTime - s.startTime;
+    if (dur > 0) {
+      if (dur < 1000) durEl.textContent = `${dur}ms`;
+      else if (dur < 60000) durEl.textContent = `${(dur / 1000).toFixed(1)}s`;
+      else durEl.textContent = `${Math.floor(dur / 60000)}m ${Math.round((dur % 60000) / 1000)}s`;
+    } else {
+      durEl.textContent = '< 1s';
+    }
+  }
+
+  // 5. Update Advice Banner
+  const adviceBanner = qs('#scan-advice-banner');
+  const adviceIcon = qs('#scan-advice-icon');
+  const adviceTitle = qs('#scan-advice-title');
+  const adviceDesc = qs('#scan-advice-desc');
+
+  if (adviceBanner && adviceTitle && adviceDesc) {
+    adviceBanner.className = 'scan-advice-banner';
+    if (s.status === 'ERROR') {
+      adviceBanner.classList.add('advice-error');
+      if (adviceIcon) adviceIcon.textContent = '❌';
+      adviceTitle.textContent = 'Scan encountered an error';
+      adviceDesc.textContent = s.errorDetail || s.message || 'Check source directory permissions and trigger a rescan.';
+    } else if (errors > 0 || remaining > 0) {
+      adviceBanner.classList.add('advice-warning');
+      if (adviceIcon) adviceIcon.textContent = '⚠️';
+      adviceTitle.textContent = 'Scan completed with remaining files or errors';
+      adviceDesc.textContent = `${errors > 0 ? errors + ' file(s) had parse errors. ' : ''}${remaining > 0 ? remaining + ' file(s) were not processed. ' : ''}Triggering a rescan will retry incomplete files.`;
+    } else {
+      if (adviceIcon) adviceIcon.textContent = '💡';
+      adviceTitle.textContent = 'All codebase files are up to date';
+      adviceDesc.textContent = 'If you modified source files on disk, click Rescan to update AST indexes and call graphs.';
+    }
+  }
+
+  // 6. Update Timestamp
+  const tsEl = qs('#scan-popover-timestamp');
+  if (tsEl) {
+    if (s.endTime) {
+      const d = new Date(s.endTime);
+      tsEl.textContent = `Scanned ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (s.startTime) {
+      tsEl.textContent = 'Scan in progress…';
+    } else {
+      tsEl.textContent = 'Last scan: Available';
+    }
+  }
+}
+
+function toggleScanSummaryPopover(force) {
+  const popover = qs('#scan-summary-popover');
+  if (!popover) return;
+  const isVisible = popover.style.display !== 'none';
+  const show = typeof force === 'boolean' ? force : !isVisible;
+  popover.style.display = show ? 'flex' : 'none';
+}
+
 /** Update the loaded project header bar display and toggle off scan input */
 function updateHeaderProjectBar(path) {
   if (!path) {
@@ -3528,6 +3693,7 @@ function animateCounter(el, target) {
   };
   requestAnimationFrame(step);
 }
+
 function ease(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3709,18 +3875,48 @@ async function init() {
   // Wire up scan button and Enter key (legacy hidden scan input)
   qs('#scan-btn')?.addEventListener('click', () => startScan());
 
-  // Wire up header project bar controls
+  // Wire up header project bar controls & scan summary popover
   qs('#btn-rescan')?.addEventListener('click', (e) => {
     e.preventDefault();
     startScan();
   });
   qs('#btn-open-project')?.addEventListener('click', showHeaderScanBar);
-  qs('#project-pill')?.addEventListener('click', () => {/* tooltip only – no action */});
+  
+  // Wire up scan summary popover toggling
+  qs('#scan-status-badge')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleScanSummaryPopover();
+  });
+  qs('#project-pill')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleScanSummaryPopover();
+  });
+  qs('#btn-close-scan-popover')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleScanSummaryPopover(false);
+  });
+  qs('#btn-popover-rescan')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleScanSummaryPopover(false);
+    startScan();
+  });
+
+  // Close scan popover on outside click
+  document.addEventListener('click', (e) => {
+    const popover = qs('#scan-summary-popover');
+    if (popover && popover.style.display !== 'none') {
+      if (!popover.contains(e.target) && !e.target.closest('#scan-status-badge') && !e.target.closest('#project-pill')) {
+        popover.style.display = 'none';
+      }
+    }
+  });
+
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
     if (App.stats && App.stats.types > 0) {
       updateHeaderProjectBar();
     }
   });
+
 
 
   // Wire up quick theme toggle in header toolbar

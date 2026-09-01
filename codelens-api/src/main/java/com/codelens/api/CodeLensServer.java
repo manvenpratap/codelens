@@ -200,6 +200,17 @@ public class CodeLensServer {
             ctx.status(500).json(Map.of("error", e.getMessage()));
         });
 
+        // Restore last scan progress state if available
+        try {
+            ScanProgress lastScan = dao.getLatestScanMeta();
+            if (lastScan != null) {
+                scanState.set(lastScan);
+                log.info("Restored last scan progress state for {}", lastScan.getSourcePath());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load last scan metadata: {}", e.getMessage());
+        }
+
         // Build call graph from database on startup with streaming cursor
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
@@ -323,6 +334,8 @@ public class CodeLensServer {
             fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
 
             // Main scan finishes immediately after graph and indexing
+            progress.setParsedFiles(result.parsedFiles);
+            progress.setErrorFiles(result.errorFiles);
             progress.setTypesFound(result.typesFound);
             progress.setMethodsFound(result.methodsFound);
             progress.setFieldsFound(result.fieldsFound);
@@ -331,9 +344,13 @@ public class CodeLensServer {
             progress.setCurrentDetail("Ready");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
-            log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files",
+
+            // Persist scan metadata to H2 for instant session restore
+            dao.saveScanMeta(progress);
+
+            log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files ({} parsed, {} errors)",
                 result.typesFound, result.methodsFound, result.fieldsFound,
-                result.relationshipsFound, result.parsedFiles);
+                result.relationshipsFound, result.totalFiles, result.parsedFiles, result.errorFiles);
 
         } catch (Exception e) {
             log.error("Scan failed", e);
@@ -341,8 +358,10 @@ public class CodeLensServer {
             progress.setMessage("Scan failed");
             progress.setErrorDetail(e.getMessage());
             progress.setEndTime(System.currentTimeMillis());
+            try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
         }
     }
+
 
 
     // ─────────────────────────────────────────────────────────────────────────

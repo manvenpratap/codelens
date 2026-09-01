@@ -733,6 +733,301 @@ body.resizing .panel-resizer {
   animation: spin 1s linear infinite;
 }
 
+/* Scan Status Pill & Completeness Badge in Header */
+.scan-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.scan-status-badge:hover {
+  background: var(--bg-elevated);
+  border-color: var(--primary-bg);
+  color: var(--text-primary);
+}
+.scan-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-emerald, #10b981);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  flex-shrink: 0;
+}
+.scan-status-badge.status-warning .scan-status-dot {
+  background: var(--accent-amber, #f59e0b);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+.scan-status-badge.status-error .scan-status-dot {
+  background: var(--accent-rose, #ef4444);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+.scan-status-badge.status-scanning .scan-status-dot {
+  background: var(--accent-blue, #3b82f6);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  animation: pulseDot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+/* Persistent Scan Coverage & Statistics Popover */
+.scan-summary-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 180px;
+  width: 440px;
+  max-width: calc(100vw - 24px);
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 1px rgba(255, 255, 255, 0.2);
+  padding: 16px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: popoverFadeUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(12px);
+}
+body.theme-light .scan-summary-popover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.15);
+}
+
+.scan-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+body.theme-light .scan-summary-header {
+  border-bottom-color: #e2e8f0;
+}
+.scan-summary-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scan-summary-title {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+}
+.scan-summary-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.scan-summary-badge.badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.scan-summary-badge.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.scan-summary-badge.badge-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.btn-close-popover {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn-close-popover:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+body.theme-light .btn-close-popover:hover {
+  background: #f1f5f9;
+}
+
+.scan-summary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.scan-summary-path-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xs, 6px);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+body.theme-light .scan-summary-path-box {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.scan-summary-path-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.scan-summary-path-value {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Progress bar section */
+.scan-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.scan-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.scan-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+body.theme-light .scan-progress-track {
+  background: #e2e8f0;
+}
+.scan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.scan-progress-fill.status-warning {
+  background: linear-gradient(90deg, #f59e0b, #eab308);
+}
+.scan-progress-fill.status-error {
+  background: linear-gradient(90deg, #ef4444, #f97316);
+}
+
+/* Statistics Grid */
+.scan-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.scan-stat-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xs, 6px);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+body.theme-light .scan-stat-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.stat-card-num {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+}
+.stat-card-lbl {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+/* Rescan Advice Banner */
+.scan-advice-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-xs, 6px);
+  padding: 8px 10px;
+}
+.scan-advice-banner.advice-warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.scan-advice-banner.advice-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.advice-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.advice-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.advice-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.advice-desc {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.scan-summary-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+body.theme-light .scan-summary-footer {
+  border-top-color: #e2e8f0;
+}
+.scan-timestamp {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+
 
 /* Merged Header View Switcher Elements */
 .header-view-divider {

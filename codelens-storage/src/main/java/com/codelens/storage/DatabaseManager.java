@@ -167,6 +167,26 @@ public class DatabaseManager {
                 "  kind             VARCHAR" +
                 ")");
 
+            // scan_meta ─────────────────────────────────────────────────────
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS scan_meta (" +
+                "  id                  VARCHAR PRIMARY KEY," +
+                "  status              VARCHAR NOT NULL," +
+                "  source_path         VARCHAR NOT NULL," +
+                "  total_files         INTEGER DEFAULT 0," +
+                "  processed_files     INTEGER DEFAULT 0," +
+                "  parsed_files        INTEGER DEFAULT 0," +
+                "  error_files         INTEGER DEFAULT 0," +
+                "  types_found         INTEGER DEFAULT 0," +
+                "  methods_found       INTEGER DEFAULT 0," +
+                "  fields_found        INTEGER DEFAULT 0," +
+                "  relationships_found INTEGER DEFAULT 0," +
+                "  start_time          BIGINT DEFAULT 0," +
+                "  end_time            BIGINT DEFAULT 0," +
+                "  message             VARCHAR," +
+                "  error_detail        VARCHAR" +
+                ")");
+
             // git_meta ──────────────────────────────────────────────────────
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS git_meta (" +
@@ -178,6 +198,7 @@ public class DatabaseManager {
                 "  last_commit_msg   VARCHAR," +
                 "  commit_count      INTEGER DEFAULT 0" +
                 ")");
+
 
             // Indices for fast lookups ───────────────────────────────────────
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");

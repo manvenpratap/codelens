@@ -13,6 +13,8 @@ public class ScanProgress {
     private String currentDetail;
     private int totalFiles;
     private int processedFiles;
+    private int parsedFiles;
+    private int errorFiles;
     private int typesFound;
     private int methodsFound;
     private int fieldsFound;
@@ -31,6 +33,18 @@ public class ScanProgress {
         return Math.min(100, (int) ((processedFiles * 100L) / totalFiles));
     }
 
+    /** Number of files remaining to be processed. */
+    public int getRemainingFiles() {
+        return Math.max(0, totalFiles - processedFiles);
+    }
+
+    /** Elapsed / total duration in milliseconds. */
+    public long getDurationMs() {
+        if (startTime <= 0) return 0;
+        long end = (endTime > 0) ? endTime : System.currentTimeMillis();
+        return Math.max(0, end - startTime);
+    }
+
     // ── Getters & Setters ────────────────────────────────────────────────────
     public Status getStatus()                   { return status; }
     public void setStatus(Status s)            { this.status = s; }
@@ -44,6 +58,10 @@ public class ScanProgress {
     public void setTotalFiles(int n)           { this.totalFiles = n; }
     public int getProcessedFiles()              { return processedFiles; }
     public void setProcessedFiles(int n)       { this.processedFiles = n; }
+    public int getParsedFiles()                 { return parsedFiles; }
+    public void setParsedFiles(int n)          { this.parsedFiles = n; }
+    public int getErrorFiles()                  { return errorFiles; }
+    public void setErrorFiles(int n)           { this.errorFiles = n; }
     public int getTypesFound()                  { return typesFound; }
     public void setTypesFound(int n)           { this.typesFound = n; }
     public int getMethodsFound()                { return methodsFound; }
@@ -61,3 +79,4 @@ public class ScanProgress {
     public String getErrorDetail()              { return errorDetail; }
     public void setErrorDetail(String e)       { this.errorDetail = e; }
 }
+

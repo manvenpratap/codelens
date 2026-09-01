@@ -894,6 +894,67 @@ public class EntityDao {
     }
 
     // =========================================================================
+    // Scan Metadata persistence
+    // =========================================================================
+
+    public void saveScanMeta(ScanProgress sp) throws SQLException {
+        if (sp == null) return;
+        String sql = "MERGE INTO scan_meta (id, status, source_path, total_files, processed_files, parsed_files, " +
+                     "error_files, types_found, methods_found, fields_found, relationships_found, " +
+                     "start_time, end_time, message, error_detail) KEY(id) " +
+                     "VALUES ('latest', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, sp.getStatus() != null ? sp.getStatus().name() : "IDLE");
+            ps.setString(2, sp.getSourcePath() != null ? sp.getSourcePath() : "");
+            ps.setInt(3, sp.getTotalFiles());
+            ps.setInt(4, sp.getProcessedFiles());
+            ps.setInt(5, sp.getParsedFiles());
+            ps.setInt(6, sp.getErrorFiles());
+            ps.setInt(7, sp.getTypesFound());
+            ps.setInt(8, sp.getMethodsFound());
+            ps.setInt(9, sp.getFieldsFound());
+            ps.setInt(10, sp.getRelationshipsFound());
+            ps.setLong(11, sp.getStartTime());
+            ps.setLong(12, sp.getEndTime());
+            ps.setString(13, sp.getMessage());
+            ps.setString(14, sp.getErrorDetail());
+            ps.executeUpdate();
+            c.commit();
+        }
+    }
+
+    public ScanProgress getLatestScanMeta() throws SQLException {
+        String sql = "SELECT * FROM scan_meta WHERE id = 'latest'";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                ScanProgress sp = new ScanProgress();
+                String st = rs.getString("status");
+                if (st != null) {
+                    try { sp.setStatus(ScanProgress.Status.valueOf(st)); } catch (Exception ignored) {}
+                }
+                sp.setSourcePath(rs.getString("source_path"));
+                sp.setTotalFiles(rs.getInt("total_files"));
+                sp.setProcessedFiles(rs.getInt("processed_files"));
+                sp.setParsedFiles(rs.getInt("parsed_files"));
+                sp.setErrorFiles(rs.getInt("error_files"));
+                sp.setTypesFound(rs.getInt("types_found"));
+                sp.setMethodsFound(rs.getInt("methods_found"));
+                sp.setFieldsFound(rs.getInt("fields_found"));
+                sp.setRelationshipsFound(rs.getInt("relationships_found"));
+                sp.setStartTime(rs.getLong("start_time"));
+                sp.setEndTime(rs.getLong("end_time"));
+                sp.setMessage(rs.getString("message"));
+                sp.setErrorDetail(rs.getString("error_detail"));
+                return sp;
+            }
+        }
+        return null;
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
@@ -924,3 +985,4 @@ public class EntityDao {
         return list;
     }
 }
+
