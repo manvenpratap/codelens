@@ -1268,6 +1268,72 @@ body:not(.theme-light) .hero-scan-card {
   border-color: var(--border);
   color: var(--text-primary);
 }
+
+/* Active / Last Scanned Codebase Card on Hero */
+.hero-last-scan-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.hero-last-scan-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm, 8px);
+  padding: 10px 14px;
+  margin-top: 6px;
+}
+body.theme-light .hero-last-scan-card {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.hero-last-scan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.hero-last-scan-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hero-last-scan-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  flex-shrink: 0;
+}
+.hero-last-scan-dot.status-warning {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+.hero-last-scan-path {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hero-last-scan-meta {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+.hero-last-scan-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .hero-recent-name {
   font-weight: 600;
   color: var(--text-primary);

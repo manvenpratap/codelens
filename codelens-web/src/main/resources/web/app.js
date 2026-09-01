@@ -249,7 +249,51 @@ function renderHeroRecentProjects() {
     });
     container.appendChild(btn);
   });
+
+  // Populate Active / Last Scanned Codebase Card on Hero Page
+  const lastScanSec = qs('#hero-last-scan-section');
+  if (lastScanSec) {
+    api.scanStatus().then(st => {
+      if (st && st.sourcePath && (st.status === 'COMPLETE' || st.typesFound > 0)) {
+        lastScanSec.style.display = 'block';
+        const pathEl = qs('#hero-last-scan-path');
+        const metaEl = qs('#hero-last-scan-meta');
+        const dotEl = qs('#hero-last-scan-dot');
+        if (pathEl) pathEl.textContent = st.sourcePath;
+        if (metaEl) {
+          const errors = st.errorFiles || 0;
+          const parsed = st.parsedFiles || st.processedFiles || 0;
+          const total = st.totalFiles || parsed;
+          const pct = total > 0 ? Math.round((parsed / total) * 100) : 100;
+          metaEl.textContent = `${pct}% Parsed · ${parsed} Files · ${st.typesFound || 0} Classes · ${st.methodsFound || 0} Methods · ${st.fieldsFound || 0} Fields`;
+        }
+        if (dotEl) {
+          dotEl.className = 'hero-last-scan-dot' + (st.errorFiles > 0 ? ' status-warning' : '');
+        }
+        const openBtn = qs('#hero-btn-open-workspace');
+        if (openBtn) {
+          openBtn.onclick = () => {
+            hideHeroPage();
+            updateHeaderProjectBar(st.sourcePath);
+            loadStats();
+            loadPackageTree();
+          };
+        }
+        const rescanBtn = qs('#hero-btn-rescan-quick');
+        if (rescanBtn) {
+          rescanBtn.onclick = () => {
+            startHeroScan(st.sourcePath);
+          };
+        }
+      } else {
+        lastScanSec.style.display = 'none';
+      }
+    }).catch(() => {
+      if (lastScanSec) lastScanSec.style.display = 'none';
+    });
+  }
 }
+
 
 /** Start a scan from the hero page then transition to workspace */
 async function startHeroScan(targetPath) {
@@ -4248,11 +4292,21 @@ async function init() {
   if (!serverHasData && !lastPath) {
     // Fresh start — show hero page, hide workspace panels
     showHeroPage();
+  } else {
+    // Codebase already loaded/scanned — show workspace
+    hideHeroPage();
+    try {
+      const status = await api.scanStatus();
+      if (status && status.sourcePath) {
+        updateHeaderProjectBar(status.sourcePath);
+        updateScanSummaryUI(status);
+      }
+    } catch (_) {}
   }
-  // (else: workspace panels remain visible by default from HTML)
 
   await loadStats();
   await loadPackageTree();
+
 
 
   // Initialize adjustable panel resizers

@@ -20,8 +20,9 @@
   <link rel="apple-touch-icon" href="/assets/app-icon.png" />
 
   <!-- Single stylesheet; all design tokens live in :root -->
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=1.0.3" />
 </head>
+
 
 <body>
 <div id="app" class="app-viewport" role="application" aria-roledescription="viewport" aria-label="CodeLens Java Codebase Intelligence">
@@ -84,7 +85,28 @@
             <!-- Populated by JS -->
           </div>
         </div>
+
+        <!-- Last Scanned Codebase Quick Summary -->
+        <div class="hero-last-scan-section" id="hero-last-scan-section" style="display:none;">
+          <div class="hero-recent-label">Active / Last Scanned Codebase</div>
+          <div class="hero-last-scan-card" id="hero-last-scan-card">
+            <div class="hero-last-scan-info">
+              <div class="hero-last-scan-title">
+                <span class="hero-last-scan-dot" id="hero-last-scan-dot"></span>
+                <span class="hero-last-scan-path" id="hero-last-scan-path">/workspace/src</span>
+              </div>
+              <div class="hero-last-scan-meta" id="hero-last-scan-meta">
+                100% Parsed · 20 Files · 21 Classes · 126 Methods
+              </div>
+            </div>
+            <div class="hero-last-scan-actions">
+              <button id="hero-btn-open-workspace" class="btn-ghost btn-sm" title="Open Codebase Workspace">Open Workspace →</button>
+              <button id="hero-btn-rescan-quick" class="btn-primary btn-sm" title="Rescan this project">Rescan</button>
+            </div>
+          </div>
+        </div>
       </div>
+
 
       <!-- Feature highlights -->
       <div class="hero-features">
@@ -1966,16 +1988,17 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-<script src="/icons.js"      defer></script>
-<script src="/classifier.js" defer></script>
-<script src="/graph.js"    defer></script>
-<script src="/dsm.js"      defer></script>
-<script src="/treemap.js"  defer></script>
-<script src="/chord.js"    defer></script>
-<script src="/sunburst.js" defer></script>
-<script src="/city3d.js"   defer></script>
-<script src="/galaxy3d.js" defer></script>
-<script src="/app.js"      defer></script>
+<script src="/icons.js?v=1.0.3"      defer></script>
+<script src="/classifier.js?v=1.0.3" defer></script>
+<script src="/graph.js?v=1.0.3"      defer></script>
+<script src="/dsm.js?v=1.0.3"        defer></script>
+<script src="/treemap.js?v=1.0.3"    defer></script>
+<script src="/chord.js?v=1.0.3"      defer></script>
+<script src="/sunburst.js?v=1.0.3"   defer></script>
+<script src="/city3d.js?v=1.0.3"     defer></script>
+<script src="/galaxy3d.js?v=1.0.3"   defer></script>
+<script src="/app.js?v=1.0.3"        defer></script>
 
 </body>
 </html>
+
