@@ -955,6 +955,104 @@ public class EntityDao {
     }
 
     // =========================================================================
+    // File Metadata & Incremental Delta Operations
+    // =========================================================================
+
+    public void saveFileMetaBatch(Collection<FileMeta> metas) throws SQLException {
+        if (metas == null || metas.isEmpty()) return;
+        String sql = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            int count = 0;
+            for (FileMeta m : metas) {
+                ps.setString(1, m.getFilePath());
+                ps.setLong(2, m.getLastModified());
+                ps.setLong(3, m.getFileSize());
+                ps.setInt(4, m.getTypeCount());
+                ps.addBatch();
+                if (++count % BATCH_CHUNK_SIZE == 0) {
+                    ps.executeBatch();
+                    c.commit();
+                }
+            }
+            ps.executeBatch();
+            c.commit();
+        }
+    }
+
+    public Map<String, FileMeta> getAllFileMeta() throws SQLException {
+        Map<String, FileMeta> map = new HashMap<>();
+        String sql = "SELECT file_path, last_modified, file_size, type_count FROM file_meta";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                FileMeta m = new FileMeta(
+                    rs.getString("file_path"),
+                    rs.getLong("last_modified"),
+                    rs.getLong("file_size"),
+                    rs.getInt("type_count")
+                );
+                map.put(m.getFilePath(), m);
+            }
+        }
+        return map;
+    }
+
+    public void deleteBySourceFiles(Collection<String> sourceFiles) throws SQLException {
+        if (sourceFiles == null || sourceFiles.isEmpty()) return;
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try (PreparedStatement psRels = c.prepareStatement(
+                    "DELETE FROM relationships WHERE source_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?) OR target_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)");
+                 PreparedStatement psFields = c.prepareStatement(
+                    "DELETE FROM fields WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)");
+                 PreparedStatement psMethods = c.prepareStatement(
+                    "DELETE FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE source_file = ?)");
+                 PreparedStatement psTypes = c.prepareStatement(
+                    "DELETE FROM types WHERE source_file = ?");
+                 PreparedStatement psMeta = c.prepareStatement(
+                    "DELETE FROM file_meta WHERE file_path = ?")) {
+
+                for (String path : sourceFiles) {
+                    psRels.setString(1, path);
+                    psRels.setString(2, path);
+                    psRels.executeUpdate();
+
+                    psFields.setString(1, path);
+                    psFields.executeUpdate();
+
+                    psMethods.setString(1, path);
+                    psMethods.executeUpdate();
+
+                    psTypes.setString(1, path);
+                    psTypes.executeUpdate();
+
+                    psMeta.setString(1, path);
+                    psMeta.executeUpdate();
+                }
+                c.commit();
+            } catch (Exception e) {
+                c.rollback();
+                throw e;
+            }
+        }
+    }
+
+    public void recomputePackageCounts() throws SQLException {
+        String sql = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) " +
+                     "SELECT package_fqn, package_fqn, package_fqn, '', COUNT(DISTINCT source_file), COUNT(*) " +
+                     "FROM types WHERE package_fqn IS NOT NULL AND package_fqn != '' GROUP BY package_fqn";
+        try (Connection c = db.getConnection();
+             Statement stmt = c.createStatement()) {
+            stmt.execute(sql);
+            stmt.execute("DELETE FROM packages WHERE fqn NOT IN (SELECT DISTINCT package_fqn FROM types WHERE package_fqn IS NOT NULL)");
+        }
+    }
+
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

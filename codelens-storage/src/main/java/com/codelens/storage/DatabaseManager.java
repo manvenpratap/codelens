@@ -200,8 +200,18 @@ public class DatabaseManager {
                 ")");
 
 
+            // file_meta ─────────────────────────────────────────────────────
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS file_meta (" +
+                "  file_path     VARCHAR PRIMARY KEY," +
+                "  last_modified BIGINT NOT NULL," +
+                "  file_size     BIGINT NOT NULL," +
+                "  type_count    INTEGER DEFAULT 0" +
+                ")");
+
             // Indices for fast lookups ───────────────────────────────────────
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)");
@@ -225,6 +235,7 @@ public class DatabaseManager {
              Statement stmt = conn.createStatement()) {
             stmt.execute("DELETE FROM inconsistencies");
             stmt.execute("DELETE FROM git_meta");
+            stmt.execute("DELETE FROM file_meta");
             stmt.execute("DELETE FROM relationships");
             stmt.execute("DELETE FROM methods");
             stmt.execute("DELETE FROM fields");
@@ -233,5 +244,6 @@ public class DatabaseManager {
             conn.commit();
             log.info("All scan data cleared");
         }
+
     }
 }

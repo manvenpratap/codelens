@@ -147,8 +147,11 @@ const api = {
   review:             (body)      => api.post('/review', body),
   search:             (q, n=30)   => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`),
   scanStatus:         ()          => api.get('/scan/status'),
+  scanChanges:        (sourcePath) => api.get(`/scan/changes${sourcePath ? '?sourcePath=' + encodeURIComponent(sourcePath) : ''}`),
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
+  startIncrementalScan: (sourcePath, excludePatterns) => api.post('/scan/incremental', { sourcePath, excludePatterns }),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
+
   saveNote:           (body)      => api.post('/notes', body),
   deleteNote:         (id)        => api.delete(`/notes/${id}`),
   gitSummary:         ()          => api.get('/git/summary'),
@@ -3687,7 +3690,118 @@ function toggleScanSummaryPopover(force) {
   const isVisible = popover.style.display !== 'none';
   const show = typeof force === 'boolean' ? force : !isVisible;
   popover.style.display = show ? 'flex' : 'none';
+  if (show) {
+    checkCodebaseChanges();
+  }
 }
+
+/** Check if files were modified/added/deleted on disk since last scan */
+async function checkCodebaseChanges() {
+  const path = App.currentPath || localStorage.getItem('codelens_last_path');
+  if (!path || (App.lastScanProgress && App.lastScanProgress.status === 'SCANNING')) return;
+
+  try {
+    const changes = await api.scanChanges(path);
+    App.lastScanChanges = changes;
+
+    const changesSection = qs('#scan-popover-changes-section');
+    const changesList = qs('#scan-popover-changes-list');
+    const countLabel = qs('#scan-changes-count-label');
+    const footerDeltaBtn = qs('#btn-popover-rescan-incremental-footer');
+    const badge = qs('#scan-status-badge');
+    const badgeText = qs('#scan-status-text');
+
+    if (changes && changes.hasChanges) {
+      if (changesSection) changesSection.style.display = 'flex';
+      if (countLabel) countLabel.textContent = `${changes.totalChanges} Changes Detected on Disk`;
+      if (footerDeltaBtn) {
+        footerDeltaBtn.style.display = 'inline-flex';
+        footerDeltaBtn.textContent = `⚡ Rescan Changes (${changes.totalChanges})`;
+      }
+
+      if (changesList) {
+        changesList.innerHTML = '';
+        const items = [
+          ...changes.newFiles.map(f => ({ path: f, type: 'NEW', label: '+ New', badgeClass: 'badge-new' })),
+          ...changes.modifiedFiles.map(f => ({ path: f, type: 'MOD', label: 'Δ Mod', badgeClass: 'badge-mod' })),
+          ...changes.deletedFiles.map(f => ({ path: f, type: 'DEL', label: '- Del', badgeClass: 'badge-del' }))
+        ];
+
+        items.slice(0, 20).forEach(it => {
+          const row = document.createElement('div');
+          row.className = 'scan-change-item';
+          const name = it.path.replace(/[\\\/]+$/, '').split(/[\\\/]/).pop() || it.path;
+          row.title = it.path;
+          row.innerHTML = `
+            <span class="scan-change-name">${escapeHtml(name)}</span>
+            <span class="scan-change-badge ${it.badgeClass}">${it.label}</span>
+          `;
+          changesList.appendChild(row);
+        });
+
+        if (items.length > 20) {
+          const moreRow = document.createElement('div');
+          moreRow.className = 'scan-change-item';
+          moreRow.style.color = 'var(--text-muted)';
+          moreRow.textContent = `+ ${items.length - 20} more changed files`;
+          changesList.appendChild(moreRow);
+        }
+      }
+
+      // Update badge to alert user of pending changes
+      if (badge && badgeText && (!App.lastScanProgress || App.lastScanProgress.status !== 'SCANNING')) {
+        badge.className = 'scan-status-badge status-warning';
+        badgeText.textContent = `⚡ ${changes.totalChanges} Δ`;
+        badge.title = `${changes.totalChanges} changed files on disk (${changes.newFiles.length} new, ${changes.modifiedFiles.length} mod, ${changes.deletedFiles.length} del). Click to rescan.`;
+      }
+
+      // Update popover advice banner
+      const adviceBanner = qs('#scan-advice-banner');
+      const adviceIcon = qs('#scan-advice-icon');
+      const adviceTitle = qs('#scan-advice-title');
+      const adviceDesc = qs('#scan-advice-desc');
+      if (adviceBanner && adviceTitle && adviceDesc) {
+        adviceBanner.className = 'scan-advice-banner advice-warning';
+        if (adviceIcon) adviceIcon.textContent = '⚡';
+        adviceTitle.textContent = `${changes.totalChanges} file(s) modified since last scan`;
+        adviceDesc.textContent = `Click "⚡ Rescan Changes" to incrementally update classes, methods, and call graph in seconds.`;
+      }
+    } else {
+      if (changesSection) changesSection.style.display = 'none';
+      if (footerDeltaBtn) footerDeltaBtn.style.display = 'none';
+      if (changesList) changesList.innerHTML = '';
+      if (App.lastScanProgress) {
+        updateScanSummaryUI(App.lastScanProgress);
+      }
+    }
+  } catch (_) {
+    // Ignore offline or transient check error
+  }
+}
+
+/** Trigger incremental delta rescan */
+async function startIncrementalScan() {
+  const path = App.currentPath || qs('#scan-path-input')?.value?.trim() || localStorage.getItem('codelens_last_path');
+  if (!path) {
+    showError('No active project path found for incremental rescan');
+    return;
+  }
+
+  const rawExcludes = qs('#set-exclude-patterns')?.value || '';
+  const excludePatterns = rawExcludes.split(',').map(s => s.trim()).filter(Boolean);
+
+  setScanUI('scanning');
+  showBanner('Starting incremental delta rescan…');
+
+  try {
+    await api.startIncrementalScan(path, excludePatterns);
+    pollScanStatus();
+  } catch (e) {
+    showError('Incremental scan failed to start: ' + e.message);
+    setScanUI('idle');
+  }
+}
+
 
 /** Update the loaded project header bar display and toggle off scan input */
 function updateHeaderProjectBar(path) {
@@ -3949,6 +4063,17 @@ async function init() {
     toggleScanSummaryPopover(false);
     startScan();
   });
+  qs('#btn-popover-rescan-incremental')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleScanSummaryPopover(false);
+    startIncrementalScan();
+  });
+  qs('#btn-popover-rescan-incremental-footer')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleScanSummaryPopover(false);
+    startIncrementalScan();
+  });
+
 
   // Close scan popover on outside click
   document.addEventListener('click', (e) => {
@@ -4504,12 +4629,20 @@ async function init() {
   setupArchetypeFilterListeners();
   initArchetypePopover();
 
+  // Initial and periodic disk change checks
+  checkCodebaseChanges();
+  window.addEventListener('focus', () => checkCodebaseChanges());
+  setInterval(() => checkCodebaseChanges(), 30000);
+
   // Expose global handles for testing and automation
   window.App = App;
   window.selectMethod = selectMethod;
   window.loadWholeCodebaseGraph = loadWholeCodebaseGraph;
   window.api = api;
   window.populateArchetypeDropdowns = populateArchetypeDropdowns;
+  window.checkCodebaseChanges = checkCodebaseChanges;
+  window.startIncrementalScan = startIncrementalScan;
+
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

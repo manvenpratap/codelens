@@ -235,6 +235,20 @@
               </div>
             </div>
 
+            <!-- Detected Disk Changes Section (Shown when delta changes exist) -->
+            <div class="scan-changes-section" id="scan-popover-changes-section" style="display:none;">
+              <div class="scan-changes-header">
+                <span class="scan-changes-title">
+                  <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  <span id="scan-changes-count-label">Changes Detected on Disk</span>
+                </span>
+                <button id="btn-popover-rescan-incremental" class="btn btn-amber btn-xs" title="Rescan only modified and new classes">
+                  ⚡ Rescan Changes
+                </button>
+              </div>
+              <div class="scan-changes-list" id="scan-popover-changes-list"></div>
+            </div>
+
             <!-- Rescan Advice Banner -->
             <div class="scan-advice-banner" id="scan-advice-banner">
               <span class="advice-icon" id="scan-advice-icon">💡</span>
@@ -247,13 +261,19 @@
 
           <div class="scan-summary-footer">
             <span class="scan-timestamp" id="scan-popover-timestamp">Last scan: Just now</span>
-            <button id="btn-popover-rescan" class="btn btn-primary btn-sm">
-              <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-              Rescan Codebase
-            </button>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button id="btn-popover-rescan-incremental-footer" class="btn btn-amber btn-sm" style="display:none;">
+                ⚡ Rescan Changes
+              </button>
+              <button id="btn-popover-rescan" class="btn btn-primary btn-sm">
+                <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                Full Rescan
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
     </div>
 
 
@@ -1987,16 +2007,17 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-<script src="/icons.js?v=1.0.4"      defer></script>
-<script src="/classifier.js?v=1.0.4" defer></script>
-<script src="/graph.js?v=1.0.4"      defer></script>
-<script src="/dsm.js?v=1.0.4"        defer></script>
-<script src="/treemap.js?v=1.0.4"    defer></script>
-<script src="/chord.js?v=1.0.4"      defer></script>
-<script src="/sunburst.js?v=1.0.4"   defer></script>
-<script src="/city3d.js?v=1.0.4"     defer></script>
-<script src="/galaxy3d.js?v=1.0.4"   defer></script>
-<script src="/app.js?v=1.0.4"        defer></script>
+<script src="/icons.js?v=1.0.5"      defer></script>
+<script src="/classifier.js?v=1.0.5" defer></script>
+<script src="/graph.js?v=1.0.5"      defer></script>
+<script src="/dsm.js?v=1.0.5"        defer></script>
+<script src="/treemap.js?v=1.0.5"    defer></script>
+<script src="/chord.js?v=1.0.5"      defer></script>
+<script src="/sunburst.js?v=1.0.5"   defer></script>
+<script src="/city3d.js?v=1.0.5"     defer></script>
+<script src="/galaxy3d.js?v=1.0.5"   defer></script>
+<script src="/app.js?v=1.0.5"        defer></script>
+
 
 </body>
 </html>

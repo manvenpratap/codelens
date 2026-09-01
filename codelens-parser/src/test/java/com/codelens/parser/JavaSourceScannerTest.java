@@ -195,6 +195,57 @@ public class JavaSourceScannerTest {
             });
         }
 
-        System.out.println("ALL JAVA SOURCE SCANNER AND PASCAL-CASE PACKAGE TESTS PASSED SUCCESSFULLY!");
+        System.out.println("Running testDetectDiskChanges...");
+        Path tempDir4 = Files.createTempDirectory("codelens_delta_test");
+        try {
+            test.testDetectDiskChanges(tempDir4);
+        } finally {
+            Files.walkFileTree(tempDir4, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        System.out.println("ALL JAVA SOURCE SCANNER AND DELTA CHANGE TESTS PASSED SUCCESSFULLY!");
     }
+
+    public void testDetectDiskChanges(Path tempDir) throws IOException {
+        Path a = tempDir.resolve("A.java");
+        Path b = tempDir.resolve("B.java");
+        Path c = tempDir.resolve("C.java");
+
+        Files.writeString(a, "public class A {}");
+        Files.writeString(b, "public class B {}");
+        Files.writeString(c, "public class C {}");
+
+        long aTime = Files.getLastModifiedTime(a).toMillis();
+        long aSize = Files.size(a);
+
+        java.util.Map<String, com.codelens.core.model.FileMeta> existing = new java.util.HashMap<>();
+        existing.put(a.toString(), new com.codelens.core.model.FileMeta(a.toString(), aTime, aSize, 1));
+        // b has outdated timestamp
+        existing.put(b.toString(), new com.codelens.core.model.FileMeta(b.toString(), aTime - 5000, 10, 1));
+        // d was deleted from disk
+        Path d = tempDir.resolve("D.java");
+        existing.put(d.toString(), new com.codelens.core.model.FileMeta(d.toString(), aTime, 100, 1));
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        com.codelens.core.model.ScanChanges changes = scanner.detectDiskChanges(tempDir, existing, null);
+
+        assertTrue(changes.isHasChanges(), "should have changes");
+        assertEquals(3, changes.getTotalChanges(), "3 total changes");
+        assertTrue(changes.getNewFiles().contains(c.toString()), "C should be new");
+        assertTrue(changes.getModifiedFiles().contains(b.toString()), "B should be modified");
+        assertTrue(changes.getDeletedFiles().contains(d.toString()), "D should be deleted");
+        assertFalse(changes.getModifiedFiles().contains(a.toString()), "A should not be modified");
+    }
+
 }

@@ -20,9 +20,13 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+
 
 /**
  * CodeLens HTTP server — mounts every REST endpoint and serves the
@@ -128,10 +132,13 @@ public class CodeLensServer {
         app.get("/", ctx -> ctx.redirect("/index.html"));
 
         // ── Scan ──────────────────────────────────────────────────────────────
-        app.post("/api/scan",        this::startScan);
-        app.get("/api/scan/status",  this::getScanStatus);
-        app.get("/api/scan/browse",  this::browseFolder);
-        app.post("/api/open-folder", this::openFolder);
+        app.post("/api/scan",              this::startScan);
+        app.get("/api/scan/status",        this::getScanStatus);
+        app.get("/api/scan/changes",       this::getScanChanges);
+        app.post("/api/scan/incremental",  this::startIncrementalScan);
+        app.get("/api/scan/browse",        this::browseFolder);
+        app.post("/api/open-folder",       this::openFolder);
+
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -283,6 +290,87 @@ public class CodeLensServer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Handler: GET /api/scan/changes
+    // ─────────────────────────────────────────────────────────────────────────
+    private void getScanChanges(Context ctx) {
+        String sourcePath = ctx.queryParam("sourcePath");
+        if (sourcePath == null || sourcePath.isBlank()) {
+            ScanProgress sp = scanState.get();
+            if (sp != null && sp.getSourcePath() != null) {
+                sourcePath = sp.getSourcePath();
+            }
+        }
+        if (sourcePath == null || sourcePath.isBlank()) {
+            ctx.json(new ScanChanges());
+            return;
+        }
+
+        try {
+            Path root = Paths.get(sourcePath);
+            if (!Files.exists(root)) {
+                ctx.status(404).json(Map.of("error", "Source path does not exist: " + sourcePath));
+                return;
+            }
+            Map<String, FileMeta> existingMeta = dao.getAllFileMeta();
+            JavaSourceScanner scanner = new JavaSourceScanner();
+            ScanChanges changes = scanner.detectDiskChanges(root, existingMeta, null);
+            ctx.json(changes);
+        } catch (Exception e) {
+            log.error("Failed to detect scan changes: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to detect changes: " + e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Handler: POST /api/scan/incremental
+    // ─────────────────────────────────────────────────────────────────────────
+    private void startIncrementalScan(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String sourcePath = (String) body.get("sourcePath");
+        if (sourcePath == null || sourcePath.isBlank()) {
+            ScanProgress current = scanState.get();
+            if (current != null && current.getSourcePath() != null) {
+                sourcePath = current.getSourcePath();
+            }
+        }
+        if (sourcePath == null || sourcePath.isBlank()) {
+            ctx.status(400).json(Map.of("error", "sourcePath is required"));
+            return;
+        }
+
+        Object rawExcludes = body.get("excludePatterns");
+        List<String> excludePatterns = null;
+        if (rawExcludes instanceof List<?>) {
+            excludePatterns = ((List<?>) rawExcludes).stream().map(Object::toString).toList();
+        } else if (rawExcludes instanceof String && !((String) rawExcludes).isBlank()) {
+            excludePatterns = Arrays.stream(((String) rawExcludes).split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        }
+
+        ScanProgress current = scanState.get();
+        if (current.getStatus() == ScanProgress.Status.SCANNING) {
+            ctx.status(409).json(Map.of("error", "Scan already in progress"));
+            return;
+        }
+
+        ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
+        progress.setSourcePath(sourcePath);
+        progress.setCurrentPhase("Delta Change Detection");
+        progress.setMessage("Detecting modified and new source files…");
+        progress.setStartTime(System.currentTimeMillis());
+        scanState.set(progress);
+
+
+        final List<String> finalExcludes = excludePatterns;
+        final String finalPath = sourcePath;
+        scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
+
+        ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Background scan task
     // ─────────────────────────────────────────────────────────────────────────
     private void runScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
@@ -319,6 +407,9 @@ public class CodeLensServer {
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
                 });
+
+            // Save file metadata for delta change detection
+            dao.saveFileMetaBatch(result.fileMetas);
 
             // Phase 3: finish Lucene commit
             progress.setCurrentPhase("Finalizing Index");
@@ -361,6 +452,116 @@ public class CodeLensServer {
             try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
         }
     }
+
+    private void runIncrementalScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
+        try {
+            Path root = Paths.get(sourcePath);
+            Map<String, FileMeta> existingMeta = dao.getAllFileMeta();
+            JavaSourceScanner scanner = new JavaSourceScanner();
+            ScanChanges changes = scanner.detectDiskChanges(root, existingMeta, excludePatterns);
+
+            if (!changes.isHasChanges()) {
+                progress.setCurrentPhase("Complete");
+                progress.setMessage("No changes detected — Codebase is up to date");
+                progress.setCurrentDetail("Ready");
+                progress.setEndTime(System.currentTimeMillis());
+                progress.setStatus(ScanProgress.Status.COMPLETE);
+                return;
+            }
+
+            log.info("Starting incremental delta scan: {} new, {} modified, {} deleted files",
+                changes.getNewFiles().size(), changes.getModifiedFiles().size(), changes.getDeletedFiles().size());
+
+            // Phase 1: delete old data for modified and deleted files
+            progress.setCurrentPhase("Patching Database");
+            progress.setMessage("Purging old records for modified & deleted files…");
+            List<String> toDelete = new ArrayList<>();
+            toDelete.addAll(changes.getModifiedFiles());
+            toDelete.addAll(changes.getDeletedFiles());
+            dao.deleteBySourceFiles(toDelete);
+
+            // Phase 2: parse modified and new files
+            List<Path> toParse = new ArrayList<>();
+            for (String p : changes.getNewFiles()) toParse.add(Paths.get(p));
+            for (String p : changes.getModifiedFiles()) toParse.add(Paths.get(p));
+
+            progress.setCurrentPhase("Incremental AST Parsing");
+            progress.setMessage(String.format("Parsing %d changed files…", toParse.size()));
+
+            JavaSourceScanner.ScanResult result = scanner.scanFiles(
+                root,
+                toParse,
+                (pkgs, types, fields, methods, rels) -> {
+                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackages(pkgs);
+                    if (types != null && !types.isEmpty()) dao.batchInsertTypes(types);
+                    if (fields != null && !fields.isEmpty()) dao.batchInsertFields(fields);
+                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethods(methods);
+                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationships(rels);
+                    lucene.indexBatch(types, methods, fields);
+                },
+                (done, total, file) -> {
+                    progress.setTotalFiles(total);
+                    progress.setProcessedFiles(done);
+                    String fileName = file;
+                    try {
+                        fileName = Paths.get(file).getFileName().toString();
+                    } catch (Exception ignored) {}
+                    progress.setCurrentDetail(fileName);
+                    progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
+                }
+            );
+
+            // Phase 3: Save file metadata & recompute package totals
+            dao.saveFileMetaBatch(result.fileMetas);
+            dao.recomputePackageCounts();
+
+            // Phase 4: finish Lucene commit & rebuild in-memory graphs
+            progress.setCurrentPhase("Updating Search Index");
+            progress.setMessage("Committing incremental search index…");
+            lucene.finishIndexRebuild();
+
+            progress.setCurrentPhase("Graph Analysis");
+            progress.setMessage("Refreshing call graph & field propagation…");
+            List<String> allMethodFqns = dao.findAllMethodFqns();
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+
+            // Recompute scan totals from DB
+            Map<String, Object> stats = dao.getStats();
+            int totalTypes = stats.containsKey("totalTypes") ? ((Number) stats.get("totalTypes")).intValue() : 0;
+            int totalMethods = stats.containsKey("totalMethods") ? ((Number) stats.get("totalMethods")).intValue() : 0;
+            int totalFields = stats.containsKey("totalFields") ? ((Number) stats.get("totalFields")).intValue() : 0;
+            int totalRels = stats.containsKey("totalRelationships") ? ((Number) stats.get("totalRelationships")).intValue() : 0;
+
+            Map<String, FileMeta> allMeta = dao.getAllFileMeta();
+            progress.setTotalFiles(allMeta.size());
+            progress.setProcessedFiles(allMeta.size());
+            progress.setParsedFiles(allMeta.size());
+            progress.setErrorFiles(result.errorFiles);
+            progress.setTypesFound(totalTypes);
+            progress.setMethodsFound(totalMethods);
+            progress.setFieldsFound(totalFields);
+            progress.setRelationshipsFound(totalRels);
+            progress.setCurrentPhase("Complete");
+            progress.setCurrentDetail("Ready");
+            progress.setEndTime(System.currentTimeMillis());
+            progress.setStatus(ScanProgress.Status.COMPLETE);
+
+            dao.saveScanMeta(progress);
+
+            log.info("Incremental delta scan finished: parsed {} changed files, total indexed is now {} types, {} methods across {} files",
+                toParse.size(), totalTypes, totalMethods, allMeta.size());
+
+        } catch (Exception e) {
+            log.error("Incremental scan failed", e);
+            progress.setStatus(ScanProgress.Status.ERROR);
+            progress.setMessage("Incremental scan failed");
+            progress.setErrorDetail(e.getMessage());
+            progress.setEndTime(System.currentTimeMillis());
+            try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+        }
+    }
+
 
 
 

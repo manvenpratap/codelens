@@ -31,6 +31,7 @@ public class JavaSourceScanner {
         public final List<CodeField>        fields        = new ArrayList<>();
         public final List<CodeMethod>       methods       = new ArrayList<>();
         public final List<CodeRelationship> relationships = new ArrayList<>();
+        public final List<FileMeta>         fileMetas     = new ArrayList<>();
         public int totalFiles;
         public int parsedFiles;
         public int errorFiles;
@@ -39,6 +40,7 @@ public class JavaSourceScanner {
         public int fieldsFound;
         public int relationshipsFound;
     }
+
 
     /** Callback invoked after each file is processed: (processedCount, totalCount, filePath). */
     @FunctionalInterface
@@ -148,6 +150,74 @@ public class JavaSourceScanner {
     }
 
     /**
+     * Quickly walks the source directory using non-parsing filesystem attributes to detect
+     * new, modified, and deleted .java files compared against existing indexed metadata.
+     */
+    public ScanChanges detectDiskChanges(Path sourceRoot,
+                                         Map<String, FileMeta> existingMeta,
+                                         List<String> userExcludes) throws IOException {
+        ScanChanges changes = new ScanChanges(sourceRoot.toAbsolutePath().toString());
+        Map<String, FileMeta> metaMap = (existingMeta != null) ? existingMeta : Collections.emptyMap();
+
+        List<String> effectiveExcludes = (userExcludes != null && !userExcludes.isEmpty())
+            ? userExcludes
+            : DEFAULT_EXCLUDE_PATTERNS;
+        List<PathMatcher> matchers = compileMatchers(effectiveExcludes);
+
+        Set<String> diskFiles = new HashSet<>();
+
+        if (Files.exists(sourceRoot)) {
+            Files.walkFileTree(sourceRoot, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (dir.equals(sourceRoot)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    Path relativePath = sourceRoot.relativize(dir);
+                    if (isExcluded(relativePath, matchers, effectiveExcludes)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (file.toString().endsWith(".java") && attrs.isRegularFile()) {
+                        Path relativePath = sourceRoot.relativize(file);
+                        if (!isExcluded(relativePath, matchers, effectiveExcludes)) {
+                            String abs = file.toAbsolutePath().toString();
+                            diskFiles.add(abs);
+
+                            FileMeta stored = metaMap.get(abs);
+                            if (stored == null) {
+                                changes.getNewFiles().add(abs);
+                            } else if (attrs.lastModifiedTime().toMillis() > stored.getLastModified() || attrs.size() != stored.getFileSize()) {
+                                changes.getModifiedFiles().add(abs);
+                            }
+                        }
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        // Detect deleted files
+        for (String storedPath : metaMap.keySet()) {
+            if (!diskFiles.contains(storedPath)) {
+                changes.getDeletedFiles().add(storedPath);
+            }
+        }
+
+        changes.recompute();
+        return changes;
+    }
+
+    /**
      * Performs a full directory scan with custom folder/file exclude patterns and streaming BatchConsumer.
      */
     public ScanResult scan(String sourceRoot,
@@ -203,9 +273,22 @@ public class JavaSourceScanner {
         log.info("Found {} Java files under {} (after applying {} exclude patterns)",
             javaFiles.size(), sourceRoot, effectiveExcludes.size());
 
-        // ── Phase 2: bounded parallel parsing & streaming ─────────────────────
+        return scanFiles(root, javaFiles, batchConsumer, progressCallback);
+    }
+
+    /**
+     * Bounded parallel AST parser for a specific list of Java files (supports full or delta scans).
+     */
+    public ScanResult scanFiles(Path sourceRoot,
+                                List<Path> javaFiles,
+                                BatchConsumer batchConsumer,
+                                ProgressCallback progressCallback) throws IOException {
         ScanResult result    = new ScanResult();
         result.totalFiles    = javaFiles.size();
+        if (javaFiles.isEmpty()) {
+            return result;
+        }
+
         AtomicInteger count  = new AtomicInteger(0);
         AtomicInteger parsed = new AtomicInteger(0);
         AtomicInteger errors = new AtomicInteger(0);
@@ -233,7 +316,6 @@ public class JavaSourceScanner {
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
-        // Partition files into work chunks to reduce task submission overhead
         int chunkSize = Math.max(10, Math.min(100, javaFiles.size() / (PARSER_THREADS * 8) + 1));
         List<List<Path>> chunks = new ArrayList<>();
         for (int i = 0; i < javaFiles.size(); i += chunkSize) {
@@ -253,11 +335,15 @@ public class JavaSourceScanner {
                 List<CodeField> batchFields = new ArrayList<>();
                 List<CodeMethod> batchMethods = new ArrayList<>();
                 List<CodeRelationship> batchRels = new ArrayList<>();
+                List<FileMeta> batchFileMetas = new ArrayList<>();
 
                 for (Path javaFile : chunk) {
                     try {
                         AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
                         ctx.sourceFile = javaFile.toAbsolutePath().toString();
+
+                        long lastMod = Files.exists(javaFile) ? Files.getLastModifiedTime(javaFile).toMillis() : System.currentTimeMillis();
+                        long size = Files.exists(javaFile) ? Files.size(javaFile) : 0;
 
                         ParseResult<CompilationUnit> parseResult = parser.parse(javaFile);
 
@@ -284,6 +370,7 @@ public class JavaSourceScanner {
                             batchFields.addAll(ctx.fields);
                             batchMethods.addAll(ctx.methods);
                             batchRels.addAll(ctx.relationships);
+                            batchFileMetas.add(new FileMeta(ctx.sourceFile, lastMod, size, ctx.types.size()));
 
                             totalTypes.addAndGet(ctx.types.size());
                             totalMethods.addAndGet(ctx.methods.size());
@@ -293,6 +380,7 @@ public class JavaSourceScanner {
                         } else {
                             log.warn("Parse errors in {}: {}", javaFile, parseResult.getProblems());
                             errors.incrementAndGet();
+                            batchFileMetas.add(new FileMeta(ctx.sourceFile, lastMod, size, 0));
                         }
                     } catch (Exception e) {
                         log.error("Failed to parse {}: {}", javaFile, e.getMessage());
@@ -317,6 +405,7 @@ public class JavaSourceScanner {
                             result.methods.addAll(batchMethods);
                             result.relationships.addAll(batchRels);
                         }
+                        result.fileMetas.addAll(batchFileMetas);
                     }
                 } catch (Exception e) {
                     log.error("Error flushing parsed batch to consumer", e);
@@ -335,7 +424,7 @@ public class JavaSourceScanner {
             throw new IOException("Scanning execution interrupted", e);
         }
 
-        // ── Phase 3: populate final package summary ───────────────────────────
+        // ── Populate final package summary ────────────────────────────────────
         List<CodePackage> finalPackages = new ArrayList<>();
         for (Map.Entry<String, CodePackage> entry : packageMap.entrySet()) {
             CodePackage pkg = entry.getValue();
@@ -373,4 +462,5 @@ public class JavaSourceScanner {
         return result;
     }
 }
+
 

@@ -967,32 +967,105 @@ body.theme-light .scan-stat-card {
   padding: 8px 10px;
 }
 .scan-advice-banner.advice-warning {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.25);
-}
-.scan-advice-banner.advice-error {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.25);
-}
-.advice-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-.advice-content {
+/* Detected Disk Changes Section */
+.scan-changes-section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-xs, 6px);
+  padding: 10px;
 }
-.advice-title {
-  font-size: 11px;
+body.theme-light .scan-changes-section {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.scan-changes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.scan-changes-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #fbbf24;
 }
-.advice-desc {
-  font-size: 10px;
+body.theme-light .scan-changes-title {
+  color: #b45309;
+}
+.scan-changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.scan-change-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 3px 6px;
   color: var(--text-secondary);
-  line-height: 1.35;
 }
+body.theme-light .scan-change-item {
+  background: rgba(0, 0, 0, 0.04);
+}
+.scan-change-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scan-change-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.scan-change-badge.badge-new {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+.scan-change-badge.badge-mod {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+.scan-change-badge.badge-del {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.btn-amber {
+  background: #d97706;
+  color: #ffffff;
+  border: 1px solid #f59e0b;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-xs, 4px);
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn-amber:hover {
+  background: #b45309;
+  border-color: #d97706;
+}
+.btn-xs {
+  font-size: 10px;
+  padding: 2px 7px;
+  height: 22px;
+}
+
 
 .scan-summary-footer {
   display: flex;
