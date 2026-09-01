@@ -20,8 +20,9 @@
   <link rel="apple-touch-icon" href="/assets/app-icon.png" />
 
   <!-- Single stylesheet; all design tokens live in :root -->
-  <link rel="stylesheet" href="/style.css?v=1.0.3" />
+  <link rel="stylesheet" href="/style.css?v=1.0.4" />
 </head>
+
 
 
 <body>
@@ -154,23 +155,20 @@
       </div>
 
       <!-- Active Loaded Project Bar (Shown when codebase is loaded) -->
-      <div id="header-project-bar" class="header-project-bar" style="display:none;">
+      <div id="header-project-bar" class="header-project-bar" style="display:none; position:relative;">
         <div class="project-pill" id="project-pill" title="Click to view scan coverage and statistics" tabindex="0" role="button">
-          <span class="project-pill-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
+          <span class="project-pill-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
           <span class="project-pill-name" id="project-name-display">sample-project</span>
-          <span class="project-pill-path" id="project-path-display">/workspace/src</span>
+          <div class="scan-status-badge" id="scan-status-badge" title="Scan Status: Click for full breakdown">
+            <span class="scan-status-dot" id="scan-status-dot"></span>
+            <span class="scan-status-text" id="scan-status-text">100%</span>
+          </div>
         </div>
-        <div class="scan-status-badge" id="scan-status-badge" role="button" tabindex="0" title="Click to view scan coverage and completeness">
-          <span class="scan-status-dot" id="scan-status-dot"></span>
-          <span class="scan-status-text" id="scan-status-text">100% Parsed</span>
-        </div>
-        <button id="btn-rescan" class="btn-header-pill" title="Rescan current directory (Cmd+R / F5)">
-          <span class="btn-pill-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
-          <span class="btn-pill-label">Rescan</span>
+        <button id="btn-rescan" class="btn-header-icon" title="Rescan current directory (Cmd+R / F5)">
+          <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
         </button>
-        <button id="btn-open-project" class="btn-header-pill" title="Switch to a different Java project">
-          <span class="btn-pill-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span>
-          <span class="btn-pill-label">Switch</span>
+        <button id="btn-open-project" class="btn-header-icon" title="Switch to a different Java project">
+          <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
         </button>
 
         <!-- Persistent Scan Summary Popover -->
@@ -178,6 +176,7 @@
           <div class="scan-summary-header">
             <div class="scan-summary-title-wrap">
               <span class="scan-summary-title">Scan Coverage &amp; Completeness</span>
+
               <span class="scan-summary-badge badge-success" id="scan-popover-status-badge">Complete</span>
             </div>
             <button class="btn-close-popover" id="btn-close-scan-popover" title="Close">✕</button>
@@ -1988,17 +1987,18 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-<script src="/icons.js?v=1.0.3"      defer></script>
-<script src="/classifier.js?v=1.0.3" defer></script>
-<script src="/graph.js?v=1.0.3"      defer></script>
-<script src="/dsm.js?v=1.0.3"        defer></script>
-<script src="/treemap.js?v=1.0.3"    defer></script>
-<script src="/chord.js?v=1.0.3"      defer></script>
-<script src="/sunburst.js?v=1.0.3"   defer></script>
-<script src="/city3d.js?v=1.0.3"     defer></script>
-<script src="/galaxy3d.js?v=1.0.3"   defer></script>
-<script src="/app.js?v=1.0.3"        defer></script>
+<script src="/icons.js?v=1.0.4"      defer></script>
+<script src="/classifier.js?v=1.0.4" defer></script>
+<script src="/graph.js?v=1.0.4"      defer></script>
+<script src="/dsm.js?v=1.0.4"        defer></script>
+<script src="/treemap.js?v=1.0.4"    defer></script>
+<script src="/chord.js?v=1.0.4"      defer></script>
+<script src="/sunburst.js?v=1.0.4"   defer></script>
+<script src="/city3d.js?v=1.0.4"     defer></script>
+<script src="/galaxy3d.js?v=1.0.4"   defer></script>
+<script src="/app.js?v=1.0.4"        defer></script>
 
 </body>
 </html>
+
 

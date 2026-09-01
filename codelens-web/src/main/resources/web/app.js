@@ -3555,18 +3555,23 @@ function updateScanSummaryUI(s) {
     badge.className = 'scan-status-badge';
     if (s.status === 'SCANNING') {
       badge.classList.add('status-scanning');
-      badgeText.textContent = `Scanning (${pct}%)`;
+      badgeText.textContent = `${pct}%`;
+      badge.title = `Scanning in progress: ${pct}% (${processed}/${total} files)`;
     } else if (s.status === 'ERROR') {
       badge.classList.add('status-error');
-      badgeText.textContent = 'Scan Failed';
+      badgeText.textContent = 'Failed';
+      badge.title = 'Scan failed. Click to view details.';
     } else if (errors > 0 || (total > 0 && parsed < total)) {
       badge.classList.add('status-warning');
-      badgeText.textContent = `${pct}% (${errors > 0 ? errors + ' errors' : remaining + ' remaining'})`;
+      badgeText.textContent = `${pct}% (${errors > 0 ? errors + ' err' : remaining + ' rem'})`;
+      badge.title = `Partial scan: ${pct}% parsed (${errors} errors, ${remaining} remaining). Click for details.`;
     } else {
       badge.classList.add('status-success');
-      badgeText.textContent = `${pct}% Parsed (${parsed || total} files)`;
+      badgeText.textContent = `${pct}%`;
+      badge.title = `Scan 100% complete (${parsed || total} files). Click for breakdown & rescan.`;
     }
   }
+
 
   // 2. Update Popover Header & Badge
   const popoverBadge = qs('#scan-popover-status-badge');
