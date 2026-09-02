@@ -19,7 +19,9 @@ import javax.swing.JFileChooser;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -203,6 +205,10 @@ public class CodeLensServer {
         app.get("/api/config/export",   this::exportConfig);
         app.post("/api/config/import",  this::importConfig);
         app.post("/api/config/reset",   this::resetConfig);
+
+        // ── Documentation ──────────────────────────────────────────────────────
+        app.get("/api/readme",          this::getReadme);
+
 
         // ── Global error handler ──────────────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
@@ -1421,5 +1427,33 @@ public class CodeLensServer {
             ctx.status(500).json(Map.of("error", "Failed to save reset configuration: " + e.getMessage()));
         }
     }
+
+    private void getReadme(Context ctx) {
+        try {
+            // First check for local README.md in development or current working directory
+            File localReadme = new File("README.md");
+            if (localReadme.exists() && localReadme.isFile()) {
+                ctx.contentType("text/markdown; charset=utf-8").result(Files.readString(localReadme.toPath()));
+                return;
+            }
+            // Fallback to classpath inside the packaged fat JAR
+            try (InputStream in = getClass().getResourceAsStream("/README.md")) {
+                if (in != null) {
+                    ctx.contentType("text/markdown; charset=utf-8").result(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    return;
+                }
+            }
+            try (InputStream in = getClass().getResourceAsStream("/web/README.md")) {
+                if (in != null) {
+                    ctx.contentType("text/markdown; charset=utf-8").result(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    return;
+                }
+            }
+            ctx.status(404).contentType("text/markdown; charset=utf-8").result("# README.md not found");
+        } catch (Exception e) {
+            ctx.status(500).contentType("text/markdown; charset=utf-8").result("# Error reading README: " + e.getMessage());
+        }
+    }
 }
+
 
