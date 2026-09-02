@@ -1831,9 +1831,16 @@
 
       <!-- ── Footer ───────────────────────────────────────────────────── -->
       <div class="settings-footer">
-        <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
+        <div class="settings-footer-actions">
+          <button id="btn-shutdown-server" class="btn-ghost btn-danger-ghost" style="color:var(--rose-400,#f43f5e);" title="Gracefully stop the CodeLens server process">
+            <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            Shutdown Server
+          </button>
+          <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
+        </div>
         <div class="settings-footer-msg" id="settings-footer-msg"></div>
       </div>
+
 
 
     </div>
@@ -1956,7 +1963,9 @@
     <div class="scan-detail-text">Initializing engine…</div>
   </div>
   <span class="scan-pct" aria-label="Percent complete">0%</span>
+  <button id="btn-cancel-scan" class="btn btn-xs btn-cancel-scan" title="Cancel scan" aria-label="Cancel active scan">Cancel</button>
 </div>
+
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -2010,16 +2019,17 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-<script src="/icons.js?v=1.0.5"      defer></script>
-<script src="/classifier.js?v=1.0.5" defer></script>
-<script src="/graph.js?v=1.0.5"      defer></script>
-<script src="/dsm.js?v=1.0.5"        defer></script>
-<script src="/treemap.js?v=1.0.5"    defer></script>
-<script src="/chord.js?v=1.0.5"      defer></script>
-<script src="/sunburst.js?v=1.0.5"   defer></script>
-<script src="/city3d.js?v=1.0.5"     defer></script>
-<script src="/galaxy3d.js?v=1.0.5"   defer></script>
-<script src="/app.js?v=1.0.5"        defer></script>
+<script src="/icons.js?v=1.0.6"      defer></script>
+<script src="/classifier.js?v=1.0.6" defer></script>
+<script src="/graph.js?v=1.0.6"      defer></script>
+<script src="/dsm.js?v=1.0.6"        defer></script>
+<script src="/treemap.js?v=1.0.6"    defer></script>
+<script src="/chord.js?v=1.0.6"      defer></script>
+<script src="/sunburst.js?v=1.0.6"   defer></script>
+<script src="/city3d.js?v=1.0.6"     defer></script>
+<script src="/galaxy3d.js?v=1.0.6"   defer></script>
+<script src="/app.js?v=1.0.6"        defer></script>
+
 
 
 </body>

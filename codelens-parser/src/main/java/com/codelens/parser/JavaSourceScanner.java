@@ -39,10 +39,12 @@ public class JavaSourceScanner {
         public int methodsFound;
         public int fieldsFound;
         public int relationshipsFound;
+        public boolean cancelled;
     }
 
 
     /** Callback invoked after each file is processed: (processedCount, totalCount, filePath). */
+
     @FunctionalInterface
     public interface ProgressCallback {
         void onFile(int processed, int total, String filePath);
@@ -224,6 +226,17 @@ public class JavaSourceScanner {
                            List<String> excludePatterns,
                            BatchConsumer batchConsumer,
                            ProgressCallback progressCallback) throws IOException {
+        return scan(sourceRoot, excludePatterns, batchConsumer, progressCallback, null);
+    }
+
+    /**
+     * Performs a full directory scan with cancellation checking.
+     */
+    public ScanResult scan(String sourceRoot,
+                           List<String> excludePatterns,
+                           BatchConsumer batchConsumer,
+                           ProgressCallback progressCallback,
+                           java.util.function.Supplier<Boolean> cancelCheck) throws IOException {
         Path root = Paths.get(sourceRoot);
         if (!Files.exists(root)) {
             throw new IllegalArgumentException("Source root does not exist: " + sourceRoot);
@@ -239,6 +252,9 @@ public class JavaSourceScanner {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                    return FileVisitResult.TERMINATE;
+                }
                 if (dir.equals(root)) {
                     return FileVisitResult.CONTINUE;
                 }
@@ -252,6 +268,9 @@ public class JavaSourceScanner {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                    return FileVisitResult.TERMINATE;
+                }
                 if (file.toString().endsWith(".java")) {
                     Path relativePath = root.relativize(file);
                     if (!isExcluded(relativePath, matchers, effectiveExcludes)) {
@@ -273,7 +292,7 @@ public class JavaSourceScanner {
         log.info("Found {} Java files under {} (after applying {} exclude patterns)",
             javaFiles.size(), sourceRoot, effectiveExcludes.size());
 
-        return scanFiles(root, javaFiles, batchConsumer, progressCallback);
+        return scanFiles(root, javaFiles, batchConsumer, progressCallback, cancelCheck);
     }
 
     /**
@@ -283,6 +302,17 @@ public class JavaSourceScanner {
                                 List<Path> javaFiles,
                                 BatchConsumer batchConsumer,
                                 ProgressCallback progressCallback) throws IOException {
+        return scanFiles(sourceRoot, javaFiles, batchConsumer, progressCallback, null);
+    }
+
+    /**
+     * Bounded parallel AST parser with cancellation support.
+     */
+    public ScanResult scanFiles(Path sourceRoot,
+                                List<Path> javaFiles,
+                                BatchConsumer batchConsumer,
+                                ProgressCallback progressCallback,
+                                java.util.function.Supplier<Boolean> cancelCheck) throws IOException {
         ScanResult result    = new ScanResult();
         result.totalFiles    = javaFiles.size();
         if (javaFiles.isEmpty()) {
@@ -326,7 +356,14 @@ public class JavaSourceScanner {
         Object flushLock = new Object();
 
         for (List<Path> chunk : chunks) {
+            if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                result.cancelled = true;
+                break;
+            }
             futures.add(pool.submit(() -> {
+                if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                    return;
+                }
                 JavaParser parser = THREAD_PARSER.get();
                 AstVisitor visitor = new AstVisitor();
 
@@ -338,6 +375,9 @@ public class JavaSourceScanner {
                 List<FileMeta> batchFileMetas = new ArrayList<>();
 
                 for (Path javaFile : chunk) {
+                    if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                        break;
+                    }
                     try {
                         AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
                         ctx.sourceFile = javaFile.toAbsolutePath().toString();
@@ -348,6 +388,7 @@ public class JavaSourceScanner {
                         ParseResult<CompilationUnit> parseResult = parser.parse(javaFile);
 
                         if (parseResult.isSuccessful() && parseResult.getResult().isPresent()) {
+
                             CompilationUnit cu = parseResult.getResult().get();
                             visitor.visit(cu, ctx);
 

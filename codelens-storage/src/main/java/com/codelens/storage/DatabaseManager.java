@@ -33,15 +33,14 @@ public class DatabaseManager {
     // Lifecycle
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Initialises the connection pool and creates all tables. */
-    public void initialize() throws Exception {
-        Files.createDirectories(Paths.get(dataDir));
-
+    private HikariConfig createHikariConfig() {
         HikariConfig cfg = new HikariConfig();
         // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs.
         // CACHE_SIZE=131072 (128MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
+        // COMPRESS=TRUE: LZF page-level compression to dramatically reduce on-disk footprint.
+        // AUTO_COMPACT_FILL_RATE=50: compacts pages when fill rate drops below 50%.
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=131072;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=131072;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=50");
         cfg.setUsername("sa");
         cfg.setPassword("");
         cfg.setMaximumPoolSize(12);
@@ -51,11 +50,17 @@ public class DatabaseManager {
         cfg.setMaxLifetime(1800_000);
         cfg.setLeakDetectionThreshold(60_000);
         cfg.setPoolName("CodeLens-H2");
+        return cfg;
+    }
+
+    /** Initialises the connection pool and creates all tables. */
+    public void initialize() throws Exception {
+        Files.createDirectories(Paths.get(dataDir));
+        HikariConfig cfg = createHikariConfig();
         dataSource = new HikariDataSource(cfg);
 
-
         createSchema();
-        log.info("H2 database initialised at {}/codelens_db", dataDir);
+        log.info("H2 database initialised at {}/codelens_db (compression enabled)", dataDir);
     }
 
     public void close() {
@@ -66,6 +71,7 @@ public class DatabaseManager {
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // DDL – idempotent CREATE IF NOT EXISTS for every table and index
@@ -227,23 +233,86 @@ public class DatabaseManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Bulk delete — used to clear data before a re-scan
+    // Bulk load and maintenance optimizations
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** Instant truncate of all scan data without generating MVCC dead page bloat. */
     public void clearAll() throws SQLException {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM inconsistencies");
-            stmt.execute("DELETE FROM git_meta");
-            stmt.execute("DELETE FROM file_meta");
-            stmt.execute("DELETE FROM relationships");
-            stmt.execute("DELETE FROM methods");
-            stmt.execute("DELETE FROM fields");
-            stmt.execute("DELETE FROM types");
-            stmt.execute("DELETE FROM packages");
+            stmt.execute("TRUNCATE TABLE inconsistencies");
+            stmt.execute("TRUNCATE TABLE git_meta");
+            stmt.execute("TRUNCATE TABLE file_meta");
+            stmt.execute("TRUNCATE TABLE relationships");
+            stmt.execute("TRUNCATE TABLE methods");
+            stmt.execute("TRUNCATE TABLE fields");
+            stmt.execute("TRUNCATE TABLE types");
+            stmt.execute("TRUNCATE TABLE packages");
             conn.commit();
-            log.info("All scan data cleared");
+            log.info("All scan tables truncated cleanly");
         }
+    }
 
+    /** Prepares H2 for high-throughput streaming inserts (drops secondary indexes, disables undo log). */
+    public void prepareForBulkLoad() throws SQLException {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("DROP INDEX IF EXISTS idx_types_pkg");
+            stmt.execute("DROP INDEX IF EXISTS idx_types_src");
+            stmt.execute("DROP INDEX IF EXISTS idx_types_kind");
+            stmt.execute("DROP INDEX IF EXISTS idx_types_pkg_kind");
+            stmt.execute("DROP INDEX IF EXISTS idx_fields_type");
+            stmt.execute("DROP INDEX IF EXISTS idx_methods_type");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_from");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_to");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_kind");
+            stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
+            conn.commit();
+            log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped)");
+        }
+    }
+
+    /** Rebuilds secondary indexes and runs query analyzer after bulk ingestion finishes. */
+    public void finishBulkLoad() throws SQLException {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
+            stmt.execute("ANALYZE");
+            conn.commit();
+            log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
+        }
+    }
+
+
+    /** Forces H2 MVStore compaction to rewrite file without dead page fragments. */
+    public void compactDatabase() {
+        log.info("Compacting H2 database storage...");
+        try {
+            if (dataSource != null && !dataSource.isClosed()) {
+                try (Connection conn = dataSource.getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute("SHUTDOWN COMPACT");
+                } catch (Exception e) {
+                    log.debug("SHUTDOWN COMPACT command returned: {}", e.getMessage());
+                }
+                dataSource.close();
+            }
+            // Re-open connection pool
+            HikariConfig cfg = createHikariConfig();
+            dataSource = new HikariDataSource(cfg);
+            log.info("H2 database compaction complete; connection pool reconnected");
+        } catch (Exception e) {
+            log.error("Failed to compact database: {}", e.getMessage(), e);
+        }
     }
 }
+

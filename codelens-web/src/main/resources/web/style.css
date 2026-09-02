@@ -4738,6 +4738,35 @@ body.theme-light .level-pill.active {
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
+.btn-cancel-scan {
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  color: var(--rose-400, #f43f5e);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.btn-cancel-scan:hover {
+  background: rgba(244, 63, 94, 0.25);
+  border-color: rgba(244, 63, 94, 0.6);
+  color: #ffffff;
+}
+.btn-danger-ghost {
+  color: var(--rose-400, #f43f5e) !important;
+  border: 1px solid rgba(244, 63, 94, 0.25) !important;
+  transition: all 0.15s ease;
+}
+.btn-danger-ghost:hover {
+  background: rgba(244, 63, 94, 0.15) !important;
+  border-color: rgba(244, 63, 94, 0.5) !important;
+  color: #ffffff !important;
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    12. Animations & keyframes

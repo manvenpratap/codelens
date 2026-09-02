@@ -150,7 +150,10 @@ const api = {
   scanChanges:        (sourcePath) => api.get(`/scan/changes${sourcePath ? '?sourcePath=' + encodeURIComponent(sourcePath) : ''}`),
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
   startIncrementalScan: (sourcePath, excludePatterns) => api.post('/scan/incremental', { sourcePath, excludePatterns }),
+  cancelScan:         ()          => api.post('/scan/cancel', {}),
+  shutdownServer:     ()          => api.post('/shutdown', {}),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
+
 
   saveNote:           (body)      => api.post('/notes', body),
   deleteNote:         (id)        => api.delete(`/notes/${id}`),
@@ -366,13 +369,17 @@ function pollScanStatus() {
         clearInterval(App.scanPollHandle);
         App.scanPollHandle = null;
         setScanUI('idle');
-        showError('Scan error: ' + (s.errorDetail || s.message));
+        qs('#scan-status-bar')?.classList.remove('visible');
+        qs('#scan-progress-bar').style.width = '0%';
+        showError('Scan stopped: ' + (s.errorDetail || s.message));
+        updateScanSummaryUI(s);
       }
     } catch (e) {
       console.warn('Poll error:', e);
     }
   }, 350);
 }
+
 
 /** Update the progress bar and status text during an active scan. */
 function updateScanProgress(s) {
@@ -4078,11 +4085,32 @@ async function init() {
     }
   });
 
+  // Wire live scan cancellation button on floating status bar
+  qs('#btn-cancel-scan')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const btn = qs('#btn-cancel-scan');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Cancelling…';
+    }
+    try {
+      await api.cancelScan();
+      showBanner('Scan cancellation requested…');
+    } catch (err) {
+      showError('Failed to cancel scan: ' + err.message);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Cancel';
+      }
+    }
+  });
+
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
     if (App.stats && App.stats.types > 0) {
       updateHeaderProjectBar();
     }
   });
+
 
 
 
@@ -6252,7 +6280,41 @@ function initSettings() {
   const resetBtn = qs('#settings-reset-btn');
   if (resetBtn) resetBtn.addEventListener('click', resetSettings);
 
+  // Wire Shutdown Server
+  const shutdownBtn = qs('#btn-shutdown-server');
+  if (shutdownBtn) {
+    shutdownBtn.addEventListener('click', async () => {
+      const confirmed = confirm('Are you sure you want to stop the CodeLens server process?\n\nThe web UI will disconnect and you will need to restart the server from your terminal.');
+      if (!confirmed) return;
+      try {
+        shutdownBtn.disabled = true;
+        shutdownBtn.textContent = 'Stopping server…';
+        await api.shutdownServer();
+        showBanner('CodeLens server is shutting down gracefully…');
+        setTimeout(() => {
+          document.body.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; background:#07090e; color:#94a3b8; text-align:center; padding:24px;">
+              <div style="width:48px; height:48px; border-radius:50%; background:rgba(244,63,94,0.15); display:flex; align-items:center; justify-content:center; margin-bottom:16px;">
+                <svg style="width:24px; height:24px; stroke:#f43f5e;" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              </div>
+              <h2 style="color:#ffffff; font-size:20px; font-weight:700; margin:0 0 8px 0;">CodeLens Server Stopped</h2>
+              <p style="max-width:480px; font-size:14px; line-height:1.6; color:#94a3b8; margin:0 0 20px 0;">The server has been shut down cleanly. All databases, indexes, and caches were safely committed.</p>
+              <div style="padding:10px 16px; background:#0f172a; border:1px solid #1e293b; border-radius:6px; font-family:monospace; font-size:12px; color:#38bdf8;">
+                java -jar codelens-app-1.0.0.jar
+              </div>
+            </div>
+          `;
+        }, 600);
+      } catch (err) {
+        showError('Shutdown failed: ' + err.message);
+        shutdownBtn.disabled = false;
+        shutdownBtn.textContent = 'Shutdown Server';
+      }
+    });
+  }
+
   // Wire theme cards
+
   qsa('.theme-card').forEach(card => {
     card.addEventListener('click', () => {
       const s = loadSettings();

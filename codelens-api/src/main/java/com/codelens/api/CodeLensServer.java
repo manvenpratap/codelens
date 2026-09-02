@@ -84,6 +84,7 @@ public class CodeLensServer {
         new AtomicReference<>(new ScanProgress(ScanProgress.Status.IDLE));
     private final AtomicReference<GitAnalysisProgress> gitProgress =
         new AtomicReference<>(new GitAnalysisProgress(GitAnalysisProgress.Status.IDLE));
+    private volatile boolean cancelRequested = false;
     private final ExecutorService scanExecutor =
         Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "codelens-scanner");
@@ -133,15 +134,17 @@ public class CodeLensServer {
 
         // ── Scan ──────────────────────────────────────────────────────────────
         app.post("/api/scan",              this::startScan);
+        app.post("/api/scan/cancel",       this::cancelScan);
         app.get("/api/scan/status",        this::getScanStatus);
         app.get("/api/scan/changes",       this::getScanChanges);
         app.post("/api/scan/incremental",  this::startIncrementalScan);
         app.get("/api/scan/browse",        this::browseFolder);
         app.post("/api/open-folder",       this::openFolder);
-
+        app.post("/api/shutdown",          this::shutdownServer);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
+
 
         // ── Packages ──────────────────────────────────────────────────────────
         app.get("/api/packages",              this::listPackages);
@@ -211,6 +214,12 @@ public class CodeLensServer {
         try {
             ScanProgress lastScan = dao.getLatestScanMeta();
             if (lastScan != null) {
+                if (lastScan.getStatus() == ScanProgress.Status.SCANNING) {
+                    lastScan.setStatus(ScanProgress.Status.ERROR);
+                    lastScan.setMessage("Previous scan interrupted (server stopped or restarted)");
+                    lastScan.setErrorDetail("Process was terminated before scan completed");
+                    try { dao.saveScanMeta(lastScan); } catch (Exception ignored) {}
+                }
                 scanState.set(lastScan);
                 log.info("Restored last scan progress state for {}", lastScan.getSourcePath());
             }
@@ -234,9 +243,40 @@ public class CodeLensServer {
     }
 
     public void stop() {
-        if (app != null) app.stop();
-        scanExecutor.shutdownNow();
+        cancelRequested = true;
+        if (app != null) {
+            try { app.stop(); } catch (Exception ignored) {}
+        }
+        scanExecutor.shutdown();
+        try {
+            if (!scanExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                scanExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scanExecutor.shutdownNow();
+        }
     }
+
+    private void cancelScan(Context ctx) {
+        cancelRequested = true;
+        ScanProgress current = scanState.get();
+        if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
+            current.setMessage("Cancelling scan...");
+        }
+        ctx.json(Map.of("status", "cancelling"));
+    }
+
+    private void shutdownServer(Context ctx) {
+        log.info("Shutdown requested via API");
+        ctx.json(Map.of("status", "shutting_down", "message", "CodeLens server is shutting down gracefully..."));
+        new Thread(() -> {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ignored) {}
+            System.exit(0);
+        }, "codelens-shutdown-trigger").start();
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Handler: POST /api/scan
@@ -374,11 +414,13 @@ public class CodeLensServer {
     // Background scan task
     // ─────────────────────────────────────────────────────────────────────────
     private void runScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
+        cancelRequested = false;
         try {
             // Phase 1: prepare database and lucene index
             progress.setCurrentPhase("Preparing Storage");
             progress.setMessage("Clearing existing database & index data…");
             db.clearAll();
+            db.prepareForBulkLoad();
             lucene.prepareIndexRebuild();
 
             // Phase 2: bounded streaming scan
@@ -390,11 +432,11 @@ public class CodeLensServer {
                 sourcePath,
                 excludePatterns,
                 (pkgs, types, fields, methods, rels) -> {
-                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackages(pkgs);
-                    if (types != null && !types.isEmpty()) dao.batchInsertTypes(types);
-                    if (fields != null && !fields.isEmpty()) dao.batchInsertFields(fields);
-                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethods(methods);
-                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationships(rels);
+                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackagesFast(pkgs);
+                    if (types != null && !types.isEmpty()) dao.batchInsertTypesFast(types);
+                    if (fields != null && !fields.isEmpty()) dao.batchInsertFieldsFast(fields);
+                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethodsFast(methods);
+                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationshipsFast(rels);
                     lucene.indexBatch(types, methods, fields);
                 },
                 (done, total, file) -> {
@@ -406,15 +448,33 @@ public class CodeLensServer {
                     } catch (Exception ignored) {}
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
-                });
+                    if (done % 5000 == 0) {
+                        try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+                    }
+                },
+                () -> cancelRequested);
+
+            if (result.cancelled || cancelRequested) {
+                log.info("Scan cancelled for {}", sourcePath);
+                try { db.finishBulkLoad(); } catch (Exception ignored) {}
+                progress.setCurrentPhase("Cancelled");
+                progress.setCurrentDetail("Scan cancelled by user");
+                progress.setMessage(String.format("Scan cancelled (%d/%d files processed)", progress.getProcessedFiles(), progress.getTotalFiles()));
+                progress.setStatus(ScanProgress.Status.ERROR);
+                progress.setErrorDetail("Scan cancelled by user");
+                progress.setEndTime(System.currentTimeMillis());
+                dao.saveScanMeta(progress);
+                return;
+            }
 
             // Save file metadata for delta change detection
             dao.saveFileMetaBatch(result.fileMetas);
 
-            // Phase 3: finish Lucene commit
+            // Phase 3: finish Lucene commit & rebuild secondary database indexes
             progress.setCurrentPhase("Finalizing Index");
-            progress.setMessage("Committing search index to disk…");
+            progress.setMessage("Committing search index & rebuilding database indexes…");
             lucene.finishIndexRebuild();
+            db.finishBulkLoad();
 
             // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
             progress.setCurrentPhase("Graph Analysis");
@@ -439,12 +499,16 @@ public class CodeLensServer {
             // Persist scan metadata to H2 for instant session restore
             dao.saveScanMeta(progress);
 
+            // Background database compaction to purge dead MVStore pages and reclaim disk space
+            db.compactDatabase();
+
             log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files ({} parsed, {} errors)",
                 result.typesFound, result.methodsFound, result.fieldsFound,
                 result.relationshipsFound, result.totalFiles, result.parsedFiles, result.errorFiles);
 
         } catch (Exception e) {
             log.error("Scan failed", e);
+            try { db.finishBulkLoad(); } catch (Exception ignored) {}
             progress.setStatus(ScanProgress.Status.ERROR);
             progress.setMessage("Scan failed");
             progress.setErrorDetail(e.getMessage());
@@ -454,6 +518,7 @@ public class CodeLensServer {
     }
 
     private void runIncrementalScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
+        cancelRequested = false;
         try {
             Path root = Paths.get(sourcePath);
             Map<String, FileMeta> existingMeta = dao.getAllFileMeta();
@@ -508,8 +573,24 @@ public class CodeLensServer {
                     } catch (Exception ignored) {}
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
-                }
+                    if (done % 5000 == 0) {
+                        try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+                    }
+                },
+                () -> cancelRequested
             );
+
+            if (result.cancelled || cancelRequested) {
+                log.info("Incremental scan cancelled for {}", sourcePath);
+                progress.setCurrentPhase("Cancelled");
+                progress.setCurrentDetail("Incremental scan cancelled by user");
+                progress.setMessage("Incremental scan cancelled by user");
+                progress.setStatus(ScanProgress.Status.ERROR);
+                progress.setErrorDetail("Incremental scan cancelled by user");
+                progress.setEndTime(System.currentTimeMillis());
+                dao.saveScanMeta(progress);
+                return;
+            }
 
             // Phase 3: Save file metadata & recompute package totals
             dao.saveFileMetaBatch(result.fileMetas);
@@ -532,7 +613,6 @@ public class CodeLensServer {
             int totalMethods = stats.containsKey("methods") ? ((Number) stats.get("methods")).intValue() : 0;
             int totalFields = stats.containsKey("fields") ? ((Number) stats.get("fields")).intValue() : 0;
             int totalRels = stats.containsKey("relationships") ? ((Number) stats.get("relationships")).intValue() : 0;
-
 
             Map<String, FileMeta> allMeta = dao.getAllFileMeta();
             progress.setTotalFiles(allMeta.size());
@@ -562,6 +642,7 @@ public class CodeLensServer {
             try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
         }
     }
+
 
 
 

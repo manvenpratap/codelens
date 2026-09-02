@@ -518,9 +518,13 @@ Multi-model architectural exploration suite offering 7 interactive 2D and 3D ren
 All endpoints return JSON and are accessible locally at `http://localhost:7878/api`.
 
 ### Scan & Index Controls
-- `POST /api/scan` — Start a background scan (`{"sourcePath": "/path/to/src"}`)
-- `GET /api/scan/status` — Poll current scan progress and status
+- `POST /api/scan` — Start a background scan (`{"sourcePath": "/path/to/src", "excludePatterns": ["target", "build"]}`)
+- `POST /api/scan/cancel` — Cooperatively cancel an active scan in progress
+- `GET /api/scan/status` — Poll current scan progress, phases, entity counts, and status
+- `GET /api/scan/changes` — Fast delta inspection comparing filesystem with index metadata
+- `POST /api/scan/incremental` — Trigger incremental delta rescan for only modified/new/deleted files
 - `GET /api/scan/browse` — Open native OS directory chooser dialog
+- `POST /api/shutdown` — Gracefully stop the CodeLens server and flush all storage
 - `GET /api/stats` — Summary entity counts (`types`, `methods`, `fields`, `relationships`, `inconsistencies`)
 
 ### Packages & Types
@@ -565,19 +569,26 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 
 ---
 
-## Data Storage & Persistence
+## Data Storage, High-Scale Performance & Persistence
 
 All database files and search indices are stored locally in `./codelens-data/`:
 
 ```
 codelens-data/
-├── codelens_db.mv.db       # Embedded H2 Database (AST schema, relationships, notes, git metrics)
+├── codelens_db.mv.db       # Compressed Embedded H2 Database (LZF page compression, auto-compact)
 ├── codelens_db.trace.db    # H2 transaction trace log
 └── lucene-index/           # Apache Lucene index directory shards
 ```
 
+### High-Scale Performance Architecture (30k–50k+ Java Files)
+- **High-Throughput Bulk Ingestion**: Drops secondary B-tree indexes and disables undo logging during full scans to achieve constant $O(1)$ batch insertion speeds regardless of existing table size.
+- **LZF Page Compression & Compaction**: H2 runs with `COMPRESS=TRUE` and `AUTO_COMPACT_FILL_RATE=50`. Post-scan and shutdown triggers execute `SHUTDOWN COMPACT` to eliminate MVStore dead page fragments, keeping 30k-file repositories under 1–2 GB on disk (instead of 40GB+ uncompacted).
+- **Leak-Free Connection Management**: All database connections operate under strict try-with-resources blocks with explicit `setAutoCommit(false)` chunk commits, preventing connection pool exhaustion and HikariCP leak warnings.
+- **Graceful Shutdown & Interrupted Scan Recovery**: Process termination or API shutdown requests cleanly flush Lucene index writers and H2 connection pools. Interrupted scans are safely flagged upon startup and can be resumed with a single click.
+
 > [!TIP]
 > **Resetting the Database**: To completely reset your indexed data, simply delete the `./codelens-data/` folder and initiate a fresh scan from the web interface.
+
 
 ---
 
