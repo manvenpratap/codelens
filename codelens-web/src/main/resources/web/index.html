@@ -1945,26 +1945,92 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     SCAN STATUS BAR - fixed overlay shown at bottom-centre during active scans
-     Visibility toggled by setScanUI() in app.js
+     CENTRAL SCAN PROGRESS OVERLAY & DETAILED STATUS CARD
+     Visibility toggled by setScanUI() / updateScanProgress() in app.js
      ═══════════════════════════════════════════════════════════════════════════ -->
 <div
   id="scan-status-bar"
-  role="status"
+  class="scan-overlay-backdrop"
+  role="dialog"
+  aria-modal="true"
   aria-live="polite"
-  aria-label="Scan progress"
+  aria-label="Codebase scan progress"
 >
-  <div class="scan-spinner" aria-hidden="true"></div>
-  <div class="scan-status-info">
-    <div class="scan-status-top">
-      <span class="scan-phase-badge">Phase 1/5</span>
-      <span class="scan-status-text">Scanning…</span>
+  <div class="scan-modal-card">
+    <!-- Header: Animated Spinner Ring + Title + Phase Badge -->
+    <div class="scan-card-header">
+      <div class="scan-card-title-group">
+        <div class="scan-spinner-ring" aria-hidden="true">
+          <div class="scan-spinner-core"></div>
+        </div>
+        <div class="scan-card-title-text">
+          <div class="scan-card-heading">Analyzing Codebase</div>
+          <div class="scan-card-sub" id="scan-card-source-path">/workspace/src</div>
+        </div>
+      </div>
+      <span class="scan-phase-badge" id="scan-phase-badge">AST Parsing</span>
     </div>
-    <div class="scan-detail-text">Initializing engine…</div>
+
+    <!-- Progress Section: Status Message + Percentage + Animated Bar Track -->
+    <div class="scan-progress-section">
+      <div class="scan-progress-numbers">
+        <span class="scan-status-text" id="scan-status-text">Parsing Java source files…</span>
+        <span class="scan-pct" id="scan-pct">0%</span>
+      </div>
+      <div class="scan-card-bar-track">
+        <div class="scan-card-bar-fill" id="scan-card-bar-fill" style="width: 0%;"></div>
+      </div>
+      <div class="scan-card-counts" id="scan-card-counts">
+        <span id="scan-files-ratio">0 of 0 files processed</span>
+        <span id="scan-remaining-files">0 remaining</span>
+      </div>
+    </div>
+
+    <!-- Active File Stream Box -->
+    <div class="scan-active-file-box">
+      <div class="scan-active-file-label">
+        <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Current File</span>
+      </div>
+      <div class="scan-detail-text" id="scan-detail-text">Initializing engine…</div>
+    </div>
+
+    <!-- Live Discovered Metrics Grid (4 tiles) -->
+    <div class="scan-live-metrics-grid">
+      <div class="scan-metric-tile">
+        <span class="scan-metric-val" id="scan-live-types">0</span>
+        <span class="scan-metric-lbl">Types</span>
+      </div>
+      <div class="scan-metric-tile">
+        <span class="scan-metric-val" id="scan-live-methods">0</span>
+        <span class="scan-metric-lbl">Methods</span>
+      </div>
+      <div class="scan-metric-tile">
+        <span class="scan-metric-val" id="scan-live-fields">0</span>
+        <span class="scan-metric-lbl">Fields</span>
+      </div>
+      <div class="scan-metric-tile">
+        <span class="scan-metric-val" id="scan-live-rels">0</span>
+        <span class="scan-metric-lbl">Relationships</span>
+      </div>
+    </div>
+
+    <!-- Footer: Elapsed Timer & Cancel Button -->
+    <div class="scan-card-footer">
+      <div class="scan-timer-pill" id="scan-timer-pill">
+        <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Elapsed: <strong id="scan-elapsed-time">0.0s</strong></span>
+      </div>
+      <div class="scan-card-actions">
+        <button id="btn-cancel-scan" class="btn btn-sm btn-cancel-scan" title="Cancel active scan" aria-label="Cancel active scan">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Cancel Scan
+        </button>
+      </div>
+    </div>
   </div>
-  <span class="scan-pct" aria-label="Percent complete">0%</span>
-  <button id="btn-cancel-scan" class="btn btn-xs btn-cancel-scan" title="Cancel scan" aria-label="Cancel active scan">Cancel</button>
 </div>
+
 
 
 

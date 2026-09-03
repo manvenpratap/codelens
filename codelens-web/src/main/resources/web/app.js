@@ -384,37 +384,91 @@ function pollScanStatus() {
 /** Update the progress bar and status text during an active scan. */
 function updateScanProgress(s) {
   const pct = s.percentage || 0;
-  qs('#scan-progress-bar').style.width = pct + '%';
+  
+  // Header thin progress bar
+  const headerBar = qs('#scan-progress-bar');
+  if (headerBar) headerBar.style.width = pct + '%';
 
-  const phaseBadge = qs('.scan-phase-badge');
+  // Central modal fill bar
+  const cardFill = qs('#scan-card-bar-fill');
+  if (cardFill) cardFill.style.width = pct + '%';
+
+  // Phase badge
+  const phaseBadge = qs('#scan-phase-badge') || qs('.scan-phase-badge');
   if (phaseBadge) {
     phaseBadge.textContent = s.currentPhase || (pct < 100 ? 'Scanning' : 'Finishing');
   }
 
-  const statusText = qs('.scan-status-text');
+  // Action status message
+  const statusText = qs('#scan-status-text') || qs('.scan-status-text');
   if (statusText) {
     statusText.textContent = s.message || 'Scanning codebase…';
   }
 
-  const detailText = qs('.scan-detail-text');
+  // Current active file name / path
+  const detailText = qs('#scan-detail-text') || qs('.scan-detail-text');
   if (detailText) {
-    detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing...');
+    detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing…');
   }
 
-  qs('.scan-pct').textContent = pct + '%';
-  qs('#scan-status-bar').classList.add('visible');
+  // Source path
+  const sourcePathEl = qs('#scan-card-source-path');
+  if (sourcePathEl) {
+    sourcePathEl.textContent = s.sourcePath || qs('#scan-path-input')?.value?.trim() || '';
+  }
+
+  // Files processed vs remaining ratio
+  const filesRatio = qs('#scan-files-ratio');
+  if (filesRatio) {
+    filesRatio.textContent = s.totalFiles ? `${(s.processedFiles || 0).toLocaleString()} of ${s.totalFiles.toLocaleString()} files processed` : 'Scanning file tree…';
+  }
+  const remainingFiles = qs('#scan-remaining-files');
+  if (remainingFiles) {
+    const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
+    remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining` : '';
+  }
+
+  // Live discovered entity counters
+  const liveTypes = qs('#scan-live-types');
+  if (liveTypes) liveTypes.textContent = (s.typesFound || 0).toLocaleString();
+
+  const liveMethods = qs('#scan-live-methods');
+  if (liveMethods) liveMethods.textContent = (s.methodsFound || 0).toLocaleString();
+
+  const liveFields = qs('#scan-live-fields');
+  if (liveFields) liveFields.textContent = (s.fieldsFound || 0).toLocaleString();
+
+  const liveRels = qs('#scan-live-rels');
+  if (liveRels) liveRels.textContent = (s.relationshipsFound || 0).toLocaleString();
+
+  // Elapsed timer
+  const elapsedEl = qs('#scan-elapsed-time');
+  if (elapsedEl) {
+    const durMs = s.durationMs || (s.startTime > 0 ? Date.now() - s.startTime : 0);
+    elapsedEl.textContent = (durMs / 1000).toFixed(1) + 's';
+  }
+
+  // Percent text
+  const pctEl = qs('#scan-pct') || qs('.scan-pct');
+  if (pctEl) pctEl.textContent = pct + '%';
+
+  // Show central modal card overlay
+  qs('#scan-status-bar')?.classList.add('visible');
   
-  // Footer update
+  // Footer update with title tooltip to prevent any jitter
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
   if (fText) {
-    fText.textContent = `[${s.currentPhase || 'SCAN'}] ${s.message || ''} (${pct}%)`;
+    const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''} (${pct}%)`;
+    fText.textContent = txt;
+    fText.title = txt;
   }
   if (fInd) { fInd.className = 'status-indicator busy'; }
 
   // Update persistent coverage popover & header badge
   updateScanSummaryUI(s);
 }
+
 
 /** Called when scan finishes successfully. */
 async function onScanComplete(s) {
@@ -485,6 +539,7 @@ function setScanUI(state) {
     }
     if (fText && state === 'idle') {
       fText.textContent = 'Analyzer Idle';
+      fText.title = 'Analyzer Idle';
       if (fInd) { fInd.className = 'status-indicator live'; }
     }
   }
