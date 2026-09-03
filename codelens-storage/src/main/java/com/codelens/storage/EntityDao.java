@@ -39,7 +39,7 @@ public class EntityDao {
 
     public void batchInsertPackagesFast(List<CodePackage> packages) throws SQLException {
         if (packages.isEmpty()) return;
-        String sql = "INSERT INTO packages (id, fqn, name, parent_fqn, file_count, type_count) VALUES (?,?,?,?,?,?)";
+        String sql = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             c.setAutoCommit(false);
@@ -111,10 +111,10 @@ public class EntityDao {
     public void batchInsertTypesFast(List<CodeType> types) throws SQLException {
         if (types.isEmpty()) return;
         String sql =
-            "INSERT INTO types " +
+            "MERGE INTO types " +
             "(id,fqn,simple_name,package_fqn,kind,modifiers,super_class,interfaces," +
             " source_file,start_line,end_line,line_count,field_count,method_count) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             c.setAutoCommit(false);
@@ -216,9 +216,9 @@ public class EntityDao {
     public void batchInsertFieldsFast(List<CodeField> fields) throws SQLException {
         if (fields.isEmpty()) return;
         String sql =
-            "INSERT INTO fields " +
+            "MERGE INTO fields " +
             "(id,fqn,simple_name,declaring_type_fqn,field_type,modifiers,initializer,start_line) " +
-            "VALUES (?,?,?,?,?,?,?,?)";
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             c.setAutoCommit(false);
@@ -318,10 +318,10 @@ public class EntityDao {
     public void batchInsertMethodsFast(List<CodeMethod> methods) throws SQLException {
         if (methods.isEmpty()) return;
         String sql =
-            "INSERT INTO methods " +
+            "MERGE INTO methods " +
             "(id,fqn,simple_name,declaring_type_fqn,return_type,parameters,modifiers," +
             " start_line,end_line,cyclomatic_complexity,body_hash) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)";
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             c.setAutoCommit(false);
@@ -438,8 +438,8 @@ public class EntityDao {
     public void batchInsertRelationshipsFast(List<CodeRelationship> rels) throws SQLException {
         if (rels.isEmpty()) return;
         String sql =
-            "INSERT INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
-            "VALUES (?,?,?,?,?)";
+            "MERGE INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
+            "KEY(id) VALUES (?,?,?,?,?)";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             c.setAutoCommit(false);

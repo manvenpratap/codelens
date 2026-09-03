@@ -367,7 +367,6 @@ public class JavaSourceScanner {
                 JavaParser parser = THREAD_PARSER.get();
                 AstVisitor visitor = new AstVisitor();
 
-                List<CodePackage> batchPkgs = new ArrayList<>();
                 List<CodeType> batchTypes = new ArrayList<>();
                 List<CodeField> batchFields = new ArrayList<>();
                 List<CodeMethod> batchMethods = new ArrayList<>();
@@ -406,7 +405,6 @@ public class JavaSourceScanner {
                                 }
                             }
 
-                            batchPkgs.addAll(ctx.packages);
                             batchTypes.addAll(ctx.types);
                             batchFields.addAll(ctx.fields);
                             batchMethods.addAll(ctx.methods);
@@ -438,9 +436,8 @@ public class JavaSourceScanner {
                 try {
                     synchronized (flushLock) {
                         if (batchConsumer != null) {
-                            batchConsumer.onBatch(batchPkgs, batchTypes, batchFields, batchMethods, batchRels);
+                            batchConsumer.onBatch(Collections.emptyList(), batchTypes, batchFields, batchMethods, batchRels);
                         } else {
-                            result.packages.addAll(batchPkgs);
                             result.types.addAll(batchTypes);
                             result.fields.addAll(batchFields);
                             result.methods.addAll(batchMethods);
