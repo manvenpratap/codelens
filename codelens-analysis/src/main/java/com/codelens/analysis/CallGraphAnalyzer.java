@@ -91,6 +91,19 @@ public class CallGraphAnalyzer {
     }
 
     /**
+     * Rebuilds the call graph from pre-fetched (from, to) String pairs.
+     */
+    public synchronized void rebuildWithPairs(List<String> allMethodFqns, List<String[]> callPairs) throws Exception {
+        rebuild(allMethodFqns, consumer -> {
+            if (callPairs != null) {
+                for (String[] pair : callPairs) {
+                    consumer.accept(pair[0], pair[1]);
+                }
+            }
+        });
+    }
+
+    /**
      * Rebuilds the call graph from scratch (in-memory list overload for tests / backwards compatibility).
      *
      * @param allMethodFqns    every method FQN discovered during the scan
@@ -632,10 +645,12 @@ public class CallGraphAnalyzer {
         if (candidates.isEmpty()) return null;
         if (candidates.size() == 1) return candidates.get(0);
 
-        return candidates.stream()
-            .filter(c -> c.toLowerCase().contains(scopeHint))
-            .findFirst()
-            .orElse(candidates.get(0));
+        for (String c : candidates) {
+            if (c.toLowerCase().contains(scopeHint)) {
+                return c;
+            }
+        }
+        return candidates.get(0);
     }
 
     private String simpleMethodName(String fqn) {

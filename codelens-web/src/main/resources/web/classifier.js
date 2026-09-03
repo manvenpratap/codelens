@@ -108,14 +108,14 @@
       id: 'rule-bancs-pc',
       target: 'CLASS',
       scope: 'CLASS',
-      matchType: 'GLOB',
-      pattern: 'PC_*',
+      matchType: 'STRUCTURAL',
+      pattern: '* (Get,Create,Modify)',
       label: 'Persistent Class',
       badge: 'PERSISTENT',
       category: 'PERSISTENCE',
       color: '#6366f1',
       icon: 'database',
-      description: 'Persistent classes with Get() self-returning entity accessors (PC_*, {MODULE}PC*)',
+      description: 'Persistent classes with Get(), Create(), and Modify() methods (non-MO entities)',
       enabled: true
     },
     {
@@ -129,7 +129,7 @@
       category: 'MESSAGE_DTO',
       color: '#14b8a6',
       icon: 'fileText',
-      description: 'Message objects with attributes and POJO methods without Get() self-retrieval (MO_*, {MODULE}MO*)',
+      description: 'Message objects for input/output payloads (MO_INP_*, MO_OUT_*, MO_*)',
       enabled: true
     }
   ];
@@ -451,18 +451,80 @@
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            let changed = false;
+            const pcIdx = parsed.findIndex(r => r.id === 'rule-bancs-pc');
+            if (pcIdx >= 0 && (parsed[pcIdx].pattern === 'PC_*' || parsed[pcIdx].matchType === 'GLOB')) {
+              parsed[pcIdx].pattern = '* (Get,Create,Modify)';
+              parsed[pcIdx].matchType = 'STRUCTURAL';
+              parsed[pcIdx].description = 'Persistent classes with Get(), Create(), and Modify() methods (non-MO entities)';
+              changed = true;
+            }
+            const moIdx = parsed.findIndex(r => r.id === 'rule-bancs-mo');
+            if (moIdx >= 0 && parsed[moIdx].description && parsed[moIdx].description.includes('without Get()')) {
+              parsed[moIdx].description = 'Message objects for input/output payloads (MO_INP_*, MO_OUT_*, MO_*)';
+              changed = true;
+            }
             const existingIds = new Set(parsed.map(r => r.id));
             const missingDefaults = DEFAULT_ARCHETYPE_RULES.filter(r => !existingIds.has(r.id));
             if (missingDefaults.length > 0) {
-              const merged = [...parsed, ...missingDefaults];
-              this.saveRules(merged);
-              return merged;
+              parsed.push(...missingDefaults);
+              changed = true;
+            }
+            if (changed) {
+              this.saveRules(parsed);
             }
             return parsed;
           }
         }
       } catch (_) {}
       return JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
+    }
+
+    /**
+     * Stores method index for types across the project: Map<typeFqn, Set<methodSimpleName>>
+     * @param {Array<{name: string, fqn?: string, type: string}>} methodsList
+     */
+    setMethodsData(methodsList) {
+      if (!this._typeMethodsMap) {
+        this._typeMethodsMap = new Map();
+      }
+      if (Array.isArray(methodsList)) {
+        for (const m of methodsList) {
+          const typeFqn = m.type || m.declaringTypeFqn || m.declaringType || '';
+          if (typeFqn) {
+            let set = this._typeMethodsMap.get(typeFqn);
+            if (!set) {
+              set = new Set();
+              this._typeMethodsMap.set(typeFqn, set);
+            }
+            const mName = (m.name || m.simpleName || '').replace(/\(.*\)$/, '').trim();
+            if (mName) set.add(mName);
+          }
+        }
+      }
+    }
+
+    /**
+     * Registers methods for a single type FQN
+     * @param {string} typeFqn
+     * @param {Array<string|{name?: string, simpleName?: string}>} methods
+     */
+    registerTypeMethods(typeFqn, methods) {
+      if (!this._typeMethodsMap) {
+        this._typeMethodsMap = new Map();
+      }
+      if (!typeFqn) return;
+      let set = this._typeMethodsMap.get(typeFqn);
+      if (!set) {
+        set = new Set();
+        this._typeMethodsMap.set(typeFqn, set);
+      }
+      if (Array.isArray(methods)) {
+        for (const m of methods) {
+          const mName = (typeof m === 'string' ? m : (m.simpleName || m.name || '')).replace(/\(.*\)$/, '').trim();
+          if (mName) set.add(mName);
+        }
+      }
     }
 
     getRules() {
@@ -591,6 +653,20 @@
       return res !== null && res.ruleId === archetypeFilter;
     }
 
+    _isMessageObjectName(name) {
+      if (!name) return false;
+      const upper = String(name).trim().toUpperCase();
+      // Explicitly check for MO_INP_, MO_OUT_, and MO_ prefixes
+      if (upper.startsWith('MO_INP_') || upper.startsWith('MO_OUT_') || upper.startsWith('MO_')) {
+        return true;
+      }
+      // Also check module-prefixed message objects e.g. {MOD}MO_ (e.g. AMMO_Cust) or ending with MO
+      if (/^[A-Z]{2,4}MO_/.test(upper) || /^[A-Z]{2,4}MO$/.test(upper) || upper.endsWith('_MO') || upper.endsWith('MO')) {
+        return true;
+      }
+      return false;
+    }
+
     _classifyEntity(targetType, nameOrNode, fqn, pkg) {
       let name = '';
       let fullFqn = fqn || '';
@@ -613,7 +689,100 @@
         return scope === targetType || scope === 'ANY' || (targetType === 'CLASS' && scope === 'TYPE');
       });
 
+      // Special handling for CLASS archetypes: Message Object vs Persistent Class
+      if (targetType === 'CLASS') {
+        const isMsgObject = this._isMessageObjectName(name);
+
+        // 1. Message Object Check (MO_INP_*, MO_OUT_*, MO_*)
+        if (isMsgObject) {
+          const moRule = activeRules.find(r => r.id === 'rule-bancs-mo' || (r.badge === 'MSG-OBJECT' && r.enabled));
+          if (moRule) {
+            return {
+              ruleId: moRule.id,
+              label: moRule.label,
+              badge: moRule.badge || 'MSG-OBJECT',
+              category: moRule.category || 'MESSAGE_DTO',
+              color: moRule.color || '#14b8a6',
+              icon: moRule.icon || 'fileText',
+              description: moRule.description || 'Message Object for input/output payloads (MO_INP_*, MO_OUT_*, MO_*)'
+            };
+          }
+        }
+
+        // 2. Persistent Class Check: name can be anything other than MO_INP_, MO_OUT_, MO_
+        // Persistent classes will always have the Get(), Create() and Modify() methods
+        if (!isMsgObject) {
+          let methodNames = new Set();
+
+          // Extract methods from object if provided
+          if (typeof nameOrNode === 'object' && nameOrNode !== null) {
+            const rawMethods = Array.isArray(nameOrNode.methods)
+              ? nameOrNode.methods
+              : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
+            for (const m of rawMethods) {
+              const mName = (m.simpleName || m.name || '').replace(/\(.*\)$/, '').trim();
+              if (mName) methodNames.add(mName);
+            }
+          }
+
+          // Fallback to _typeMethodsMap if methods not embedded in node
+          if (methodNames.size === 0 && this._typeMethodsMap) {
+            const fromMap = this._typeMethodsMap.get(fullFqn) ||
+                            this._typeMethodsMap.get(name) ||
+                            (packageFqn ? this._typeMethodsMap.get(packageFqn + '.' + name) : null);
+            if (fromMap) {
+              fromMap.forEach(m => methodNames.add(m));
+            }
+          }
+
+          let hasGet = false;
+          let hasCreate = false;
+          let hasModify = false;
+          for (const mName of methodNames) {
+            const clean = mName.toLowerCase();
+            if (clean === 'get') hasGet = true;
+            if (clean === 'create') hasCreate = true;
+            if (clean === 'modify') hasModify = true;
+          }
+
+          const hasAllPersistentMethods = hasGet && hasCreate && hasModify;
+
+          if (hasAllPersistentMethods) {
+            const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
+            if (pcRule) {
+              return {
+                ruleId: pcRule.id,
+                label: pcRule.label,
+                badge: pcRule.badge || 'PERSISTENT',
+                category: pcRule.category || 'PERSISTENCE',
+                color: pcRule.color || '#6366f1',
+                icon: pcRule.icon || 'database',
+                description: pcRule.description || 'Persistent Class with Get(), Create(), and Modify() methods'
+              };
+            }
+          } else if (methodNames.size === 0 && (name.startsWith('PC_') || name.startsWith('pc_'))) {
+            // Heuristic fallback if method data is not loaded yet and class explicitly starts with PC_
+            const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
+            if (pcRule) {
+              return {
+                ruleId: pcRule.id,
+                label: pcRule.label,
+                badge: pcRule.badge || 'PERSISTENT',
+                category: pcRule.category || 'PERSISTENCE',
+                color: pcRule.color || '#6366f1',
+                icon: pcRule.icon || 'database',
+                description: pcRule.description || 'Persistent Class with Get(), Create(), and Modify() methods'
+              };
+            }
+          }
+        }
+      }
+
+      // Check standard pattern-matching rules for other archetypes
       for (const rule of activeRules) {
+        if (rule.id === 'rule-bancs-pc' || rule.id === 'rule-bancs-mo' || rule.badge === 'PERSISTENT' || rule.badge === 'MSG-OBJECT') {
+          continue; // Handled specially above
+        }
         if (this._matchesRule(name, rule, fullFqn, packageFqn)) {
           return {
             ruleId: rule.id,
@@ -624,48 +793,6 @@
             icon: rule.icon || 'tag',
             description: rule.description || ''
           };
-        }
-      }
-
-      // Structural fallback for class archetypes if not already pattern-matched
-      if (targetType === 'CLASS' && typeof nameOrNode === 'object' && nameOrNode !== null) {
-        const methods = Array.isArray(nameOrNode.methods)
-          ? nameOrNode.methods
-          : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
-
-        const simpleName = nameOrNode.simpleName || nameOrNode.name || name;
-        const hasGetSelf = methods.some(m => {
-          const mName = (m.simpleName || m.name || '').replace(/\(.*\)$/, '').trim();
-          const ret = m.returnType || m.type || '';
-          return (mName === 'Get' || mName === 'get') && (!ret || ret === simpleName || ret.endsWith('.' + simpleName));
-        });
-
-        if (hasGetSelf) {
-          const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
-          if (pcRule) {
-            return {
-              ruleId: pcRule.id,
-              label: pcRule.label,
-              badge: pcRule.badge || 'PERSISTENT',
-              category: pcRule.category || 'PERSISTENCE',
-              color: pcRule.color || '#6366f1',
-              icon: pcRule.icon || 'database',
-              description: pcRule.description || 'Persistent Class with Get() self-returning accessor'
-            };
-          }
-        } else if (name.startsWith('MO_') || name.endsWith('MO')) {
-          const moRule = activeRules.find(r => r.id === 'rule-bancs-mo' || (r.badge === 'MSG-OBJECT' && r.enabled));
-          if (moRule) {
-            return {
-              ruleId: moRule.id,
-              label: moRule.label,
-              badge: moRule.badge || 'MSG-OBJECT',
-              category: moRule.category || 'MESSAGE_DTO',
-              color: moRule.color || '#14b8a6',
-              icon: moRule.icon || 'fileText',
-              description: moRule.description || 'Message Object with attributes and POJO methods without Get()'
-            };
-          }
         }
       }
 

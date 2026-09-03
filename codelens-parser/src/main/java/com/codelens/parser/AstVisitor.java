@@ -63,8 +63,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         Set<String> prevFields   = ctx.currentTypeFieldNames;
 
         String simpleName = n.getNameAsString();
-        String fqn = ctx.packageName.isEmpty() ? simpleName
-                                               : ctx.packageName + "." + simpleName;
+        String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
+            ? prevTypeFqn + "." + simpleName
+            : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn       = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
 
@@ -116,8 +117,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         Set<String> prevFields = ctx.currentTypeFieldNames;
 
         String simpleName = n.getNameAsString();
-        String fqn = ctx.packageName.isEmpty() ? simpleName
-                                               : ctx.packageName + "." + simpleName;
+        String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
+            ? prevTypeFqn + "." + simpleName
+            : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn        = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
 
@@ -151,8 +153,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         Set<String> prevFields = ctx.currentTypeFieldNames;
 
         String simpleName = n.getNameAsString();
-        String fqn = ctx.packageName.isEmpty() ? simpleName
-                                               : ctx.packageName + "." + simpleName;
+        String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
+            ? prevTypeFqn + "." + simpleName
+            : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn        = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
 
@@ -424,11 +427,12 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         }
 
         CodeRelationship rel = new CodeRelationship();
-        rel.setId(UUID.randomUUID().toString());
+        int line = n.getRange().map(r -> r.begin.line).orElse(0);
+        rel.setId(deterministicRelId(ctx.currentMethodFqn, calleeTarget, "CALLS", line));
         rel.setFromEntityFqn(ctx.currentMethodFqn);
         rel.setToEntityFqn(calleeTarget);
         rel.setKind("CALLS");
-        n.getRange().ifPresent(r -> rel.setSourceLine(r.begin.line));
+        rel.setSourceLine(line);
         ctx.relationships.add(rel);
 
         super.visit(n, ctx);
@@ -459,10 +463,11 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         }
 
         if (fieldName != null) {
+            int line = n.getRange().map(r -> r.begin.line).orElse(0);
             ctx.relationships.add(
                 rel(ctx.currentMethodFqn,
                     ctx.currentTypeFqn + "." + fieldName,
-                    "WRITES_FIELD", 0));
+                    "WRITES_FIELD", line));
         }
         super.visit(n, ctx);
     }
@@ -474,10 +479,11 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     public void visit(NameExpr n, VisitContext ctx) {
         if (!ctx.currentMethodFqn.isEmpty()
             && ctx.currentTypeFieldNames.contains(n.getNameAsString())) {
+            int line = n.getRange().map(r -> r.begin.line).orElse(0);
             ctx.relationships.add(
                 rel(ctx.currentMethodFqn,
                     ctx.currentTypeFqn + "." + n.getNameAsString(),
-                    "READS_FIELD", 0));
+                    "READS_FIELD", line));
         }
         super.visit(n, ctx);
     }
@@ -486,10 +492,21 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Generates a deterministic UUID based on relationship source, target, kind, and line.
+     * Guarantees 100% idempotency across parallel workers and rescans.
+     */
+    public static String deterministicRelId(String from, String to, String kind, int line) {
+        String key = (from != null ? from : "") + "|" +
+                     (kind != null ? kind : "") + "|" +
+                     (to != null ? to : "") + "|" + line;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
     /** Build a CodeRelationship quickly. */
     private CodeRelationship rel(String from, String to, String kind, int line) {
         CodeRelationship r = new CodeRelationship();
-        r.setId(UUID.randomUUID().toString());
+        r.setId(deterministicRelId(from, to, kind, line));
         r.setFromEntityFqn(from);
         r.setToEntityFqn(to);
         r.setKind(kind);

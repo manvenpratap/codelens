@@ -145,6 +145,7 @@ class ForceGraph {
   constructor(container, tooltip) {
     this._container = container;
     this._tooltip   = tooltip || null;
+    this._dpr       = window.devicePixelRatio || 1;
 
     // Main Canvas
     this._canvas = document.createElement('canvas');
@@ -257,18 +258,17 @@ class ForceGraph {
   _extractPackageAndClass(fqn, nodeType) {
     if (!fqn) return { pkg: 'default', className: '', memberName: '' };
 
+    const typeUpper = (nodeType || '').toUpperCase();
+    if (typeUpper === 'PACKAGE' || typeUpper === 'MODULE') {
+      return { pkg: fqn, className: fqn, memberName: '' };
+    }
+
     const parenIdx = fqn.indexOf('(');
     const sigPart = parenIdx !== -1 ? fqn.substring(0, parenIdx) : fqn;
     const parts = sigPart.split('.');
 
     if (parts.length <= 1) {
       return { pkg: 'default', className: parts[0] || '', memberName: '' };
-    }
-
-    const typeUpper = (nodeType || '').toUpperCase();
-
-    if (typeUpper === 'PACKAGE' || typeUpper === 'MODULE') {
-      return { pkg: sigPart, className: '', memberName: '' };
     }
 
     if (typeUpper === 'CLASS' || typeUpper === 'TYPE') {
@@ -315,7 +315,7 @@ class ForceGraph {
 
   /** Format a package name automatically into a clean, human-friendly Module/Package name. */
   _formatPackageLabel(pkg) {
-    if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
+    if (!pkg || pkg === 'default' || pkg === '(default)') return '(default)';
     const mode = this._packageMode || 'auto';
     let res = pkg;
 
@@ -340,7 +340,7 @@ class ForceGraph {
       }
     }
 
-    if (!res || res === 'default') return 'Core';
+    if (!res || res === 'default') return pkg || '(default)';
     const subParts = res.split('.').filter(Boolean);
     if (subParts.length === 1) {
       return subParts[0].charAt(0).toUpperCase() + subParts[0].slice(1);
@@ -361,6 +361,8 @@ class ForceGraph {
   /** Checks if a node is a trivial getter, setter, or POJO accessor. */
   _isPojoAccessor(node) {
     if (!node || node.role === 'root') return false;
+    const typeUpper = (node.type || '').toUpperCase();
+    if (typeUpper === 'CLASS' || typeUpper === 'TYPE' || typeUpper === 'MODULE' || typeUpper === 'PACKAGE' || typeUpper === 'INTERFACE') return false;
     if (window.CodeLensClassifier) {
       return window.CodeLensClassifier.isPojo(node, node.id, node.package || node.packageFqn);
     }
@@ -440,10 +442,15 @@ class ForceGraph {
     // but represent important structural anchors.
     const connectedIds = new Set();
     for (const e of edges) {
-      if (e.source) connectedIds.add(e.source);
-      if (e.target) connectedIds.add(e.target);
+      const s = (typeof e.source === 'object' && e.source) ? e.source.id : e.source;
+      const t = (typeof e.target === 'object' && e.target) ? e.target.id : e.target;
+      if (s) connectedIds.add(s);
+      if (t) connectedIds.add(t);
     }
-    const isAnchorType = n => n.type === 'CLASS' || n.type === 'TYPE' || n.type === 'INTERFACE' || n.role === 'root';
+    const isAnchorType = n => {
+      const tu = (n.type || '').toUpperCase();
+      return tu === 'CLASS' || tu === 'TYPE' || tu === 'INTERFACE' || tu === 'MODULE' || tu === 'PACKAGE' || n.role === 'root' || n.role === 'module';
+    };
     nodes = nodes.filter(n => connectedIds.has(n.id) || isAnchorType(n));
     // ─────────────────────────────────────────────────────────
 
@@ -593,6 +600,10 @@ class ForceGraph {
     });
 
     this._nodes = allProcessedNodes;
+    this._nodeIndex = new Map();
+    for (let i = 0; i < allProcessedNodes.length; i++) {
+      this._nodeIndex.set(allProcessedNodes[i].id, i);
+    }
 
     this._edges = edges.map(e => ({ ...e }));
     this._ticks = 0;
@@ -661,6 +672,26 @@ class ForceGraph {
     this._markDirty();
     this.requestRender();
     return this._showHulls;
+  }
+
+  _markDirty() {
+    this._dirty = true;
+  }
+
+  requestRender() {
+    if (this._paused) {
+      this._draw();
+      if (this._showMinimap) this._drawMinimap();
+    }
+  }
+
+  _requestRender() {
+    this.requestRender();
+  }
+
+  _recomputeConvexHulls() {
+    this._markDirty();
+    this.requestRender();
   }
 
 
@@ -810,8 +841,8 @@ class ForceGraph {
   /* ── Physics Simulation ─────────────────────────────────────────────────── */
 
   _runInitialStabilization() {
-    // Warm up offline for 80-100 ticks so the violent initial explosion/rotation is completely avoided
-    const ticks = this._nodes.length > 100 ? 80 : 100;
+    // Warm up offline avoiding freezing on large graphs
+    const ticks = this._nodes.length > 500 ? 5 : (this._nodes.length > 100 ? 25 : 60);
     for (let i = 0; i < ticks; i++) {
       this._simulateTick();
     }
@@ -924,39 +955,76 @@ class ForceGraph {
     }
 
     // 4. Repulsion force between node pairs (differentiated intra vs inter community)
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const ni = nodes[i], nj = nodes[j];
-        if (this._isNodeHidden(ni) || this._isNodeHidden(nj)) continue;
-
-        const dx = nj.x - ni.x;
-        const dy = nj.y - ni.y;
-        const distSq = dx * dx + dy * dy || 0.01;
-        const dist = Math.sqrt(distSq);
-
-        const isSameComm = ni.community === nj.community;
-        const minClearance = ni.radius + nj.radius + (isSameComm ? 18 : 60);
-        let rep = 0;
-        if (dist < minClearance) {
-          rep = ((PHYSICS.repulsion * (isSameComm ? 1.8 : 4.0)) / Math.max(dist, 10)) * alpha;
-        } else {
-          const mult = isSameComm ? 0.35 : 1.2;
-          rep = ((PHYSICS.repulsion * mult * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
+    if (n > 300) {
+      // High-performance spatial clustering: calculate repulsion within each community bloom
+      for (const comm of this._communities) {
+        if (this._hiddenCommunities.has(comm.cid)) continue;
+        const cNodes = [];
+        for (const id of comm.nodes) {
+          const idx = this._nodeIndex ? this._nodeIndex.get(id) : undefined;
+          if (idx !== undefined) {
+            const nd = nodes[idx];
+            if (nd && !this._isNodeHidden(nd)) cNodes.push(nd);
+          }
         }
+        const cn = cNodes.length;
+        for (let i = 0; i < cn; i++) {
+          for (let j = i + 1; j < cn; j++) {
+            const ni = cNodes[i], nj = cNodes[j];
+            const dx = nj.x - ni.x;
+            const dy = nj.y - ni.y;
+            const distSq = dx * dx + dy * dy || 0.01;
+            const dist = Math.sqrt(distSq);
+            const minClearance = ni.radius + nj.radius + 18;
+            let rep = 0;
+            if (dist < minClearance) {
+              rep = ((PHYSICS.repulsion * 1.8) / Math.max(dist, 10)) * alpha;
+            } else {
+              rep = ((PHYSICS.repulsion * 0.35 * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
+            }
+            const fx = (dx / dist) * rep;
+            const fy = (dy / dist) * rep;
+            ni._fx -= fx; ni._fy -= fy;
+            nj._fx += fx; nj._fy += fy;
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const ni = nodes[i], nj = nodes[j];
+          if (this._isNodeHidden(ni) || this._isNodeHidden(nj)) continue;
 
-        const fx = (dx / dist) * rep;
-        const fy = (dy / dist) * rep;
+          const dx = nj.x - ni.x;
+          const dy = nj.y - ni.y;
+          const distSq = dx * dx + dy * dy || 0.01;
+          const dist = Math.sqrt(distSq);
 
-        ni._fx -= fx; ni._fy -= fy;
-        nj._fx += fx; nj._fy += fy;
+          const isSameComm = ni.community === nj.community;
+          const minClearance = ni.radius + nj.radius + (isSameComm ? 18 : 60);
+          let rep = 0;
+          if (dist < minClearance) {
+            rep = ((PHYSICS.repulsion * (isSameComm ? 1.8 : 4.0)) / Math.max(dist, 10)) * alpha;
+          } else {
+            const mult = isSameComm ? 0.35 : 1.2;
+            rep = ((PHYSICS.repulsion * mult * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
+          }
+
+          const fx = (dx / dist) * rep;
+          const fy = (dy / dist) * rep;
+
+          ni._fx -= fx; ni._fy -= fy;
+          nj._fx += fx; nj._fy += fy;
+        }
       }
     }
 
     // 5. Spring attraction along edges (tighter intra-class/cluster, flexible cross-cluster)
-    const nodeIndex = Object.fromEntries(nodes.map((nd, idx) => [nd.id, idx]));
     for (const e of this._edges) {
-      const si = nodeIndex[e.source];
-      const ti = nodeIndex[e.target];
+      const srcId = typeof e.source === 'object' ? e.source.id : e.source;
+      const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+      const si = this._nodeIndex ? this._nodeIndex.get(srcId) : undefined;
+      const ti = this._nodeIndex ? this._nodeIndex.get(tgtId) : undefined;
       if (si === undefined || ti === undefined) continue;
 
       const src = nodes[si], tgt = nodes[ti];
@@ -1456,12 +1524,12 @@ class ForceGraph {
     const activeNode = this._hoveredNode || this._selectedNode;
     const connectedSet = activeNode ? this._connectedMap.get(activeNode.id) : null;
 
-    const nodeIndex = Object.fromEntries(this._nodes.map((nd, idx) => [nd.id, idx]));
-
     for (let i = 0; i < this._edges.length; i++) {
       const e = this._edges[i];
-      const si = nodeIndex[e.source];
-      const ti = nodeIndex[e.target];
+      const srcId = typeof e.source === 'object' ? e.source.id : e.source;
+      const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+      const si = this._nodeIndex ? this._nodeIndex.get(srcId) : undefined;
+      const ti = this._nodeIndex ? this._nodeIndex.get(tgtId) : undefined;
       if (si === undefined || ti === undefined) continue;
 
       const src = this._nodes[si], tgt = this._nodes[ti];
@@ -2495,6 +2563,7 @@ class ForceGraph {
   _resize() {
     if (!this._canvas || !this._container) return;
     const dpr = window.devicePixelRatio || 1;
+    this._dpr = dpr;
     const w = this._container.clientWidth || 800;
     const h = this._container.clientHeight || 600;
 

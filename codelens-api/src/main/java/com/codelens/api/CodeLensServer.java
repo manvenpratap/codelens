@@ -443,15 +443,16 @@ public class CodeLensServer {
                     if (fields != null && !fields.isEmpty()) dao.batchInsertFieldsFast(fields);
                     if (methods != null && !methods.isEmpty()) dao.batchInsertMethodsFast(methods);
                     if (rels != null && !rels.isEmpty()) dao.batchInsertRelationshipsFast(rels);
-                    lucene.indexBatch(types, methods, fields);
+                    lucene.addBatch(types, methods, fields);
                 },
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
                     progress.setProcessedFiles(done);
                     String fileName = file;
-                    try {
-                        fileName = java.nio.file.Paths.get(file).getFileName().toString();
-                    } catch (Exception ignored) {}
+                    if (file != null) {
+                        int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+                        fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                    }
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
                     if (done % 5000 == 0) {
@@ -487,7 +488,8 @@ public class CodeLensServer {
             progress.setMessage("Computing call graph & field propagation…");
             List<String> allMethodFqns = dao.findAllMethodFqns();
             progress.setCurrentDetail(String.format("Analyzing %d methods & call paths", allMethodFqns.size()));
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            List<String[]> callPairs = dao.findCallRelationshipPairs();
+            callGraph.rebuildWithPairs(allMethodFqns, callPairs);
             fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
 
             // Main scan finishes immediately after graph and indexing
@@ -574,9 +576,10 @@ public class CodeLensServer {
                     progress.setTotalFiles(total);
                     progress.setProcessedFiles(done);
                     String fileName = file;
-                    try {
-                        fileName = Paths.get(file).getFileName().toString();
-                    } catch (Exception ignored) {}
+                    if (file != null) {
+                        int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+                        fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                    }
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
                     if (done % 5000 == 0) {
@@ -610,7 +613,8 @@ public class CodeLensServer {
             progress.setCurrentPhase("Graph Analysis");
             progress.setMessage("Refreshing call graph & field propagation…");
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            List<String[]> callPairs = dao.findCallRelationshipPairs();
+            callGraph.rebuildWithPairs(allMethodFqns, callPairs);
             fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
 
             // Recompute scan totals from DB

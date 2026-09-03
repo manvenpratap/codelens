@@ -214,6 +214,25 @@ public class JavaSourceScannerTest {
             });
         }
 
+        System.out.println("Running testAsyncFlusherStreaming...");
+        Path tempDir5 = Files.createTempDirectory("codelens_async_flush_test");
+        try {
+            test.testAsyncFlusherStreaming(tempDir5);
+        } finally {
+            Files.walkFileTree(tempDir5, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
         System.out.println("ALL JAVA SOURCE SCANNER AND DELTA CHANGE TESTS PASSED SUCCESSFULLY!");
     }
 
@@ -248,4 +267,39 @@ public class JavaSourceScannerTest {
         assertFalse(changes.getModifiedFiles().contains(a.toString()), "A should not be modified");
     }
 
+    public void testAsyncFlusherStreaming(Path tempDir) throws IOException {
+        Path pkg = tempDir.resolve("src/main/java/com/async/test");
+        Files.createDirectories(pkg);
+        for (int i = 0; i < 30; i++) {
+            Files.writeString(pkg.resolve("Service" + i + ".java"),
+                "package com.async.test;\n" +
+                "public class Service" + i + " {\n" +
+                "    private String name;\n" +
+                "    public void doWork() { helper(); }\n" +
+                "    private void helper() {}\n" +
+                "}\n");
+        }
+
+        java.util.concurrent.atomic.AtomicInteger flushedBatches = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger flushedTypes = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger flushedMethods = new java.util.concurrent.atomic.AtomicInteger();
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        JavaSourceScanner.ScanResult res = scanner.scan(
+            tempDir.toString(),
+            null,
+            (pkgs, types, fields, methods, rels) -> {
+                flushedBatches.incrementAndGet();
+                flushedTypes.addAndGet(types.size());
+                flushedMethods.addAndGet(methods.size());
+            },
+            null
+        );
+
+        assertEquals(30, res.totalFiles, "30 files total");
+        assertEquals(30, res.parsedFiles, "30 files parsed");
+        assertEquals(30, flushedTypes.get(), "30 types streamed via async flusher");
+        assertEquals(60, flushedMethods.get(), "60 methods streamed via async flusher");
+        assertTrue(flushedBatches.get() > 0, "at least one batch flushed");
+    }
 }

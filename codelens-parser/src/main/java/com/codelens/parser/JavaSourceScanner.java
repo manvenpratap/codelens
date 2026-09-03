@@ -13,7 +13,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.*;
 
 /**
  * Walks a Java source directory, parses .java files with bounded multi-threading,
@@ -329,6 +329,38 @@ public class JavaSourceScanner {
 
         ConcurrentMap<String, CodePackage> packageMap = new ConcurrentHashMap<>();
         ConcurrentMap<String, AtomicInteger> typesPerPkg = new ConcurrentHashMap<>();
+        ConcurrentMap<String, AtomicInteger> filesPerPkg = new ConcurrentHashMap<>();
+        AtomicReference<Throwable> flushError = new AtomicReference<>();
+
+        // Bounded queue providing backpressure: parser threads never block on DB/Lucene locks
+        BlockingQueue<ParsedChunk> flushQueue = new LinkedBlockingQueue<>(PARSER_THREADS * 2);
+
+        Thread flusherThread = new Thread(() -> {
+            try {
+                while (true) {
+                    ParsedChunk chunk = flushQueue.take();
+                    if (chunk.poisonPill) {
+                        break;
+                    }
+                    if (batchConsumer != null) {
+                        batchConsumer.onBatch(Collections.emptyList(), chunk.types, chunk.fields, chunk.methods, chunk.relationships);
+                    } else {
+                        result.types.addAll(chunk.types);
+                        result.fields.addAll(chunk.fields);
+                        result.methods.addAll(chunk.methods);
+                        result.relationships.addAll(chunk.relationships);
+                    }
+                    result.fileMetas.addAll(chunk.fileMetas);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable t) {
+                log.error("Error in asynchronous flush consumer", t);
+                flushError.compareAndSet(null, t);
+            }
+        }, "codelens-async-flusher");
+        flusherThread.setDaemon(true);
+        flusherThread.start();
 
         ExecutorService pool = new ThreadPoolExecutor(
             PARSER_THREADS, PARSER_THREADS,
@@ -353,7 +385,6 @@ public class JavaSourceScanner {
         }
 
         List<Future<?>> futures = new ArrayList<>();
-        Object flushLock = new Object();
 
         for (List<Path> chunk : chunks) {
             if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
@@ -392,11 +423,8 @@ public class JavaSourceScanner {
                             visitor.visit(cu, ctx);
 
                             for (CodePackage pkg : ctx.packages) {
-                                packageMap.computeIfAbsent(pkg.getFqn(), k -> {
-                                    CodePackage cp = new CodePackage(pkg.getFqn());
-                                    cp.setFileCount(0);
-                                    return cp;
-                                }).setFileCount(packageMap.get(pkg.getFqn()).getFileCount() + 1);
+                                packageMap.computeIfAbsent(pkg.getFqn(), CodePackage::new);
+                                filesPerPkg.computeIfAbsent(pkg.getFqn(), k -> new AtomicInteger(0)).incrementAndGet();
                             }
 
                             for (CodeType t : ctx.types) {
@@ -427,26 +455,16 @@ public class JavaSourceScanner {
                     }
 
                     int done = count.incrementAndGet();
-                    if (progressCallback != null) {
+                    if (progressCallback != null && (done % 10 == 0 || done == javaFiles.size())) {
                         progressCallback.onFile(done, javaFiles.size(), javaFile.toString());
                     }
                 }
 
-                // Flush chunk batch
+                // Enqueue chunk batch asynchronously to dedicated flusher thread
                 try {
-                    synchronized (flushLock) {
-                        if (batchConsumer != null) {
-                            batchConsumer.onBatch(Collections.emptyList(), batchTypes, batchFields, batchMethods, batchRels);
-                        } else {
-                            result.types.addAll(batchTypes);
-                            result.fields.addAll(batchFields);
-                            result.methods.addAll(batchMethods);
-                            result.relationships.addAll(batchRels);
-                        }
-                        result.fileMetas.addAll(batchFileMetas);
-                    }
-                } catch (Exception e) {
-                    log.error("Error flushing parsed batch to consumer", e);
+                    flushQueue.put(new ParsedChunk(batchTypes, batchFields, batchMethods, batchRels, batchFileMetas));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
             }));
         }
@@ -462,23 +480,37 @@ public class JavaSourceScanner {
             throw new IOException("Scanning execution interrupted", e);
         }
 
+        // Complete asynchronous flusher thread
+        try {
+            flushQueue.put(ParsedChunk.POISON);
+            flusherThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Flusher consumer thread interrupted", e);
+        }
+
+        if (flushError.get() != null) {
+            throw new IOException("Failed to persist parsed entities during scan: " + flushError.get().getMessage(), flushError.get());
+        }
+
         // ── Populate final package summary ────────────────────────────────────
         List<CodePackage> finalPackages = new ArrayList<>();
         for (Map.Entry<String, CodePackage> entry : packageMap.entrySet()) {
             CodePackage pkg = entry.getValue();
             AtomicInteger tCount = typesPerPkg.get(entry.getKey());
             pkg.setTypeCount(tCount != null ? tCount.get() : 0);
+            AtomicInteger fCount = filesPerPkg.get(entry.getKey());
+            pkg.setFileCount(fCount != null ? fCount.get() : 0);
             finalPackages.add(pkg);
         }
 
         if (batchConsumer != null && !finalPackages.isEmpty()) {
             try {
-                synchronized (flushLock) {
-                    batchConsumer.onBatch(finalPackages, Collections.emptyList(), Collections.emptyList(),
-                                          Collections.emptyList(), Collections.emptyList());
-                }
+                batchConsumer.onBatch(finalPackages, Collections.emptyList(), Collections.emptyList(),
+                                      Collections.emptyList(), Collections.emptyList());
             } catch (Exception e) {
                 log.error("Error flushing final package statistics", e);
+                throw new IOException("Failed to persist package statistics: " + e.getMessage(), e);
             }
         }
 
@@ -498,6 +530,38 @@ public class JavaSourceScanner {
             result.relationshipsFound, result.errorFiles, result.parsedFiles);
 
         return result;
+    }
+
+    /** Bounded message container for asynchronous flusher thread. */
+    private static class ParsedChunk {
+        final List<CodeType> types;
+        final List<CodeField> fields;
+        final List<CodeMethod> methods;
+        final List<CodeRelationship> relationships;
+        final List<FileMeta> fileMetas;
+        final boolean poisonPill;
+
+        ParsedChunk(List<CodeType> types, List<CodeField> fields, List<CodeMethod> methods,
+                    List<CodeRelationship> relationships, List<FileMeta> fileMetas) {
+            this.types = types;
+            this.fields = fields;
+            this.methods = methods;
+            this.relationships = relationships;
+            this.fileMetas = fileMetas;
+            this.poisonPill = false;
+        }
+
+        static final ParsedChunk POISON = new ParsedChunk(null, null, null, null, null, true);
+
+        private ParsedChunk(List<CodeType> types, List<CodeField> fields, List<CodeMethod> methods,
+                            List<CodeRelationship> relationships, List<FileMeta> fileMetas, boolean poisonPill) {
+            this.types = types;
+            this.fields = fields;
+            this.methods = methods;
+            this.relationships = relationships;
+            this.fileMetas = fileMetas;
+            this.poisonPill = poisonPill;
+        }
     }
 }
 

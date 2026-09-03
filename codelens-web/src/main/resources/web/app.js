@@ -1587,6 +1587,13 @@ async function loadKnowledgeBase(pkgFqn) {
     for (const t of filteredTypes) {
       const tKind = (t.kind || 'CLASS').toUpperCase();
       const tKindClass = `kind-${tKind.toLowerCase()}`;
+      let archBadge = '';
+      if (window.CodeLensClassifier) {
+        const arch = window.CodeLensClassifier.classifyType(t, t.fqn || t.id, t.packageFqn);
+        if (arch) {
+          archBadge = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66; margin-left:6px;" title="${esc(arch.description)}">${esc(arch.badge)}</span>`;
+        }
+      }
       const row = createElement('div', { class: 'kb-row' });
       row.innerHTML = `
         <div class="kb-row-left">
@@ -1597,6 +1604,7 @@ async function loadKnowledgeBase(pkgFqn) {
             <div class="kb-row-name-wrap">
               <span class="kb-row-name">${esc(t.simpleName)}</span>
               <span class="kb-kind-badge ${tKindClass}">${esc(tKind)}</span>
+              ${archBadge}
             </div>
             <div class="kb-row-meta">
               ${t.lineCount > 0 ? `<span>${t.lineCount} lines</span>` : ''}
@@ -2053,7 +2061,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
       if (effectiveLevel === 'city3d') {
         showBanner(isMethods ? 'Building 3D Software City (Methods)...' : 'Building 3D Software City (Classes)...');
         const [graphData, treeData] = await Promise.all([
-          isMethods ? api.fullGraph() : api.architectureGraph(),
+          isMethods ? api.fullGraph() : api.architectureGraph('classes'),
           api.treemapData()
         ]);
         if (!graphData.nodes || graphData.nodes.length === 0) {
@@ -2072,7 +2080,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'galaxy3d') {
         showBanner(isMethods ? 'Generating 3D Force Galaxy (Methods)...' : 'Generating 3D Force Galaxy (Classes)...');
-        const data = isMethods ? await api.fullGraph() : await api.architectureGraph();
+        const data = isMethods ? await api.fullGraph() : await api.architectureGraph('classes');
         if (!data.nodes || data.nodes.length === 0) {
           showCodebaseEmpty('No graph data available for 3D Galaxy. Run a scan first.');
           return;
@@ -2089,7 +2097,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'graph2d') {
         showBanner(isMethods ? 'Rendering 2D Blooming Tree (Methods)...' : 'Rendering 2D Blooming Tree (Classes)...');
-        const data = isMethods ? await api.fullGraph() : await api.architectureGraph();
+        const data = isMethods ? await api.fullGraph() : await api.architectureGraph('classes');
         if (!data.nodes || data.nodes.length === 0) {
           showCodebaseEmpty('No graph data available for 2D Blooming Tree. Run a scan first.');
           return;
@@ -2205,7 +2213,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'chord') {
         showBanner(isMethods ? 'Loading Chord Diagram (Methods)...' : 'Loading Chord Diagram (Classes)...');
-        const data = isMethods ? await api.fullGraph() : await api.architectureGraph();
+        const data = isMethods ? await api.fullGraph() : await api.architectureGraph('classes');
         if (!data.nodes || data.nodes.length === 0) {
           showCodebaseEmpty('No graph data available for Chord diagram. Run a scan first.');
           return;
@@ -2250,7 +2258,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
       const isArch = (App.codebaseGraphLevel === 'arch');
       showBanner(isArch ? 'Loading codebase architecture graph...' : 'Loading detailed method graph...');
 
-      const view = isArch ? await api.architectureGraph() : await api.fullGraph();
+      const view = isArch ? await api.architectureGraph('classes') : await api.fullGraph();
 
       if (!view.nodes || view.nodes.length === 0) {
         showGraphEmpty('No code relationships indexed yet. Run a scan first.');
@@ -2290,13 +2298,19 @@ function renderCodebaseLegend(nodesOrTreeData) {
     nodesOrTreeData.forEach(n => {
       let pkg = n.package;
       let cls = n.className;
-      if (!pkg && n.id && n.id.includes('.')) {
+      if (!pkg && (n.type === 'MODULE' || n.role === 'module')) {
+        pkg = n.id || n.label || 'Module';
+        cls = n.label || n.id || 'Module';
+      } else if (!pkg && (n.type === 'PACKAGE' || n.role === 'package')) {
+        pkg = n.id || n.label || 'Package';
+        cls = n.label || n.id || 'Package';
+      } else if (!pkg && n.id && n.id.includes('.')) {
         const parts = n.id.replace(/\(.*\)/, '').split('.');
         const isType = (n.type === 'CLASS' || n.type === 'TYPE' || parts.length <= 2);
         pkg = isType ? (parts.slice(0, -1).join('.') || 'default') : (parts.slice(0, -2).join('.') || 'default');
         if (!cls) cls = isType ? parts[parts.length - 1] : parts[parts.length - 2];
       }
-      pkg = pkg || 'default';
+      pkg = pkg || n.label || 'default';
       cls = cls || (n.type === 'CLASS' ? n.label : (n.id && n.id.includes('.') ? n.id.split('.').slice(-2, -1)[0] : n.id)) || 'Class';
 
       if (!pkgMap.has(pkg)) pkgMap.set(pkg, new Map());
@@ -2479,7 +2493,7 @@ function renderCodebaseLegend(nodesOrTreeData) {
 }
 
 function formatPackageDisplayName(pkg) {
-  if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
+  if (!pkg || pkg === 'default' || pkg === '(default)') return '(default)';
   const parts = pkg.split('.').filter(Boolean);
   if (parts.length >= 3 && ['com', 'org', 'io', 'net', 'dev', 'app', 'co', 'gov', 'edu'].includes(parts[0])) {
     const sub = parts.slice(2);
@@ -2725,7 +2739,7 @@ async function loadCalleesGraph(methodId, depth = App.graphDepth) {
  * Fully supports uppercase and PascalCase package segments (e.g. com.tcs.bancs.ModuleName).
  */
 function formatModuleFromPackage(pkg) {
-  if (!pkg || pkg === 'default' || pkg === '(default)') return 'Core';
+  if (!pkg || pkg === 'default' || pkg === '(default)') return '(default)';
   const settings = loadSettings();
   const mode = settings.packageMode || 'auto';
 
@@ -2753,7 +2767,7 @@ function formatModuleFromPackage(pkg) {
     }
   }
 
-  if (!res || res === 'default') return 'Core';
+  if (!res || res === 'default') return pkg || '(default)';
   const remainingParts = res.split('.').filter(Boolean);
   if (remainingParts.length === 1) {
     const s = remainingParts[0];
@@ -2867,8 +2881,12 @@ function renderTypeDetail(data) {
   const body = qs('#right-body');
   body.innerHTML = '';
 
+  if (window.CodeLensClassifier && Array.isArray(methods) && methods.length > 0 && typeof window.CodeLensClassifier.registerTypeMethods === 'function') {
+    window.CodeLensClassifier.registerTypeMethods(type.fqn, methods);
+  }
+
   // Header
-  renderEntityHeader(type.kind, type.simpleName, type.fqn);
+  renderEntityHeader(type.kind, type.simpleName, type.fqn, { ...type, methods });
 
   let sourceElement = '-';
   if (type.sourceFile) {
@@ -3416,6 +3434,11 @@ async function loadStats() {
     // Also support fallback elements if any
     animateCounter(qs('#stat-types'),   s.types   || 0);
 
+    // Update methods map in classifier
+    if (window.CodeLensClassifier && Array.isArray(s.methodsList) && typeof window.CodeLensClassifier.setMethodsData === 'function') {
+      window.CodeLensClassifier.setMethodsData(s.methodsList);
+    }
+
     // Compute & update archetypes breakup for both classes and methods
     updateArchetypesBreakup(s);
 
@@ -3451,6 +3474,10 @@ function updateArchetypesBreakup(stats) {
   let classifiedMethodsCount = 0;
 
   if (window.CodeLensClassifier) {
+    if (methodList.length > 0 && typeof window.CodeLensClassifier.setMethodsData === 'function') {
+      window.CodeLensClassifier.setMethodsData(methodList);
+    }
+
     // Classify methods
     if (methodList.length > 0) {
       methodList.forEach(m => {
@@ -3465,7 +3492,7 @@ function updateArchetypesBreakup(stats) {
     // Classify classes
     if (typeList.length > 0) {
       typeList.forEach(t => {
-        const res = window.CodeLensClassifier.classifyType(t.name, t.fqn, t.package);
+        const res = window.CodeLensClassifier.classifyType(t, t.fqn, t.package);
         if (res && res.ruleId) {
           counts.set(res.ruleId, (counts.get(res.ruleId) || 0) + 1);
           classifiedClassesCount++;
@@ -5309,7 +5336,7 @@ document.addEventListener('DOMContentLoaded', init);
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Build the entity header in the right panel. */
-function renderEntityHeader(kind, name, fqn) {
+function renderEntityHeader(kind, name, fqn, entityNode) {
   const header = qs('#entity-header');
   if (!header) return;
 
@@ -5318,7 +5345,7 @@ function renderEntityHeader(kind, name, fqn) {
     const isMethod = (kind === 'METHOD');
     const arch = isMethod
       ? window.CodeLensClassifier.classifyMethod(name, fqn)
-      : window.CodeLensClassifier.classifyType(name, fqn);
+      : window.CodeLensClassifier.classifyType(entityNode || name, fqn);
     if (arch) {
       const iconSvg = window.Icons ? window.Icons.get(arch.icon || 'tag', { size: 'xs' }) : '';
       archBadge = `<span class="archetype-badge" style="background:${arch.color}22; border:1px solid ${arch.color}; color:${arch.color}; margin-left:6px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${esc(arch.description)}">${iconSvg} <span>${esc(arch.label)} (${esc(arch.badge)})</span></span>`;
@@ -6137,17 +6164,71 @@ function updateFormLivePreview() {
   `;
 }
 
+let currentArchetypeScopeFilter = 'all'; // 'all', 'class', 'method'
+let archetypeSearchQuery = '';
+
+function initArchetypeFilterControls() {
+  const tabBtns = qsa('.archetype-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.classList.toggle('active', (btn.dataset.filter || 'all') === currentArchetypeScopeFilter);
+    btn.onclick = () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentArchetypeScopeFilter = btn.dataset.filter || 'all';
+      renderArchetypeRulesList();
+    };
+  });
+
+  const searchInput = qs('#archetype-search-input');
+  if (searchInput && !searchInput._wired) {
+    searchInput._wired = true;
+    searchInput.oninput = () => {
+      archetypeSearchQuery = (searchInput.value || '').trim().toLowerCase();
+      renderArchetypeRulesList();
+    };
+  }
+}
+
 function renderArchetypeRulesList() {
   const container = qs('#archetype-rules-list');
   if (!container || !window.CodeLensClassifier) return;
 
+  initArchetypeFilterControls();
+
   const rules = window.CodeLensClassifier.getRules();
-  const countBadge = qs('#archetype-count-badge');
   const activeCount = rules.filter(r => r.enabled).length;
+
+  const countBadge = qs('#archetype-count-badge');
   if (countBadge) {
     countBadge.textContent = `${activeCount} / ${rules.length} active`;
     countBadge.className = `archetype-count-badge ${activeCount > 0 ? 'active' : 'empty'}`;
   }
+
+  const classRulesAll = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'CLASS');
+  const methodRulesAll = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'METHOD');
+  const otherRulesAll = rules.filter(r => {
+    const s = (r.scope || r.target || '').toUpperCase();
+    return s !== 'CLASS' && s !== 'METHOD';
+  });
+
+  // Update tab counts
+  const badgeAll = qs('#tab-badge-all'); if (badgeAll) badgeAll.textContent = rules.length;
+  const badgeClass = qs('#tab-badge-class'); if (badgeClass) badgeClass.textContent = classRulesAll.length;
+  const badgeMethod = qs('#tab-badge-method'); if (badgeMethod) badgeMethod.textContent = methodRulesAll.length;
+
+  // Search filter
+  const matchesSearch = r => {
+    if (!archetypeSearchQuery) return true;
+    const q = archetypeSearchQuery;
+    return (r.label && r.label.toLowerCase().includes(q)) ||
+           (r.badge && r.badge.toLowerCase().includes(q)) ||
+           (r.pattern && r.pattern.toLowerCase().includes(q)) ||
+           (r.description && r.description.toLowerCase().includes(q));
+  };
+
+  const classRules = classRulesAll.filter(matchesSearch);
+  const methodRules = methodRulesAll.filter(matchesSearch);
+  const otherRules = otherRulesAll.filter(matchesSearch);
 
   if (rules.length === 0) {
     container.innerHTML = `
@@ -6159,10 +6240,6 @@ function renderArchetypeRulesList() {
     return;
   }
 
-  const classRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'CLASS');
-  const methodRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() === 'METHOD');
-  const otherRules = rules.filter(r => (r.scope || r.target || '').toUpperCase() !== 'CLASS' && (r.scope || r.target || '').toUpperCase() !== 'METHOD');
-
   const renderCard = r => {
     const color = r.color || '#10b981';
     const scope = (r.scope || r.target || 'METHOD').toUpperCase();
@@ -6170,31 +6247,33 @@ function renderArchetypeRulesList() {
     const iconSvg = window.Icons ? window.Icons.get(r.icon || 'tag', { size: 'xs' }) : '';
 
     return `
-      <div class="archetype-card ${r.enabled ? 'is-active' : 'is-disabled'}" data-id="${r.id}" style="border-left-color:${color};">
-        <div class="archetype-card-toggle">
-          <label class="toggle-switch" title="${r.enabled ? 'Disable rule' : 'Enable rule'}">
+      <div class="archetype-card ${r.enabled ? 'is-active' : 'is-disabled'}" data-id="${r.id}" style="--arch-color:${color};">
+        <div class="archetype-col-status">
+          <label class="toggle-switch" title="${r.enabled ? 'Click to disable' : 'Click to enable'}">
             <input type="checkbox" class="rule-toggle" data-id="${r.id}" ${r.enabled ? 'checked' : ''}>
             <span class="toggle-track"></span>
           </label>
         </div>
-        <div class="archetype-card-badge-wrap">
-          <span class="archetype-badge-pill" style="background:${color}1f; color:${color}; border-color:${color}55;">
+        <div class="archetype-col-badge">
+          <span class="archetype-badge-pill" style="background:${color}18; color:${color}; border: 1px solid ${color}66;">
             ${iconSvg}
             <span class="archetype-badge-tag">${esc(r.badge || r.label)}</span>
           </span>
         </div>
-        <div class="archetype-card-body">
-          <div class="archetype-card-header-row">
-            <span class="archetype-card-title">${esc(r.label)}</span>
+        <div class="archetype-col-meta">
+          <span class="archetype-card-title">${esc(r.label)}</span>
+          <div class="archetype-chips-row">
             <span class="archetype-scope-chip scope-${scope.toLowerCase()}">${scope}</span>
             <span class="archetype-match-chip">${matchType}</span>
           </div>
-          <div class="archetype-card-sub-row">
-            <code class="archetype-pattern-code" title="Pattern: ${esc(r.pattern)}">${esc(r.pattern)}</code>
-            ${r.description ? `<span class="archetype-card-desc" title="${esc(r.description)}">${esc(r.description)}</span>` : ''}
-          </div>
         </div>
-        <div class="archetype-card-actions">
+        <div class="archetype-col-pattern">
+          <code class="archetype-pattern-code" title="Pattern: ${esc(r.pattern)}">${esc(r.pattern)}</code>
+        </div>
+        <div class="archetype-col-desc">
+          <span class="archetype-card-desc" title="${esc(r.description || '')}">${esc(r.description || '—')}</span>
+        </div>
+        <div class="archetype-col-actions">
           <button class="rule-action-btn rule-btn-edit" data-id="${r.id}" title="Edit Archetype">
             <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           </button>
@@ -6206,37 +6285,95 @@ function renderArchetypeRulesList() {
     `;
   };
 
+  const renderTableHeader = () => `
+    <div class="archetype-table-header">
+      <span class="col-hdr status-hdr">Active</span>
+      <span class="col-hdr badge-hdr">Badge Tag</span>
+      <span class="col-hdr meta-hdr">Archetype &amp; Scope</span>
+      <span class="col-hdr pattern-hdr">Match Pattern</span>
+      <span class="col-hdr desc-hdr">Semantic Role &amp; Purpose</span>
+      <span class="col-hdr actions-hdr" style="text-align:right;">Actions</span>
+    </div>
+  `;
+
   let listHtml = '';
-  if (classRules.length > 0) {
+  const showClass = currentArchetypeScopeFilter === 'all' || currentArchetypeScopeFilter === 'class';
+  const showMethod = currentArchetypeScopeFilter === 'all' || currentArchetypeScopeFilter === 'method';
+
+  if (showClass) {
+    const activeClass = classRulesAll.filter(r => r.enabled).length;
     listHtml += `
       <div class="archetype-rules-group-section">
-        <div class="archetype-rules-group-title">
-          <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
-          <span>Class Archetypes (${classRules.length})</span>
+        <div class="archetype-group-banner class-banner">
+          <div class="archetype-group-banner-left">
+            <span class="archetype-group-icon class-icon">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+            </span>
+            <div>
+              <div class="archetype-group-heading">Class Archetypes</div>
+              <div class="archetype-group-subtext">Stereotypes governing class-level classification, domain entities, and component roles</div>
+            </div>
+          </div>
+          <div class="archetype-group-stats">
+            <span class="archetype-stat-pill">${activeClass} of ${classRulesAll.length} Active</span>
+          </div>
         </div>
-        <div class="archetype-rules-group-cards">${classRules.map(renderCard).join('')}</div>
+        ${classRules.length > 0 ? renderTableHeader() : ''}
+        <div class="archetype-rules-group-cards">
+          ${classRules.length > 0 ? classRules.map(renderCard).join('') : `<div class="archetype-empty-filter-note">No class archetypes match the search filter.</div>`}
+        </div>
       </div>
     `;
   }
-  if (methodRules.length > 0) {
+
+  if (showMethod) {
+    const activeMethod = methodRulesAll.filter(r => r.enabled).length;
     listHtml += `
       <div class="archetype-rules-group-section">
-        <div class="archetype-rules-group-title">
-          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          <span>Method Archetypes (${methodRules.length})</span>
+        <div class="archetype-group-banner method-banner">
+          <div class="archetype-group-banner-left">
+            <span class="archetype-group-icon method-icon">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </span>
+            <div>
+              <div class="archetype-group-heading">Method Archetypes</div>
+              <div class="archetype-group-subtext">Patterns classifying member method operations, transactional prefixes, and call semantics</div>
+            </div>
+          </div>
+          <div class="archetype-group-stats">
+            <span class="archetype-stat-pill">${activeMethod} of ${methodRulesAll.length} Active</span>
+          </div>
         </div>
-        <div class="archetype-rules-group-cards">${methodRules.map(renderCard).join('')}</div>
+        ${methodRules.length > 0 ? renderTableHeader() : ''}
+        <div class="archetype-rules-group-cards">
+          ${methodRules.length > 0 ? methodRules.map(renderCard).join('') : `<div class="archetype-empty-filter-note">No method archetypes match the search filter.</div>`}
+        </div>
       </div>
     `;
   }
-  if (otherRules.length > 0) {
+
+  if (otherRulesAll.length > 0 && currentArchetypeScopeFilter === 'all') {
+    const activeOther = otherRulesAll.filter(r => r.enabled).length;
     listHtml += `
       <div class="archetype-rules-group-section">
-        <div class="archetype-rules-group-title">
-          <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-          <span>Other Archetypes (${otherRules.length})</span>
+        <div class="archetype-group-banner other-banner">
+          <div class="archetype-group-banner-left">
+            <span class="archetype-group-icon other-icon">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+            </span>
+            <div>
+              <div class="archetype-group-heading">Other Archetypes</div>
+              <div class="archetype-group-subtext">Custom patterns matching any entity or special scope</div>
+            </div>
+          </div>
+          <div class="archetype-group-stats">
+            <span class="archetype-stat-pill">${activeOther} of ${otherRulesAll.length} Active</span>
+          </div>
         </div>
-        <div class="archetype-rules-group-cards">${otherRules.map(renderCard).join('')}</div>
+        ${otherRules.length > 0 ? renderTableHeader() : ''}
+        <div class="archetype-rules-group-cards">
+          ${otherRules.length > 0 ? otherRules.map(renderCard).join('') : `<div class="archetype-empty-filter-note">No other archetypes match the search filter.</div>`}
+        </div>
       </div>
     `;
   }

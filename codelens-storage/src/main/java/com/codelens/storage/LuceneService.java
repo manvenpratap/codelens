@@ -68,7 +68,7 @@ public class LuceneService {
         analyzer  = new StandardAnalyzer();
         IndexWriterConfig cfg = new IndexWriterConfig(analyzer);
         cfg.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-        cfg.setRAMBufferSizeMB(64.0);
+        cfg.setRAMBufferSizeMB(256.0);
         writer    = new IndexWriter(directory, cfg);
         log.info("Lucene index initialised at {}", indexDir);
     }
@@ -92,23 +92,69 @@ public class LuceneService {
         writer.deleteAll();
     }
 
-    /** Indexes a batch of types, methods, and fields incrementally. */
+    /**
+     * Appends a batch of types, methods, and fields directly into the Lucene RAM buffer.
+     * Used during full repository scans after deleteAll() to achieve maximum write throughput
+     * without redundant term dictionary searches or delete queue processing.
+     */
+    public synchronized void addBatch(List<CodeType>   types,
+                                      List<CodeMethod> methods,
+                                      List<CodeField>  fields) throws IOException {
+        int estimatedSize = (types != null ? types.size() : 0)
+                          + (methods != null ? methods.size() : 0)
+                          + (fields != null ? fields.size() : 0);
+        if (estimatedSize == 0) return;
+
+        List<Document> docs = new ArrayList<>(estimatedSize);
+        if (types != null) {
+            for (CodeType t : types) {
+                if (t.getId() != null && !t.getId().isEmpty()) {
+                    docs.add(buildTypeDoc(t));
+                }
+            }
+        }
+        if (methods != null) {
+            for (CodeMethod m : methods) {
+                if (m.getId() != null && !m.getId().isEmpty()) {
+                    docs.add(buildMethodDoc(m));
+                }
+            }
+        }
+        if (fields != null) {
+            for (CodeField f : fields) {
+                if (f.getId() != null && !f.getId().isEmpty()) {
+                    docs.add(buildFieldDoc(f));
+                }
+            }
+        }
+        if (!docs.isEmpty()) {
+            writer.addDocuments(docs);
+        }
+    }
+
+    /** Indexes a batch of types, methods, and fields incrementally. Uses updateDocument for strict idempotency. */
     public synchronized void indexBatch(List<CodeType>   types,
                                         List<CodeMethod> methods,
                                         List<CodeField>  fields) throws IOException {
         if (types != null) {
             for (CodeType t : types) {
-                writer.addDocument(buildTypeDoc(t));
+                if (t.getId() != null && !t.getId().isEmpty()) {
+                    writer.updateDocument(new Term(F_ID, t.getId()), buildTypeDoc(t));
+                }
             }
         }
         if (methods != null) {
             for (CodeMethod m : methods) {
-                writer.addDocument(buildMethodDoc(m));
+                if (m.getId() != null && !m.getId().isEmpty()) {
+                    writer.updateDocument(new Term(F_ID, m.getId()), buildMethodDoc(m));
+                }
             }
         }
         if (fields != null) {
             for (CodeField f : fields) {
-                writer.addDocument(buildFieldDoc(f));
+                if (f.getId() != null && !f.getId().isEmpty()) {
+                    writer.updateDocument(new Term(F_ID, f.getId()), buildFieldDoc(f));
+                }
             }
         }
     }

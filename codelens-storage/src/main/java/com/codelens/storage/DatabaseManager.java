@@ -36,11 +36,11 @@ public class DatabaseManager {
     private HikariConfig createHikariConfig() {
         HikariConfig cfg = new HikariConfig();
         // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs.
-        // CACHE_SIZE=131072 (128MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
-        // COMPRESS=TRUE: LZF page-level compression to dramatically reduce on-disk footprint.
-        // AUTO_COMPACT_FILL_RATE=50: compacts pages when fill rate drops below 50%.
+        // CACHE_SIZE=524288 (512MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
+        // COMPRESS=FALSE: disable page-level compression to eliminate CPU serialization during bulk ingestion.
+        // AUTO_COMPACT_FILL_RATE=0: disable background page compaction during active ingestion.
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=131072;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=50");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=524288;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=FALSE;AUTO_COMPACT_FILL_RATE=0");
         cfg.setUsername("sa");
         cfg.setPassword("");
         cfg.setMaximumPoolSize(12);
@@ -48,7 +48,7 @@ public class DatabaseManager {
         cfg.setConnectionTimeout(30_000);
         cfg.setValidationTimeout(5_000);
         cfg.setMaxLifetime(1800_000);
-        cfg.setLeakDetectionThreshold(60_000);
+        cfg.setLeakDetectionThreshold(180_000);
         cfg.setPoolName("CodeLens-H2");
         return cfg;
     }
@@ -257,6 +257,7 @@ public class DatabaseManager {
     public void prepareForBulkLoad() throws SQLException {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
+            stmt.execute("SET WRITE_DELAY 2000");
             stmt.execute("DROP INDEX IF EXISTS idx_types_pkg");
             stmt.execute("DROP INDEX IF EXISTS idx_types_src");
             stmt.execute("DROP INDEX IF EXISTS idx_types_kind");
@@ -268,28 +269,34 @@ public class DatabaseManager {
             stmt.execute("DROP INDEX IF EXISTS idx_rels_kind");
             stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
             conn.commit();
-            log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped)");
+            log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped, write delay 2000ms)");
         }
     }
 
     /** Rebuilds secondary indexes and runs query analyzer after bulk ingestion finishes. */
     public void finishBulkLoad() throws SQLException {
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
-            stmt.execute("ANALYZE");
-            conn.commit();
-            log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
+        String[] indexStatements = {
+            "CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)",
+            "CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)",
+            "CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)",
+            "CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)",
+            "CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)",
+            "CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)",
+            "CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)",
+            "CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)",
+            "CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)",
+            "CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
+            "ANALYZE",
+            "SET WRITE_DELAY 500"
+        };
+        for (String sql : indexStatements) {
+            try (Connection conn = getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute(sql);
+                conn.commit();
+            }
         }
+        log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
     }
 
 
