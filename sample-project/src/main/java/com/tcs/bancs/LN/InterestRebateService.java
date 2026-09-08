@@ -2,10 +2,15 @@ package com.tcs.bancs.LN;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
+import com.tcs.bancs.SC.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: InterestRebateService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class InterestRebateService {
 
@@ -44,5 +49,20 @@ public class InterestRebateService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: LNTOCalculateAmortization
+     */
+    public boolean LNTOCalculateAmortization(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCalculateAmortization", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: LNTCAuditTransaction
+     */
+    public void LNTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCAuditTransaction", correlationId, operation);
     }
 }

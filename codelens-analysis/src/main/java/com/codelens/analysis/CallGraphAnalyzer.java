@@ -32,6 +32,11 @@ public class CallGraphAnalyzer {
     private Graph<String, DefaultEdge> callGraph =
         new DefaultDirectedGraph<>(DefaultEdge.class);
 
+    /** Returns the underlying directed JGraphT call graph. */
+    public synchronized Graph<String, DefaultEdge> getCallGraph() {
+        return callGraph;
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -47,25 +52,40 @@ public class CallGraphAnalyzer {
         void stream(EdgeConsumer consumer) throws Exception;
     }
 
+    @FunctionalInterface
+    public interface ProgressListener {
+        void onProgress(String phase, int current, int total, String detail);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Rebuilds the call graph by streaming edges directly from a database cursor.
+     * Rebuilds the call graph by streaming edges directly from a database cursor with optional progress updates.
      */
-    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer) throws Exception {
+    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
         Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
-        Map<String, List<String>> byName = new HashMap<>(allMethodFqns.size());
+        int totalMethods = allMethodFqns != null ? allMethodFqns.size() : 0;
+        Map<String, List<String>> byName = new HashMap<>(totalMethods);
 
         // Populate vertex set with interned strings to deduplicate repeated package/class prefixes
-        for (String fqn : allMethodFqns) {
-            String interned = fqn.intern();
-            g.addVertex(interned);
-            String simpleName = simpleMethodName(interned).intern();
-            byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
+        if (allMethodFqns != null) {
+            int mCount = 0;
+            for (String fqn : allMethodFqns) {
+                String interned = fqn.intern();
+                g.addVertex(interned);
+                String simpleName = simpleMethodName(interned).intern();
+                byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
+                mCount++;
+                if (listener != null && (mCount % 1000 == 0 || mCount == totalMethods)) {
+                    listener.onProgress("Call Graph: Indexing Methods", mCount, totalMethods,
+                        String.format("Indexed %,d / %,d method vertices", mCount, totalMethods));
+                }
+            }
         }
 
         // Stream edges, resolving "~" prefixed targets
         if (edgeStreamer != null) {
+            final int[] edgeCount = new int[]{0};
             edgeStreamer.stream((rawFrom, rawTo) -> {
                 if (rawFrom == null || rawTo == null) return;
                 String from = rawFrom.intern();
@@ -82,7 +102,17 @@ public class CallGraphAnalyzer {
 
                 try { g.addEdge(from, to); }
                 catch (Exception ignored) { /* duplicate edge */ }
+
+                edgeCount[0]++;
+                if (listener != null && edgeCount[0] % 2000 == 0) {
+                    listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], -1,
+                        String.format("Mapped %,d call edges", edgeCount[0]));
+                }
             });
+            if (listener != null) {
+                listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], edgeCount[0],
+                    String.format("Mapped %,d call edges total", edgeCount[0]));
+            }
         }
 
         this.callGraph = g;
@@ -90,17 +120,35 @@ public class CallGraphAnalyzer {
             g.vertexSet().size(), g.edgeSet().size());
     }
 
+    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer) throws Exception {
+        rebuild(allMethodFqns, edgeStreamer, null);
+    }
+
+    /**
+     * Rebuilds the call graph from pre-fetched (from, to) String pairs with progress reporting.
+     */
+    public synchronized void rebuildWithPairs(List<String> allMethodFqns, List<String[]> callPairs, ProgressListener listener) throws Exception {
+        int totalPairs = callPairs != null ? callPairs.size() : 0;
+        rebuild(allMethodFqns, consumer -> {
+            if (callPairs != null) {
+                int pCount = 0;
+                for (String[] pair : callPairs) {
+                    consumer.accept(pair[0], pair[1]);
+                    pCount++;
+                    if (listener != null && (pCount % 2000 == 0 || pCount == totalPairs)) {
+                        listener.onProgress("Call Graph: Mapping Edges", pCount, totalPairs,
+                            String.format("Mapped %,d / %,d call edges", pCount, totalPairs));
+                    }
+                }
+            }
+        }, listener);
+    }
+
     /**
      * Rebuilds the call graph from pre-fetched (from, to) String pairs.
      */
     public synchronized void rebuildWithPairs(List<String> allMethodFqns, List<String[]> callPairs) throws Exception {
-        rebuild(allMethodFqns, consumer -> {
-            if (callPairs != null) {
-                for (String[] pair : callPairs) {
-                    consumer.accept(pair[0], pair[1]);
-                }
-            }
-        });
+        rebuildWithPairs(allMethodFqns, callPairs, null);
     }
 
     /**
@@ -110,20 +158,33 @@ public class CallGraphAnalyzer {
      * @param callRelationships CALLS relationships (may include "~" prefixed targets)
      */
     public synchronized void rebuild(List<String> allMethodFqns,
-                                     List<CodeRelationship> callRelationships) {
+                                     List<CodeRelationship> callRelationships,
+                                     ProgressListener listener) {
         try {
+            int totalRels = callRelationships != null ? callRelationships.size() : 0;
             rebuild(allMethodFqns, consumer -> {
                 if (callRelationships != null) {
+                    int rCount = 0;
                     for (CodeRelationship rel : callRelationships) {
                         if ("CALLS".equals(rel.getKind())) {
                             consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn());
                         }
+                        rCount++;
+                        if (listener != null && (rCount % 2000 == 0 || rCount == totalRels)) {
+                            listener.onProgress("Call Graph: Mapping Edges", rCount, totalRels,
+                                String.format("Mapped %,d / %,d call edges", rCount, totalRels));
+                        }
                     }
                 }
-            });
+            }, listener);
         } catch (Exception e) {
             log.error("Failed to rebuild call graph", e);
         }
+    }
+
+    public synchronized void rebuild(List<String> allMethodFqns,
+                                     List<CodeRelationship> callRelationships) {
+        rebuild(allMethodFqns, callRelationships, null);
     }
 
 
@@ -267,7 +328,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return new GraphView(rootFqn, allNodes, edges);
+        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
     }
 
     public GraphView callersView(String rootFqn, int depth) {
@@ -303,7 +364,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return new GraphView(rootFqn, allNodes, edges);
+        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
     }
 
     public GraphView calleesView(String rootFqn, int depth) {
@@ -339,7 +400,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return new GraphView(rootFqn, allNodes, edges);
+        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
     }
 
     /**
@@ -434,6 +495,14 @@ public class CallGraphAnalyzer {
 
     public GraphView architectureGraphView() {
         return architectureGraphView(null, null);
+    }
+
+    public GraphView precomputedArchitectureGraphView(String scope, String filter) {
+        return computePrecomputedLayout(architectureGraphView(scope, filter));
+    }
+
+    public GraphView precomputedFullGraphView(boolean hideGetters) {
+        return computePrecomputedLayout(fullGraphView(hideGetters));
     }
 
     /** Module-level aggregated graph view (e.g. 50 modules). */
@@ -595,13 +664,42 @@ public class CallGraphAnalyzer {
     }
 
     private static String extractPackageFqn(String fqn) {
+        if (fqn == null || fqn.isEmpty()) return "(default)";
         int paren = fqn.indexOf('(');
         String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
         int dot = base.lastIndexOf('.');
         if (dot < 0) return "(default)";
-        String classOrPkg = base.substring(0, dot);
-        int dot2 = classOrPkg.lastIndexOf('.');
-        return (dot2 >= 0) ? classOrPkg.substring(0, dot2) : classOrPkg;
+        String lastSegment = base.substring(dot + 1);
+
+        // If there are no parentheses and the last segment starts with an uppercase letter,
+        // this is a Class FQN (e.g. com.tcs.bancs.PM.PaymentStatus).
+        if (paren < 0 && !lastSegment.isEmpty() && Character.isUpperCase(lastSegment.charAt(0))) {
+            String pkg = base.substring(0, dot);
+            int prevDot = pkg.lastIndexOf('.');
+            if (prevDot >= 0) {
+                String prevSeg = pkg.substring(prevDot + 1);
+                // Handle nested class: com.foo.Bar.Inner -> com.foo
+                if (!prevSeg.isEmpty() && Character.isUpperCase(prevSeg.charAt(0)) && prevSeg.length() > 2) {
+                    return pkg.substring(0, prevDot);
+                }
+            }
+            return pkg;
+        }
+
+        // Otherwise it is a Method/Field FQN (e.g. com.tcs.bancs.PM.PaymentStatus.getStatus()).
+        String classFqn = base.substring(0, dot);
+        int dot2 = classFqn.lastIndexOf('.');
+        if (dot2 >= 0) {
+            String prevClass = classFqn.substring(0, dot2);
+            int dot3 = prevClass.lastIndexOf('.');
+            String prevSeg = (dot3 >= 0) ? prevClass.substring(dot3 + 1) : prevClass;
+            // Handle inner class method: com.foo.Bar.Inner.method() -> com.foo
+            if (!prevSeg.isEmpty() && Character.isUpperCase(prevSeg.charAt(0)) && prevSeg.length() > 2) {
+                return (dot3 >= 0) ? prevClass.substring(0, dot3) : prevClass;
+            }
+            return classFqn.substring(0, dot2);
+        }
+        return classFqn;
     }
 
     private String extractClassFqn(String methodFqn) {
@@ -629,7 +727,9 @@ public class CallGraphAnalyzer {
             if (v.equals(start)) continue;        // skip root itself
             if (depth > maxDepth) break;
             if (hideGetters && isPojoOrAccessor(v)) continue;
-            result.add(new GraphNode(v, label(v), role, "METHOD"));
+            GraphNode node = new GraphNode(v, label(v), role, "METHOD");
+            node.depth = depth;
+            result.add(node);
         }
         return result;
     }
@@ -668,25 +768,184 @@ public class CallGraphAnalyzer {
         return base;
     }
 
+    /**
+     * Pre-computes 2D coordinates (x, y) for all nodes in the GraphView
+     * using a deterministic sunflower spiral layout clustered by package/module.
+     * This eliminates the need for expensive client-side physics simulation.
+     */
+    public GraphView computePrecomputedLayout(GraphView view) {
+        if (view == null || view.nodes == null || view.nodes.isEmpty()) return view;
+
+        Map<String, List<GraphNode>> groups = new LinkedHashMap<>();
+        Map<String, Integer> degrees = new HashMap<>();
+
+        for (GraphEdge e : view.edges) {
+            degrees.merge(e.source, 1, Integer::sum);
+            degrees.merge(e.target, 1, Integer::sum);
+        }
+
+        for (GraphNode n : view.nodes) {
+            String grp = extractPackageFqn(n.id);
+            if (grp == null || grp.isEmpty() || grp.equals("default") || grp.equals("(default)")) {
+                grp = extractModuleName(n.id);
+            }
+            groups.computeIfAbsent(grp, k -> new ArrayList<>()).add(n);
+        }
+
+        List<String> groupKeys = new ArrayList<>(groups.keySet());
+        groupKeys.sort((a, b) -> Integer.compare(groups.get(b).size(), groups.get(a).size()));
+        int totalGroups = groupKeys.size();
+        double groupSpread = Math.max(400.0, Math.sqrt(view.nodes.size()) * 52.0 + totalGroups * 36.0);
+        double goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0)); // ~137.5 degrees
+
+        for (int gIdx = 0; gIdx < totalGroups; gIdx++) {
+            String grp = groupKeys.get(gIdx);
+            List<GraphNode> groupNodes = groups.get(grp);
+
+            groupNodes.sort((a, b) -> Integer.compare(degrees.getOrDefault(b.id, 0), degrees.getOrDefault(a.id, 0)));
+
+            double groupAngle = totalGroups == 1 ? 0.0 : ((2.0 * Math.PI * gIdx) / totalGroups + (gIdx % 2 != 0 ? 0.15 : -0.15));
+            double groupDist = totalGroups == 1 ? 0.0 : (groupSpread * 0.55 + (gIdx % 3) * 35.0);
+            double gcx = Math.cos(groupAngle) * groupDist;
+            double gcy = Math.sin(groupAngle) * groupDist;
+
+            GraphNode core = groupNodes.get(0);
+            core.x = Math.round(gcx * 10.0) / 10.0;
+            core.y = Math.round(gcy * 10.0) / 10.0;
+            core.packageFqn = grp;
+
+            for (int k = 1; k < groupNodes.size(); k++) {
+                GraphNode nd = groupNodes.get(k);
+                double ringAngle = groupAngle + k * goldenAngle;
+                double ringDist = 38.0 + Math.sqrt(k) * 42.0;
+                nd.x = Math.round((gcx + Math.cos(ringAngle) * ringDist) * 10.0) / 10.0;
+                nd.y = Math.round((gcy + Math.sin(ringAngle) * ringDist) * 10.0) / 10.0;
+                nd.packageFqn = grp;
+            }
+        }
+
+        return view;
+    }
+
+    /**
+     * Pre-computes 2D coordinates (x, y) for a call hierarchy GraphView.
+     * Places the root method at the center (0, 0), upstream callers to the left (x < 0),
+     * and downstream callees to the right (x > 0), distributed cleanly by depth.
+     */
+    public GraphView computeHierarchyLayout(String rootFqn, GraphView view) {
+        if (view == null || view.nodes == null || view.nodes.isEmpty()) return view;
+
+        GraphNode rootNode = null;
+        Map<Integer, List<GraphNode>> callersByDepth = new TreeMap<>();
+        Map<Integer, List<GraphNode>> calleesByDepth = new TreeMap<>();
+        List<GraphNode> others = new ArrayList<>();
+
+        for (GraphNode node : view.nodes) {
+            if ("root".equals(node.role) || (rootFqn != null && rootFqn.equals(node.id))) {
+                rootNode = node;
+                node.depth = 0;
+            } else if ("caller".equals(node.role)) {
+                int d = (node.depth != null && node.depth > 0) ? node.depth : 1;
+                callersByDepth.computeIfAbsent(d, k -> new ArrayList<>()).add(node);
+            } else if ("callee".equals(node.role)) {
+                int d = (node.depth != null && node.depth > 0) ? node.depth : 1;
+                calleesByDepth.computeIfAbsent(d, k -> new ArrayList<>()).add(node);
+            } else {
+                others.add(node);
+            }
+        }
+
+        if (rootNode != null) {
+            rootNode.x = 0.0;
+            rootNode.y = 0.0;
+            rootNode.packageFqn = extractPackageFqn(rootNode.id);
+        }
+
+        // Layout callers: flow leftwards (x < 0)
+        for (Map.Entry<Integer, List<GraphNode>> entry : callersByDepth.entrySet()) {
+            int d = entry.getKey();
+            List<GraphNode> layerNodes = entry.getValue();
+            int count = layerNodes.size();
+            double baseX = - (d * 240.0);
+            double stepY = count > 12 ? 42.0 : 64.0;
+            double startY = - ((count - 1) * stepY) / 2.0;
+
+            for (int i = 0; i < count; i++) {
+                GraphNode n = layerNodes.get(i);
+                double staggerX = (count > 10) ? ((i % 2 == 0) ? -20.0 : 20.0) : 0.0;
+                n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
+                n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
+                n.packageFqn = extractPackageFqn(n.id);
+            }
+        }
+
+        // Layout callees: flow rightwards (x > 0)
+        for (Map.Entry<Integer, List<GraphNode>> entry : calleesByDepth.entrySet()) {
+            int d = entry.getKey();
+            List<GraphNode> layerNodes = entry.getValue();
+            int count = layerNodes.size();
+            double baseX = + (d * 240.0);
+            double stepY = count > 12 ? 42.0 : 64.0;
+            double startY = - ((count - 1) * stepY) / 2.0;
+
+            for (int i = 0; i < count; i++) {
+                GraphNode n = layerNodes.get(i);
+                double staggerX = (count > 10) ? ((i % 2 == 0) ? 20.0 : -20.0) : 0.0;
+                n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
+                n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
+                n.packageFqn = extractPackageFqn(n.id);
+            }
+        }
+
+        // Any leftover nodes (e.g. general relationships): position below root
+        if (!others.isEmpty()) {
+            int count = others.size();
+            double stepX = 140.0;
+            double startX = - ((count - 1) * stepX) / 2.0;
+            double posY = 200.0;
+            for (int i = 0; i < count; i++) {
+                GraphNode n = others.get(i);
+                n.x = Math.round((startX + i * stepX) * 10.0) / 10.0;
+                n.y = posY;
+                n.packageFqn = extractPackageFqn(n.id);
+            }
+        }
+
+        return view;
+    }
+
     // ── Value objects ─────────────────────────────────────────────────────────
 
     /** A node in the rendered graph. */
     public static class GraphNode {
-        public final String id;
-        public final String label;
-        public final String role;   // root | caller | callee | module | package | class
-        public final String type;   // METHOD | FIELD | TYPE | MODULE | PACKAGE | CLASS
+        public String id;
+        public String label;
+        public String role;   // root | caller | callee | module | package | class
+        public String type;   // METHOD | FIELD | TYPE | MODULE | PACKAGE | CLASS
+        public Double x;
+        public Double y;
+        public String packageFqn;
+        public Integer depth;
+
+        public GraphNode() {}
 
         public GraphNode(String id, String label, String role, String type) {
+            this(id, label, role, type, null, null);
+        }
+
+        public GraphNode(String id, String label, String role, String type, Double x, Double y) {
             this.id = id; this.label = label; this.role = role; this.type = type;
+            this.x = x; this.y = y;
         }
     }
 
     /** A directed edge in the rendered graph. */
     public static class GraphEdge {
-        public final String source;
-        public final String target;
-        public final String kind;
+        public String source;
+        public String target;
+        public String kind;
+
+        public GraphEdge() {}
 
         public GraphEdge(String source, String target, String kind) {
             this.source = source; this.target = target; this.kind = kind;
@@ -695,9 +954,11 @@ public class CallGraphAnalyzer {
 
     /** Full graph payload sent to the frontend. */
     public static class GraphView {
-        public final String           rootId;
-        public final List<GraphNode>  nodes;
-        public final List<GraphEdge>  edges;
+        public String           rootId;
+        public List<GraphNode>  nodes;
+        public List<GraphEdge>  edges;
+
+        public GraphView() {}
 
         public GraphView(String rootId, List<GraphNode> nodes, List<GraphEdge> edges) {
             this.rootId = rootId; this.nodes = nodes; this.edges = edges;

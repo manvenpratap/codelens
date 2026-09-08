@@ -2,10 +2,13 @@ package com.tcs.bancs.PM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: PaymentRoutingEngine
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class PaymentRoutingEngine {
 
@@ -44,5 +47,20 @@ public class PaymentRoutingEngine {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: PMTOValidatePaymentMandate
+     */
+    public boolean PMTOValidatePaymentMandate(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "PMTOValidatePaymentMandate", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: PMTCVerifyCustomerKYC
+     */
+    public void PMTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCVerifyCustomerKYC", correlationId, operation);
     }
 }

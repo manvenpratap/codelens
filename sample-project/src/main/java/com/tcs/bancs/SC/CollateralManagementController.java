@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: CollateralManagementController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class CollateralManagementController {
 
-    private final SCBTRegisterCollateral businessTransaction;
-    private final SCETGetCollateralDetails elementaryTransaction;
+    private final CollateralRegistrationService service;
 
     public CollateralManagementController() {
-        this.businessTransaction = new SCBTRegisterCollateral();
-        this.elementaryTransaction = new SCETGetCollateralDetails();
+        this.service = new CollateralRegistrationService();
     }
 
-    public CollateralManagementController(SCBTRegisterCollateral bt, SCETGetCollateralDetails et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public CollateralManagementController(CollateralRegistrationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: SCBTRegisterCollateral
+     */
+    public MO_OUT_CollateralRegistration SCBTRegisterCollateral(MO_INP_CollateralRegistration request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CollateralManagementController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.SCBTRegisterCollateral(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: SCETGetCollateralDetails
+     */
+    public MO_OUT_CollateralRegistration SCETGetCollateralDetails(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CollateralManagementController", queryKey, "INQUIRY");
+        return this.service.SCETGetCollateralDetails(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to SCBTRegisterCollateral.
      */
     public MO_OUT_CollateralRegistration handleExecuteRequest(MO_INP_CollateralRegistration request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CollateralManagementController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.SCBTRegisterCollateralExecute(request);
+        return this.SCBTRegisterCollateral(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to SCETGetCollateralDetails.
      */
     public MO_OUT_CollateralRegistration handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CollateralManagementController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.SCETGetCollateralDetailsFetch(queryKey);
+        return this.SCETGetCollateralDetails(queryKey);
     }
 
     public boolean ping() {

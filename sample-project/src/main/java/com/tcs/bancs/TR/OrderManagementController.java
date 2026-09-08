@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: OrderManagementController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class OrderManagementController {
 
-    private final TRBTCancelOrder businessTransaction;
-    private final TRETQueryActiveOrders elementaryTransaction;
+    private final OrderRoutingService service;
 
     public OrderManagementController() {
-        this.businessTransaction = new TRBTCancelOrder();
-        this.elementaryTransaction = new TRETQueryActiveOrders();
+        this.service = new OrderRoutingService();
     }
 
-    public OrderManagementController(TRBTCancelOrder bt, TRETQueryActiveOrders et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public OrderManagementController(OrderRoutingService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: TRBTCancelOrder
+     */
+    public MO_OUT_OrderCancel TRBTCancelOrder(MO_INP_OrderCancel request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "OrderManagementController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.TRBTCancelOrder(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: TRETQueryActiveOrders
+     */
+    public MO_OUT_OrderCancel TRETQueryActiveOrders(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "OrderManagementController", queryKey, "INQUIRY");
+        return this.service.TRETQueryActiveOrders(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to TRBTCancelOrder.
      */
     public MO_OUT_OrderCancel handleExecuteRequest(MO_INP_OrderCancel request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "OrderManagementController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.TRBTCancelOrderExecute(request);
+        return this.TRBTCancelOrder(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to TRETQueryActiveOrders.
      */
     public MO_OUT_OrderCancel handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "OrderManagementController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.TRETQueryActiveOrdersFetch(queryKey);
+        return this.TRETQueryActiveOrders(queryKey);
     }
 
     public boolean ping() {

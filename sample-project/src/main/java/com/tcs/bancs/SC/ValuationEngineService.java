@@ -2,10 +2,12 @@ package com.tcs.bancs.SC;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.LN.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: ValuationEngineService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class ValuationEngineService {
 
@@ -44,5 +46,20 @@ public class ValuationEngineService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: SCTOUpdatePledgedAsset
+     */
+    public boolean SCTOUpdatePledgedAsset(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "SCTOUpdatePledgedAsset", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: SCTCNotifyChannel
+     */
+    public void SCTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "SCTCNotifyChannel", correlationId, operation);
     }
 }

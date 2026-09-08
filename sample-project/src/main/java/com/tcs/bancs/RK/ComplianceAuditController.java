@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: ComplianceAuditController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class ComplianceAuditController {
 
-    private final RKBTProcessAmlAlert businessTransaction;
-    private final RKETCheckCounterpartyLimit elementaryTransaction;
+    private final MarketRiskService service;
 
     public ComplianceAuditController() {
-        this.businessTransaction = new RKBTProcessAmlAlert();
-        this.elementaryTransaction = new RKETCheckCounterpartyLimit();
+        this.service = new MarketRiskService();
     }
 
-    public ComplianceAuditController(RKBTProcessAmlAlert bt, RKETCheckCounterpartyLimit et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public ComplianceAuditController(MarketRiskService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: RKBTProcessAmlAlert
+     */
+    public MO_OUT_AmlScreening RKBTProcessAmlAlert(MO_INP_AmlScreening request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ComplianceAuditController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.RKBTProcessAmlAlert(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: RKETCheckCounterpartyLimit
+     */
+    public MO_OUT_AmlScreening RKETCheckCounterpartyLimit(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ComplianceAuditController", queryKey, "INQUIRY");
+        return this.service.RKETCheckCounterpartyLimit(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to RKBTProcessAmlAlert.
      */
     public MO_OUT_AmlScreening handleExecuteRequest(MO_INP_AmlScreening request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ComplianceAuditController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.RKBTProcessAmlAlertExecute(request);
+        return this.RKBTProcessAmlAlert(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to RKETCheckCounterpartyLimit.
      */
     public MO_OUT_AmlScreening handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ComplianceAuditController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.RKETCheckCounterpartyLimitFetch(queryKey);
+        return this.RKETCheckCounterpartyLimit(queryKey);
     }
 
     public boolean ping() {

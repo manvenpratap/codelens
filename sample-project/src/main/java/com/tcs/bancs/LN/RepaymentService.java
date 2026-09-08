@@ -2,10 +2,15 @@ package com.tcs.bancs.LN;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
+import com.tcs.bancs.SC.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: RepaymentService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class RepaymentService {
 
@@ -44,5 +49,20 @@ public class RepaymentService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: LNTOVerifyCollateralCoverage
+     */
+    public boolean LNTOVerifyCollateralCoverage(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOVerifyCollateralCoverage", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: LNTCVerifyCustomerKYC
+     */
+    public void LNTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCVerifyCustomerKYC", correlationId, operation);
     }
 }

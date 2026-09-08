@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: FundTransferController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class FundTransferController {
 
-    private final AMBTFundTransfer businessTransaction;
-    private final AMETQueryAccountDetails elementaryTransaction;
+    private final AccountService service;
 
     public FundTransferController() {
-        this.businessTransaction = new AMBTFundTransfer();
-        this.elementaryTransaction = new AMETQueryAccountDetails();
+        this.service = new AccountService();
     }
 
-    public FundTransferController(AMBTFundTransfer bt, AMETQueryAccountDetails et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public FundTransferController(AccountService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: AMBTFundTransfer
+     */
+    public MO_OUT_FundTransfer AMBTFundTransfer(MO_INP_FundTransfer request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "FundTransferController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.AMBTFundTransfer(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: AMETQueryAccountDetails
+     */
+    public MO_OUT_FundTransfer AMETQueryAccountDetails(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "FundTransferController", queryKey, "INQUIRY");
+        return this.service.AMETQueryAccountDetails(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to AMBTFundTransfer.
      */
     public MO_OUT_FundTransfer handleExecuteRequest(MO_INP_FundTransfer request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "FundTransferController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.AMBTFundTransferExecute(request);
+        return this.AMBTFundTransfer(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to AMETQueryAccountDetails.
      */
     public MO_OUT_FundTransfer handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "FundTransferController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.AMETQueryAccountDetailsFetch(queryKey);
+        return this.AMETQueryAccountDetails(queryKey);
     }
 
     public boolean ping() {

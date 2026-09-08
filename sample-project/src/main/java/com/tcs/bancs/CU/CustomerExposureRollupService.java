@@ -3,9 +3,10 @@ package com.tcs.bancs.CU;
 import java.util.*;
 import com.tcs.bancs.common.*;
 
+
 /**
  * TCS BaNCS Core Domain Service: CustomerExposureRollupService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class CustomerExposureRollupService {
 
@@ -44,5 +45,20 @@ public class CustomerExposureRollupService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: CUTOUpdateCustomerStatus
+     */
+    public boolean CUTOUpdateCustomerStatus(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CUTOUpdateCustomerStatus", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: CUTCNotifyChannel
+     */
+    public void CUTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CUTCNotifyChannel", correlationId, operation);
     }
 }

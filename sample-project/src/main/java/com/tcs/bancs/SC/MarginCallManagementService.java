@@ -2,10 +2,12 @@ package com.tcs.bancs.SC;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.LN.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: MarginCallManagementService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class MarginCallManagementService {
 
@@ -44,5 +46,20 @@ public class MarginCallManagementService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: SCTOCheckMarginThreshold
+     */
+    public boolean SCTOCheckMarginThreshold(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "SCTOCheckMarginThreshold", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: SCTCSyncGeneralLedger
+     */
+    public void SCTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "SCTCSyncGeneralLedger", correlationId, operation);
     }
 }

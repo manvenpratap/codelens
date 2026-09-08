@@ -2,10 +2,13 @@ package com.tcs.bancs.CL;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.PM.*;
+import com.tcs.bancs.TR.*;
 
 /**
  * TCS BaNCS Core Domain Service: FailManagementService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class FailManagementService {
 
@@ -44,5 +47,20 @@ public class FailManagementService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: CLTOComputeNetObligation
+     */
+    public boolean CLTOComputeNetObligation(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOComputeNetObligation", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: CLTCAuditTransaction
+     */
+    public void CLTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCAuditTransaction", correlationId, operation);
     }
 }

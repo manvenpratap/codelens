@@ -2,10 +2,13 @@ package com.tcs.bancs.CL;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.PM.*;
+import com.tcs.bancs.TR.*;
 
 /**
  * TCS BaNCS Core Domain Service: CustodyManagementService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class CustodyManagementService {
 
@@ -44,5 +47,20 @@ public class CustodyManagementService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: CLTOValidateClearingMember
+     */
+    public boolean CLTOValidateClearingMember(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOValidateClearingMember", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: CLTCVerifyCustomerKYC
+     */
+    public void CLTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCVerifyCustomerKYC", correlationId, operation);
     }
 }

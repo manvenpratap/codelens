@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: PaymentRoutingController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class PaymentRoutingController {
 
-    private final PMBTSettlePaymentInstruction businessTransaction;
-    private final PMETValidateIban elementaryTransaction;
+    private final PaymentInitiationService service;
 
     public PaymentRoutingController() {
-        this.businessTransaction = new PMBTSettlePaymentInstruction();
-        this.elementaryTransaction = new PMETValidateIban();
+        this.service = new PaymentInitiationService();
     }
 
-    public PaymentRoutingController(PMBTSettlePaymentInstruction bt, PMETValidateIban et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public PaymentRoutingController(PaymentInitiationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: PMBTSettlePaymentInstruction
+     */
+    public MO_OUT_PaymentCancellation PMBTSettlePaymentInstruction(MO_INP_PaymentCancellation request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentRoutingController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.PMBTSettlePaymentInstruction(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: PMETValidateIban
+     */
+    public MO_OUT_PaymentCancellation PMETValidateIban(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentRoutingController", queryKey, "INQUIRY");
+        return this.service.PMETValidateIban(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to PMBTSettlePaymentInstruction.
      */
     public MO_OUT_PaymentCancellation handleExecuteRequest(MO_INP_PaymentCancellation request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentRoutingController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.PMBTSettlePaymentInstructionExecute(request);
+        return this.PMBTSettlePaymentInstruction(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to PMETValidateIban.
      */
     public MO_OUT_PaymentCancellation handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentRoutingController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.PMETValidateIbanFetch(queryKey);
+        return this.PMETValidateIban(queryKey);
     }
 
     public boolean ping() {

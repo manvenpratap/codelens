@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: PaymentMandateController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class PaymentMandateController {
 
-    private final PMBTAuthorizePayment businessTransaction;
-    private final PMETCheckRoutingPath elementaryTransaction;
+    private final PaymentInitiationService service;
 
     public PaymentMandateController() {
-        this.businessTransaction = new PMBTAuthorizePayment();
-        this.elementaryTransaction = new PMETCheckRoutingPath();
+        this.service = new PaymentInitiationService();
     }
 
-    public PaymentMandateController(PMBTAuthorizePayment bt, PMETCheckRoutingPath et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public PaymentMandateController(PaymentInitiationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: PMBTAuthorizePayment
+     */
+    public MO_OUT_PaymentStatusQuery PMBTAuthorizePayment(MO_INP_PaymentStatusQuery request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentMandateController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.PMBTAuthorizePayment(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: PMETCheckRoutingPath
+     */
+    public MO_OUT_PaymentStatusQuery PMETCheckRoutingPath(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentMandateController", queryKey, "INQUIRY");
+        return this.service.PMETCheckRoutingPath(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to PMBTAuthorizePayment.
      */
     public MO_OUT_PaymentStatusQuery handleExecuteRequest(MO_INP_PaymentStatusQuery request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentMandateController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.PMBTAuthorizePaymentExecute(request);
+        return this.PMBTAuthorizePayment(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to PMETCheckRoutingPath.
      */
     public MO_OUT_PaymentStatusQuery handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PaymentMandateController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.PMETCheckRoutingPathFetch(queryKey);
+        return this.PMETCheckRoutingPath(queryKey);
     }
 
     public boolean ping() {

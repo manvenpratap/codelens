@@ -58,6 +58,15 @@ public class JavaSourceScanner {
                      List<CodeField> fields,
                      List<CodeMethod> methods,
                      List<CodeRelationship> relationships) throws Exception;
+
+        default void onBatch(List<CodePackage> packages,
+                             List<CodeType> types,
+                             List<CodeField> fields,
+                             List<CodeMethod> methods,
+                             List<CodeRelationship> relationships,
+                             List<FileMeta> fileMetas) throws Exception {
+            onBatch(packages, types, fields, methods, relationships);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -343,14 +352,14 @@ public class JavaSourceScanner {
                         break;
                     }
                     if (batchConsumer != null) {
-                        batchConsumer.onBatch(Collections.emptyList(), chunk.types, chunk.fields, chunk.methods, chunk.relationships);
+                        batchConsumer.onBatch(Collections.emptyList(), chunk.types, chunk.fields, chunk.methods, chunk.relationships, chunk.fileMetas);
                     } else {
                         result.types.addAll(chunk.types);
                         result.fields.addAll(chunk.fields);
                         result.methods.addAll(chunk.methods);
                         result.relationships.addAll(chunk.relationships);
+                        result.fileMetas.addAll(chunk.fileMetas);
                     }
-                    result.fileMetas.addAll(chunk.fileMetas);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -478,6 +487,8 @@ public class JavaSourceScanner {
         } catch (Exception e) {
             log.error("Scanning pool error", e);
             throw new IOException("Scanning execution interrupted", e);
+        } finally {
+            THREAD_PARSER.remove();
         }
 
         // Complete asynchronous flusher thread

@@ -2,10 +2,15 @@ package com.tcs.bancs.GL;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.LN.*;
+import com.tcs.bancs.TR.*;
+import com.tcs.bancs.CL.*;
+import com.tcs.bancs.PM.*;
 
 /**
  * TCS BaNCS Core Domain Service: CostCenterAllocationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class CostCenterAllocationService {
 
@@ -44,5 +49,20 @@ public class CostCenterAllocationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: GLTOVerifyVoucherAuthorization
+     */
+    public boolean GLTOVerifyVoucherAuthorization(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "GLTOVerifyVoucherAuthorization", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: GLTCSyncGeneralLedger
+     */
+    public void GLTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "GLTCSyncGeneralLedger", correlationId, operation);
     }
 }

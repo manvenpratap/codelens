@@ -50,6 +50,20 @@ class ChordRenderer {
     this._draw();
   }
 
+  zoomBy(factor) {
+    this._zoom = Math.max(0.2, Math.min((this._zoom || 1.0) * factor, 5.0));
+    this._draw();
+  }
+
+  fitToScreen() {
+    this._zoom = 1.0;
+    this._draw();
+  }
+
+  resetView() {
+    this.fitToScreen();
+  }
+
   togglePackage(pkgName, visible) {
     if (visible === undefined) {
       if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
@@ -288,6 +302,12 @@ class ChordRenderer {
     const aw = this._arcWidth;
     const hovered = this._hovered;
 
+    ctx.save();
+    const scale = this._zoom || 1.0;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+
     // Draw D3-style double-sided ribbon polygons with linear gradients
     const minChordWeight = this._chords.length > 100 ? 2 : 1;
     for (const chord of this._chords) {
@@ -436,16 +456,21 @@ class ChordRenderer {
       }
     }
 
-    ctx.restore();
+    ctx.restore(); // for zoom scale & translate
+    ctx.restore(); // for dpr scale
   }
 
   _onMouseMove(e) {
     const rect = this._canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const rawMx = e.clientX - rect.left;
+    const rawMy = e.clientY - rect.top;
 
     const cx = this._cx;
     const cy = this._cy;
+    const scale = this._zoom || 1.0;
+    const mx = (rawMx - cx) / scale + cx;
+    const my = (rawMy - cy) / scale + cy;
+
     const r = this._radius;
     const aw = this._arcWidth;
 

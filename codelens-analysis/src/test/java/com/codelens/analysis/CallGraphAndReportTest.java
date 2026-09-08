@@ -111,4 +111,60 @@ public class CallGraphAndReportTest {
         assertTrue(html.contains("Interactive Graph Snapshot"), "Should contain header title");
         assertTrue(html.contains("canvas id=\"graph-canvas\""), "Should contain canvas");
     }
+
+    public void testPrecomputedGraphLayout() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+
+        List<String> methodFqns = List.of(
+            "com.tcs.bancs.AM.AccountService.AMETFetchBalance",
+            "com.tcs.bancs.AM.AccountService.AMBTTransferFunds",
+            "com.tcs.bancs.AM.AMDGAccountGrabber.grabDetails",
+            "com.tcs.bancs.BS.BatchService.BSPSProcess"
+        );
+
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn("com.tcs.bancs.AM.AccountService.AMBTTransferFunds");
+        r1.setToEntityFqn("com.tcs.bancs.AM.AccountService.AMETFetchBalance");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn("com.tcs.bancs.BS.BatchService.BSPSProcess");
+        r2.setToEntityFqn("com.tcs.bancs.AM.AMDGAccountGrabber.grabDetails");
+        r2.setKind("CALLS");
+        rels.add(r2);
+
+        analyzer.rebuild(methodFqns, rels);
+
+        CallGraphAnalyzer.GraphView precomputedFull = analyzer.precomputedFullGraphView(false);
+        assertNotNull(precomputedFull, "precomputedFull should not be null");
+        assertFalse(precomputedFull.nodes.isEmpty(), "precomputedFull nodes not empty");
+        for (CallGraphAnalyzer.GraphNode node : precomputedFull.nodes) {
+            assertNotNull(node.x, "node x coordinate should not be null: " + node.id);
+            assertNotNull(node.y, "node y coordinate should not be null: " + node.id);
+            assertFalse(Double.isNaN(node.x), "node x coordinate should not be NaN: " + node.id);
+            assertFalse(Double.isNaN(node.y), "node y coordinate should not be NaN: " + node.id);
+        }
+
+        CallGraphAnalyzer.GraphView precomputedArch = analyzer.precomputedArchitectureGraphView("classes", null);
+        assertNotNull(precomputedArch, "precomputedArch should not be null");
+        assertFalse(precomputedArch.nodes.isEmpty(), "precomputedArch nodes not empty");
+        for (CallGraphAnalyzer.GraphNode node : precomputedArch.nodes) {
+            assertNotNull(node.x, "arch node x coordinate should not be null: " + node.id);
+            assertNotNull(node.y, "arch node y coordinate should not be null: " + node.id);
+            assertFalse(Double.isNaN(node.x), "arch node x coordinate should not be NaN: " + node.id);
+            assertFalse(Double.isNaN(node.y), "arch node y coordinate should not be NaN: " + node.id);
+        }
+
+        CallGraphAnalyzer.GraphView hierarchyView = analyzer.callHierarchyView("com.tcs.bancs.AM.AccountService.AMETFetchBalance", 3);
+        assertNotNull(hierarchyView, "hierarchyView should not be null");
+        assertFalse(hierarchyView.nodes.isEmpty(), "hierarchyView nodes not empty");
+        for (CallGraphAnalyzer.GraphNode node : hierarchyView.nodes) {
+            assertNotNull(node.x, "hierarchy node x should not be null: " + node.id);
+            assertNotNull(node.y, "hierarchy node y should not be null: " + node.id);
+            assertFalse(Double.isNaN(node.x), "hierarchy node x should not be NaN: " + node.id);
+            assertFalse(Double.isNaN(node.y), "hierarchy node y should not be NaN: " + node.id);
+        }
+    }
 }

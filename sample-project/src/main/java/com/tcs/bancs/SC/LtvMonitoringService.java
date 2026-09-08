@@ -2,10 +2,12 @@ package com.tcs.bancs.SC;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.LN.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: LtvMonitoringService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class LtvMonitoringService {
 
@@ -44,5 +46,20 @@ public class LtvMonitoringService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: SCTOAssessCollateralHaircut
+     */
+    public boolean SCTOAssessCollateralHaircut(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "SCTOAssessCollateralHaircut", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: SCTCVerifyCustomerKYC
+     */
+    public void SCTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "SCTCVerifyCustomerKYC", correlationId, operation);
     }
 }

@@ -52,6 +52,31 @@ class DSMRenderer {
     this._render();
   }
 
+  zoomBy(factor) {
+    this._zoom = Math.max(0.4, Math.min((this._zoom || 1.0) * factor, 2.5));
+    this._applyZoom();
+  }
+
+  fitToScreen() {
+    this._zoom = 1.0;
+    this._applyZoom();
+  }
+
+  resetView() {
+    this.fitToScreen();
+  }
+
+  _applyZoom() {
+    if (this._table) {
+      if ('zoom' in this._table.style) {
+        this._table.style.zoom = this._zoom || 1.0;
+      } else {
+        this._table.style.transformOrigin = 'top left';
+        this._table.style.transform = `scale(${this._zoom || 1.0})`;
+      }
+    }
+  }
+
   togglePackage(pkgName, visible) {
     if (visible === undefined) {
       if (this._hiddenPackages.has(pkgName)) this._hiddenPackages.delete(pkgName);
@@ -531,6 +556,8 @@ class DSMRenderer {
     });
 
     scroll.appendChild(table);
+    this._table = table;
+    this._applyZoom();
     wrap.appendChild(scroll);
 
     // Advanced Legend

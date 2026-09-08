@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: MarginCallController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class MarginCallController {
 
-    private final SCBTRevalueCollateral businessTransaction;
-    private final SCETCalculateLTV elementaryTransaction;
+    private final CollateralRegistrationService service;
 
     public MarginCallController() {
-        this.businessTransaction = new SCBTRevalueCollateral();
-        this.elementaryTransaction = new SCETCalculateLTV();
+        this.service = new CollateralRegistrationService();
     }
 
-    public MarginCallController(SCBTRevalueCollateral bt, SCETCalculateLTV et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public MarginCallController(CollateralRegistrationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: SCBTRevalueCollateral
+     */
+    public MO_OUT_CollateralRevaluation SCBTRevalueCollateral(MO_INP_CollateralRevaluation request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MarginCallController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.SCBTRevalueCollateral(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: SCETCalculateLTV
+     */
+    public MO_OUT_CollateralRevaluation SCETCalculateLTV(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MarginCallController", queryKey, "INQUIRY");
+        return this.service.SCETCalculateLTV(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to SCBTRevalueCollateral.
      */
     public MO_OUT_CollateralRevaluation handleExecuteRequest(MO_INP_CollateralRevaluation request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MarginCallController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.SCBTRevalueCollateralExecute(request);
+        return this.SCBTRevalueCollateral(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to SCETCalculateLTV.
      */
     public MO_OUT_CollateralRevaluation handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MarginCallController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.SCETCalculateLTVFetch(queryKey);
+        return this.SCETCalculateLTV(queryKey);
     }
 
     public boolean ping() {

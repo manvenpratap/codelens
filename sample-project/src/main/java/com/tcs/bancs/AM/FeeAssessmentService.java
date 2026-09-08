@@ -2,10 +2,12 @@ package com.tcs.bancs.AM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
 
 /**
  * TCS BaNCS Core Domain Service: FeeAssessmentService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class FeeAssessmentService {
 
@@ -44,5 +46,20 @@ public class FeeAssessmentService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: AMTOComputeDailyAccrual
+     */
+    public boolean AMTOComputeDailyAccrual(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOComputeDailyAccrual", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: AMTCAuditTransaction
+     */
+    public void AMTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCAuditTransaction", correlationId, operation);
     }
 }

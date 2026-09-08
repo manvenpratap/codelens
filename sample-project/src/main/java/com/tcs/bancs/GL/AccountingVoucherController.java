@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: AccountingVoucherController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class AccountingVoucherController {
 
-    private final GLBTApproveVoucher businessTransaction;
-    private final GLETFetchTrialBalance elementaryTransaction;
+    private final GeneralLedgerService service;
 
     public AccountingVoucherController() {
-        this.businessTransaction = new GLBTApproveVoucher();
-        this.elementaryTransaction = new GLETFetchTrialBalance();
+        this.service = new GeneralLedgerService();
     }
 
-    public AccountingVoucherController(GLBTApproveVoucher bt, GLETFetchTrialBalance et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public AccountingVoucherController(GeneralLedgerService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: GLBTApproveVoucher
+     */
+    public MO_OUT_TrialBalanceQuery GLBTApproveVoucher(MO_INP_TrialBalanceQuery request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AccountingVoucherController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.GLBTApproveVoucher(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: GLETFetchTrialBalance
+     */
+    public MO_OUT_TrialBalanceQuery GLETFetchTrialBalance(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AccountingVoucherController", queryKey, "INQUIRY");
+        return this.service.GLETFetchTrialBalance(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to GLBTApproveVoucher.
      */
     public MO_OUT_TrialBalanceQuery handleExecuteRequest(MO_INP_TrialBalanceQuery request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AccountingVoucherController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.GLBTApproveVoucherExecute(request);
+        return this.GLBTApproveVoucher(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to GLETFetchTrialBalance.
      */
     public MO_OUT_TrialBalanceQuery handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AccountingVoucherController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.GLETFetchTrialBalanceFetch(queryKey);
+        return this.GLETFetchTrialBalance(queryKey);
     }
 
     public boolean ping() {

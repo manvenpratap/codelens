@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: PnLDashboardController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class PnLDashboardController {
 
-    private final ANBTCalibrateYieldCurve businessTransaction;
-    private final ANETFetchYieldCurve elementaryTransaction;
+    private final PnLCalculationService service;
 
     public PnLDashboardController() {
-        this.businessTransaction = new ANBTCalibrateYieldCurve();
-        this.elementaryTransaction = new ANETFetchYieldCurve();
+        this.service = new PnLCalculationService();
     }
 
-    public PnLDashboardController(ANBTCalibrateYieldCurve bt, ANETFetchYieldCurve et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public PnLDashboardController(PnLCalculationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: ANBTCalibrateYieldCurve
+     */
+    public MO_OUT_YieldCurveQuery ANBTCalibrateYieldCurve(MO_INP_YieldCurveQuery request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PnLDashboardController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.ANBTCalibrateYieldCurve(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: ANETFetchYieldCurve
+     */
+    public MO_OUT_YieldCurveQuery ANETFetchYieldCurve(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PnLDashboardController", queryKey, "INQUIRY");
+        return this.service.ANETFetchYieldCurve(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to ANBTCalibrateYieldCurve.
      */
     public MO_OUT_YieldCurveQuery handleExecuteRequest(MO_INP_YieldCurveQuery request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PnLDashboardController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.ANBTCalibrateYieldCurveExecute(request);
+        return this.ANBTCalibrateYieldCurve(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to ANETFetchYieldCurve.
      */
     public MO_OUT_YieldCurveQuery handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PnLDashboardController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.ANETFetchYieldCurveFetch(queryKey);
+        return this.ANETFetchYieldCurve(queryKey);
     }
 
     public boolean ping() {

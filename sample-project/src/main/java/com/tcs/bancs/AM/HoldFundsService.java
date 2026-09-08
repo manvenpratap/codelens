@@ -2,10 +2,12 @@ package com.tcs.bancs.AM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
 
 /**
  * TCS BaNCS Core Domain Service: HoldFundsService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class HoldFundsService {
 
@@ -44,5 +46,20 @@ public class HoldFundsService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: AMTOVerifyAccountStatus
+     */
+    public boolean AMTOVerifyAccountStatus(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOVerifyAccountStatus", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: AMTCVerifyCustomerKYC
+     */
+    public void AMTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCVerifyCustomerKYC", correlationId, operation);
     }
 }

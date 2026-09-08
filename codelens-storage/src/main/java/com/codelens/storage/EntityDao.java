@@ -34,6 +34,175 @@ public class EntityDao {
     public static final int BATCH_CHUNK_SIZE = 2500;
 
     // =========================================================================
+    // HIGH-THROUGHPUT CONSOLIDATED CHUNK INGESTION (1 TX PER CHUNK)
+    // =========================================================================
+
+    public void batchInsertChunkFast(List<CodePackage> pkgs,
+                                     List<CodeType> types,
+                                     List<CodeField> fields,
+                                     List<CodeMethod> methods,
+                                     List<CodeRelationship> rels) throws SQLException {
+        batchInsertChunkFast(pkgs, types, fields, methods, rels, Collections.emptyList());
+    }
+
+    public void batchInsertChunkFast(List<CodePackage> pkgs,
+                                     List<CodeType> types,
+                                     List<CodeField> fields,
+                                     List<CodeMethod> methods,
+                                     List<CodeRelationship> rels,
+                                     List<FileMeta> fileMetas) throws SQLException {
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                if (pkgs != null && !pkgs.isEmpty()) {
+                    String sqlPkg = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
+                    try (PreparedStatement ps = c.prepareStatement(sqlPkg)) {
+                        for (CodePackage p : pkgs) {
+                            ps.setString(1, p.getId());
+                            ps.setString(2, p.getFqn());
+                            ps.setString(3, p.getName());
+                            ps.setString(4, p.getParentFqn());
+                            ps.setInt(5, p.getFileCount());
+                            ps.setInt(6, p.getTypeCount());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                if (types != null && !types.isEmpty()) {
+                    String sqlTypes =
+                        "MERGE INTO types " +
+                        "(id,fqn,simple_name,package_fqn,kind,modifiers,super_class,interfaces," +
+                        " source_file,start_line,end_line,line_count,field_count,method_count) " +
+                        "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                    Map<String, CodeType> unique = new LinkedHashMap<>(types.size());
+                    for (CodeType t : types) {
+                        if (t.getId() != null) unique.put(t.getId(), t);
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(sqlTypes)) {
+                        for (CodeType t : unique.values()) {
+                            ps.setString(1,  t.getId());
+                            ps.setString(2,  t.getFqn());
+                            ps.setString(3,  t.getSimpleName());
+                            ps.setString(4,  t.getPackageFqn());
+                            ps.setString(5,  t.getKind());
+                            ps.setString(6,  t.getModifiers());
+                            ps.setString(7,  t.getSuperClass());
+                            ps.setString(8,  toJson(t.getInterfaces()));
+                            ps.setString(9,  t.getSourceFile());
+                            ps.setInt(10,    t.getStartLine());
+                            ps.setInt(11,    t.getEndLine());
+                            ps.setInt(12,    t.getLineCount());
+                            ps.setInt(13,    t.getFieldCount());
+                            ps.setInt(14,    t.getMethodCount());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                if (fields != null && !fields.isEmpty()) {
+                    String sqlFields =
+                        "MERGE INTO fields " +
+                        "(id,fqn,simple_name,declaring_type_fqn,field_type,modifiers,initializer,start_line) " +
+                        "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
+                    Map<String, CodeField> unique = new LinkedHashMap<>(fields.size());
+                    for (CodeField f : fields) {
+                        if (f.getId() != null) unique.put(f.getId(), f);
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(sqlFields)) {
+                        for (CodeField f : unique.values()) {
+                            ps.setString(1, f.getId());
+                            ps.setString(2, f.getFqn());
+                            ps.setString(3, f.getSimpleName());
+                            ps.setString(4, f.getDeclaringTypeFqn());
+                            ps.setString(5, f.getFieldType());
+                            ps.setString(6, f.getModifiers());
+                            ps.setString(7, f.getInitializer());
+                            ps.setInt(8,    f.getStartLine());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                if (methods != null && !methods.isEmpty()) {
+                    String sqlMethods =
+                        "MERGE INTO methods " +
+                        "(id,fqn,simple_name,declaring_type_fqn,return_type,parameters,modifiers," +
+                        " start_line,end_line,cyclomatic_complexity,body_hash) " +
+                        "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
+                    Map<String, CodeMethod> unique = new LinkedHashMap<>(methods.size());
+                    for (CodeMethod m : methods) {
+                        if (m.getId() != null) unique.put(m.getId(), m);
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
+                        for (CodeMethod m : unique.values()) {
+                            ps.setString(1,  m.getId());
+                            ps.setString(2,  m.getFqn());
+                            ps.setString(3,  m.getSimpleName());
+                            ps.setString(4,  m.getDeclaringTypeFqn());
+                            ps.setString(5,  m.getReturnType());
+                            ps.setString(6,  toJson(m.getParameters()));
+                            ps.setString(7,  m.getModifiers());
+                            ps.setInt(8,     m.getStartLine());
+                            ps.setInt(9,     m.getEndLine());
+                            ps.setInt(10,    m.getCyclomaticComplexity());
+                            ps.setString(11, m.getBodyHash());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                if (rels != null && !rels.isEmpty()) {
+                    String sqlRels =
+                        "MERGE INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
+                        "KEY(id) VALUES (?,?,?,?,?)";
+                    Map<String, CodeRelationship> unique = new LinkedHashMap<>(rels.size());
+                    for (CodeRelationship r : rels) {
+                        if (r.getId() != null) unique.put(r.getId(), r);
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(sqlRels)) {
+                        for (CodeRelationship r : unique.values()) {
+                            ps.setString(1, r.getId());
+                            ps.setString(2, r.getFromEntityFqn());
+                            ps.setString(3, r.getToEntityFqn());
+                            ps.setString(4, r.getKind());
+                            ps.setInt(5,    r.getSourceLine());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                if (fileMetas != null && !fileMetas.isEmpty()) {
+                    String sqlMeta = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
+                    try (PreparedStatement ps = c.prepareStatement(sqlMeta)) {
+                        for (FileMeta m : fileMetas) {
+                            ps.setString(1, m.getFilePath());
+                            ps.setLong(2, m.getLastModified());
+                            ps.setLong(3, m.getFileSize());
+                            ps.setInt(4, m.getTypeCount());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+
+                c.commit();
+            } catch (Throwable t) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                if (t instanceof SQLException) throw (SQLException) t;
+                throw new SQLException("Transaction failed during consolidated chunk insert", t);
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
+        }
+    }
+
+    // =========================================================================
     // PACKAGES
     // =========================================================================
 
@@ -42,20 +211,27 @@ public class EntityDao {
         String sql = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
         for (int i = 0; i < packages.size(); i += BATCH_CHUNK_SIZE) {
             List<CodePackage> chunk = packages.subList(i, Math.min(i + BATCH_CHUNK_SIZE, packages.size()));
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (CodePackage p : chunk) {
-                    ps.setString(1, p.getId());
-                    ps.setString(2, p.getFqn());
-                    ps.setString(3, p.getName());
-                    ps.setString(4, p.getParentFqn());
-                    ps.setInt(5, p.getFileCount());
-                    ps.setInt(6, p.getTypeCount());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (CodePackage p : chunk) {
+                        ps.setString(1, p.getId());
+                        ps.setString(2, p.getFqn());
+                        ps.setString(3, p.getName());
+                        ps.setString(4, p.getParentFqn());
+                        ps.setInt(5, p.getFileCount());
+                        ps.setInt(6, p.getTypeCount());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -93,28 +269,35 @@ public class EntityDao {
             for (CodeType t : chunk) {
                 if (t.getId() != null) unique.put(t.getId(), t);
             }
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (CodeType t : unique.values()) {
-                    ps.setString(1,  t.getId());
-                    ps.setString(2,  t.getFqn());
-                    ps.setString(3,  t.getSimpleName());
-                    ps.setString(4,  t.getPackageFqn());
-                    ps.setString(5,  t.getKind());
-                    ps.setString(6,  t.getModifiers());
-                    ps.setString(7,  t.getSuperClass());
-                    ps.setString(8,  toJson(t.getInterfaces()));
-                    ps.setString(9,  t.getSourceFile());
-                    ps.setInt(10,    t.getStartLine());
-                    ps.setInt(11,    t.getEndLine());
-                    ps.setInt(12,    t.getLineCount());
-                    ps.setInt(13,    t.getFieldCount());
-                    ps.setInt(14,    t.getMethodCount());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (CodeType t : unique.values()) {
+                        ps.setString(1,  t.getId());
+                        ps.setString(2,  t.getFqn());
+                        ps.setString(3,  t.getSimpleName());
+                        ps.setString(4,  t.getPackageFqn());
+                        ps.setString(5,  t.getKind());
+                        ps.setString(6,  t.getModifiers());
+                        ps.setString(7,  t.getSuperClass());
+                        ps.setString(8,  toJson(t.getInterfaces()));
+                        ps.setString(9,  t.getSourceFile());
+                        ps.setInt(10,    t.getStartLine());
+                        ps.setInt(11,    t.getEndLine());
+                        ps.setInt(12,    t.getLineCount());
+                        ps.setInt(13,    t.getFieldCount());
+                        ps.setInt(14,    t.getMethodCount());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -162,22 +345,29 @@ public class EntityDao {
             for (CodeField f : chunk) {
                 if (f.getId() != null) unique.put(f.getId(), f);
             }
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (CodeField f : unique.values()) {
-                    ps.setString(1, f.getId());
-                    ps.setString(2, f.getFqn());
-                    ps.setString(3, f.getSimpleName());
-                    ps.setString(4, f.getDeclaringTypeFqn());
-                    ps.setString(5, f.getFieldType());
-                    ps.setString(6, f.getModifiers());
-                    ps.setString(7, f.getInitializer());
-                    ps.setInt(8,    f.getStartLine());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (CodeField f : unique.values()) {
+                        ps.setString(1, f.getId());
+                        ps.setString(2, f.getFqn());
+                        ps.setString(3, f.getSimpleName());
+                        ps.setString(4, f.getDeclaringTypeFqn());
+                        ps.setString(5, f.getFieldType());
+                        ps.setString(6, f.getModifiers());
+                        ps.setString(7, f.getInitializer());
+                        ps.setInt(8,    f.getStartLine());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -237,25 +427,32 @@ public class EntityDao {
             for (CodeMethod m : chunk) {
                 if (m.getId() != null) unique.put(m.getId(), m);
             }
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (CodeMethod m : unique.values()) {
-                    ps.setString(1,  m.getId());
-                    ps.setString(2,  m.getFqn());
-                    ps.setString(3,  m.getSimpleName());
-                    ps.setString(4,  m.getDeclaringTypeFqn());
-                    ps.setString(5,  m.getReturnType());
-                    ps.setString(6,  toJson(m.getParameters()));
-                    ps.setString(7,  m.getModifiers());
-                    ps.setInt(8,     m.getStartLine());
-                    ps.setInt(9,     m.getEndLine());
-                    ps.setInt(10,    m.getCyclomaticComplexity());
-                    ps.setString(11, m.getBodyHash());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (CodeMethod m : unique.values()) {
+                        ps.setString(1,  m.getId());
+                        ps.setString(2,  m.getFqn());
+                        ps.setString(3,  m.getSimpleName());
+                        ps.setString(4,  m.getDeclaringTypeFqn());
+                        ps.setString(5,  m.getReturnType());
+                        ps.setString(6,  toJson(m.getParameters()));
+                        ps.setString(7,  m.getModifiers());
+                        ps.setInt(8,     m.getStartLine());
+                        ps.setInt(9,     m.getEndLine());
+                        ps.setInt(10,    m.getCyclomaticComplexity());
+                        ps.setString(11, m.getBodyHash());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -323,19 +520,26 @@ public class EntityDao {
             for (CodeRelationship r : chunk) {
                 if (r.getId() != null) unique.put(r.getId(), r);
             }
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (CodeRelationship r : unique.values()) {
-                    ps.setString(1, r.getId());
-                    ps.setString(2, r.getFromEntityFqn());
-                    ps.setString(3, r.getToEntityFqn());
-                    ps.setString(4, r.getKind());
-                    ps.setInt(5,    r.getSourceLine());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (CodeRelationship r : unique.values()) {
+                        ps.setString(1, r.getId());
+                        ps.setString(2, r.getFromEntityFqn());
+                        ps.setString(3, r.getToEntityFqn());
+                        ps.setString(4, r.getKind());
+                        ps.setInt(5,    r.getSourceLine());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -495,27 +699,34 @@ public class EntityDao {
         try (Connection c = db.getConnection();
              Statement s = c.createStatement()) {
             s.execute("DELETE FROM inconsistencies");
-            c.commit();
         }
         String sql =
             "MERGE INTO inconsistencies " +
             "(id,entity1_fqn,entity1_kind,entity2_fqn,entity2_kind,reason,similarity_score,kind) KEY(id)" +
             " VALUES (?,?,?,?,?,?,?,?)";
-        try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            for (InconsistencyReport r : reports) {
-                ps.setString(1, r.getId());
-                ps.setString(2, r.getEntity1Fqn());
-                ps.setString(3, r.getEntity1Kind());
-                ps.setString(4, r.getEntity2Fqn());
-                ps.setString(5, r.getEntity2Kind());
-                ps.setString(6, r.getReason());
-                ps.setDouble(7, r.getSimilarityScore());
-                ps.setString(8, r.getKind());
-                ps.addBatch();
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                for (InconsistencyReport r : reports) {
+                    ps.setString(1, r.getId());
+                    ps.setString(2, r.getEntity1Fqn());
+                    ps.setString(3, r.getEntity1Kind());
+                    ps.setString(4, r.getEntity2Fqn());
+                    ps.setString(5, r.getEntity2Kind());
+                    ps.setString(6, r.getReason());
+                    ps.setDouble(7, r.getSimilarityScore());
+                    ps.setString(8, r.getKind());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+                c.commit();
+            } catch (Throwable t) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                if (t instanceof SQLException) throw (SQLException) t;
+                throw new SQLException(t);
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
             }
-            ps.executeBatch();
-            c.commit();
         }
     }
 
@@ -686,7 +897,7 @@ public class EntityDao {
         List<Map<String, String>> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, declaring_type_fqn FROM methods")) {
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, declaring_type_fqn FROM methods LIMIT 10000")) {
             while (rs.next()) {
                 Map<String, String> m = new HashMap<>(3);
                 m.put("name", rs.getString(1));
@@ -702,7 +913,7 @@ public class EntityDao {
         List<Map<String, String>> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, package_fqn, kind FROM types")) {
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, package_fqn, kind FROM types LIMIT 10000")) {
             while (rs.next()) {
                 Map<String, String> m = new HashMap<>(4);
                 m.put("name", rs.getString(1));
@@ -939,24 +1150,32 @@ public class EntityDao {
                      "error_files, types_found, methods_found, fields_found, relationships_found, " +
                      "start_time, end_time, message, error_detail) KEY(id) " +
                      "VALUES ('latest', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, sp.getStatus() != null ? sp.getStatus().name() : "IDLE");
-            ps.setString(2, sp.getSourcePath() != null ? sp.getSourcePath() : "");
-            ps.setInt(3, sp.getTotalFiles());
-            ps.setInt(4, sp.getProcessedFiles());
-            ps.setInt(5, sp.getParsedFiles());
-            ps.setInt(6, sp.getErrorFiles());
-            ps.setInt(7, sp.getTypesFound());
-            ps.setInt(8, sp.getMethodsFound());
-            ps.setInt(9, sp.getFieldsFound());
-            ps.setInt(10, sp.getRelationshipsFound());
-            ps.setLong(11, sp.getStartTime());
-            ps.setLong(12, sp.getEndTime());
-            ps.setString(13, sp.getMessage());
-            ps.setString(14, sp.getErrorDetail());
-            ps.executeUpdate();
-            c.commit();
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, sp.getStatus() != null ? sp.getStatus().name() : "IDLE");
+                ps.setString(2, sp.getSourcePath() != null ? sp.getSourcePath() : "");
+                ps.setInt(3, sp.getTotalFiles());
+                ps.setInt(4, sp.getProcessedFiles());
+                ps.setInt(5, sp.getParsedFiles());
+                ps.setInt(6, sp.getErrorFiles());
+                ps.setInt(7, sp.getTypesFound());
+                ps.setInt(8, sp.getMethodsFound());
+                ps.setInt(9, sp.getFieldsFound());
+                ps.setInt(10, sp.getRelationshipsFound());
+                ps.setLong(11, sp.getStartTime());
+                ps.setLong(12, sp.getEndTime());
+                ps.setString(13, sp.getMessage());
+                ps.setString(14, sp.getErrorDetail());
+                ps.executeUpdate();
+                c.commit();
+            } catch (Throwable t) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                if (t instanceof SQLException) throw (SQLException) t;
+                throw new SQLException(t);
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
         }
     }
 
@@ -1000,18 +1219,25 @@ public class EntityDao {
         String sql = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
         for (int i = 0; i < list.size(); i += BATCH_CHUNK_SIZE) {
             List<FileMeta> chunk = list.subList(i, Math.min(i + BATCH_CHUNK_SIZE, list.size()));
-            try (Connection c = db.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
+            try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
-                for (FileMeta m : chunk) {
-                    ps.setString(1, m.getFilePath());
-                    ps.setLong(2, m.getLastModified());
-                    ps.setLong(3, m.getFileSize());
-                    ps.setInt(4, m.getTypeCount());
-                    ps.addBatch();
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (FileMeta m : chunk) {
+                        ps.setString(1, m.getFilePath());
+                        ps.setLong(2, m.getLastModified());
+                        ps.setLong(3, m.getFileSize());
+                        ps.setInt(4, m.getTypeCount());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException(t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                ps.executeBatch();
-                c.commit();
             }
         }
     }
@@ -1078,8 +1304,10 @@ public class EntityDao {
                     }
                     c.commit();
                 } catch (Exception e) {
-                    c.rollback();
+                    try { c.rollback(); } catch (SQLException ignored) {}
                     throw e;
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
             }
         }

@@ -10,6 +10,7 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.staticfiles.Location;
 import io.javalin.json.JavalinJackson;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,6 +79,7 @@ public class CodeLensServer {
     private final FieldImpactAnalyzer fieldImpact;
     private final CodeReviewEngine   codeReviewEngine;
     private final ReportService      reportService;
+    private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final GitBlameService    gitBlameService;
     private final int                port;
 
@@ -96,6 +98,134 @@ public class CodeLensServer {
 
     private Javalin app;
 
+    // ── Graph Layout Cache & Disk Persistence ────────────────────────────────
+    private final Map<String, CallGraphAnalyzer.GraphView> layoutCache = new ConcurrentHashMap<>();
+    private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    public File getGraphCacheDir() {
+        String dataDir = getActiveConfig().getDataDir();
+        if (dataDir == null || dataDir.isBlank()) dataDir = "./codelens-data";
+        File dir = new File(dataDir, "graph-cache");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private String sanitizeCacheKey(String key) {
+        if (key == null) return "null";
+        return key.replaceAll("[^a-zA-Z0-9_.-]", "_");
+    }
+
+    public CallGraphAnalyzer.GraphView getOrComputeLayout(String cacheKey, java.util.function.Supplier<CallGraphAnalyzer.GraphView> computer) {
+        if (cacheKey == null) return computer.get();
+
+        // 1. Check in-memory cache
+        CallGraphAnalyzer.GraphView cached = layoutCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 2. Check disk cache
+        File cacheFile = new File(getGraphCacheDir(), sanitizeCacheKey(cacheKey) + ".json");
+        if (cacheFile.exists() && cacheFile.length() > 2) {
+            try {
+                CallGraphAnalyzer.GraphView diskView = jsonMapper.readValue(cacheFile, CallGraphAnalyzer.GraphView.class);
+                if (diskView != null && diskView.nodes != null) {
+                    layoutCache.put(cacheKey, diskView);
+                    return diskView;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to read graph layout cache from {}: {}", cacheFile.getName(), e.getMessage());
+            }
+        }
+
+        // 3. Compute layout
+        CallGraphAnalyzer.GraphView computed = computer.get();
+        if (computed != null && computed.nodes != null) {
+            layoutCache.put(cacheKey, computed);
+            try {
+                jsonMapper.writeValue(cacheFile, computed);
+            } catch (Exception e) {
+                log.warn("Failed to write graph layout cache to {}: {}", cacheFile.getName(), e.getMessage());
+            }
+        }
+        return computed;
+    }
+
+    public void invalidateGraphCache() {
+        layoutCache.clear();
+        try {
+            File dir = getGraphCacheDir();
+            File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
+            if (files != null) {
+                for (File f : files) {
+                    f.delete();
+                }
+            }
+            log.info("Cleared in-memory and disk graph layout cache");
+        } catch (Exception e) {
+            log.warn("Error invalidating graph cache: {}", e.getMessage());
+        }
+    }
+
+    public void warmupGraphCache(ScanProgress progress) {
+        try {
+            log.info("Starting graph layout precomputation & warm-up...");
+            long start = System.currentTimeMillis();
+
+            class LayoutTask {
+                final String key;
+                final String name;
+                final java.util.function.Supplier<CallGraphAnalyzer.GraphView> supplier;
+                LayoutTask(String key, String name, java.util.function.Supplier<CallGraphAnalyzer.GraphView> supplier) {
+                    this.key = key;
+                    this.name = name;
+                    this.supplier = supplier;
+                }
+            }
+
+            List<LayoutTask> tasks = List.of(
+                new LayoutTask("arch-raw:classes:none", "Architecture Classes", () -> callGraph.architectureGraphView("classes", null)),
+                new LayoutTask("arch-raw:methods:none", "Architecture Methods", () -> callGraph.architectureGraphView("methods", null)),
+                new LayoutTask("full-raw:true", "Full Codebase Graph", () -> callGraph.fullGraphView(true)),
+                new LayoutTask("full-raw:false", "Method Call Graph", () -> callGraph.fullGraphView(false)),
+                new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null)),
+                new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true))
+            );
+
+            int total = tasks.size();
+            for (int i = 0; i < total; i++) {
+                if (cancelRequested) {
+                    log.info("Layout precomputation cancelled");
+                    return;
+                }
+                LayoutTask task = tasks.get(i);
+                int step = i + 1;
+                if (progress != null) {
+                    progress.setActiveStage("LAYOUT");
+                    progress.setCurrentPhase("Precomputing Layouts");
+                    progress.setMessage(String.format("Precomputing graph layouts (%d/%d)…", step, total));
+                    progress.setCurrentDetail(String.format("[%d/%d] Generating %s layout", step, total, task.name));
+                    progress.setPercentage(92 + (int) ((i / (float) total) * 7.0));
+                }
+                getOrComputeLayout(task.key, task.supplier);
+            }
+
+            if (progress != null) {
+                progress.setCurrentDetail(String.format("Precomputed all %d graph layouts", total));
+            }
+            log.info("Finished graph layout warm-up: {} layouts ready in {}ms",
+                total, System.currentTimeMillis() - start);
+        } catch (Exception e) {
+            log.warn("Graph layout warm-up encountered an error: {}", e.getMessage());
+        }
+    }
+
+    public void warmupGraphCache() {
+        warmupGraphCache(null);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
     // ─────────────────────────────────────────────────────────────────────────
@@ -108,6 +238,7 @@ public class CodeLensServer {
         this.fieldImpact           = new FieldImpactAnalyzer();
         this.codeReviewEngine      = new CodeReviewEngine();
         this.reportService         = new ReportService(this.callGraph, this.fieldImpact, this.codeReviewEngine);
+        this.criticalPathAnalyzer  = new CriticalPathAnalyzer(this.callGraph);
         this.gitBlameService       = new GitBlameService();
         this.port                  = port;
     }
@@ -163,8 +294,14 @@ public class CodeLensServer {
         app.get("/api/methods/{id}/graph",   this::getCallGraph);
         app.get("/api/graph/all",            this::getFullGraph);
         app.get("/api/graph/architecture",   this::getArchitectureGraph);
+        app.get("/api/graph/precomputed",    this::getPrecomputedGraph);
+        app.get("/api/graph/export-json",    this::exportGraphJson);
         app.get("/api/graph/dsm",            this::getDSM);
         app.get("/api/graph/treemap",        this::getTreemap);
+
+        // ── Critical Path & Persistent Entities ──────────────────────────────
+        app.get("/api/analysis/persistent-classes", this::getPersistentClasses);
+        app.get("/api/analysis/critical-path",       this::getCriticalPath);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -233,19 +370,55 @@ public class CodeLensServer {
             log.warn("Failed to load last scan metadata: {}", e.getMessage());
         }
 
+        app.start(port);
+        log.info("CodeLens server started on http://localhost:{}", port);
+
         // Build call graph from database on startup with streaming cursor
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
-            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
-            log.info("Initialized in-memory call graph from database with {} methods",
-                allMethodFqns.size());
+            if (!allMethodFqns.isEmpty()) {
+                ScanProgress startupProgress = scanState.get();
+                if (startupProgress == null) {
+                    startupProgress = new ScanProgress();
+                }
+                boolean wasComplete = startupProgress.getStatus() == ScanProgress.Status.COMPLETE;
+                if (!wasComplete) {
+                    startupProgress.setStatus(ScanProgress.Status.SCANNING);
+                }
+                startupProgress.setActiveStage("GRAPH");
+                startupProgress.setCurrentPhase("Call Graph Analysis");
+                startupProgress.setMessage("Building in-memory call graph from database…");
+                startupProgress.setPercentage(wasComplete ? 100 : 15);
+                scanState.set(startupProgress);
+
+                callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+                startupProgress.setCurrentPhase("Field Impact Analysis");
+                startupProgress.setMessage("Indexing field impact relationships…");
+                startupProgress.setPercentage(wasComplete ? 100 : 30);
+                fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+                log.info("Initialized in-memory call graph from database with {} methods",
+                    allMethodFqns.size());
+
+                ScanProgress finalStartupProgress = startupProgress;
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        warmupGraphCache(finalStartupProgress);
+                    } catch (Throwable t) {
+                        log.warn("Error during startup layout warmup: {}", t.getMessage());
+                    } finally {
+                        finalStartupProgress.setActiveStage("COMPLETE");
+                        finalStartupProgress.setCurrentPhase("Complete");
+                        finalStartupProgress.setCurrentDetail("Ready");
+                        finalStartupProgress.setMessage("Server ready · Graphs precomputed");
+                        finalStartupProgress.setPercentage(100);
+                        finalStartupProgress.setStatus(ScanProgress.Status.COMPLETE);
+                        try { dao.saveScanMeta(finalStartupProgress); } catch (Exception ignored) {}
+                    }
+                });
+            }
         } catch (Exception e) {
             log.error("Failed to initialize call graph from database on startup: {}", e.getMessage(), e);
         }
-
-        app.start(port);
-        log.info("CodeLens server started on http://localhost:{}", port);
     }
 
     public void stop() {
@@ -423,13 +596,17 @@ public class CodeLensServer {
         cancelRequested = false;
         try {
             // Phase 1: prepare database and lucene index
+            progress.setActiveStage("PREPARE");
             progress.setCurrentPhase("Preparing Storage");
             progress.setMessage("Clearing existing database & index data…");
+            progress.setCurrentDetail("Resetting schema & indices");
+            progress.setPercentage(1);
             db.clearAll();
             db.prepareForBulkLoad();
             lucene.prepareIndexRebuild();
 
             // Phase 2: bounded streaming scan
+            progress.setActiveStage("PARSE");
             progress.setCurrentPhase("AST Parsing & Storage");
             progress.setMessage("Scanning Java source files in parallel…");
 
@@ -437,13 +614,20 @@ public class CodeLensServer {
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
                 excludePatterns,
-                (pkgs, types, fields, methods, rels) -> {
-                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackagesFast(pkgs);
-                    if (types != null && !types.isEmpty()) dao.batchInsertTypesFast(types);
-                    if (fields != null && !fields.isEmpty()) dao.batchInsertFieldsFast(fields);
-                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethodsFast(methods);
-                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationshipsFast(rels);
-                    lucene.addBatch(types, methods, fields);
+                new JavaSourceScanner.BatchConsumer() {
+                    @Override
+                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                                        List<CodeMethod> methods, List<CodeRelationship> rels) throws Exception {
+                        onBatch(pkgs, types, fields, methods, rels, Collections.emptyList());
+                    }
+
+                    @Override
+                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                                        List<CodeMethod> methods, List<CodeRelationship> rels,
+                                        List<FileMeta> fileMetas) throws Exception {
+                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
+                        lucene.addBatch(types, methods, fields);
+                    }
                 },
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
@@ -455,15 +639,15 @@ public class CodeLensServer {
                     }
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
-                    if (done % 5000 == 0) {
-                        try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
-                    }
+                    float parseFraction = total > 0 ? (float) done / total : 0f;
+                    progress.setPercentage(2 + (int) (parseFraction * 68)); // 2% -> 70%
                 },
                 () -> cancelRequested);
 
             if (result.cancelled || cancelRequested) {
                 log.info("Scan cancelled for {}", sourcePath);
                 try { db.finishBulkLoad(); } catch (Exception ignored) {}
+                progress.setActiveStage("COMPLETE");
                 progress.setCurrentPhase("Cancelled");
                 progress.setCurrentDetail("Scan cancelled by user");
                 progress.setMessage(String.format("Scan cancelled (%d/%d files processed)", progress.getProcessedFiles(), progress.getTotalFiles()));
@@ -474,41 +658,99 @@ public class CodeLensServer {
                 return;
             }
 
-            // Save file metadata for delta change detection
-            dao.saveFileMetaBatch(result.fileMetas);
+            // Save file metadata for delta change detection if any non-chunk items remain
+            if (!result.fileMetas.isEmpty()) {
+                dao.saveFileMetaBatch(result.fileMetas);
+            }
 
             // Phase 3: finish Lucene commit & rebuild secondary database indexes
+            progress.setActiveStage("INDEX");
             progress.setCurrentPhase("Finalizing Index");
             progress.setMessage("Committing search index & rebuilding database indexes…");
+            progress.setCurrentDetail("Committing Lucene index…");
+            progress.setPercentage(71);
             lucene.finishIndexRebuild();
+            progress.setCurrentDetail("Rebuilding database indexes…");
+            progress.setPercentage(73);
             db.finishBulkLoad();
 
-            // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
-            progress.setCurrentPhase("Graph Analysis");
-            progress.setMessage("Computing call graph & field propagation…");
-            List<String> allMethodFqns = dao.findAllMethodFqns();
-            progress.setCurrentDetail(String.format("Analyzing %d methods & call paths", allMethodFqns.size()));
-            List<String[]> callPairs = dao.findCallRelationshipPairs();
-            callGraph.rebuildWithPairs(allMethodFqns, callPairs);
-            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+            if (cancelRequested) {
+                return;
+            }
 
-            // Main scan finishes immediately after graph and indexing
+            // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
+            progress.setActiveStage("GRAPH");
+            progress.setCurrentPhase("Call Graph Analysis");
+            progress.setMessage("Computing call graph & topology…");
+            progress.setPercentage(75);
+            List<String> allMethodFqns = dao.findAllMethodFqns();
+            progress.setCurrentDetail(String.format("Fetched %,d methods from storage", allMethodFqns.size()));
+            List<String[]> callPairs = dao.findCallRelationshipPairs();
+            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", callPairs.size()));
+
+            callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
+                if ("Call Graph: Indexing Methods".equals(phase)) {
+                    float f = total > 0 ? (float) curr / total : 1f;
+                    progress.setPercentage(75 + (int)(f * 6)); // 75% -> 81%
+                } else if ("Call Graph: Mapping Edges".equals(phase)) {
+                    float f = total > 0 ? (float) curr / total : 1f;
+                    progress.setPercentage(81 + (int)(f * 6)); // 81% -> 87%
+                }
+                progress.setCurrentPhase("Call Graph Analysis");
+                progress.setMessage(phase);
+                progress.setCurrentDetail(detail);
+            });
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Field Impact Analysis
+            progress.setCurrentPhase("Field Impact Analysis");
+            progress.setMessage("Indexing field dependencies & propagation…");
+            progress.setPercentage(87);
+            progress.setCurrentDetail("Querying field relationships from database…");
+            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
+            progress.setCurrentDetail(String.format("Found %,d field relationships; querying calling methods…", fieldRels.size()));
+            Set<String> callingMethods = dao.findCallingMethodFqns();
+
+            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", fieldRels.size(), callingMethods.size()));
+            fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
+                float f = total > 0 ? (float) curr / total : 1f;
+                progress.setPercentage(87 + (int)(f * 5)); // 87% -> 92%
+                progress.setCurrentDetail(detail);
+            });
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 5: Graph Layout Precomputation (Warmup)
             progress.setParsedFiles(result.parsedFiles);
             progress.setErrorFiles(result.errorFiles);
             progress.setTypesFound(result.typesFound);
             progress.setMethodsFound(result.methodsFound);
             progress.setFieldsFound(result.fieldsFound);
             progress.setRelationshipsFound(result.relationshipsFound);
+
+            invalidateGraphCache();
+            warmupGraphCache(progress);
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 6: Complete
+            progress.setActiveStage("COMPLETE");
+            progress.setPercentage(100);
             progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("Ready");
+            progress.setCurrentDetail("All graphs and indexes precomputed and ready");
+            progress.setMessage("Scan complete");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
 
             // Persist scan metadata to H2 for instant session restore
             dao.saveScanMeta(progress);
-
-            // Background database compaction to purge dead MVStore pages and reclaim disk space
-            db.compactDatabase();
 
             log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files ({} parsed, {} errors)",
                 result.typesFound, result.methodsFound, result.fieldsFound,
@@ -546,8 +788,10 @@ public class CodeLensServer {
                 changes.getNewFiles().size(), changes.getModifiedFiles().size(), changes.getDeletedFiles().size());
 
             // Phase 1: delete old data for modified and deleted files
+            progress.setActiveStage("PREPARE");
             progress.setCurrentPhase("Patching Database");
             progress.setMessage("Purging old records for modified & deleted files…");
+            progress.setPercentage(3);
             List<String> toDelete = new ArrayList<>();
             toDelete.addAll(changes.getModifiedFiles());
             toDelete.addAll(changes.getDeletedFiles());
@@ -558,19 +802,27 @@ public class CodeLensServer {
             for (String p : changes.getNewFiles()) toParse.add(Paths.get(p));
             for (String p : changes.getModifiedFiles()) toParse.add(Paths.get(p));
 
+            progress.setActiveStage("PARSE");
             progress.setCurrentPhase("Incremental AST Parsing");
             progress.setMessage(String.format("Parsing %d changed files…", toParse.size()));
 
             JavaSourceScanner.ScanResult result = scanner.scanFiles(
                 root,
                 toParse,
-                (pkgs, types, fields, methods, rels) -> {
-                    if (pkgs != null && !pkgs.isEmpty()) dao.batchInsertPackages(pkgs);
-                    if (types != null && !types.isEmpty()) dao.batchInsertTypes(types);
-                    if (fields != null && !fields.isEmpty()) dao.batchInsertFields(fields);
-                    if (methods != null && !methods.isEmpty()) dao.batchInsertMethods(methods);
-                    if (rels != null && !rels.isEmpty()) dao.batchInsertRelationships(rels);
-                    lucene.indexBatch(types, methods, fields);
+                new JavaSourceScanner.BatchConsumer() {
+                    @Override
+                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                                        List<CodeMethod> methods, List<CodeRelationship> rels) throws Exception {
+                        onBatch(pkgs, types, fields, methods, rels, Collections.emptyList());
+                    }
+
+                    @Override
+                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                                        List<CodeMethod> methods, List<CodeRelationship> rels,
+                                        List<FileMeta> fileMetas) throws Exception {
+                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
+                        lucene.indexBatch(types, methods, fields);
+                    }
                 },
                 (done, total, file) -> {
                     progress.setTotalFiles(total);
@@ -582,15 +834,15 @@ public class CodeLensServer {
                     }
                     progress.setCurrentDetail(fileName);
                     progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
-                    if (done % 5000 == 0) {
-                        try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
-                    }
+                    float parseFraction = total > 0 ? (float) done / total : 0f;
+                    progress.setPercentage(5 + (int) (parseFraction * 65));
                 },
                 () -> cancelRequested
             );
 
             if (result.cancelled || cancelRequested) {
                 log.info("Incremental scan cancelled for {}", sourcePath);
+                progress.setActiveStage("COMPLETE");
                 progress.setCurrentPhase("Cancelled");
                 progress.setCurrentDetail("Incremental scan cancelled by user");
                 progress.setMessage("Incremental scan cancelled by user");
@@ -602,20 +854,53 @@ public class CodeLensServer {
             }
 
             // Phase 3: Save file metadata & recompute package totals
-            dao.saveFileMetaBatch(result.fileMetas);
+            if (!result.fileMetas.isEmpty()) {
+                dao.saveFileMetaBatch(result.fileMetas);
+            }
             dao.recomputePackageCounts();
 
             // Phase 4: finish Lucene commit & rebuild in-memory graphs
+            progress.setActiveStage("INDEX");
             progress.setCurrentPhase("Updating Search Index");
             progress.setMessage("Committing incremental search index…");
+            progress.setPercentage(72);
             lucene.finishIndexRebuild();
 
-            progress.setCurrentPhase("Graph Analysis");
-            progress.setMessage("Refreshing call graph & field propagation…");
+            if (cancelRequested) return;
+
+            progress.setActiveStage("GRAPH");
+            progress.setCurrentPhase("Call Graph Analysis");
+            progress.setMessage("Refreshing call graph & topology…");
+            progress.setPercentage(75);
             List<String> allMethodFqns = dao.findAllMethodFqns();
             List<String[]> callPairs = dao.findCallRelationshipPairs();
-            callGraph.rebuildWithPairs(allMethodFqns, callPairs);
-            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+            callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
+                if ("Call Graph: Indexing Methods".equals(phase)) {
+                    float f = total > 0 ? (float) curr / total : 1f;
+                    progress.setPercentage(75 + (int)(f * 6));
+                } else if ("Call Graph: Mapping Edges".equals(phase)) {
+                    float f = total > 0 ? (float) curr / total : 1f;
+                    progress.setPercentage(81 + (int)(f * 6));
+                }
+                progress.setCurrentPhase("Call Graph Analysis");
+                progress.setMessage(phase);
+                progress.setCurrentDetail(detail);
+            });
+
+            if (cancelRequested) return;
+
+            progress.setCurrentPhase("Field Impact Analysis");
+            progress.setMessage("Indexing field dependencies & propagation…");
+            progress.setPercentage(87);
+            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
+            Set<String> callingMethods = dao.findCallingMethodFqns();
+            fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
+                float f = total > 0 ? (float) curr / total : 1f;
+                progress.setPercentage(87 + (int)(f * 5));
+                progress.setCurrentDetail(detail);
+            });
+
+            if (cancelRequested) return;
 
             // Recompute scan totals from DB
             Map<String, Object> stats = dao.getStats();
@@ -633,8 +918,19 @@ public class CodeLensServer {
             progress.setMethodsFound(totalMethods);
             progress.setFieldsFound(totalFields);
             progress.setRelationshipsFound(totalRels);
+
+            // Phase 5: Invalidate obsolete cached graph layouts and warm up fresh ones
+            invalidateGraphCache();
+            warmupGraphCache(progress);
+
+            if (cancelRequested) return;
+
+            // Phase 6: Complete
+            progress.setActiveStage("COMPLETE");
             progress.setCurrentPhase("Complete");
             progress.setCurrentDetail("Ready");
+            progress.setMessage("Incremental scan complete");
+            progress.setPercentage(100);
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
 
@@ -737,17 +1033,57 @@ public class CodeLensServer {
     private void getCallGraph(Context ctx) throws Exception {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 3);
-        ctx.json(callGraph.callHierarchyView(id, depth));
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        String key = "hierarchy:" + id + ":" + depth + ":" + hideGetters;
+        ctx.json(getOrComputeLayout(key, () -> callGraph.callHierarchyView(id, depth, hideGetters)));
     }
 
     private void getFullGraph(Context ctx) throws Exception {
-        ctx.json(callGraph.fullGraphView());
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        // Return raw graph (no precomputed x,y) so the client-side blooming tree
+        // layout + physics simulation produces the tree-like clustered visualization
+        // with distinct colors per package branch.
+        String key = "full-raw:" + hideGetters;
+        ctx.json(getOrComputeLayout(key, () -> callGraph.fullGraphView(hideGetters)));
     }
 
     private void getArchitectureGraph(Context ctx) throws Exception {
         String scope  = ctx.queryParam("scope");
         String filter = ctx.queryParam("filter");
-        ctx.json(callGraph.architectureGraphView(scope, filter));
+        // Return raw graph (no precomputed x,y) so the client-side blooming tree
+        // layout + physics simulation produces the tree-like clustered visualization.
+        String key = "arch-raw:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
+        ctx.json(getOrComputeLayout(key, () -> callGraph.architectureGraphView(scope, filter)));
+    }
+
+    private void getPrecomputedGraph(Context ctx) throws Exception {
+        String scope  = ctx.queryParam("scope");
+        String filter = ctx.queryParam("filter");
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        if ("all".equalsIgnoreCase(scope) || "methods".equalsIgnoreCase(scope)) {
+            String key = "full:" + hideGetters;
+            ctx.json(getOrComputeLayout(key, () -> callGraph.precomputedFullGraphView(hideGetters)));
+        } else {
+            String key = "arch:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
+            ctx.json(getOrComputeLayout(key, () -> callGraph.precomputedArchitectureGraphView(scope, filter)));
+        }
+    }
+
+    private void exportGraphJson(Context ctx) throws Exception {
+        String scope  = ctx.queryParam("scope");
+        String filter = ctx.queryParam("filter");
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        CallGraphAnalyzer.GraphView view;
+        if ("all".equalsIgnoreCase(scope) || "methods".equalsIgnoreCase(scope)) {
+            String key = "full:" + hideGetters;
+            view = getOrComputeLayout(key, () -> callGraph.precomputedFullGraphView(hideGetters));
+        } else {
+            String key = "arch:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
+            view = getOrComputeLayout(key, () -> callGraph.precomputedArchitectureGraphView(scope, filter));
+        }
+        String safeScope = (scope == null || scope.isBlank()) ? "architecture" : scope.replaceAll("[^a-zA-Z0-9_-]", "_");
+        ctx.header("Content-Disposition", "attachment; filename=\"codelens-" + safeScope + "-graph.json\"")
+           .json(view);
     }
 
     private void getDSM(Context ctx) throws Exception {
@@ -776,6 +1112,61 @@ public class CodeLensServer {
         }
 
         ctx.json(CallGraphAnalyzer.treemapView(typeRecs, methodRecs, scope, filter));
+    }
+
+    private void getPersistentClasses(Context ctx) throws Exception {
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        List<CriticalPathAnalyzer.PersistentClassSummary> summaries =
+            criticalPathAnalyzer.findPersistentClasses(types, methods);
+        ctx.json(summaries);
+    }
+
+    private void getCriticalPath(Context ctx) throws Exception {
+        String classFqn = ctx.queryParam("class");
+        if (classFqn == null || classFqn.isBlank()) {
+            classFqn = ctx.queryParam("id");
+        }
+        if (classFqn == null || classFqn.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Query parameter 'class' is required"));
+            return;
+        }
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+
+        Map<String, CodeMethod> methodMap = new HashMap<>(methods.size());
+        for (CodeMethod m : methods) {
+            methodMap.put(m.getFqn(), m);
+        }
+
+        Map<String, CodeType> typeMap = new HashMap<>(types.size());
+        for (CodeType t : types) {
+            typeMap.put(t.getFqn(), t);
+        }
+
+        CriticalPathAnalyzer.CriticalPathReport report =
+            criticalPathAnalyzer.analyzeCriticalPaths(classFqn, callGraph.getCallGraph(), methodMap, typeMap, true);
+
+        String mode = ctx.queryParam("mode");
+        if (mode != null && !mode.isBlank() && report.candidatePaths != null) {
+            String mLower = mode.trim().toLowerCase();
+            // Support aliases
+            if (mLower.equals("critical")) mLower = "primary";
+            else if (mLower.equals("fastest")) mLower = "read";
+            else if (mLower.equals("deepest")) mLower = "longest";
+            else if (mLower.equals("fanout") || mLower.equals("bottleneck")) mLower = "max_complexity";
+            else if (mLower.equals("db_heavy")) mLower = "mutation";
+
+            for (CriticalPathAnalyzer.CriticalPath cp : report.candidatePaths) {
+                if (mLower.equalsIgnoreCase(cp.pathId) || mLower.equalsIgnoreCase(cp.category)) {
+                    report.primaryPath = cp;
+                    break;
+                }
+            }
+        }
+
+        ctx.json(report);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1306,8 +1697,8 @@ public class CodeLensServer {
             List<CodeRelationship> rels = dao.findAllRelationships();
 
             ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
-            Object fullGraph = callGraph.fullGraphView();
-            Object archGraph = callGraph.architectureGraphView(scope, filter);
+            Object fullGraph = callGraph.precomputedFullGraphView(false);
+            Object archGraph = callGraph.precomputedArchitectureGraphView(scope, filter);
 
             String projectName = types.isEmpty() ? "Codebase"
                 : (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");

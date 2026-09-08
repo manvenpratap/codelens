@@ -161,6 +161,39 @@ class TreemapRenderer {
     this._draw();
   }
 
+  zoomBy(factor) {
+    if (factor > 1) {
+      let targetNode = null;
+      if (this._hovered && this._hovered.node && this._hovered.node.children && this._hovered.node.children.length > 0) {
+        targetNode = this._hovered.node;
+      } else if (this._current && this._current.children && this._current.children.length > 0) {
+        const candidates = this._current.children.filter(c => c.children && c.children.length > 0);
+        if (candidates.length > 0) {
+          targetNode = candidates.reduce((max, c) => ((c.size || 0) > (max.size || 0) ? c : max), candidates[0]);
+        }
+      }
+      if (targetNode) {
+        this._triggerTransition(targetNode, [...this._breadcrumb, targetNode]);
+      }
+    } else {
+      if (this._breadcrumb && this._breadcrumb.length > 1) {
+        const nextNode = this._breadcrumb[this._breadcrumb.length - 2];
+        const nextBc = this._breadcrumb.slice(0, -1);
+        this._triggerTransition(nextNode, nextBc);
+      }
+    }
+  }
+
+  fitToScreen() {
+    if (this._root) {
+      this._triggerTransition(this._root, [this._root]);
+    }
+  }
+
+  resetView() {
+    this.fitToScreen();
+  }
+
   _isItemHidden(node, parentPkg) {
     if (!node) return false;
     const name = node.name || node.label || '';

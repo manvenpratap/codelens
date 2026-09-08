@@ -2,10 +2,13 @@ package com.tcs.bancs.TR;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.CL.*;
+import com.tcs.bancs.RK.*;
+import com.tcs.bancs.AN.*;
 
 /**
  * TCS BaNCS Core Domain Service: PositionTrackingService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class PositionTrackingService {
 
@@ -44,5 +47,20 @@ public class PositionTrackingService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: TRTOUpdatePortfolioPosition
+     */
+    public boolean TRTOUpdatePortfolioPosition(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "TRTOUpdatePortfolioPosition", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: TRTCNotifyChannel
+     */
+    public void TRTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "TRTCNotifyChannel", correlationId, operation);
     }
 }

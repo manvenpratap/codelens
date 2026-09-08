@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: AnalyticsReportingController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class AnalyticsReportingController {
 
-    private final ANBTCalculatePnL businessTransaction;
-    private final ANETGetPnLSummary elementaryTransaction;
+    private final PnLCalculationService service;
 
     public AnalyticsReportingController() {
-        this.businessTransaction = new ANBTCalculatePnL();
-        this.elementaryTransaction = new ANETGetPnLSummary();
+        this.service = new PnLCalculationService();
     }
 
-    public AnalyticsReportingController(ANBTCalculatePnL bt, ANETGetPnLSummary et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public AnalyticsReportingController(PnLCalculationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: ANBTCalculatePnL
+     */
+    public MO_OUT_PnLCalculation ANBTCalculatePnL(MO_INP_PnLCalculation request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AnalyticsReportingController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.ANBTCalculatePnL(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: ANETGetPnLSummary
+     */
+    public MO_OUT_PnLCalculation ANETGetPnLSummary(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AnalyticsReportingController", queryKey, "INQUIRY");
+        return this.service.ANETGetPnLSummary(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to ANBTCalculatePnL.
      */
     public MO_OUT_PnLCalculation handleExecuteRequest(MO_INP_PnLCalculation request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AnalyticsReportingController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.ANBTCalculatePnLExecute(request);
+        return this.ANBTCalculatePnL(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to ANETGetPnLSummary.
      */
     public MO_OUT_PnLCalculation handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "AnalyticsReportingController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.ANETGetPnLSummaryFetch(queryKey);
+        return this.ANETGetPnLSummary(queryKey);
     }
 
     public boolean ping() {

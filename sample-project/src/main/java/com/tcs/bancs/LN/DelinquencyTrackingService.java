@@ -2,10 +2,15 @@ package com.tcs.bancs.LN;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
+import com.tcs.bancs.SC.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: DelinquencyTrackingService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class DelinquencyTrackingService {
 
@@ -44,5 +49,20 @@ public class DelinquencyTrackingService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: LNTOUpdateFacilityBalance
+     */
+    public boolean LNTOUpdateFacilityBalance(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOUpdateFacilityBalance", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: LNTCNotifyChannel
+     */
+    public void LNTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCNotifyChannel", correlationId, operation);
     }
 }

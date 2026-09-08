@@ -111,20 +111,47 @@ const api = {
   typesByPackage:     (fqn)       => api.get(`/packages/${enc(fqn)}/types`),
   type:               (id)        => api.get(`/types/${enc(id)}`),
   method:             (id)        => api.get(`/methods/${enc(id)}`),
-  callers:            (id, d=4)   => api.get(`/methods/${enc(id)}/callers?depth=${d}`),
-  callees:            (id, d=4)   => api.get(`/methods/${enc(id)}/callees?depth=${d}`),
-  callGraph:          (id, d=3)   => api.get(`/methods/${enc(id)}/graph?depth=${d}`),
+  callers:            async (id, d=4) => {
+    const key = `graph:callers:${id}:${d}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/methods/${enc(id)}/callers?depth=${d}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  callees:            async (id, d=4) => {
+    const key = `graph:callees:${id}:${d}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/methods/${enc(id)}/callees?depth=${d}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  callGraph:          async (id, d=3) => {
+    const key = `graph:call:${id}:${d}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const data = await api.get(`/methods/${enc(id)}/graph?depth=${d}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
   fullGraph:          async () => {
     const key = 'graph:full';
     if (GraphDataCache.has(key)) return GraphDataCache.get(key);
-    const data = await api.get('/graph/all');
+    const data = await api.get('/graph/all?precompute=true');
     GraphDataCache.set(key, data);
     return data;
   },
   architectureGraph:  async (scope, filter) => {
     const key = `graph:arch:${scope || ''}:${filter || ''}`;
     if (GraphDataCache.has(key)) return GraphDataCache.get(key);
-    const data = await api.get(`/graph/architecture${scope || filter ? '?' + new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }) : ''}`);
+    const params = new URLSearchParams({ precompute: 'true', ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) });
+    const data = await api.get(`/graph/architecture?${params}`);
+    GraphDataCache.set(key, data);
+    return data;
+  },
+  precomputedGraph:   async (scope, filter) => {
+    const key = `graph:precomputed:${scope || ''}:${filter || ''}`;
+    if (GraphDataCache.has(key)) return GraphDataCache.get(key);
+    const params = new URLSearchParams({ ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) });
+    const data = await api.get(`/graph/precomputed?${params}`);
     GraphDataCache.set(key, data);
     return data;
   },
@@ -166,6 +193,8 @@ const api = {
   openFolder:         (path)      => api.post('/open-folder', { path }),
   readFile:           (path)      => api.get(`/files/read?path=${encodeURIComponent(path)}`),
   writeFile:          (path, content) => api.post('/files/write', { path, content }),
+  persistentClasses:  ()          => api.get('/analysis/persistent-classes'),
+  criticalPath:       (classFqn, mode) => api.get(`/analysis/critical-path?class=${enc(classFqn)}${mode ? '&mode=' + encodeURIComponent(mode) : ''}`),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -253,21 +282,37 @@ function renderHeroRecentProjects() {
   const lastScanSec = qs('#hero-last-scan-section');
   if (lastScanSec) {
     api.scanStatus().then(st => {
-      if (st && st.sourcePath && (st.status === 'COMPLETE' || st.typesFound > 0)) {
+      if (st && st.status === 'SCANNING') {
+        hideHeroPage();
+        updateHeaderProjectBar(st.sourcePath || qs('#scan-path-input')?.value?.trim());
+        setScanUI('scanning');
+        updateScanProgress(st);
+        pollScanStatus();
+        return;
+      }
+      if (st && st.sourcePath && (st.status === 'COMPLETE' || st.typesFound > 0 || st.status === 'ERROR')) {
         lastScanSec.style.display = 'block';
         const pathEl = qs('#hero-last-scan-path');
         const metaEl = qs('#hero-last-scan-meta');
         const dotEl = qs('#hero-last-scan-dot');
+        const heroScanInput = qs('#hero-scan-path-input');
+        if (heroScanInput && (!heroScanInput.value || heroScanInput.value.trim() === '')) {
+          heroScanInput.value = st.sourcePath;
+        }
         if (pathEl) pathEl.textContent = st.sourcePath;
         if (metaEl) {
-          const errors = st.errorFiles || 0;
-          const parsed = st.parsedFiles || st.processedFiles || 0;
-          const total = st.totalFiles || parsed;
-          const pct = total > 0 ? Math.round((parsed / total) * 100) : 100;
-          metaEl.textContent = `${pct}% Parsed · ${parsed} Files · ${st.typesFound || 0} Classes · ${st.methodsFound || 0} Methods · ${st.fieldsFound || 0} Fields`;
+          if (st.status === 'ERROR') {
+            metaEl.textContent = `Previous scan interrupted · ${st.typesFound || 0} Classes discovered · Click Rescan to resume`;
+          } else {
+            const errors = st.errorFiles || 0;
+            const parsed = st.parsedFiles || st.processedFiles || 0;
+            const total = st.totalFiles || parsed;
+            const pct = total > 0 ? Math.round((parsed / total) * 100) : 100;
+            metaEl.textContent = `${pct}% Parsed · ${parsed} Files · ${st.typesFound || 0} Classes · ${st.methodsFound || 0} Methods · ${st.fieldsFound || 0} Fields`;
+          }
         }
         if (dotEl) {
-          dotEl.className = 'hero-last-scan-dot' + (st.errorFiles > 0 ? ' status-warning' : '');
+          dotEl.className = 'hero-last-scan-dot' + (st.status === 'ERROR' ? ' status-error' : (st.errorFiles > 0 ? ' status-warning' : ''));
         }
         const openBtn = qs('#hero-btn-open-workspace');
         if (openBtn) {
@@ -341,7 +386,9 @@ async function startScan(targetPath) {
   const settings = loadSettings();
   const excludePatterns = settings.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
 
+  App.scanModalDismissed = false;
   setScanUI('scanning');
+  qs('#scan-status-bar')?.classList.add('visible');
   showBanner(`Rescanning codebase at "${path}"…`);
   try {
     await api.startScan(path, excludePatterns);
@@ -381,9 +428,27 @@ function pollScanStatus() {
 }
 
 
+/** Minimize scan modal to allow background execution without interruption */
+function minimizeScanModal() {
+  App.scanModalDismissed = true;
+  qs('#scan-status-bar')?.classList.remove('visible');
+  showBanner('Scan running in background. Click the top bar badge or footer indicator anytime to view details.');
+}
+
+/** Re-open scan modal when user clicks header badge or footer status */
+function reopenScanModal() {
+  App.scanModalDismissed = false;
+  qs('#scan-status-bar')?.classList.add('visible');
+  if (App.lastScanProgress) {
+    updateScanProgress(App.lastScanProgress);
+  }
+}
+
 /** Update the progress bar and status text during an active scan. */
 function updateScanProgress(s) {
-  const pct = s.percentage || 0;
+  if (!s) return;
+  App.lastScanProgress = s;
+  const pct = (typeof s.percentage === 'number' && s.percentage >= 0) ? s.percentage : 0;
   
   // Header thin progress bar
   const headerBar = qs('#scan-progress-bar');
@@ -411,6 +476,46 @@ function updateScanProgress(s) {
     detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing…');
   }
 
+  // Update pipeline step track
+  const stage = s.activeStage || 'PARSE';
+  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
+  const currentStepNum = stageOrder[stage] || 1;
+  qsa('.scan-pipeline-step').forEach(stepEl => {
+    const stepName = stepEl.dataset.step;
+    const stepNum = stageOrder[stepName] || 1;
+    stepEl.classList.remove('step-active', 'step-complete', 'step-pending');
+    if (s.status === 'COMPLETE' || currentStepNum > stepNum) {
+      stepEl.classList.add('step-complete');
+    } else if (currentStepNum === stepNum) {
+      stepEl.classList.add('step-active');
+    } else {
+      stepEl.classList.add('step-pending');
+    }
+  });
+
+  // Dynamic detail label & icon
+  const detailLabel = qs('#scan-detail-label');
+  const detailIcon = qs('#scan-detail-icon');
+  const phase = s.currentPhase || '';
+  if (stage === 'LAYOUT' || phase.includes('Layout')) {
+    if (detailLabel) detailLabel.textContent = 'Layout Precomputation';
+    if (detailIcon) detailIcon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>';
+  } else if (stage === 'GRAPH' || phase.includes('Graph') || phase.includes('Field')) {
+    if (phase.includes('Field')) {
+      if (detailLabel) detailLabel.textContent = 'Field Impact Propagation';
+      if (detailIcon) detailIcon.innerHTML = '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>';
+    } else {
+      if (detailLabel) detailLabel.textContent = 'Call Graph Topology';
+      if (detailIcon) detailIcon.innerHTML = '<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="9" y1="6" x2="15" y2="6"/>';
+    }
+  } else if (stage === 'INDEX' || phase.includes('Index')) {
+    if (detailLabel) detailLabel.textContent = 'Storage & Search Index';
+    if (detailIcon) detailIcon.innerHTML = '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>';
+  } else {
+    if (detailLabel) detailLabel.textContent = 'Current File';
+    if (detailIcon) detailIcon.innerHTML = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
+  }
+
   // Source path
   const sourcePathEl = qs('#scan-card-source-path');
   if (sourcePathEl) {
@@ -420,12 +525,24 @@ function updateScanProgress(s) {
   // Files processed vs remaining ratio
   const filesRatio = qs('#scan-files-ratio');
   if (filesRatio) {
-    filesRatio.textContent = s.totalFiles ? `${(s.processedFiles || 0).toLocaleString()} of ${s.totalFiles.toLocaleString()} files processed` : 'Scanning file tree…';
+    if (stage === 'LAYOUT' || phase.includes('Layout')) {
+      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Precomputing layouts` : 'Precomputing layouts…';
+    } else if (stage === 'GRAPH' || phase.includes('Graph') || phase.includes('Field')) {
+      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing dependencies` : 'Analyzing dependencies…';
+    } else if (stage === 'INDEX' || phase.includes('Index')) {
+      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Finalizing indexes` : 'Finalizing indexes…';
+    } else {
+      filesRatio.textContent = s.totalFiles ? `${(s.processedFiles || 0).toLocaleString()} of ${s.totalFiles.toLocaleString()} files processed` : 'Scanning file tree…';
+    }
   }
   const remainingFiles = qs('#scan-remaining-files');
   if (remainingFiles) {
-    const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
-    remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining` : '';
+    if (currentStepNum > 1) {
+      remainingFiles.textContent = `Step ${currentStepNum} of 4`;
+    } else {
+      const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
+      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining` : '';
+    }
   }
 
   // Live discovered entity counters
@@ -452,28 +569,80 @@ function updateScanProgress(s) {
   const pctEl = qs('#scan-pct') || qs('.scan-pct');
   if (pctEl) pctEl.textContent = pct + '%';
 
-  // Show central modal card overlay
-  qs('#scan-status-bar')?.classList.add('visible');
+  // Show central modal card overlay unless user explicitly minimized it
+  if (!App.scanModalDismissed) {
+    qs('#scan-status-bar')?.classList.add('visible');
+  }
   
-  // Footer update with title tooltip to prevent any jitter
+  // Footer update with title tooltip to prevent jitter and allow click-to-reopen
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
   if (fText) {
-    const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''} (${pct}%)`;
+    const detailSnippet = s.currentDetail ? ` · ${s.currentDetail}` : '';
+    const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''}${detailSnippet} (${pct}%)`;
     fText.textContent = txt;
-    fText.title = txt;
+    fText.title = txt + ' (Click to view scan dialog)';
   }
-  if (fInd) { fInd.className = 'status-indicator busy'; }
+  if (fInd) {
+    fInd.className = 'status-indicator busy';
+    fInd.title = 'Active scan running (Click to view scan dialog)';
+  }
+
+  // Progressive feature readiness
+  updateProgressiveFeatureReadiness(s);
 
   // Update persistent coverage popover & header badge
   updateScanSummaryUI(s);
 }
 
+/** Enable features progressively as scan pipeline stages complete */
+function updateProgressiveFeatureReadiness(s) {
+  if (!s || s.status !== 'SCANNING') {
+    qsa('.tab').forEach(t => {
+      t.classList.remove('tab-stage-pending');
+      t.removeAttribute('data-stage-reason');
+    });
+    return;
+  }
+
+  const stage = s.activeStage || 'PARSE';
+  const stageOrder = { 'PREPARE': 0, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
+  const currentLevel = stageOrder[stage] !== undefined ? stageOrder[stage] : 1;
+
+  const tabRequirements = {
+    'source':    { level: 1, name: 'AST parsing' },
+    'git':       { level: 1, name: 'AST parsing' },
+    'knowledge': { level: 2, name: 'search & secondary indexing' },
+    'review':    { level: 2, name: 'search & secondary indexing' },
+    'graph':     { level: 4, name: 'graph layout precomputation' },
+    'codebase':  { level: 4, name: 'graph layout precomputation' }
+  };
+
+  for (const [tabName, req] of Object.entries(tabRequirements)) {
+    const tabEl = qs(`.tab[data-tab="${tabName}"]`);
+    if (!tabEl) continue;
+    if (currentLevel < req.level) {
+      if (!tabEl.classList.contains('tab-stage-pending')) {
+        tabEl.classList.add('tab-stage-pending');
+      }
+      tabEl.setAttribute('data-stage-reason', req.name);
+      tabEl.title = `${tabEl.getAttribute('aria-label') || tabName} available after ${req.name} completes (Stage ${req.level} of 4)`;
+    } else {
+      if (tabEl.classList.contains('tab-stage-pending')) {
+        tabEl.classList.remove('tab-stage-pending');
+        tabEl.removeAttribute('data-stage-reason');
+        tabEl.classList.add('tab-stage-ready');
+        setTimeout(() => tabEl.classList.remove('tab-stage-ready'), 1000);
+      }
+    }
+  }
+}
 
 /** Called when scan finishes successfully. */
 async function onScanComplete(s) {
   setScanUI('idle');
-  qs('#scan-status-bar').classList.remove('visible');
+  App.scanModalDismissed = false;
+  qs('#scan-status-bar')?.classList.remove('visible');
   qs('#scan-progress-bar').style.width = '100%';
   setTimeout(() => qs('#scan-progress-bar').style.width = '0%', 600);
 
@@ -487,6 +656,9 @@ async function onScanComplete(s) {
   // Update header bar into loaded project view
   updateHeaderProjectBar(s.sourcePath || qs('#scan-path-input')?.value?.trim());
 
+  // Unlock all features
+  updateProgressiveFeatureReadiness(s);
+
   // Update persistent coverage popover & header badge
   updateScanSummaryUI(s);
 
@@ -497,13 +669,19 @@ async function onScanComplete(s) {
   // Footer update
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
-  if (fText) fText.textContent = 'Analyzer Idle · Scan complete';
-  if (fInd) { fInd.className = 'status-indicator live'; }
+  if (fText) {
+    fText.textContent = 'Analyzer Idle · Scan complete';
+    fText.title = 'Analyzer Idle · All graphs ready';
+  }
+  if (fInd) {
+    fInd.className = 'status-indicator live';
+    fInd.title = 'System Ready';
+  }
 
   // Check git branch
   updateFooterGitBranch();
 
-  showBanner(`Scan complete - ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields`);
+  showBanner(`Scan complete - ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields · All graph views ready`);
 }
 
 
@@ -1077,6 +1255,13 @@ function closeMacroStudio() {
 
 /** Switch the active tab in the centre panel. */
 function switchTab(tabName) {
+  const targetTabEl = qs(`.tab[data-tab="${tabName}"]`);
+  if (targetTabEl && targetTabEl.classList.contains('tab-stage-pending')) {
+    const reason = targetTabEl.getAttribute('data-stage-reason') || 'this feature is still being prepared';
+    showBanner(`${targetTabEl.textContent.trim()} will be available once ${reason} completes.`);
+    return;
+  }
+
   const previousTab = App.activeTab;
   App.activeTab = tabName;
 
@@ -1931,6 +2116,34 @@ function ensureGraph() {
     applyAllSettings(loadSettings());
 
     App.graph.onNodeClick = async node => {
+      if (App.activeGraphMode === 'criticalPath') {
+        if (currentActivePath && currentActivePath.nodes) {
+          const stepNode = currentActivePath.nodes.find(n => n.id === node.id);
+          if (stepNode) {
+            selectCriticalPathStep(stepNode.step);
+          }
+        }
+        if (node.type === 'CLASS') {
+          try {
+            const data = await api.type(node.id);
+            renderTypeDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        } else if (node.type === 'METHOD') {
+          try {
+            const data = await api.method(node.id);
+            renderMethodDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        } else if (node.type === 'FIELD') {
+          try {
+            const data = await api.field(node.id);
+            renderFieldDetail(data);
+            updateReviewTargetInfo();
+          } catch (e) { console.warn(e); }
+        }
+        return;
+      }
       if (App.activeGraphMode === 'fullCodebase') {
         if (node.type === 'CLASS') {
           try {
@@ -1976,6 +2189,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
   const effectiveLevel = isAltViz ? App.codebaseMacroLevel : (App.codebaseGraphLevel || 'arch');
   const isMethods = (App.codebaseGranularity === 'methods');
+  if (App.activeGraphMode === 'criticalPath' || currentCriticalReport !== null) {
+    closeCriticalPathDock(false);
+  }
   App.activeGraphMode = 'wholeCodebase';
   App.selected = null;
 
@@ -2019,16 +2235,16 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (brightnessCtrl) brightnessCtrl.style.display = is3D ? 'flex' : 'none';
   if (brightnessDiv) brightnessDiv.style.display = is3D ? '' : 'none';
 
-  // Toggle camera controls (visible for 2D Graph and 3D modes)
+  // Toggle camera controls (visible for 2D Graph, 3D modes, Chord, Treemap, Sunburst, and DSM)
   const cameraCtrl = qs('#codebase-camera-controls');
   const cameraDiv = qs('#codebase-camera-divider');
-  const showCameraControls = isGraph2D || is3D;
+  const showCameraControls = isGraph2D || is3D || ['chord', 'treemap', 'sunburst', 'dsm'].includes(effectiveLevel);
   if (cameraCtrl) cameraCtrl.style.display = showCameraControls ? 'inline-flex' : 'none';
   if (cameraDiv) cameraDiv.style.display = showCameraControls ? '' : 'none';
 
   // Toggle visibility of bottom canvas toolbar
   const canvasToolbar = qs('#codebase-canvas-toolbar');
-  const hasBottomControls = (supportsGranularity || is3D || isGraph2D);
+  const hasBottomControls = (supportsGranularity || is3D || isGraph2D || showCameraControls);
   if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
 
 
@@ -2382,9 +2598,11 @@ function renderCodebaseLegend(nodesOrTreeData) {
   }
 
   legendList.innerHTML = sortedPkgs.map(({ pkg, classMap, totalCount }, idx) => {
-    const color = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-      ? window.CodeLensPalette.getColor(pkg, idx)
-      : '#3b82f6';
+    const color = (window.GRAPHIFY_COLORS && window.GRAPHIFY_COLORS.length > 0)
+      ? window.GRAPHIFY_COLORS[idx % window.GRAPHIFY_COLORS.length]
+      : ((window.CodeLensPalette && window.CodeLensPalette.getColor)
+          ? window.CodeLensPalette.getColor(pkg, idx)
+          : '#3b82f6');
     const displayLabel = formatPackageDisplayName(pkg);
     const safePkgId = 'pkg-' + idx;
 
@@ -2664,6 +2882,9 @@ function setGraphDepth(depth) {
 
 /** Load and render the call hierarchy graph for a method. */
 async function loadCallGraph(methodId, depth = App.graphDepth) {
+  if (App.activeGraphMode === 'criticalPath' || currentCriticalReport !== null) {
+    closeCriticalPathDock(false);
+  }
   App.activeGraphMode = 'callGraph';
   ensureGraph();
   App.graph.clear();
@@ -2692,6 +2913,9 @@ async function loadCallGraph(methodId, depth = App.graphDepth) {
 
 /** Load and render the callers sub-graph for a method. */
 async function loadCallersGraph(methodId, depth = App.graphDepth) {
+  if (App.activeGraphMode === 'criticalPath' || currentCriticalReport !== null) {
+    closeCriticalPathDock(false);
+  }
   App.activeGraphMode = 'callers';
   ensureGraph();
   App.graph.clear();
@@ -2714,6 +2938,9 @@ async function loadCallersGraph(methodId, depth = App.graphDepth) {
 
 /** Load and render the callees sub-graph for a method. */
 async function loadCalleesGraph(methodId, depth = App.graphDepth) {
+  if (App.activeGraphMode === 'criticalPath' || currentCriticalReport !== null) {
+    closeCriticalPathDock(false);
+  }
   App.activeGraphMode = 'callees';
   ensureGraph();
   App.graph.clear();
@@ -2780,6 +3007,9 @@ function formatModuleFromPackage(pkg) {
 
 /** Load and render direct field impact. */
 async function loadFieldImpact(fieldId, depth = 1) {
+  if (App.activeGraphMode === 'criticalPath' || currentCriticalReport !== null) {
+    closeCriticalPathDock(false);
+  }
   App.activeGraphMode = 'fieldImpact';
   ensureGraph();
   App.graph.clear();
@@ -2963,6 +3193,7 @@ function renderTypeDetail(data) {
 
   // Action buttons
   body.appendChild(actionRow([
+    { label: '🎯 Trace Critical Path', action: () => loadAndVisualizeCriticalPath(type.fqn) },
     { label: 'View All Methods', action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
   ]));
 
@@ -3015,6 +3246,10 @@ function renderKnowledgeBaseForType(data) {
           <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Review
         </button>
+        <button class="kb-action-btn" id="kb-btn-critical-path" title="Trace Critical Path Execution">
+          <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          Critical Path
+        </button>
       </div>
     </div>
     <div class="kb-hero-meta-row">
@@ -3046,6 +3281,9 @@ function renderKnowledgeBaseForType(data) {
   hero.querySelector('#kb-btn-review')?.addEventListener('click', () => {
     switchTab('review');
     updateReviewTargetInfo();
+  });
+  hero.querySelector('#kb-btn-critical-path')?.addEventListener('click', () => {
+    loadAndVisualizeCriticalPath(type.fqn);
   });
 
   view.appendChild(hero);
@@ -3629,8 +3867,10 @@ function updateScanSummaryUI(s) {
   const processed = s.processedFiles || 0;
   const parsed = s.parsedFiles || (s.status === 'COMPLETE' ? processed : 0);
   const errors = s.errorFiles || 0;
-  const remaining = Math.max(0, total - processed);
-  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : (s.status === 'COMPLETE' ? 100 : 0);
+  const remaining = (typeof s.remainingFiles === 'number') ? s.remainingFiles : Math.max(0, total - processed);
+  const pct = (typeof s.percentage === 'number' && s.percentage >= 0)
+    ? s.percentage
+    : (total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : (s.status === 'COMPLETE' ? 100 : 0));
 
   // 1. Update Header Badge
   const badge = qs('#scan-status-badge');
@@ -3641,7 +3881,7 @@ function updateScanSummaryUI(s) {
     if (s.status === 'SCANNING') {
       badge.classList.add('status-scanning');
       badgeText.textContent = `${pct}%`;
-      badge.title = `Scanning in progress: ${pct}% (${processed}/${total} files)`;
+      badge.title = `Scan in progress: ${pct}% · [${s.currentPhase || 'Analysis'}] ${s.message || ''} (Click to view)`;
     } else if (s.status === 'ERROR') {
       badge.classList.add('status-error');
       badgeText.textContent = 'Failed';
@@ -4009,6 +4249,27 @@ function bindKeyboard() {
       if (e.key === '[') toggleLeftPanel();
       if (e.key === ']') toggleRightPanel();
       if (e.key === '\\') resetPanelWidths();
+      if (e.key === '+' || e.key === '=') {
+        if (document.body.classList.contains('macro-studio-mode') && App.activeAltRenderer && typeof App.activeAltRenderer.zoomBy === 'function') {
+          App.activeAltRenderer.zoomBy(1.25);
+        } else if (App.graph && typeof App.graph.zoomBy === 'function') {
+          App.graph.zoomBy(1.25);
+        }
+      }
+      if (e.key === '-' || e.key === '_') {
+        if (document.body.classList.contains('macro-studio-mode') && App.activeAltRenderer && typeof App.activeAltRenderer.zoomBy === 'function') {
+          App.activeAltRenderer.zoomBy(0.8);
+        } else if (App.graph && typeof App.graph.zoomBy === 'function') {
+          App.graph.zoomBy(0.8);
+        }
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        if (document.body.classList.contains('macro-studio-mode') && App.activeAltRenderer && typeof App.activeAltRenderer.fitToScreen === 'function') {
+          App.activeAltRenderer.fitToScreen();
+        } else if (App.graph && typeof App.graph.fitToScreen === 'function') {
+          App.graph.fitToScreen();
+        }
+      }
       if (e.key === '?') {
         const helpModal = qs('#help-modal');
         if (helpModal) {
@@ -4186,6 +4447,32 @@ async function init() {
       }
     }
   });
+
+  // Central scan modal close / minimize & backdrop dismiss
+  qs('#btn-minimize-scan')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    minimizeScanModal();
+  });
+  qs('#btn-bg-scan')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    minimizeScanModal();
+  });
+  qs('#scan-status-bar')?.addEventListener('click', (e) => {
+    if (e.target === qs('#scan-status-bar')) {
+      minimizeScanModal();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && qs('#scan-status-bar')?.classList.contains('visible')) {
+      minimizeScanModal();
+    }
+  });
+
+  // Re-open scan modal when clicking header badge, progress bar, or footer indicator
+  qs('#scan-status-badge')?.addEventListener('click', () => reopenScanModal());
+  qs('#scan-progress-bar')?.addEventListener('click', () => reopenScanModal());
+  qs('#footer-status-text')?.addEventListener('click', () => reopenScanModal());
+  qs('.status-indicator')?.addEventListener('click', () => reopenScanModal());
 
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
     if (App.stats && App.stats.types > 0) {
@@ -4518,6 +4805,8 @@ async function init() {
       serverHasData = true;
     } else if (status.status === 'COMPLETE' && status.sourcePath) {
       serverHasData = true;
+    } else if (status.status === 'ERROR' && status.sourcePath && status.typesFound > 0) {
+      serverHasData = true;
     }
   } catch (_) { /* first run */ }
 
@@ -4533,6 +4822,9 @@ async function init() {
       if (status && status.sourcePath) {
         updateHeaderProjectBar(status.sourcePath);
         updateScanSummaryUI(status);
+        if (status.status === 'ERROR') {
+          showBanner(`Previous scan of "${status.sourcePath}" was interrupted. Use Rescan to complete.`);
+        }
       }
     } catch (_) {}
   }
@@ -4550,6 +4842,7 @@ async function init() {
 
   // Initialize report export hub
   initExportHub();
+  initCriticalPathUI();
 
   // Wire Settings modal → Export Hub shortcut button
   qs('#settings-export-open-btn')?.addEventListener('click', () => {
@@ -4685,8 +4978,49 @@ async function init() {
   const cbResetBtn = qs('#btn-codebase-reset');
   if (cbResetBtn) {
     cbResetBtn.addEventListener('click', () => {
-      if (App.activeAltRenderer && typeof App.activeAltRenderer.fitToScreen === 'function') {
-        App.activeAltRenderer.fitToScreen();
+      if (App.activeAltRenderer) {
+        if (typeof App.activeAltRenderer.resetView === 'function') {
+          App.activeAltRenderer.resetView();
+        } else if (typeof App.activeAltRenderer.fitToScreen === 'function') {
+          App.activeAltRenderer.fitToScreen();
+        }
+      }
+    });
+  }
+
+  // Main Graph Tab Camera Controls (Zoom In, Zoom Out, Fit, Clear)
+  const graphZoomInBtn = qs('#btn-zoom-in');
+  if (graphZoomInBtn) {
+    graphZoomInBtn.addEventListener('click', () => {
+      if (App.graph && typeof App.graph.zoomBy === 'function') {
+        App.graph.zoomBy(1.25);
+      }
+    });
+  }
+
+  const graphZoomOutBtn = qs('#btn-zoom-out');
+  if (graphZoomOutBtn) {
+    graphZoomOutBtn.addEventListener('click', () => {
+      if (App.graph && typeof App.graph.zoomBy === 'function') {
+        App.graph.zoomBy(0.8);
+      }
+    });
+  }
+
+  const graphFitBtn = qs('#btn-fit');
+  if (graphFitBtn) {
+    graphFitBtn.addEventListener('click', () => {
+      if (App.graph && typeof App.graph.fitToScreen === 'function') {
+        App.graph.fitToScreen();
+      }
+    });
+  }
+
+  const graphResetBtn = qs('#btn-reset');
+  if (graphResetBtn) {
+    graphResetBtn.addEventListener('click', () => {
+      if (App.graph && typeof App.graph.clear === 'function') {
+        App.graph.clear();
       }
     });
   }
@@ -7014,6 +7348,7 @@ async function syncSettingsFromServer() {
 const ExportHub = {
   activeType: 'architecture',
   activeFormat: 'markdown',
+  lastNonSnapshotFormat: 'markdown',
   cachedContent: '',
   loading: false,
 
@@ -7022,7 +7357,10 @@ const ExportHub = {
     if (!modal) return;
 
     ExportHub.activeType = defaultType;
-    ExportHub.activeFormat = defaultFormat;
+    ExportHub.activeFormat = (defaultType === 'html-snapshot') ? 'html' : defaultFormat;
+    if (defaultType !== 'html-snapshot') {
+      ExportHub.lastNonSnapshotFormat = defaultFormat;
+    }
     ExportHub.syncUI();
     ExportHub.fetchPreview();
 
@@ -7036,6 +7374,8 @@ const ExportHub = {
   },
 
   syncUI() {
+    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
+
     // Highlight active report card
     qsa('.export-type-card').forEach(c => {
       c.classList.toggle('active', c.dataset.report === ExportHub.activeType);
@@ -7043,7 +7383,13 @@ const ExportHub = {
 
     // Update format pills
     qsa('.export-format-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.format === ExportHub.activeFormat);
+      if (isSnapshot) {
+        btn.classList.toggle('disabled', btn.dataset.format !== 'html');
+        btn.classList.toggle('active', btn.dataset.format === 'html');
+      } else {
+        btn.classList.remove('disabled');
+        btn.classList.toggle('active', btn.dataset.format === ExportHub.activeFormat);
+      }
     });
   },
 
@@ -7204,9 +7550,15 @@ function initExportHub() {
 
   qsa('.export-type-card').forEach(card => {
     card.addEventListener('click', () => {
+      const prevType = ExportHub.activeType;
       ExportHub.activeType = card.dataset.report;
       if (ExportHub.activeType === 'html-snapshot') {
+        if (prevType !== 'html-snapshot') {
+          ExportHub.lastNonSnapshotFormat = ExportHub.activeFormat;
+        }
         ExportHub.activeFormat = 'html';
+      } else if (prevType === 'html-snapshot') {
+        ExportHub.activeFormat = ExportHub.lastNonSnapshotFormat || 'markdown';
       }
       ExportHub.syncUI();
       ExportHub.fetchPreview();
@@ -7215,7 +7567,9 @@ function initExportHub() {
 
   qsa('.export-format-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (ExportHub.activeType === 'html-snapshot') return;
       ExportHub.activeFormat = btn.dataset.format;
+      ExportHub.lastNonSnapshotFormat = btn.dataset.format;
       ExportHub.syncUI();
       ExportHub.fetchPreview();
     });
@@ -7230,4 +7584,476 @@ function initExportHub() {
   const openBtn = qs('#btn-export-open');
   if (openBtn) openBtn.addEventListener('click', () => ExportHub.openTab());
 }
+
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Critical Path Analyzer & Visualization Controller
+   ───────────────────────────────────────────────────────────────────────────── */
+
+let currentCriticalReport = null;
+let currentActivePath = null;
+let currentActiveStep = null;
+let persistentClassesCache = null;
+let activePickerSort = 'risk';
+
+async function openCriticalPathPicker() {
+  const modal = qs('#modal-critical-path-picker');
+  if (!modal) return;
+  modal.setAttribute('aria-hidden', 'false');
+  modal.classList.add('open');
+
+  const searchInput = qs('#cp-picker-search');
+  if (searchInput) {
+    searchInput.value = '';
+    setTimeout(() => searchInput.focus(), 80);
+  }
+
+  const listContainer = qs('#cp-picker-list');
+  if (listContainer && (!persistentClassesCache || persistentClassesCache.length === 0)) {
+    listContainer.innerHTML = '<div class="cp-picker-loading">Scanning persistent classes across codebase…</div>';
+  }
+
+  try {
+    if (!persistentClassesCache) {
+      persistentClassesCache = await api.persistentClasses();
+    }
+    renderPersistentClassesList('', activePickerSort);
+  } catch (err) {
+    console.error('Failed to load persistent classes:', err);
+    if (listContainer) {
+      listContainer.innerHTML = `<div class="cp-picker-loading" style="color:var(--red)">Failed to load persistent classes: ${esc(err.message || String(err))}</div>`;
+    }
+  }
+}
+
+function closeCriticalPathPicker() {
+  const modal = qs('#modal-critical-path-picker');
+  if (modal) {
+    modal.setAttribute('aria-hidden', 'true');
+    modal.classList.remove('open');
+  }
+}
+
+function renderPersistentClassesList(query = '', sortBy = 'risk') {
+  const listContainer = qs('#cp-picker-list');
+  const countSpan = qs('#cp-picker-count');
+  if (!listContainer) return;
+
+  if (!persistentClassesCache || persistentClassesCache.length === 0) {
+    listContainer.innerHTML = '<div class="cp-picker-loading">No persistent classes identified in active codebase.</div>';
+    if (countSpan) countSpan.textContent = '0 classes';
+    return;
+  }
+
+  let items = persistentClassesCache.slice();
+
+  // Substring / fuzzy filter
+  const q = (query || '').toLowerCase().trim();
+  if (q) {
+    items = items.filter(c =>
+      (c.simpleName && c.simpleName.toLowerCase().includes(q)) ||
+      (c.fqn && c.fqn.toLowerCase().includes(q)) ||
+      (c.packageFqn && c.packageFqn.toLowerCase().includes(q)) ||
+      (c.primaryEntryPoint && c.primaryEntryPoint.toLowerCase().includes(q))
+    );
+  }
+
+  // Sorting
+  if (sortBy === 'risk') {
+    items.sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0));
+  } else if (sortBy === 'hops') {
+    items.sort((a, b) => (b.criticalPathLength || 0) - (a.criticalPathLength || 0));
+  } else if (sortBy === 'complexity') {
+    items.sort((a, b) => (b.maxComplexity || 0) - (a.maxComplexity || 0));
+  } else if (sortBy === 'name') {
+    items.sort((a, b) => (a.simpleName || '').localeCompare(b.simpleName || ''));
+  }
+
+  if (countSpan) {
+    countSpan.textContent = `${items.length} of ${persistentClassesCache.length} classes`;
+  }
+
+  if (items.length === 0) {
+    listContainer.innerHTML = '<div class="cp-picker-loading">No matching persistent classes found.</div>';
+    return;
+  }
+
+  listContainer.innerHTML = '';
+  for (const c of items) {
+    const card = createElement('div', { class: 'cp-picker-card' });
+
+    // Method badges
+    const methodBadgesHtml = (c.persistentMethods && c.persistentMethods.length > 0)
+      ? c.persistentMethods.map(m => `<span class="cp-method-tag">${esc(m)}</span>`).join('')
+      : '<span class="cp-method-tag">Get</span><span class="cp-method-tag">Create</span><span class="cp-method-tag">Modify</span>';
+
+    // Entry point snippet
+    const entryHtml = c.primaryEntryPoint
+      ? `<span class="cp-entry-tag" title="Primary Entry Point">⚡ ${esc(c.primaryEntryPoint.split('.').slice(-2).join('.'))}</span>`
+      : '';
+
+    card.innerHTML = `
+      <div class="cp-card-left">
+        <div class="cp-card-title-row">
+          <span class="cp-card-name">${esc(c.simpleName)}</span>
+          <span class="cp-card-package">${esc(c.packageFqn || '')}</span>
+        </div>
+        <div class="cp-card-methods-row">
+          ${methodBadgesHtml}
+          ${entryHtml}
+        </div>
+      </div>
+      <div class="cp-card-right">
+        <div class="cp-card-metrics">
+          <div class="cp-card-metrics-row"><span>Hops:</span> <strong>${c.criticalPathLength || 0}</strong></div>
+          <div class="cp-card-metrics-row"><span>Max CC:</span> <strong>${c.maxComplexity || 0}</strong></div>
+          <div class="cp-card-metrics-row"><span>Risk:</span> <strong>${(c.riskScore || 0).toFixed(1)}</strong></div>
+        </div>
+        <button class="cp-card-trace-btn" type="button">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Trace Path
+        </button>
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      closeCriticalPathPicker();
+      loadAndVisualizeCriticalPath(c.fqn, 'primary');
+    });
+
+    listContainer.appendChild(card);
+  }
+}
+
+async function loadAndVisualizeCriticalPath(classFqn, mode = 'primary') {
+  if (!classFqn) return;
+
+  const footerStatus = qs('#footer-status-text');
+  if (footerStatus) footerStatus.textContent = `Tracing critical path for ${classFqn}...`;
+
+  // Preserve previous graph state so user can return to their view upon closing dock
+  if (App.activeGraphMode !== 'criticalPath') {
+    App._previousGraphState = {
+      mode: App.activeGraphMode,
+      selected: App.selected,
+      nodes: (App.graph && App.graph.nodes) ? App.graph.nodes.slice() : null,
+      edges: (App.graph && App.graph.edges) ? App.graph.edges.slice() : null,
+      legend: qs('#graph-legend') ? qs('#graph-legend').innerHTML : null
+    };
+  }
+  App.activeGraphMode = 'criticalPath';
+
+  // Toggle HUD button active highlight
+  const hudBtn = qs('#btn-critical-path-tool');
+  if (hudBtn) hudBtn.classList.add('active');
+
+  // Switch to graph tab
+  switchTab('graph');
+  ensureGraph();
+  const graphEmpty = qs('#graph-empty');
+  if (graphEmpty) graphEmpty.style.display = 'none';
+
+  const dock = qs('#critical-path-dock');
+  if (dock) {
+    dock.style.display = 'flex';
+    dock.classList.remove('collapsed');
+  }
+
+  try {
+    const report = await api.criticalPath(classFqn, mode);
+    currentCriticalReport = report;
+
+    // Pick path matching mode or fallback to primary
+    let path = null;
+    if (report.candidatePaths && report.candidatePaths.length > 0) {
+      path = report.candidatePaths.find(p => p.pathId.toLowerCase() === mode.toLowerCase())
+          || report.candidatePaths.find(p => (p.category || '').toLowerCase() === mode.toLowerCase())
+          || report.primaryPath
+          || report.candidatePaths[0];
+    } else {
+      path = report.primaryPath;
+    }
+
+    applyCriticalPath(path, report);
+
+    if (footerStatus) footerStatus.textContent = `Critical path: ${path ? (path.title || 'Loaded') : 'Loaded'} (${path && path.metrics ? path.metrics.length : 0} hops)`;
+  } catch (err) {
+    console.error('Failed to trace critical path:', err);
+    showToast(`Critical Path error: ${err.message || String(err)}`, 'error');
+    if (footerStatus) footerStatus.textContent = 'Critical path trace failed';
+  }
+}
+
+function applyCriticalPath(path, report = currentCriticalReport) {
+  if (!path) return;
+  currentActivePath = path;
+
+  // Update Dock Header
+  const targetClassEl = qs('#cp-target-class');
+  if (targetClassEl) targetClassEl.textContent = (report && report.targetClassSimpleName) || (path.nodes && path.nodes.length > 0 ? path.nodes[0].classFqn.split('.').pop() : 'Entity');
+
+  const targetPkgEl = qs('#cp-target-package');
+  if (targetPkgEl) targetPkgEl.textContent = (report && report.packageFqn) || '';
+
+  // Update Metrics
+  const hopsEl = qs('#cp-metric-hops');
+  if (hopsEl) hopsEl.textContent = path.metrics ? path.metrics.length : (path.nodes ? Math.max(0, path.nodes.length - 1) : 0);
+
+  const compEl = qs('#cp-metric-complexity');
+  if (compEl) compEl.textContent = path.metrics ? path.metrics.cumulativeComplexity : 0;
+
+  const riskEl = qs('#cp-metric-risk');
+  if (riskEl) riskEl.textContent = path.metrics ? (path.metrics.riskScore || 0).toFixed(1) : 0;
+
+  // Update Mode Pills
+  const availableModes = new Set(((report && report.candidatePaths) || []).map(p => p.pathId.toLowerCase()));
+  qsa('#cp-mode-pills .cp-mode-pill').forEach(pill => {
+    const pmode = (pill.dataset.mode || '').toLowerCase();
+    const isActive = (path.pathId && path.pathId.toLowerCase() === pmode);
+    pill.classList.toggle('active', isActive);
+    pill.style.display = availableModes.has(pmode) ? 'inline-block' : 'none';
+  });
+
+  // Render Stepper Track
+  renderCriticalPathStepper(path);
+
+  // Update 2D Canvas
+  if (App.graph) {
+    App.graph.setCriticalPath(path);
+    if (report && report.graphNodes && report.graphNodes.length > 0) {
+      App.graph.setData(report.graphNodes, report.graphEdges || []);
+    }
+    App.graph.fitCriticalPath();
+
+    // Focus on step 1 (or persistent entity step)
+    if (path.nodes && path.nodes.length > 0) {
+      const stepToFocus = path.nodes.find(n => n.step === 1) || path.nodes[0];
+      if (stepToFocus) {
+        setTimeout(() => {
+          selectCriticalPathStep(stepToFocus.step);
+        }, 120);
+      }
+    }
+  }
+}
+
+function switchCriticalPathMode(mode) {
+  if (!currentCriticalReport) return;
+  const pmode = (mode || '').toLowerCase();
+  let targetPath = null;
+  if (currentCriticalReport.candidatePaths && currentCriticalReport.candidatePaths.length > 0) {
+    targetPath = currentCriticalReport.candidatePaths.find(p => p.pathId.toLowerCase() === pmode)
+        || currentCriticalReport.candidatePaths.find(p => (p.category || '').toLowerCase() === pmode);
+  }
+  if (!targetPath && pmode === 'primary') {
+    targetPath = currentCriticalReport.primaryPath;
+  }
+  if (targetPath) {
+    applyCriticalPath(targetPath, currentCriticalReport);
+  } else {
+    // If not found in memory candidates, request from server
+    loadAndVisualizeCriticalPath(currentCriticalReport.targetClassFqn, mode);
+  }
+}
+
+function renderCriticalPathStepper(path) {
+  const track = qs('#cp-stepper-track');
+  if (!track || !path || !Array.isArray(path.nodes)) return;
+
+  track.innerHTML = '';
+  const sortedNodes = path.nodes.slice().sort((a, b) => a.step - b.step);
+
+  sortedNodes.forEach((n, idx) => {
+    const card = createElement('div', {
+      class: `cp-step-card ${currentActiveStep === n.step ? 'active' : ''}`,
+      'data-step': String(n.step),
+      'data-node-id': n.id
+    });
+
+    const archetypeBadge = n.archetypeBadge || (n.kind === 'METHOD' ? 'M' : 'C');
+    const archeColor = n.archetypeColor || '#f59e0b';
+    const cleanName = (n.label || n.simpleName || n.id.split('.').pop() || '').replace(/\(.*\)$/, '');
+
+    card.innerHTML = `
+      <div class="cp-step-badge" style="background:${archeColor}; color:#0f172a;">${n.step}</div>
+      <div class="cp-step-info">
+        <div class="cp-step-archetype" style="color:${archeColor}">[${esc(archetypeBadge)}] ${esc(n.role || '')}</div>
+        <div class="cp-step-name" title="${esc(n.id)}">${esc(cleanName)}</div>
+        <div class="cp-step-meta">CC: ${n.complexity || 1}</div>
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      selectCriticalPathStep(n.step);
+    });
+
+    track.appendChild(card);
+
+    if (idx < sortedNodes.length - 1) {
+      const arrow = createElement('div', { class: 'cp-step-arrow' });
+      arrow.textContent = '→';
+      track.appendChild(arrow);
+    }
+  });
+}
+
+function selectCriticalPathStep(stepNumber) {
+  currentActiveStep = stepNumber;
+  qsa('#cp-stepper-track .cp-step-card').forEach(card => {
+    const isAct = parseInt(card.dataset.step, 10) === stepNumber;
+    card.classList.toggle('active', isAct);
+    if (isAct) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  });
+
+  if (App.graph) {
+    App.graph.focusStep(stepNumber);
+  }
+}
+
+function stepCriticalPath(delta) {
+  if (!currentActivePath || !currentActivePath.nodes || currentActivePath.nodes.length === 0) return;
+  const maxStep = Math.max(...currentActivePath.nodes.map(n => n.step));
+  const minStep = Math.min(...currentActivePath.nodes.map(n => n.step));
+  let nextStep = (currentActiveStep !== null ? currentActiveStep : 1) + delta;
+  if (nextStep < minStep) nextStep = maxStep;
+  if (nextStep > maxStep) nextStep = minStep;
+  selectCriticalPathStep(nextStep);
+}
+
+function closeCriticalPathDock(restorePrevious = true) {
+  const dock = qs('#critical-path-dock');
+  if (dock) {
+    dock.style.display = 'none';
+    dock.classList.remove('collapsed');
+  }
+
+  // Clear HUD button active state
+  const hudBtn = qs('#btn-critical-path-tool');
+  if (hudBtn) hudBtn.classList.remove('active');
+
+  // Hide node card if left open
+  const nodeCard = qs('#node-card');
+  if (nodeCard) nodeCard.style.display = 'none';
+
+  if (App.graph) {
+    App.graph.clearCriticalPath();
+  }
+
+  // Seamlessly restore previous graph state if requested
+  if (restorePrevious && App._previousGraphState) {
+    App.activeGraphMode = App._previousGraphState.mode || null;
+    App.selected = App._previousGraphState.selected || null;
+    if (App.graph && App._previousGraphState.nodes && App._previousGraphState.nodes.length > 0) {
+      App.graph.setData(App._previousGraphState.nodes, App._previousGraphState.edges || []);
+      if (App._previousGraphState.legend && qs('#graph-legend')) {
+        qs('#graph-legend').innerHTML = App._previousGraphState.legend;
+      }
+    }
+  } else if (!restorePrevious) {
+    if (App.activeGraphMode === 'criticalPath') {
+      App.activeGraphMode = null;
+    }
+  }
+  App._previousGraphState = null;
+
+  currentCriticalReport = null;
+  currentActivePath = null;
+  currentActiveStep = null;
+}
+
+function initCriticalPathUI() {
+  // Top HUD Critical Path button
+  const hudBtn = qs('#btn-critical-path-tool');
+  if (hudBtn) hudBtn.addEventListener('click', () => openCriticalPathPicker());
+
+  // Modal close buttons
+  const modalCloseBtn = qs('#btn-cp-picker-close');
+  if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => closeCriticalPathPicker());
+
+  const modal = qs('#modal-critical-path-picker');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeCriticalPathPicker();
+    });
+  }
+
+  // Modal Search
+  const searchInput = qs('#cp-picker-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      renderPersistentClassesList(e.target.value, activePickerSort);
+    });
+  }
+
+  // Modal Sort buttons
+  qsa('.cp-sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('.cp-sort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activePickerSort = btn.dataset.sort || 'risk';
+      const q = searchInput ? searchInput.value : '';
+      renderPersistentClassesList(q, activePickerSort);
+    });
+  });
+
+  // Dock actions
+  const btnClose = qs('#btn-cp-close');
+  if (btnClose) btnClose.addEventListener('click', () => closeCriticalPathDock(true));
+
+  const btnCollapse = qs('#btn-cp-collapse');
+  if (btnCollapse) {
+    btnCollapse.addEventListener('click', () => {
+      const dock = qs('#critical-path-dock');
+      if (dock) dock.classList.toggle('collapsed');
+    });
+  }
+
+  const btnFit = qs('#btn-cp-fit');
+  if (btnFit) btnFit.addEventListener('click', () => {
+    if (App.graph) App.graph.fitCriticalPath();
+  });
+
+  const btnChange = qs('#btn-cp-change-class');
+  if (btnChange) btnChange.addEventListener('click', openCriticalPathPicker);
+
+  const btnPrev = qs('#btn-cp-step-prev');
+  if (btnPrev) btnPrev.addEventListener('click', () => stepCriticalPath(-1));
+
+  const btnNext = qs('#btn-cp-step-next');
+  if (btnNext) btnNext.addEventListener('click', () => stepCriticalPath(1));
+
+  // Mode pills in dock: instant in-memory switching
+  qsa('#cp-mode-pills .cp-mode-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const mode = pill.dataset.mode;
+      switchCriticalPathMode(mode);
+    });
+  });
+
+  // Keyboard shortcut: Escape closes modal or exits critical path dock
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modalEl = qs('#modal-critical-path-picker');
+      if (modalEl && (modalEl.getAttribute('aria-hidden') === 'false' || modalEl.classList.contains('open'))) {
+        closeCriticalPathPicker();
+        return;
+      }
+      const dockEl = qs('#critical-path-dock');
+      if (dockEl && dockEl.style.display !== 'none') {
+        closeCriticalPathDock(true);
+      }
+    }
+  });
+}
+
+// Global window helpers for debugging & integration
+window.loadAndVisualizeCriticalPath = loadAndVisualizeCriticalPath;
+window.openCriticalPathPicker = openCriticalPathPicker;
+window.closeCriticalPathDock = closeCriticalPathDock;
+window.applyTheme = applyTheme;
+window.switchTab = switchTab;
+
 

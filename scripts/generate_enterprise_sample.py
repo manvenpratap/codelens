@@ -1457,197 +1457,237 @@ public class {dg_name} {{
 """
 
 
-def generate_business_transaction(mod_code: str, bt_name: str, inp_mo: str, out_mo: str, primary_entity: str, dg_name: str, svc_name: str, cross_mod: str) -> str:
-    action_method = f"{bt_name}Execute"
+TASK_METADATA = {
+    "AM": {
+        "own_tasks": ["AMTOVerifyAccountStatus", "AMTOComputeDailyAccrual", "AMTOApplyAccountHold", "AMTORecordLedgerMovement"],
+        "common_tasks": ["AMTCVerifyCustomerKYC", "AMTCAuditTransaction", "AMTCNotifyChannel", "AMTCSyncGeneralLedger"]
+    },
+    "LN": {
+        "own_tasks": ["LNTOVerifyCollateralCoverage", "LNTOCalculateAmortization", "LNTOUpdateFacilityBalance", "LNTOCheckArrears"],
+        "common_tasks": ["LNTCVerifyCustomerKYC", "LNTCAuditTransaction", "LNTCNotifyChannel", "LNTCSyncGeneralLedger"]
+    },
+    "TR": {
+        "own_tasks": ["TRTOValidateOrderLimits", "TRTORouteExecutionSlice", "TRTOUpdatePortfolioPosition", "TRTOCheckMarginSufficiency"],
+        "common_tasks": ["TRTCVerifyCustomerKYC", "TRTCAuditTransaction", "TRTCNotifyChannel", "TRTCSyncGeneralLedger"]
+    },
+    "CL": {
+        "own_tasks": ["CLTOValidateClearingMember", "CLTOComputeNetObligation", "CLTORecordSettlementLeg", "CLTOCheckDepositoryBalance"],
+        "common_tasks": ["CLTCVerifyCustomerKYC", "CLTCAuditTransaction", "CLTCNotifyChannel", "CLTCSyncGeneralLedger"]
+    },
+    "RK": {
+        "own_tasks": ["RKTOAssessCreditScore", "RKTOCalculatePortfolioVaR", "RKTOEvaluatePolicyRules", "RKTOUpdateExposureMatrix"],
+        "common_tasks": ["RKTCVerifyCustomerKYC", "RKTCAuditTransaction", "RKTCNotifyChannel", "RKTCSyncGeneralLedger"]
+    },
+    "MS": {
+        "own_tasks": ["MSTOValidateMessageHeader", "MSTODecodePayload", "MSTOEnqueueOutboundQueue", "MSTORecordAuditLog"],
+        "common_tasks": ["MSTCVerifyCustomerKYC", "MSTCAuditTransaction", "MSTCNotifyChannel", "MSTCSyncGeneralLedger"]
+    },
+    "AN": {
+        "own_tasks": ["ANTOComputeRiskMetrics", "ANTOInterpolateYieldCurve", "ANTOAggregatePortfolioPnL", "ANTOValidateCapitalRatio"],
+        "common_tasks": ["ANTCVerifyCustomerKYC", "ANTCAuditTransaction", "ANTCNotifyChannel", "ANTCSyncGeneralLedger"]
+    },
+    "DP": {
+        "own_tasks": ["DPTOVerifyDepositTerms", "DPTOCalculateInterestPayout", "DPTOUpdateDepositPrincipal", "DPTOApplyPenalRate"],
+        "common_tasks": ["DPTCVerifyCustomerKYC", "DPTCAuditTransaction", "DPTCNotifyChannel", "DPTCSyncGeneralLedger"]
+    },
+    "GL": {
+        "own_tasks": ["GLTOValidateBalanceEquation", "GLTOPostPostingLeg", "GLTOUpdateAccountBalance", "GLTOVerifyVoucherAuthorization"],
+        "common_tasks": ["GLTCVerifyCustomerKYC", "GLTCAuditTransaction", "GLTCNotifyChannel", "GLTCSyncGeneralLedger"]
+    },
+    "PM": {
+        "own_tasks": ["PMTOValidatePaymentMandate", "PMTORoutePaymentChannel", "PMTODebitSenderAccount", "PMTOCreditBeneficiaryAccount"],
+        "common_tasks": ["PMTCVerifyCustomerKYC", "PMTCAuditTransaction", "PMTCNotifyChannel", "PMTCSyncGeneralLedger"]
+    },
+    "CU": {
+        "own_tasks": ["CUTOValidateCustomerIdentity", "CUTOAssessKycRiskLevel", "CUTOUpdateCustomerStatus", "CUTOLinkAssociatedParty"],
+        "common_tasks": ["CUTCVerifyCustomerKYC", "CUTCAuditTransaction", "CUTCNotifyChannel", "CUTCSyncGeneralLedger"]
+    },
+    "SC": {
+        "own_tasks": ["SCTOAssessCollateralHaircut", "SCTOEvaluateLtvRatio", "SCTOUpdatePledgedAsset", "SCTOCheckMarginThreshold"],
+        "common_tasks": ["SCTCVerifyCustomerKYC", "SCTCAuditTransaction", "SCTCNotifyChannel", "SCTCSyncGeneralLedger"]
+    }
+}
 
-    cross_mod_call = ""
-    cross_import = ""
-    if cross_mod and cross_mod != "common":
-        cross_import = f"import com.tcs.bancs.{cross_mod}.*;"
-        cross_mod_call = f"""        // Cross-module integration: {mod_code} -> {cross_mod}
-        AuditTrailService.logAuditEvent("CROSS_MODULE_CALL", "{bt_name}", req.getMessageCorrelationId(), "{cross_mod}");"""
 
-    return f"""package com.tcs.bancs.{mod_code};
+def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: str, mod_meta: dict, is_primary: bool, cross_mod: str, cross_deps: list) -> str:
+    cross_imports = ""
+    if cross_deps:
+        cross_imports = "\n".join(f"import com.tcs.bancs.{cd}.*;" for cd in cross_deps if cd != "common" and cd != mod_code)
 
-import java.util.*;
-import com.tcs.bancs.common.*;
-{cross_import}
+    bts = mod_meta.get("business_transactions", [])
+    ets = mod_meta.get("elementary_transactions", [])
+    bps = mod_meta.get("batch_processors", [])
+    p_classes = mod_meta.get("persistent_classes", [])
+    mos = mod_meta.get("message_objects", [])
 
-/**
- * TCS BaNCS Business Transaction: {bt_name}
- * Orchestrates multi-step transactional workflows, entity mutation, and ledger updates.
- */
-public class {bt_name} {{
+    t_info = TASK_METADATA.get(mod_code, {})
+    own_tasks = t_info.get("own_tasks", [f"{mod_code}TOVerifyStatus", f"{mod_code}TOComputeAccrual", f"{mod_code}TOApplyHold", f"{mod_code}TORecordMovement"])
+    common_tasks = t_info.get("common_tasks", [f"{mod_code}TCVerifyCustomerKYC", f"{mod_code}TCAuditTransaction", f"{mod_code}TCNotifyChannel", f"{mod_code}TCSyncGeneralLedger"])
 
-    private final {dg_name} dataGrabber;
-    private final {svc_name} service;
+    method_blocks = []
 
-    public {bt_name}() {{
-        this.dataGrabber = new {dg_name}();
-        this.service = new {svc_name}();
-    }}
+    if is_primary:
+        # 1. Business Transaction methods ({MODULE}BT)
+        for i, bt_name in enumerate(bts):
+            inp = mos[(i * 2) % len(mos)][0]
+            out = mos[(i * 2 + 1) % len(mos)][0]
+            to_1 = own_tasks[i % len(own_tasks)]
+            to_2 = own_tasks[(i + 1) % len(own_tasks)]
+            tc_1 = common_tasks[i % len(common_tasks)]
+            tc_2 = common_tasks[(i + 1) % len(common_tasks)]
 
-    public {bt_name}({dg_name} dataGrabber, {svc_name} service) {{
-        this.dataGrabber = dataGrabber;
-        this.service = service;
-    }}
+            cross_call = ""
+            if cross_mod and cross_mod != "common":
+                cross_call = f'        AuditTrailService.logAuditEvent("CROSS_MODULE_CALL", "{bt_name}", req.getMessageCorrelationId(), "{cross_mod}");\n'
 
-    /**
-     * Primary BaNCS Business Transaction entry point: {action_method}
+            method_blocks.append(f"""    /**
+     * TCS BaNCS Business Transaction: {bt_name}
+     * Orchestrates mutating transaction workflow with Own Tasks and Common Tasks.
      */
-    public {out_mo} {action_method}({inp_mo} req) {{
+    public {out} {bt_name}({inp} req) {{
         if (req == null) {{
             throw new ValidationException("Input message object cannot be null in " + "{bt_name}");
         }}
 
-        // Step 1: Pre-transaction validation via service
-        boolean isValid = this.service.validateTransactionPreconditions(req.getMessageCorrelationId());
+        // Step 1: Precondition check via Own Task ({mod_code}TO)
+        boolean isValid = this.{to_1}(req.getMessageCorrelationId());
         if (!isValid) {{
             throw new BusinessException("Validation failed in " + "{bt_name}");
         }}
 
-        // Step 2: Data Grabber state query
-        {primary_entity} entity = this.dataGrabber.fetch{primary_entity}ById(req.getMessageCorrelationId());
+        // Step 2: Shared verification via Common Task ({mod_code}TC)
+        this.{tc_1}(req.getMessageCorrelationId());
 
-        // Step 3: Domain Entity Mutation
+        // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
+        {entity_name} entity = this.dataGrabber.fetch{entity_name}ById(req.getMessageCorrelationId());
         if (entity != null) {{
+            entity.Get(req.getMessageCorrelationId());
             entity.Create();
             entity.Modify("EXECUTED");
         }}
 
-{cross_mod_call}
-
-        // Step 4: Audit & Telemetry
+        // Step 4: Ledger & Audit execution via Own Task & Common Task
+        this.{to_2}(req.getMessageCorrelationId(), 100.0);
+        this.{tc_2}("{bt_name}", req.getMessageCorrelationId());
+{cross_call}
         AuditTrailService.logAuditEvent("BUSINESS_TRANSACTION", "{bt_name}", req.getMessageCorrelationId(), "SUCCESS");
         TelemetryRecorder.recordMetric("{bt_name}.execution.count", 1.0);
 
-        // Step 5: Construct and return Output Message Object
-        {out_mo} resp = new {out_mo}();
+        {out} resp = new {out}();
         resp.setMessageCorrelationId(req.getMessageCorrelationId());
         return resp;
-    }}
+    }}""")
 
-    public boolean checkTransactionEligibility(String correlationId) {{
-        return this.dataGrabber.exists(correlationId);
-    }}
-}}
-"""
+        # 2. Elementary Transaction methods ({MODULE}ET)
+        for i, et_name in enumerate(ets):
+            out = mos[(i * 2 + 1) % len(mos)][0]
+            to_1 = own_tasks[i % len(own_tasks)]
+            tc_2 = common_tasks[(i + 1) % len(common_tasks)]
 
-
-def generate_elementary_transaction(mod_code: str, et_name: str, out_mo: str, primary_entity: str, dg_name: str) -> str:
-    action_method = f"{et_name}Fetch"
-
-    return f"""package com.tcs.bancs.{mod_code};
-
-import java.util.*;
-import com.tcs.bancs.common.*;
-
-/**
- * TCS BaNCS Elementary Transaction: {et_name}
- * Read-only inquiry transaction for high-throughput non-mutating lookups.
- */
-public class {et_name} {{
-
-    private final {dg_name} dataGrabber;
-
-    public {et_name}() {{
-        this.dataGrabber = new {dg_name}();
-    }}
-
-    public {et_name}({dg_name} dataGrabber) {{
-        this.dataGrabber = dataGrabber;
-    }}
-
-    /**
-     * Primary Elementary Transaction fetch method: {action_method}
+            method_blocks.append(f"""    /**
+     * TCS BaNCS Elementary Transaction: {et_name}
+     * Read-only inquiry transaction for high-throughput non-mutating lookups.
      */
-    public {out_mo} {action_method}(String lookupKey) {{
+    public {out} {et_name}(String lookupKey) {{
         if (lookupKey == null || lookupKey.isBlank()) {{
             lookupKey = "INQUIRY_DEFAULT";
         }}
 
-        {primary_entity} entity = this.dataGrabber.fetch{primary_entity}ById(lookupKey);
+        // Step 1: Pre-query check via Own Task ({mod_code}TO)
+        this.{to_1}(lookupKey);
+
+        // Step 2: Query entity state
+        {entity_name} entity = this.dataGrabber.fetch{entity_name}ById(lookupKey);
+        if (entity != null) {{
+            entity.Get(lookupKey);
+        }}
+        this.{tc_2}("{et_name}", lookupKey);
         AuditTrailService.logAuditEvent("ELEMENTARY_TRANSACTION", "{et_name}", lookupKey, "FETCH");
 
-        {out_mo} resp = new {out_mo}();
+        {out} resp = new {out}();
         resp.setMessageCorrelationId("ET_" + lookupKey);
         return resp;
+    }}""")
+
+        # 3. Own Task methods ({MODULE}TO)
+        for to_name in own_tasks:
+            method_blocks.append(f"""    /**
+     * TCS BaNCS Own Task: {to_name}
+     * Internal module workflow execution step.
+     */
+    public boolean {to_name}(String correlationId) {{
+        if (correlationId == null || correlationId.isEmpty()) {{
+            return false;
+        }}
+        AuditTrailService.logAuditEvent("TASK_OWN", "{to_name}", correlationId, "STATUS_OK");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
     }}
 
-    public boolean isHealthy() {{
-        return this.dataGrabber != null;
-    }}
-}}
-"""
+    public void {to_name}(String correlationId, double amount) {{
+        AuditTrailService.logAuditEvent("TASK_OWN", "{to_name}", correlationId, "AMOUNT=" + amount);
+        TelemetryRecorder.recordMetric("{to_name}.amount", amount);
+    }}""")
 
-
-def generate_batch_processor(mod_code: str, bp_name: str, bp_type: str, dg_name: str, svc_name: str) -> str:
-    method_name = f"{bp_name}Process"
-
-    badge_comment = {
-        "PS": "Batch Processor (EOD / Periodic Execution)",
-        "PB": "Process Before Batch (Pre-run validation)",
-        "PA": "Process After Batch (Post-run reconciliation)"
-    }.get(bp_type, "Batch Component")
-
-    return f"""package com.tcs.bancs.{mod_code};
-
-import java.util.*;
-import com.tcs.bancs.common.*;
-
-/**
- * TCS BaNCS {badge_comment}: {bp_name}
- */
-public class {bp_name} {{
-
-    private final {dg_name} dataGrabber;
-    private final {svc_name} service;
-    private boolean isExecutionRunning = false;
-
-    public {bp_name}() {{
-        this.dataGrabber = new {dg_name}();
-        this.service = new {svc_name}();
+        # 4. Common Task methods ({MODULE}TC)
+        for tc_name in common_tasks:
+            method_blocks.append(f"""    /**
+     * TCS BaNCS Common Task: {tc_name}
+     * Shared cross-module workflow execution step.
+     */
+    public boolean {tc_name}(String targetId) {{
+        AuditTrailService.logAuditEvent("TASK_COMMON", "{tc_name}", targetId, "VERIFIED");
+        return true;
     }}
 
-    public {bp_name}({dg_name} dataGrabber, {svc_name} service) {{
-        this.dataGrabber = dataGrabber;
-        this.service = service;
+    public void {tc_name}(String operation, String correlationId) {{
+        AuditTrailService.logAuditEvent("TASK_COMMON", "{tc_name}", correlationId, operation);
+    }}""")
+
+        # 5. Batch Processors ({MODULE}PS, {MODULE}PB, {MODULE}PA)
+        for bp_name in bps:
+            method_blocks.append(f"""    /**
+     * TCS BaNCS Batch Workflow Method: {bp_name}
+     */
+    public int {bp_name}() {{
+        AuditTrailService.logAuditEvent("BATCH_PROCESS", "{bp_name}", "{mod_code}", "START");
+        List<?> records = this.dataGrabber.retrieveAll();
+        int count = records != null ? records.size() : 0;
+        executeBatchProcessingCycle("{bp_name}", count);
+        AuditTrailService.logAuditEvent("BATCH_PROCESS", "{bp_name}", "{mod_code}", "PROCESSED=" + count);
+        return count;
+    }}""")
+
+    else:
+        # Secondary service gets domain helper methods and module task delegates
+        idx = abs(hash(svc_name)) % len(own_tasks)
+        to_alt = own_tasks[idx]
+        tc_alt = common_tasks[idx]
+        method_blocks.append(f"""    /**
+     * TCS BaNCS Own Task delegate: {to_alt}
+     */
+    public boolean {to_alt}(String correlationId) {{
+        AuditTrailService.logAuditEvent("TASK_OWN", "{to_alt}", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
     }}
 
     /**
-     * Primary batch execution method: {method_name}
+     * TCS BaNCS Common Task delegate: {tc_alt}
      */
-    public synchronized int {method_name}() {{
-        this.isExecutionRunning = true;
-        int processedRecords = 0;
-        try {{
-            AuditTrailService.logAuditEvent("BATCH_START", "{bp_name}", "{bp_type}", "START");
-            List<?> records = this.dataGrabber.retrieveAll();
-            processedRecords = records != null ? records.size() : 0;
-            this.service.executeBatchProcessingCycle("{bp_name}", processedRecords);
-            AuditTrailService.logAuditEvent("BATCH_COMPLETE", "{bp_name}", "{bp_type}", "PROCESSED=" + processedRecords);
-        }} finally {{
-            this.isExecutionRunning = false;
-        }}
-        return processedRecords;
-    }}
+    public void {tc_alt}(String operation, String correlationId) {{
+        AuditTrailService.logAuditEvent("TASK_COMMON", "{tc_alt}", correlationId, operation);
+    }}""")
 
-    public boolean isRunning() {{
-        return this.isExecutionRunning;
-    }}
-}}
-"""
+    methods_rendered = "\n\n".join(method_blocks)
 
-
-def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: str) -> str:
     return f"""package com.tcs.bancs.{mod_code};
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+{cross_imports}
 
 /**
  * TCS BaNCS Core Domain Service: {svc_name}
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class {svc_name} {{
 
@@ -1687,11 +1727,13 @@ public class {svc_name} {{
         }}
         return entity;
     }}
+
+{methods_rendered}
 }}
 """
 
 
-def generate_controller(mod_code: str, ctrl_name: str, bt_name: str, et_name: str, inp_mo: str, out_mo: str) -> str:
+def generate_controller(mod_code: str, ctrl_name: str, bt_name: str, et_name: str, inp_mo: str, out_mo: str, primary_svc_name: str) -> str:
     return f"""package com.tcs.bancs.{mod_code};
 
 import java.util.*;
@@ -1699,37 +1741,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: {ctrl_name}
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class {ctrl_name} {{
 
-    private final {bt_name} businessTransaction;
-    private final {et_name} elementaryTransaction;
+    private final {primary_svc_name} service;
 
     public {ctrl_name}() {{
-        this.businessTransaction = new {bt_name}();
-        this.elementaryTransaction = new {et_name}();
+        this.service = new {primary_svc_name}();
     }}
 
-    public {ctrl_name}({bt_name} bt, {et_name} et) {{
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public {ctrl_name}({primary_svc_name} service) {{
+        this.service = service;
     }}
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: {bt_name}
+     */
+    public {out_mo} {bt_name}({inp_mo} request) {{
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "{ctrl_name}", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.{bt_name}(request);
+    }}
+
+    /**
+     * Inbound Elementary Transaction dispatch method: {et_name}
+     */
+    public {out_mo} {et_name}(String queryKey) {{
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "{ctrl_name}", queryKey, "INQUIRY");
+        return this.service.{et_name}(queryKey);
+    }}
+
+    /**
+     * Generic execute request handler delegating to {bt_name}.
      */
     public {out_mo} handleExecuteRequest({inp_mo} request) {{
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "{ctrl_name}", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.{bt_name}Execute(request);
+        return this.{bt_name}(request);
     }}
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to {et_name}.
      */
     public {out_mo} handleInquiryRequest(String queryKey) {{
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "{ctrl_name}", queryKey, "INQUIRY");
-        return this.elementaryTransaction.{et_name}Fetch(queryKey);
+        return this.{et_name}(queryKey);
     }}
 
     public boolean ping() {{
@@ -2078,6 +2131,15 @@ def main():
     print("Starting TCS BaNCS Enterprise Codebase Generation...")
     print("=" * 70)
 
+    import shutil
+    if DEST_ROOT.exists():
+        for child in DEST_ROOT.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        print("  [+] Cleaned existing generated classes in", DEST_ROOT)
+
     total_files_generated = 0
     module_breakup = {}
 
@@ -2135,41 +2197,16 @@ def main():
             write_java_file(f"{mod_code}/{dg_name}.java", code)
             count += 1
 
-        # D. Business Transactions (5)
-        for i, bt_name in enumerate(bts):
-            inp = mos[(i * 2) % len(mos)][0]
-            out = mos[(i * 2 + 1) % len(mos)][0]
-            target_entity = p_classes[i % len(p_classes)]["name"]
-            target_dg = dgs[i % len(dgs)]
-            target_svc = services[i % len(services)]
-            code = generate_business_transaction(mod_code, bt_name, inp, out, target_entity, target_dg, target_svc, primary_cross)
-            write_java_file(f"{mod_code}/{bt_name}.java", code)
-            count += 1
-
-        # E. Elementary Transactions (4)
-        for i, et_name in enumerate(ets):
-            out = mos[(i * 2 + 1) % len(mos)][0]
-            target_entity = p_classes[i % len(p_classes)]["name"]
-            target_dg = dgs[i % len(dgs)]
-            code = generate_elementary_transaction(mod_code, et_name, out, target_entity, target_dg)
-            write_java_file(f"{mod_code}/{et_name}.java", code)
-            count += 1
-
-        # F. Batch Processors (3: PS, PB, PA)
-        bp_types = ["PS", "PB", "PA"]
-        for i, bp_name in enumerate(bps):
-            bp_type = bp_types[i % len(bp_types)]
-            target_dg = dgs[0]
-            target_svc = services[0]
-            code = generate_batch_processor(mod_code, bp_name, bp_type, target_dg, target_svc)
-            write_java_file(f"{mod_code}/{bp_name}.java", code)
-            count += 1
+        # D, E, F: Business Transactions (BT), Elementary Transactions (ET), Own Tasks (TO),
+        # Common Tasks (TC), and Batch Processors (PS, PB, PA) are generated as METHODS
+        # inside Services and Controllers, not as standalone classes.
 
         # G. Services (6)
         for i, svc_name in enumerate(services):
             target_entity = p_classes[i % len(p_classes)]["name"]
             target_dg = dgs[i % len(dgs)]
-            code = generate_service(mod_code, svc_name, target_entity, target_dg)
+            is_primary = (i == 0)
+            code = generate_service(mod_code, svc_name, target_entity, target_dg, mod_meta, is_primary, primary_cross, cross_deps)
             write_java_file(f"{mod_code}/{svc_name}.java", code)
             count += 1
 
@@ -2179,7 +2216,7 @@ def main():
             target_et = ets[i % len(ets)]
             inp = mos[(i * 2) % len(mos)][0]
             out = mos[(i * 2 + 1) % len(mos)][0]
-            code = generate_controller(mod_code, ctrl_name, target_bt, target_et, inp, out)
+            code = generate_controller(mod_code, ctrl_name, target_bt, target_et, inp, out, primary_svc_name)
             write_java_file(f"{mod_code}/{ctrl_name}.java", code)
             count += 1
 

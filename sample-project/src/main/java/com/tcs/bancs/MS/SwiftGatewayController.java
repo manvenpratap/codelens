@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: SwiftGatewayController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class SwiftGatewayController {
 
-    private final MSBTDispatchOutboundMessage businessTransaction;
-    private final MSETGetPayloadAudit elementaryTransaction;
+    private final SwiftParserService service;
 
     public SwiftGatewayController() {
-        this.businessTransaction = new MSBTDispatchOutboundMessage();
-        this.elementaryTransaction = new MSETGetPayloadAudit();
+        this.service = new SwiftParserService();
     }
 
-    public SwiftGatewayController(MSBTDispatchOutboundMessage bt, MSETGetPayloadAudit et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public SwiftGatewayController(SwiftParserService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: MSBTDispatchOutboundMessage
+     */
+    public MO_OUT_IsoPacs008 MSBTDispatchOutboundMessage(MO_INP_IsoPacs008 request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "SwiftGatewayController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.MSBTDispatchOutboundMessage(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: MSETGetPayloadAudit
+     */
+    public MO_OUT_IsoPacs008 MSETGetPayloadAudit(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "SwiftGatewayController", queryKey, "INQUIRY");
+        return this.service.MSETGetPayloadAudit(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to MSBTDispatchOutboundMessage.
      */
     public MO_OUT_IsoPacs008 handleExecuteRequest(MO_INP_IsoPacs008 request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "SwiftGatewayController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.MSBTDispatchOutboundMessageExecute(request);
+        return this.MSBTDispatchOutboundMessage(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to MSETGetPayloadAudit.
      */
     public MO_OUT_IsoPacs008 handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "SwiftGatewayController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.MSETGetPayloadAuditFetch(queryKey);
+        return this.MSETGetPayloadAudit(queryKey);
     }
 
     public boolean ping() {

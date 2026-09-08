@@ -2,10 +2,12 @@ package com.tcs.bancs.MS;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.PM.*;
 
 /**
  * TCS BaNCS Core Domain Service: Iso20022TransformationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class Iso20022TransformationService {
 
@@ -44,5 +46,20 @@ public class Iso20022TransformationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: MSTODecodePayload
+     */
+    public boolean MSTODecodePayload(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "MSTODecodePayload", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: MSTCAuditTransaction
+     */
+    public void MSTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCAuditTransaction", correlationId, operation);
     }
 }

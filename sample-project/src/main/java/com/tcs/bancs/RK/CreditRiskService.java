@@ -2,10 +2,13 @@ package com.tcs.bancs.RK;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.LN.*;
+import com.tcs.bancs.TR.*;
 
 /**
  * TCS BaNCS Core Domain Service: CreditRiskService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class CreditRiskService {
 
@@ -44,5 +47,20 @@ public class CreditRiskService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: RKTOCalculatePortfolioVaR
+     */
+    public boolean RKTOCalculatePortfolioVaR(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "RKTOCalculatePortfolioVaR", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: RKTCAuditTransaction
+     */
+    public void RKTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "RKTCAuditTransaction", correlationId, operation);
     }
 }

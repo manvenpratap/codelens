@@ -2,10 +2,13 @@ package com.tcs.bancs.TR;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.CL.*;
+import com.tcs.bancs.RK.*;
+import com.tcs.bancs.AN.*;
 
 /**
  * TCS BaNCS Core Domain Service: OrderValidationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class OrderValidationService {
 
@@ -44,5 +47,20 @@ public class OrderValidationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: TRTORouteExecutionSlice
+     */
+    public boolean TRTORouteExecutionSlice(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "TRTORouteExecutionSlice", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: TRTCAuditTransaction
+     */
+    public void TRTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "TRTCAuditTransaction", correlationId, operation);
     }
 }

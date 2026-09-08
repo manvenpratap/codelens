@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: ExposureMonitorController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class ExposureMonitorController {
 
-    private final RKBTRecalculateExposure businessTransaction;
-    private final RKETQueryAmlStatus elementaryTransaction;
+    private final MarketRiskService service;
 
     public ExposureMonitorController() {
-        this.businessTransaction = new RKBTRecalculateExposure();
-        this.elementaryTransaction = new RKETQueryAmlStatus();
+        this.service = new MarketRiskService();
     }
 
-    public ExposureMonitorController(RKBTRecalculateExposure bt, RKETQueryAmlStatus et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public ExposureMonitorController(MarketRiskService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: RKBTRecalculateExposure
+     */
+    public MO_OUT_ExposureRecalculate RKBTRecalculateExposure(MO_INP_ExposureRecalculate request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ExposureMonitorController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.RKBTRecalculateExposure(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: RKETQueryAmlStatus
+     */
+    public MO_OUT_ExposureRecalculate RKETQueryAmlStatus(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ExposureMonitorController", queryKey, "INQUIRY");
+        return this.service.RKETQueryAmlStatus(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to RKBTRecalculateExposure.
      */
     public MO_OUT_ExposureRecalculate handleExecuteRequest(MO_INP_ExposureRecalculate request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ExposureMonitorController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.RKBTRecalculateExposureExecute(request);
+        return this.RKBTRecalculateExposure(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to RKETQueryAmlStatus.
      */
     public MO_OUT_ExposureRecalculate handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "ExposureMonitorController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.RKETQueryAmlStatusFetch(queryKey);
+        return this.RKETQueryAmlStatus(queryKey);
     }
 
     public boolean ping() {

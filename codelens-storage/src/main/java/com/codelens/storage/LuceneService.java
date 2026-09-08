@@ -292,17 +292,32 @@ public class LuceneService {
     // ─────────────────────────────────────────────────────────────────────────
 
     private String buildSearchText(String... parts) {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(128);
         for (String p : parts) {
             if (p != null && !p.isBlank()) {
                 sb.append(p).append(' ');
-                // Also tokenise camelCase: "placeOrder" → "place Order"
-                sb.append(p.replaceAll("([A-Z])", " $1")).append(' ');
-                // And dot-separated: "com.example.Foo" → "com example Foo"
-                sb.append(p.replace('.', ' ')).append(' ');
+                // In-place camelCase tokenization without regex compile overhead: "placeOrder" → "place Order"
+                appendCamelCaseSplit(sb, p);
+                sb.append(' ');
+                // In-place dot-separated tokenization: "com.example.Foo" → "com example Foo"
+                for (int i = 0; i < p.length(); i++) {
+                    char c = p.charAt(i);
+                    sb.append(c == '.' ? ' ' : c);
+                }
+                sb.append(' ');
             }
         }
         return sb.toString().trim();
+    }
+
+    private static void appendCamelCaseSplit(StringBuilder sb, String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isUpperCase(c) && i > 0 && Character.isLowerCase(s.charAt(i - 1))) {
+                sb.append(' ');
+            }
+            sb.append(c);
+        }
     }
 
     private String safe(String s) { return s == null ? "" : s; }

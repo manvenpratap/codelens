@@ -23,14 +23,30 @@ public class ScanProgress {
     private long startTime;
     private long endTime;
     private String errorDetail;
+    private int percentage = -1;
+    private String activeStage = "IDLE";
 
     public ScanProgress() {}
     public ScanProgress(Status status) { this.status = status; }
 
-    /** Percentage complete (0–100). */
+    /** Percentage complete (0–100). Returns explicitly assigned percentage if non-negative, else file-ratio. */
     public int getPercentage() {
+        if (percentage >= 0) return Math.min(100, Math.max(0, percentage));
         if (totalFiles == 0) return 0;
         return Math.min(100, (int) ((processedFiles * 100L) / totalFiles));
+    }
+
+    public void setPercentage(int p) {
+        this.percentage = p;
+    }
+
+    /** Pipeline stage: IDLE, PREPARE, PARSE, INDEX, GRAPH, LAYOUT, COMPLETE */
+    public String getActiveStage() {
+        return activeStage != null ? activeStage : "IDLE";
+    }
+
+    public void setActiveStage(String stage) {
+        this.activeStage = stage;
     }
 
     /** Number of files remaining to be processed. */

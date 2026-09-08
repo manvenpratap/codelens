@@ -2,10 +2,13 @@ package com.tcs.bancs.PM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: FeeDeductionService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class FeeDeductionService {
 
@@ -44,5 +47,20 @@ public class FeeDeductionService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: PMTOCreditBeneficiaryAccount
+     */
+    public boolean PMTOCreditBeneficiaryAccount(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "PMTOCreditBeneficiaryAccount", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: PMTCSyncGeneralLedger
+     */
+    public void PMTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCSyncGeneralLedger", correlationId, operation);
     }
 }

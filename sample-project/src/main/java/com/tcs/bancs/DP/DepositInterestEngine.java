@@ -2,10 +2,13 @@ package com.tcs.bancs.DP;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
 
 /**
  * TCS BaNCS Core Domain Service: DepositInterestEngine
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class DepositInterestEngine {
 
@@ -44,5 +47,20 @@ public class DepositInterestEngine {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: DPTOApplyPenalRate
+     */
+    public boolean DPTOApplyPenalRate(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "DPTOApplyPenalRate", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: DPTCSyncGeneralLedger
+     */
+    public void DPTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "DPTCSyncGeneralLedger", correlationId, operation);
     }
 }

@@ -2,10 +2,12 @@ package com.tcs.bancs.AM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
 
 /**
  * TCS BaNCS Core Domain Service: StatementGenerationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class StatementGenerationService {
 
@@ -44,5 +46,20 @@ public class StatementGenerationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: AMTOApplyAccountHold
+     */
+    public boolean AMTOApplyAccountHold(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOApplyAccountHold", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: AMTCNotifyChannel
+     */
+    public void AMTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCNotifyChannel", correlationId, operation);
     }
 }

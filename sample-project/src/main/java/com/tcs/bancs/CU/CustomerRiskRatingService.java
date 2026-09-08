@@ -3,9 +3,10 @@ package com.tcs.bancs.CU;
 import java.util.*;
 import com.tcs.bancs.common.*;
 
+
 /**
  * TCS BaNCS Core Domain Service: CustomerRiskRatingService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class CustomerRiskRatingService {
 
@@ -44,5 +45,20 @@ public class CustomerRiskRatingService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: CUTOValidateCustomerIdentity
+     */
+    public boolean CUTOValidateCustomerIdentity(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CUTOValidateCustomerIdentity", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: CUTCVerifyCustomerKYC
+     */
+    public void CUTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CUTCVerifyCustomerKYC", correlationId, operation);
     }
 }

@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: MessagingBridgeController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class MessagingBridgeController {
 
-    private final MSBTRouteInboundMessage businessTransaction;
-    private final MSETQueryMessageStatus elementaryTransaction;
+    private final SwiftParserService service;
 
     public MessagingBridgeController() {
-        this.businessTransaction = new MSBTRouteInboundMessage();
-        this.elementaryTransaction = new MSETQueryMessageStatus();
+        this.service = new SwiftParserService();
     }
 
-    public MessagingBridgeController(MSBTRouteInboundMessage bt, MSETQueryMessageStatus et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public MessagingBridgeController(SwiftParserService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: MSBTRouteInboundMessage
+     */
+    public MO_OUT_SwiftMT103 MSBTRouteInboundMessage(MO_INP_SwiftMT103 request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MessagingBridgeController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.MSBTRouteInboundMessage(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: MSETQueryMessageStatus
+     */
+    public MO_OUT_SwiftMT103 MSETQueryMessageStatus(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MessagingBridgeController", queryKey, "INQUIRY");
+        return this.service.MSETQueryMessageStatus(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to MSBTRouteInboundMessage.
      */
     public MO_OUT_SwiftMT103 handleExecuteRequest(MO_INP_SwiftMT103 request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MessagingBridgeController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.MSBTRouteInboundMessageExecute(request);
+        return this.MSBTRouteInboundMessage(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to MSETQueryMessageStatus.
      */
     public MO_OUT_SwiftMT103 handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "MessagingBridgeController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.MSETQueryMessageStatusFetch(queryKey);
+        return this.MSETQueryMessageStatus(queryKey);
     }
 
     public boolean ping() {

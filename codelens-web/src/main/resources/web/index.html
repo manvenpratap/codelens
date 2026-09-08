@@ -577,6 +577,68 @@
             <button class="depth-pill" data-depth="15" title="Max reach">Max</button>
           </div>
         </div>
+
+        <div class="hud-divider"></div>
+
+        <!-- Critical Path Analyzer Button -->
+        <button id="btn-critical-path-tool" class="hud-btn" title="Identify & Trace Critical Path for Persistent Classes">
+          <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          <span class="hud-btn-text">Critical Path</span>
+        </button>
+      </div>
+
+      <!-- Critical Path Stepper & Flow Dock (Floating HUD) -->
+      <div id="critical-path-dock" class="critical-path-dock" style="display:none;" aria-label="Critical Path Stepper">
+        <div class="cp-dock-header">
+          <div class="cp-dock-title-group">
+            <span class="cp-dock-badge"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Critical Path</span>
+            <span class="cp-target-class" id="cp-target-class">Loan</span>
+            <span class="cp-target-package" id="cp-target-package">com.tcs.bancs.LN</span>
+          </div>
+
+          <!-- Mode / Category Selector Pills -->
+          <div class="cp-mode-pills" id="cp-mode-pills" role="tablist">
+            <button class="cp-mode-pill active" data-mode="primary" title="Primary High-Impact Critical Path">Primary</button>
+            <button class="cp-mode-pill" data-mode="mutation" title="State-Mutating Write Execution Path">Mutation</button>
+            <button class="cp-mode-pill" data-mode="read" title="Query / Read Access Path">Read</button>
+            <button class="cp-mode-pill" data-mode="longest" title="Deepest Multi-Hop Execution Chain">Longest</button>
+            <button class="cp-mode-pill" data-mode="max_complexity" title="Path with Maximum Cyclomatic Complexity">Max CC</button>
+          </div>
+
+          <!-- Summary Metrics -->
+          <div class="cp-metrics-strip" id="cp-metrics-strip">
+            <span class="cp-metric-item" title="Path Length"><span class="cp-metric-label">Hops:</span> <strong id="cp-metric-hops">0</strong></span>
+            <span class="cp-metric-sep">•</span>
+            <span class="cp-metric-item" title="Cumulative Cyclomatic Complexity"><span class="cp-metric-label">Σ CC:</span> <strong id="cp-metric-complexity">0</strong></span>
+            <span class="cp-metric-sep">•</span>
+            <span class="cp-metric-item" title="Risk Score"><span class="cp-metric-label">Risk:</span> <strong id="cp-metric-risk">0</strong></span>
+          </div>
+
+          <!-- Actions -->
+          <div class="cp-dock-actions">
+            <button id="btn-cp-fit" class="cp-action-btn" title="Fit critical path in view">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><polyline points="21 15 21 21 15 21"/><polyline points="3 9 3 3 9 3"/></svg>
+              Fit
+            </button>
+            <button id="btn-cp-change-class" class="cp-action-btn" title="Choose another persistent class">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              Classes
+            </button>
+            <button id="btn-cp-collapse" class="cp-action-btn" title="Collapse or expand dock">
+              <svg class="svg-icon icon-xs cp-icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button id="btn-cp-close" class="cp-close-btn" title="Exit Critical Path Mode">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stepper Chain Flow Container -->
+        <div class="cp-stepper-track-wrap">
+          <button id="btn-cp-step-prev" class="cp-stepper-nav-btn" title="Previous step">‹</button>
+          <div class="cp-stepper-track" id="cp-stepper-track"></div>
+          <button id="btn-cp-step-next" class="cp-stepper-nav-btn" title="Next step">›</button>
+        </div>
       </div>
 
       <!-- Graphify Bottom Floating Controls Toolbar (Feature Toggles, Archetypes, Camera/Zoom) -->
@@ -636,6 +698,7 @@
             <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+
       </div>
 
 
@@ -680,7 +743,10 @@
             <span id="node-card-degree" class="nc-val">0 (in: 0, out: 0)</span>
           </div>
           <div class="node-card-neighbors-sec">
-            <div class="nc-neighbors-title">Connected Neighbors (<span id="node-card-neighbor-count">0</span>)</div>
+            <div class="nc-neighbors-title">
+              <span>Connected Neighbors</span>
+              <span class="nc-neighbor-count-badge" id="node-card-neighbor-count">0</span>
+            </div>
             <div id="node-card-neighbors" class="nc-neighbors-list"></div>
           </div>
         </div>
@@ -851,6 +917,7 @@
             <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+
       </div>
 
 
@@ -909,7 +976,10 @@
             <span class="nc-val node-card-degree">0 (in: 0, out: 0)</span>
           </div>
           <div class="node-card-neighbors-sec">
-            <div class="nc-neighbors-title">Connected Neighbors (<span class="node-card-neighbor-count">0</span>)</div>
+            <div class="nc-neighbors-title">
+              <span>Connected Neighbors</span>
+              <span class="nc-neighbor-count-badge node-card-neighbor-count">0</span>
+            </div>
             <div class="nc-neighbors-list node-card-neighbors"></div>
           </div>
         </div>
@@ -1662,7 +1732,7 @@
             Presets:
           </span>
           <div class="presets-btn-group">
-            <button id="btn-preset-bancs" class="preset-pill-btn" title="Load BaNCS / Banking standard ({MODULE}ET, {MODULE}BT, {MODULE}PS, {MODULE}PB, {MODULE}PA, {MODULE}DG)">
+            <button id="btn-preset-bancs" class="preset-pill-btn" title="Load BaNCS / Banking standard ({MODULE}ET, {MODULE}BT, {MODULE}TO, {MODULE}TC, {MODULE}PS, {MODULE}PB, {MODULE}PA, {MODULE}DG)">
               <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
               Banking / BaNCS
             </button>
@@ -1967,6 +2037,46 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     CRITICAL PATH PERSISTENT CLASS PICKER MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="modal-critical-path-picker" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="cp-picker-title">
+  <div class="modal-dialog cp-picker-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <div class="cp-modal-icon"><svg class="svg-icon icon-amber icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+        <div>
+          <h2 id="cp-picker-title">Persistent Classes &amp; Critical Path Trace</h2>
+          <div class="modal-subtitle">Identify persistent domain entities and trace multi-hop execution flow from entry points to audit sinks</div>
+        </div>
+      </div>
+      <button id="btn-cp-picker-close" class="modal-close-btn" aria-label="Close dialog">
+        <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="cp-picker-body">
+      <div class="cp-picker-search-bar">
+        <svg class="svg-icon icon-sm cp-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" id="cp-picker-search" placeholder="Filter persistent classes by name or package…" autocomplete="off" spellcheck="false" />
+        <span id="cp-picker-count" class="cp-picker-count">Loading persistent classes…</span>
+      </div>
+
+      <div class="cp-picker-sort-row">
+        <span class="cp-sort-label">Sort by:</span>
+        <button class="cp-sort-btn active" data-sort="risk">Risk Score</button>
+        <button class="cp-sort-btn" data-sort="hops">Path Hops</button>
+        <button class="cp-sort-btn" data-sort="complexity">Complexity</button>
+        <button class="cp-sort-btn" data-sort="name">Name</button>
+      </div>
+
+      <div class="cp-picker-list" id="cp-picker-list">
+        <div class="cp-picker-loading">Loading persistent classes from analysis engine…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
      CENTRAL SCAN PROGRESS OVERLAY & DETAILED STATUS CARD
      Visibility toggled by setScanUI() / updateScanProgress() in app.js
      ═══════════════════════════════════════════════════════════════════════════ -->
@@ -1979,6 +2089,11 @@
   aria-label="Codebase scan progress"
 >
   <div class="scan-modal-card">
+    <!-- Close / Minimize Button (top-right) -->
+    <button id="btn-minimize-scan" class="scan-card-close-btn" title="Run in background (scan continues)" aria-label="Minimize scan dialog">
+      <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+
     <!-- Header: Animated Spinner Ring + Title + Phase Badge -->
     <div class="scan-card-header">
       <div class="scan-card-title-group">
@@ -1991,6 +2106,29 @@
         </div>
       </div>
       <span class="scan-phase-badge" id="scan-phase-badge">AST Parsing</span>
+    </div>
+
+    <!-- Pipeline Stage Progress Steps -->
+    <div class="scan-pipeline-steps" id="scan-pipeline-steps">
+      <div class="scan-pipeline-step step-active" data-step="PARSE">
+        <span class="step-dot"></span>
+        <span class="step-label">1. Parse AST</span>
+      </div>
+      <div class="scan-step-divider"></div>
+      <div class="scan-pipeline-step step-pending" data-step="INDEX">
+        <span class="step-dot"></span>
+        <span class="step-label">2. Index</span>
+      </div>
+      <div class="scan-step-divider"></div>
+      <div class="scan-pipeline-step step-pending" data-step="GRAPH">
+        <span class="step-dot"></span>
+        <span class="step-label">3. Call & Field Graph</span>
+      </div>
+      <div class="scan-step-divider"></div>
+      <div class="scan-pipeline-step step-pending" data-step="LAYOUT">
+        <span class="step-dot"></span>
+        <span class="step-label">4. Precompute Layouts</span>
+      </div>
     </div>
 
     <!-- Progress Section: Status Message + Percentage + Animated Bar Track -->
@@ -2011,8 +2149,8 @@
     <!-- Active File Stream Box -->
     <div class="scan-active-file-box">
       <div class="scan-active-file-label">
-        <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>Current File</span>
+        <svg id="scan-detail-icon" class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span id="scan-detail-label">Current File</span>
       </div>
       <div class="scan-detail-text" id="scan-detail-text">Initializing engine…</div>
     </div>
@@ -2044,6 +2182,10 @@
         <span>Elapsed: <strong id="scan-elapsed-time">0.0s</strong></span>
       </div>
       <div class="scan-card-actions">
+        <button id="btn-bg-scan" class="btn btn-sm btn-ghost" title="Run scan in background and minimize modal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          Run in Background
+        </button>
         <button id="btn-cancel-scan" class="btn btn-sm btn-cancel-scan" title="Cancel active scan" aria-label="Cancel active scan">
           <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           Cancel Scan

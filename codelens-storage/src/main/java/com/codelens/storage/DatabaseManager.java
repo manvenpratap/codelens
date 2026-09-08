@@ -39,16 +39,18 @@ public class DatabaseManager {
         // CACHE_SIZE=524288 (512MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
         // COMPRESS=FALSE: disable page-level compression to eliminate CPU serialization during bulk ingestion.
         // AUTO_COMPACT_FILL_RATE=0: disable background page compaction during active ingestion.
+        // RETENTION_TIME=0: immediately release old transaction page versions in MVStore (avoids version bloat on 50k+ files).
+        // LOCK_TIMEOUT=30000: 30s timeout to handle heavy I/O gracefully without premature lock aborts.
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=15000;CACHE_SIZE=524288;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=FALSE;AUTO_COMPACT_FILL_RATE=0");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=30000;CACHE_SIZE=524288;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=FALSE;AUTO_COMPACT_FILL_RATE=0;RETENTION_TIME=0");
         cfg.setUsername("sa");
         cfg.setPassword("");
-        cfg.setMaximumPoolSize(12);
-        cfg.setMinimumIdle(2);
-        cfg.setConnectionTimeout(30_000);
+        cfg.setMaximumPoolSize(20);
+        cfg.setMinimumIdle(4);
+        cfg.setConnectionTimeout(60_000);
         cfg.setValidationTimeout(5_000);
         cfg.setMaxLifetime(1800_000);
-        cfg.setLeakDetectionThreshold(180_000);
+        cfg.setLeakDetectionThreshold(600_000); // 10 minutes - avoids false leak alarms during large repo index builds
         cfg.setPoolName("CodeLens-H2");
         return cfg;
     }
@@ -227,8 +229,6 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
-
-            conn.commit();
         }
     }
 
@@ -248,7 +248,6 @@ public class DatabaseManager {
             stmt.execute("TRUNCATE TABLE fields");
             stmt.execute("TRUNCATE TABLE types");
             stmt.execute("TRUNCATE TABLE packages");
-            conn.commit();
             log.info("All scan tables truncated cleanly");
         }
     }
@@ -268,7 +267,6 @@ public class DatabaseManager {
             stmt.execute("DROP INDEX IF EXISTS idx_rels_to");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_kind");
             stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
-            conn.commit();
             log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped, write delay 2000ms)");
         }
     }
@@ -293,7 +291,6 @@ public class DatabaseManager {
             try (Connection conn = getConnection();
                  Statement stmt = conn.createStatement()) {
                 stmt.execute(sql);
-                conn.commit();
             }
         }
         log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");

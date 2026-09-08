@@ -2,10 +2,13 @@ package com.tcs.bancs.PM;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: DirectDebitMandateService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class DirectDebitMandateService {
 
@@ -44,5 +47,20 @@ public class DirectDebitMandateService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: PMTORoutePaymentChannel
+     */
+    public boolean PMTORoutePaymentChannel(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "PMTORoutePaymentChannel", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: PMTCAuditTransaction
+     */
+    public void PMTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCAuditTransaction", correlationId, operation);
     }
 }

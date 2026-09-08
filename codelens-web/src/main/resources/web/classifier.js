@@ -16,7 +16,7 @@
 
   const DEFAULT_POJO_CONFIG = {
     enableStandardGettersSetters: true,
-    patterns: 'get*, set*, is*, has*, toString, hashCode, equals, canEqual, getClass, compareTo, clone'
+    patterns: 'toString, hashCode, equals, canEqual, getClass, compareTo, clone'
   };
 
   const BANCS_PRESET_RULES = [
@@ -46,6 +46,34 @@
       color: '#f59e0b',
       icon: 'zap',
       description: 'Business transactions meant for create/update data',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-to',
+      target: 'METHOD',
+      scope: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}TO',
+      label: 'Own Task',
+      badge: 'TASK-OWN',
+      category: 'WORKFLOW',
+      color: '#0ea5e9',
+      icon: 'check',
+      description: 'Module own task workflow execution ({MODULE}TO)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-tc',
+      target: 'METHOD',
+      scope: 'METHOD',
+      matchType: 'PREFIX',
+      pattern: '{MODULE}TC',
+      label: 'Common Task',
+      badge: 'TASK-COMMON',
+      category: 'SHARED_TASK',
+      color: '#a855f7',
+      icon: 'layers',
+      description: 'Cross-module common task workflow execution ({MODULE}TC)',
       enabled: true
     },
     {
@@ -332,6 +360,12 @@
         const raw = localStorage.getItem(POJO_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.patterns === 'string') {
+            parsed.patterns = parsed.patterns.replace(/\b(get\*|set\*|is\*|has\*),?\s*/gi, '').trim().replace(/,\s*$/, '');
+          }
+          if (parsed && Array.isArray(parsed.customPatterns)) {
+            parsed.customPatterns = parsed.customPatterns.filter(p => !['get*', 'set*', 'is*', 'has*'].includes(p.toLowerCase()));
+          }
           return { ...DEFAULT_POJO_CONFIG, ...parsed };
         }
       } catch (_) {}
@@ -341,10 +375,10 @@
     getPojoConfig() {
       const enableStd = this._pojoConfig.enableStandardGettersSetters !== false && this._pojoConfig.includeStandardAccessors !== false;
       const patternsList = Array.isArray(this._pojoConfig.customPatterns)
-        ? this._pojoConfig.customPatterns
+        ? this._pojoConfig.customPatterns.filter(p => !['get*', 'set*', 'is*', 'has*'].includes(p.toLowerCase()))
         : (typeof this._pojoConfig.patterns === 'string'
-            ? this._pojoConfig.patterns.split(',').map(s => s.trim()).filter(Boolean)
-            : ['get*', 'set*', 'is*', 'has*']);
+            ? this._pojoConfig.patterns.split(',').map(s => s.trim()).filter(s => s && !['get*', 'set*', 'is*', 'has*'].includes(s.toLowerCase()))
+            : ['toString', 'hashCode', 'equals', 'canEqual', 'getClass']);
 
       return {
         includeStandardAccessors: enableStd,
@@ -399,6 +433,16 @@
       let packageFqn = pkg || '';
 
       if (typeof methodNameOrNode === 'object' && methodNameOrNode !== null) {
+        // Never treat root graph node or critical path execution nodes as POJOs
+        const role = (methodNameOrNode.role || '').toUpperCase();
+        if (role === 'ROOT' || ['ENTRY_POINT', 'PERSISTENT_TARGET', 'DOWNSTREAM_SINK', 'INTERMEDIARY'].includes(role)) {
+          return false;
+        }
+        const badge = (methodNameOrNode.archetypeBadge || methodNameOrNode.badge || '').toUpperCase();
+        if (['PERSISTENT', 'TASK-OWN', 'TASK-COMMON', 'MUTATE', 'FETCH', 'AUDIT', 'BATCH', 'SERVICE'].includes(badge)) {
+          return false;
+        }
+
         name = methodNameOrNode.simpleName || methodNameOrNode.label || (methodNameOrNode.id ? methodNameOrNode.id.split('.').pop() : '') || '';
         fullFqn = methodNameOrNode.fqn || methodNameOrNode.id || fullFqn;
         packageFqn = methodNameOrNode.package || methodNameOrNode.packageFqn || packageFqn;
@@ -409,8 +453,8 @@
       name = name.replace(/\(.*\)$/, '').trim();
       if (!name) return false;
 
-      // Never treat root graph node as POJO
-      if (typeof methodNameOrNode === 'object' && methodNameOrNode.role === 'root') return false;
+      // Never treat BaNCS persistent lifecycle methods (Get, Create, Modify) as POJO accessors
+      if (['Get', 'Create', 'Modify'].includes(name)) return false;
 
       // 1. Standard Object methods
       const standardObjectMethods = ['toString', 'hashCode', 'equals', 'canEqual', 'getClass', 'compareTo', 'clone', 'finalize', 'notify', 'notifyAll', 'wait'];
@@ -434,13 +478,21 @@
         .filter(Boolean);
 
       for (const pattern of customPatterns) {
+        // Skip legacy wildcard entries handled by standard getter/setter logic
+        if (['get*', 'set*', 'is*', 'has*'].includes(pattern.toLowerCase())) continue;
         if (this._matchesPattern(name, pattern, fullFqn, packageFqn)) {
           return true;
         }
       }
 
-
       return false;
+    }
+
+    /**
+     * Alias for isPojo to support callers across DSM, Sunburst, Chord, and Treemap.
+     */
+    isPojoAccessor(methodNameOrNode, fqn, pkg) {
+      return this.isPojo(methodNameOrNode, fqn, pkg);
     }
 
     // ── Archetype Rules Engine ────────────────────────────────────────────────
@@ -673,7 +725,7 @@
       let packageFqn = pkg || '';
 
       if (typeof nameOrNode === 'object' && nameOrNode !== null) {
-        name = nameOrNode.simpleName || nameOrNode.label || (nameOrNode.id ? nameOrNode.id.split('.').pop() : '') || '';
+        name = nameOrNode.simpleName || nameOrNode.name || nameOrNode.label || (nameOrNode.id ? nameOrNode.id.split('.').pop() : '') || '';
         fullFqn = nameOrNode.fqn || nameOrNode.id || fullFqn;
         packageFqn = nameOrNode.package || nameOrNode.packageFqn || packageFqn;
       } else {

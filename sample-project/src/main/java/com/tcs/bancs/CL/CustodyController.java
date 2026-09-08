@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: CustodyController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class CustodyController {
 
-    private final CLBTAffirmTrade businessTransaction;
-    private final CLETGetDepositoryHoldings elementaryTransaction;
+    private final ClearingHouseGatewayService service;
 
     public CustodyController() {
-        this.businessTransaction = new CLBTAffirmTrade();
-        this.elementaryTransaction = new CLETGetDepositoryHoldings();
+        this.service = new ClearingHouseGatewayService();
     }
 
-    public CustodyController(CLBTAffirmTrade bt, CLETGetDepositoryHoldings et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public CustodyController(ClearingHouseGatewayService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: CLBTAffirmTrade
+     */
+    public MO_OUT_Affirmation CLBTAffirmTrade(MO_INP_Affirmation request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustodyController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.CLBTAffirmTrade(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: CLETGetDepositoryHoldings
+     */
+    public MO_OUT_Affirmation CLETGetDepositoryHoldings(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustodyController", queryKey, "INQUIRY");
+        return this.service.CLETGetDepositoryHoldings(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to CLBTAffirmTrade.
      */
     public MO_OUT_Affirmation handleExecuteRequest(MO_INP_Affirmation request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustodyController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.CLBTAffirmTradeExecute(request);
+        return this.CLBTAffirmTrade(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to CLETGetDepositoryHoldings.
      */
     public MO_OUT_Affirmation handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustodyController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.CLETGetDepositoryHoldingsFetch(queryKey);
+        return this.CLETGetDepositoryHoldings(queryKey);
     }
 
     public boolean ping() {

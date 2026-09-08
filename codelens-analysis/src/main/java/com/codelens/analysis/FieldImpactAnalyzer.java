@@ -21,19 +21,48 @@ public class FieldImpactAnalyzer {
 
     private static final Logger log = LoggerFactory.getLogger(FieldImpactAnalyzer.class);
 
+    @FunctionalInterface
+    public interface ProgressListener {
+        void onProgress(String phase, int current, int total, String detail);
+    }
+
     /** Immutable snapshot of field-related relationships. */
     private List<CodeRelationship> fieldRels      = Collections.emptyList();
     private Set<String>            callingMethods = Collections.emptySet();
+    private Map<String, List<CodeRelationship>> fieldRelIndex = Collections.emptyMap();
 
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Update the internal relationship snapshot with lean field relationships and caller set, with progress callback.
+     */
+    public synchronized void rebuild(List<CodeRelationship> fieldRelationships, Set<String> callingMethodFqns, ProgressListener listener) {
+        this.fieldRels = fieldRelationships != null ? fieldRelationships : Collections.emptyList();
+        this.callingMethods = callingMethodFqns != null ? callingMethodFqns : Collections.emptySet();
+
+        Map<String, List<CodeRelationship>> index = new HashMap<>();
+        int total = this.fieldRels.size();
+        int count = 0;
+        for (CodeRelationship rel : this.fieldRels) {
+            if (rel != null && rel.getToEntityFqn() != null) {
+                index.computeIfAbsent(rel.getToEntityFqn(), k -> new ArrayList<>(4)).add(rel);
+            }
+            count++;
+            if (listener != null && (count % 2000 == 0 || count == total)) {
+                listener.onProgress("Field Impact: Indexing Relations", count, total,
+                    String.format("Indexed %,d / %,d field relationships", count, total));
+            }
+        }
+        this.fieldRelIndex = Collections.unmodifiableMap(index);
+        log.info("FieldImpactAnalyzer updated: {} field rels ({} unique fields), {} calling methods",
+            fieldRels.size(), index.size(), callingMethods.size());
+    }
 
     /**
      * Update the internal relationship snapshot with lean field relationships and caller set.
      */
     public synchronized void rebuild(List<CodeRelationship> fieldRelationships, Set<String> callingMethodFqns) {
-        this.fieldRels = fieldRelationships != null ? fieldRelationships : Collections.emptyList();
-        this.callingMethods = callingMethodFqns != null ? callingMethodFqns : Collections.emptySet();
-        log.info("FieldImpactAnalyzer updated: {} field rels, {} calling methods", fieldRels.size(), callingMethods.size());
+        rebuild(fieldRelationships, callingMethodFqns, null);
     }
 
     /**
@@ -41,7 +70,7 @@ public class FieldImpactAnalyzer {
      */
     public synchronized void rebuild(List<CodeRelationship> allRelationships) {
         if (allRelationships == null) {
-            rebuild(Collections.emptyList(), Collections.emptySet());
+            rebuild(Collections.emptyList(), Collections.emptySet(), null);
             return;
         }
         List<CodeRelationship> fields = new ArrayList<>();
@@ -53,7 +82,7 @@ public class FieldImpactAnalyzer {
                 callers.add(r.getFromEntityFqn());
             }
         }
-        rebuild(fields, callers);
+        rebuild(fields, callers, null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -77,12 +106,22 @@ public class FieldImpactAnalyzer {
         List<String> writers    = new ArrayList<>();
         List<String> propagators = new ArrayList<>();
 
-        for (CodeRelationship rel : fieldRels) {
-            if (!fieldFqn.equals(rel.getToEntityFqn())) continue;
-
-            switch (rel.getKind()) {
-                case "READS_FIELD"  -> readers.add(rel.getFromEntityFqn());
-                case "WRITES_FIELD" -> writers.add(rel.getFromEntityFqn());
+        List<CodeRelationship> relsForField = fieldRelIndex.get(fieldFqn);
+        if (relsForField != null) {
+            for (CodeRelationship rel : relsForField) {
+                switch (rel.getKind()) {
+                    case "READS_FIELD"  -> readers.add(rel.getFromEntityFqn());
+                    case "WRITES_FIELD" -> writers.add(rel.getFromEntityFqn());
+                }
+            }
+        } else if (fieldRelIndex.isEmpty() && !fieldRels.isEmpty()) {
+            // Fallback for safety if index was not populated
+            for (CodeRelationship rel : fieldRels) {
+                if (!fieldFqn.equals(rel.getToEntityFqn())) continue;
+                switch (rel.getKind()) {
+                    case "READS_FIELD"  -> readers.add(rel.getFromEntityFqn());
+                    case "WRITES_FIELD" -> writers.add(rel.getFromEntityFqn());
+                }
             }
         }
 

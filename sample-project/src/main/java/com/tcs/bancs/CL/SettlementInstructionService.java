@@ -2,10 +2,13 @@ package com.tcs.bancs.CL;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.PM.*;
+import com.tcs.bancs.TR.*;
 
 /**
  * TCS BaNCS Core Domain Service: SettlementInstructionService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class SettlementInstructionService {
 
@@ -44,5 +47,20 @@ public class SettlementInstructionService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: CLTOCheckDepositoryBalance
+     */
+    public boolean CLTOCheckDepositoryBalance(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOCheckDepositoryBalance", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: CLTCSyncGeneralLedger
+     */
+    public void CLTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCSyncGeneralLedger", correlationId, operation);
     }
 }

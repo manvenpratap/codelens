@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: PledgeAdministrationController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class PledgeAdministrationController {
 
-    private final SCBTCapitalizePledge businessTransaction;
-    private final SCETQueryActivePledges elementaryTransaction;
+    private final CollateralRegistrationService service;
 
     public PledgeAdministrationController() {
-        this.businessTransaction = new SCBTCapitalizePledge();
-        this.elementaryTransaction = new SCETQueryActivePledges();
+        this.service = new CollateralRegistrationService();
     }
 
-    public PledgeAdministrationController(SCBTCapitalizePledge bt, SCETQueryActivePledges et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public PledgeAdministrationController(CollateralRegistrationService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: SCBTCapitalizePledge
+     */
+    public MO_OUT_PledgeCreation SCBTCapitalizePledge(MO_INP_PledgeCreation request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PledgeAdministrationController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.SCBTCapitalizePledge(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: SCETQueryActivePledges
+     */
+    public MO_OUT_PledgeCreation SCETQueryActivePledges(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PledgeAdministrationController", queryKey, "INQUIRY");
+        return this.service.SCETQueryActivePledges(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to SCBTCapitalizePledge.
      */
     public MO_OUT_PledgeCreation handleExecuteRequest(MO_INP_PledgeCreation request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PledgeAdministrationController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.SCBTCapitalizePledgeExecute(request);
+        return this.SCBTCapitalizePledge(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to SCETQueryActivePledges.
      */
     public MO_OUT_PledgeCreation handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "PledgeAdministrationController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.SCETQueryActivePledgesFetch(queryKey);
+        return this.SCETQueryActivePledges(queryKey);
     }
 
     public boolean ping() {

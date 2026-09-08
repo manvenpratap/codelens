@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: TradingDeskController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class TradingDeskController {
 
-    private final TRBTSubmitOrder businessTransaction;
-    private final TRETGetOrderStatus elementaryTransaction;
+    private final OrderRoutingService service;
 
     public TradingDeskController() {
-        this.businessTransaction = new TRBTSubmitOrder();
-        this.elementaryTransaction = new TRETGetOrderStatus();
+        this.service = new OrderRoutingService();
     }
 
-    public TradingDeskController(TRBTSubmitOrder bt, TRETGetOrderStatus et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public TradingDeskController(OrderRoutingService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: TRBTSubmitOrder
+     */
+    public MO_OUT_OrderSubmission TRBTSubmitOrder(MO_INP_OrderSubmission request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "TradingDeskController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.TRBTSubmitOrder(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: TRETGetOrderStatus
+     */
+    public MO_OUT_OrderSubmission TRETGetOrderStatus(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "TradingDeskController", queryKey, "INQUIRY");
+        return this.service.TRETGetOrderStatus(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to TRBTSubmitOrder.
      */
     public MO_OUT_OrderSubmission handleExecuteRequest(MO_INP_OrderSubmission request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "TradingDeskController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.TRBTSubmitOrderExecute(request);
+        return this.TRBTSubmitOrder(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to TRETGetOrderStatus.
      */
     public MO_OUT_OrderSubmission handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "TradingDeskController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.TRETGetOrderStatusFetch(queryKey);
+        return this.TRETGetOrderStatus(queryKey);
     }
 
     public boolean ping() {

@@ -2,10 +2,15 @@ package com.tcs.bancs.LN;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.GL.*;
+import com.tcs.bancs.CU.*;
+import com.tcs.bancs.SC.*;
+import com.tcs.bancs.RK.*;
 
 /**
  * TCS BaNCS Core Domain Service: AmortizationCalculationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class AmortizationCalculationService {
 
@@ -44,5 +49,20 @@ public class AmortizationCalculationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: LNTOCheckArrears
+     */
+    public boolean LNTOCheckArrears(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCheckArrears", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: LNTCSyncGeneralLedger
+     */
+    public void LNTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCSyncGeneralLedger", correlationId, operation);
     }
 }

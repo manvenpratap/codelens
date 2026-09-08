@@ -182,10 +182,20 @@ class ForceGraph {
     this._packageMode   = 'auto'; // 'auto' | 'compact' | 'fqn'
     this._autoCommonPrefix = '';
 
+    // Active Theme
+    const isLightMode = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    this._activeTheme = isLightMode ? 'light' : 'dark';
+
     // Selection & Highlight
     this._hoveredNode   = null;
     this._selectedNode  = null;
     this._connectedMap  = new Map(); // nodeId -> Set of neighbor nodeIds
+
+    // Critical Path State
+    this._criticalPath       = null; // active CriticalPath object
+    this._criticalPathNodes  = new Set(); // Set of node ids in path
+    this._criticalPathEdges  = new Map(); // "source->target" -> CriticalPathEdge
+    this._criticalStepIndex  = null; // active step number
 
     // Heat overlay mode
     this._heatMode  = false;
@@ -363,11 +373,19 @@ class ForceGraph {
     if (!node || node.role === 'root') return false;
     const typeUpper = (node.type || '').toUpperCase();
     if (typeUpper === 'CLASS' || typeUpper === 'TYPE' || typeUpper === 'MODULE' || typeUpper === 'PACKAGE' || typeUpper === 'INTERFACE') return false;
+
+    // Critical path nodes and persistent lifecycle methods are never POJO accessors
+    const roleUpper = (node.role || '').toUpperCase();
+    if (['ENTRY_POINT', 'PERSISTENT_TARGET', 'DOWNSTREAM_SINK', 'INTERMEDIARY'].includes(roleUpper)) return false;
+    if (this._criticalPathNodes && this._criticalPathNodes.has(node.id)) return false;
+
+    const name = (node.label || (node.id ? node.id.split('.').pop() : '') || '').replace(/\(.*\)$/, '').trim();
+    if (['Get', 'Create', 'Modify'].includes(name)) return false;
+
     if (window.CodeLensClassifier) {
       return window.CodeLensClassifier.isPojo(node, node.id, node.package || node.packageFqn);
     }
-    const name = (node.label || node.id.split('.').pop() || '').replace(/\(.*\)$/, '').trim();
-    if (['toString', 'hashCode', 'equals', 'canEqual', 'getClass'].includes(name)) return true;
+    if (['toString', 'hashCode', 'equals', 'canEqual', 'getClass', 'compareTo', 'clone'].includes(name)) return true;
     if (name.length > 3 && name.startsWith('get') && /^[A-Z]/.test(name.charAt(3))) return true;
     if (name.length > 3 && name.startsWith('set') && /^[A-Z]/.test(name.charAt(3))) return true;
     if (name.length > 2 && name.startsWith('is') && /^[A-Z]/.test(name.charAt(2))) return true;
@@ -382,7 +400,9 @@ class ForceGraph {
     const filteredNodes = [];
 
     for (const n of (nodes || [])) {
-      if (this._isPojoAccessor(n)) {
+      const isCriticalNode = (this._criticalPathNodes && this._criticalPathNodes.has(n.id)) ||
+                             ['ENTRY_POINT', 'PERSISTENT_TARGET', 'DOWNSTREAM_SINK', 'INTERMEDIARY'].includes((n.role || '').toUpperCase());
+      if (!isCriticalNode && this._isPojoAccessor(n)) {
         hiddenSet.add(n.id);
       } else {
         filteredNodes.push(n);
@@ -449,7 +469,11 @@ class ForceGraph {
     }
     const isAnchorType = n => {
       const tu = (n.type || '').toUpperCase();
-      return tu === 'CLASS' || tu === 'TYPE' || tu === 'INTERFACE' || tu === 'MODULE' || tu === 'PACKAGE' || n.role === 'root' || n.role === 'module';
+      const ru = (n.role || '').toUpperCase();
+      return tu === 'CLASS' || tu === 'TYPE' || tu === 'INTERFACE' || tu === 'MODULE' || tu === 'PACKAGE' ||
+             ru === 'ROOT' || ru === 'MODULE' ||
+             ['ENTRY_POINT', 'PERSISTENT_TARGET', 'DOWNSTREAM_SINK', 'INTERMEDIARY'].includes(ru) ||
+             (this._criticalPathNodes && this._criticalPathNodes.has(n.id));
     };
     nodes = nodes.filter(n => connectedIds.has(n.id) || isAnchorType(n));
     // ─────────────────────────────────────────────────────────
@@ -472,13 +496,15 @@ class ForceGraph {
       if (this._connectedMap.has(e.target)) this._connectedMap.get(e.target).add(e.source);
     }
 
+window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
+
     // 2. Detect & assign Graphify communities (by Java package / module)
     this._communityMap.clear();
     const pkgCounts = {};
     const allNodePkgs = [];
     for (const n of nodes) {
       const { pkg } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
-      const finalPkg = n.package || pkg || 'default';
+      const finalPkg = n.packageFqn || n.package || pkg || 'default';
       pkgCounts[finalPkg] = (pkgCounts[finalPkg] || 0) + 1;
       if (finalPkg && finalPkg !== 'default') allNodePkgs.push(finalPkg);
     }
@@ -486,9 +512,7 @@ class ForceGraph {
 
     const sortedPkgs = Object.keys(pkgCounts).sort((a, b) => pkgCounts[b] - pkgCounts[a]);
     this._communities = sortedPkgs.map((pkg, idx) => {
-      const color = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(pkg, idx)
-        : GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
+      const color = GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
       const comm = {
         cid: idx,
         rawLabel: pkg,
@@ -502,13 +526,117 @@ class ForceGraph {
       return comm;
     });
 
-    // 3. Initialize nodes in a Blooming Tree structure
+    // 3. Initialize nodes (honor pre-computed coordinates if present)
     const isLargeSet = nodes.length > 25;
+    const hasPrecomputedCoords = nodes.length > 0 &&
+      nodes.filter(n => typeof n.x === 'number' && typeof n.y === 'number' && !isNaN(n.x) && !isNaN(n.y)).length / nodes.length >= 0.7;
+
+    if (hasPrecomputedCoords) {
+      const allProcessedNodes = [];
+      for (const n of nodes) {
+        const { pkg, className, memberName } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
+        const finalPkg = n.packageFqn || n.package || pkg || 'default';
+        const comm = this._communityMap.get(finalPkg) || this._communities[0];
+        if (comm) comm.nodes.add(n.id);
+
+        const deg = (inDegrees[n.id] || 0) + (outDegrees[n.id] || 0);
+
+        let heatVal = 0;
+        if (this._heatData) {
+          heatVal = (this._heatData[n.id] !== undefined)
+            ? this._heatData[n.id]
+            : ((n.label && this._heatData[n.label] !== undefined)
+                ? this._heatData[n.label]
+                : (n.id ? this._heatData[n.id.replace(/\(.*\)/, '')] : 0)) || 0;
+        }
+        const hotScore = deg * 3 + (n.role === 'root' ? 25 : 0) + (n.type === 'CLASS' ? 12 : 0) + heatVal * 2;
+
+        const classColor = (window.CodeLensPalette && window.CodeLensPalette.getClassColor)
+          ? window.CodeLensPalette.getClassColor(n.id, n.type || 'METHOD')
+          : (comm ? comm.color : '#3b82f6');
+
+        allProcessedNodes.push({
+          ...n,
+          x: typeof n.x === 'number' ? n.x : cx + (Math.random() - 0.5) * 200,
+          y: typeof n.y === 'number' ? n.y : cy + (Math.random() - 0.5) * 200,
+          package: finalPkg,
+          className: className,
+          memberName: memberName,
+          community: comm ? comm.cid : 0,
+          communityLabel: comm ? comm.label : finalPkg,
+          communityColor: comm ? comm.color : '#3b82f6',
+          packageColor: comm ? comm.color : '#3b82f6',
+          classColor: classColor,
+          inDegree: inDegrees[n.id] || 0,
+          outDegree: outDegrees[n.id] || 0,
+          degree: deg,
+          hotScore: hotScore,
+          radius: n.radius || ((isLargeSet && n.type !== 'CLASS' ? PHYSICS.nodeBaseRadius - 1 : PHYSICS.nodeBaseRadius) + Math.min(8, Math.sqrt(deg) * 1.8) + (n.role === 'root' ? 4 : 0) + (n.type === 'CLASS' ? 5 : 0)),
+          vx: 0,
+          vy: 0,
+          _fx: 0,
+          _fy: 0,
+          pinned: false,
+        });
+      }
+
+      // Compute community centroids and mark branch cores for precomputed layouts
+      const commCentroids = new Map();
+      for (const nd of allProcessedNodes) {
+        const cid = nd.community !== undefined ? nd.community : 0;
+        if (!commCentroids.has(cid)) commCentroids.set(cid, { x: 0, y: 0, count: 0, coreNode: null });
+        const c = commCentroids.get(cid);
+        c.x += nd.x; c.y += nd.y; c.count++;
+        if (!c.coreNode || (nd.hotScore || 0) > (c.coreNode.hotScore || 0)) {
+          c.coreNode = nd;
+        }
+      }
+      for (const [, c] of commCentroids.entries()) {
+        if (c.count > 0) { c.x /= c.count; c.y /= c.count; }
+        if (c.coreNode) c.coreNode.isBranchCore = true;
+      }
+      for (const nd of allProcessedNodes) {
+        const c = commCentroids.get(nd.community);
+        if (c) {
+          nd.branchCenterX = c.x;
+          nd.branchCenterY = c.y;
+        }
+      }
+
+      this._nodes = allProcessedNodes;
+      this._nodeIndex = new Map();
+      for (let i = 0; i < allProcessedNodes.length; i++) {
+        this._nodeIndex.set(allProcessedNodes[i].id, i);
+      }
+
+      this._edges = edges.map(e => ({ ...e }));
+      this._ticks = PHYSICS.maxTicks; // mark simulation as finished
+      this._particles = [];
+      this._hoveredNode = null;
+      this._selectedNode = null;
+      this._physicsEnabled = false; // Bypass live simulation completely
+
+      // Update active toggle states on buttons
+      ['btn-toggle-physics', 'btn-codebase-toggle-physics'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle('active', false);
+      });
+
+      this._renderCommunityLegend();
+      this._populateSearchDropdown();
+
+      this.fitToScreen();
+      this._hideNodeCard();
+      this._markDirty();
+      this.requestRender();
+      return;
+    }
+
     // Group nodes by branch (package / module)
     const branchMap = new Map();
     for (const n of nodes) {
       const { pkg, className, memberName } = this._extractPackageAndClass(n.id, n.type || 'METHOD');
-      const finalPkg = n.package || pkg || 'default';
+      const finalPkg = n.packageFqn || n.package || pkg || 'default';
       const comm = this._communityMap.get(finalPkg) || this._communities[0];
       comm.nodes.add(n.id);
 
@@ -679,10 +807,8 @@ class ForceGraph {
   }
 
   requestRender() {
-    if (this._paused) {
-      this._draw();
-      if (this._showMinimap) this._drawMinimap();
-    }
+    this._draw();
+    if (this._showMinimap) this._drawMinimap();
   }
 
   _requestRender() {
@@ -694,6 +820,39 @@ class ForceGraph {
     this.requestRender();
   }
 
+
+  getGraphJSON() {
+    return {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      nodeCount: this._nodes.length,
+      edgeCount: this._edges.length,
+      nodes: this._nodes.map(n => ({
+        id: n.id,
+        label: n.label || n.id,
+        x: Math.round((n.x || 0) * 10) / 10,
+        y: Math.round((n.y || 0) * 10) / 10,
+        radius: n.radius,
+        package: n.package,
+        className: n.className,
+        type: n.type,
+        role: n.role,
+        community: n.community,
+        communityLabel: n.communityLabel,
+        communityColor: n.communityColor,
+        degree: n.degree,
+        inDegree: n.inDegree,
+        outDegree: n.outDegree,
+        hotScore: n.hotScore
+      })),
+      edges: this._edges.map(e => ({
+        source: typeof e.source === 'object' ? e.source.id : e.source,
+        target: typeof e.target === 'object' ? e.target.id : e.target,
+        kind: e.kind || 'CALLS',
+        label: e.label || ''
+      }))
+    };
+  }
 
   clear() {
     this._nodes = [];
@@ -748,6 +907,10 @@ class ForceGraph {
 
   _isNodeHidden(node) {
     if (!node) return false;
+    // Critical path nodes are never hidden when critical path is active
+    if (this._criticalPath && this._criticalPathNodes && this._criticalPathNodes.has(node.id)) {
+      return false;
+    }
     if (this._hiddenCommunities.has(node.community)) return true;
     if (node.package && (this._hiddenCommunities.has(node.package) || (this._communityMap.get(node.package) && this._hiddenCommunities.has(this._communityMap.get(node.package).cid)))) return true;
     if (node.className && this._hiddenClasses.has(node.className)) return true;
@@ -809,6 +972,8 @@ class ForceGraph {
     this._sc = newSc;
     this._tx = W / 2 - midX * newSc;
     this._ty = H / 2 - midY * newSc;
+    this._markDirty();
+    this.requestRender();
   }
 
   focusNode(nodeId, scale = 1.35) {
@@ -825,6 +990,107 @@ class ForceGraph {
     this._ty = H / 2 - node.y * scale;
 
     this._showNodeCard(node);
+    this._markDirty();
+    this.requestRender();
+  }
+
+  setCriticalPath(criticalPath) {
+    if (!criticalPath) {
+      this.clearCriticalPath();
+      return;
+    }
+    this._criticalPath = criticalPath;
+    this._criticalPathNodes = new Set((criticalPath.nodes || []).map(n => n.id));
+    this._criticalPathEdges = new Map();
+    for (const e of (criticalPath.edges || [])) {
+      this._criticalPathEdges.set(e.source + '->' + e.target, e);
+    }
+    this._criticalStepIndex = null;
+
+    this._markDirty();
+    this.requestRender();
+  }
+
+  clearCriticalPath() {
+    this._criticalPath = null;
+    this._criticalPathNodes.clear();
+    this._criticalPathEdges.clear();
+    this._criticalStepIndex = null;
+
+    this._markDirty();
+    this.requestRender();
+  }
+
+  focusStep(stepNumber, showCard = false) {
+    if (!this._criticalPath || !this._criticalPath.nodes) return;
+    const cpNode = this._criticalPath.nodes.find(n => n.step === stepNumber);
+    if (!cpNode) return;
+
+    this._criticalStepIndex = stepNumber;
+    const targetNode = this._nodes.find(n => n.id === cpNode.id) || cpNode;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = this._canvas.width / dpr;
+    const H = this._canvas.height / dpr;
+
+    this._sc = 1.35;
+    this._tx = W / 2 - (targetNode.x || 0) * this._sc;
+    this._ty = (H / 2 - 35) - (targetNode.y || 0) * this._sc;
+
+    const liveNode = this._nodes.find(n => n.id === cpNode.id);
+    if (liveNode) {
+      this._selectedNode = liveNode;
+      if (showCard) {
+        this._showNodeCard(liveNode);
+      } else {
+        const card = this._getNodeCard();
+        if (card) card.style.display = 'none';
+      }
+    }
+
+    this._markDirty();
+    this.requestRender();
+  }
+
+  fitCriticalPath() {
+    if (!this._criticalPath || !this._criticalPath.nodes || this._criticalPath.nodes.length === 0) {
+      this.fitToScreen();
+      return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const W = this._canvas.width / dpr;
+    const H = this._canvas.height / dpr;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const cn of this._criticalPath.nodes) {
+      const n = this._nodes.find(node => node.id === cn.id) || cn;
+      if (typeof n.x === 'number' && typeof n.y === 'number' && !isNaN(n.x) && !isNaN(n.y)) {
+        minX = Math.min(minX, n.x - (n.radius || 15));
+        maxX = Math.max(maxX, n.x + (n.radius || 15));
+        minY = Math.min(minY, n.y - (n.radius || 15));
+        maxY = Math.max(maxY, n.y + (n.radius || 15));
+      }
+    }
+
+    if (minX === Infinity) {
+      this.fitToScreen();
+      return;
+    }
+
+    const graphW = Math.max(maxX - minX + 260, 150);
+    const graphH = Math.max(maxY - minY + 260, 150);
+    const scaleX = (W * 0.85) / graphW;
+    const scaleY = (H * 0.85) / graphH;
+    const newSc  = Math.min(1.35, Math.max(0.25, Math.min(scaleX, scaleY)));
+
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+
+    this._sc = newSc;
+    this._tx = W / 2 - midX * newSc;
+    this._ty = (H / 2 - 40) - midY * newSc;
+    this._markDirty();
+    this.requestRender();
   }
 
   zoomBy(factor) {
@@ -836,6 +1102,12 @@ class ForceGraph {
     this._tx = cx - (cx - this._tx) * (newSc / oldSc);
     this._ty = cy - (cy - this._ty) * (newSc / oldSc);
     this._sc = newSc;
+    this._markDirty();
+    this.requestRender();
+  }
+
+  resetView() {
+    this.fitToScreen();
   }
 
   /* ── Physics Simulation ─────────────────────────────────────────────────── */
@@ -1201,7 +1473,8 @@ class ForceGraph {
   }
 
   _drawGridBackground(ctx, W, H) {
-    const themeKey = this._activeTheme || 'midnight';
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    const themeKey = this._activeTheme || (isBodyLight ? 'light' : 'dark');
 
     if (themeKey === 'cyberpunk') {
       // CYBERPUNK: Synthwave grid, neon perspective crosshairs, CRT scanlines, purple nebula
@@ -1293,15 +1566,15 @@ class ForceGraph {
         }
       }
 
-    } else if (themeKey === 'arctic') {
-      // ARCTIC: Light architectural drafting paper, crisp blue-gray orthogonal grid, blueprint ticks
-      ctx.fillStyle = '#f1f5f9';
+    } else if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
+      // LIGHT / ARCTIC: Light architectural drafting paper, crisp daylight grid, blueprint ticks
+      ctx.fillStyle = '#f8fafc';
       ctx.fillRect(0, 0, W, H);
 
       // Subtle cool daylight vignette
       const grad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, Math.max(W, H) * 0.85);
-      grad.addColorStop(0, 'rgba(248, 250, 252, 0.9)');
-      grad.addColorStop(1, 'rgba(226, 232, 240, 0.7)');
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+      grad.addColorStop(1, 'rgba(241, 245, 249, 0.85)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
@@ -1311,7 +1584,7 @@ class ForceGraph {
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
         // Fine drafting grid lines
-        ctx.strokeStyle = 'rgba(30, 107, 184, 0.06)';
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.05)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         for (let x = offX; x < W; x += step * this._sc) {
@@ -1325,7 +1598,7 @@ class ForceGraph {
         ctx.stroke();
 
         // Major blueprint grid intersections (every 4th step)
-        ctx.strokeStyle = 'rgba(30, 107, 184, 0.22)';
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
         ctx.lineWidth = 1.2;
         const tick = 4;
         ctx.beginPath();
@@ -1486,15 +1759,16 @@ class ForceGraph {
       const px = cx - pw / 2;
       const py = minY - 8 - ph;
 
-      ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
-      ctx.strokeStyle = hexToRgba(comm.color, 0.4);
+      const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+      ctx.fillStyle = isBodyLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(13, 17, 23, 0.85)';
+      ctx.strokeStyle = isBodyLight ? hexToRgba(comm.color, 0.6) : hexToRgba(comm.color, 0.4);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(px, py, pw, ph, 4);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = comm.color;
+      ctx.fillStyle = isBodyLight ? '#0f172a' : comm.color;
       ctx.fillText(labelText, cx, minY - 11);
 
       ctx.restore();
@@ -1524,6 +1798,14 @@ class ForceGraph {
     const activeNode = this._hoveredNode || this._selectedNode;
     const connectedSet = activeNode ? this._connectedMap.get(activeNode.id) : null;
 
+    // Viewport bounds calculation for edge culling
+    const canvasW = this._canvas.width / this._dpr;
+    const canvasH = this._canvas.height / this._dpr;
+    const vxMin = (0 - this._tx) / this._sc - 80;
+    const vyMin = (0 - this._ty) / this._sc - 80;
+    const vxMax = (canvasW - this._tx) / this._sc + 80;
+    const vyMax = (canvasH - this._ty) / this._sc + 80;
+
     for (let i = 0; i < this._edges.length; i++) {
       const e = this._edges[i];
       const srcId = typeof e.source === 'object' ? e.source.id : e.source;
@@ -1535,19 +1817,34 @@ class ForceGraph {
       const src = this._nodes[si], tgt = this._nodes[ti];
       if (this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
 
+      // Viewport frustum culling: skip edge if both endpoints are outside the viewport on the same side
+      if ((src.x < vxMin && tgt.x < vxMin) ||
+          (src.x > vxMax && tgt.x > vxMax) ||
+          (src.y < vyMin && tgt.y < vyMin) ||
+          (src.y > vyMax && tgt.y > vyMax)) {
+        continue;
+      }
+
+      // Critical path highlighting
+      const edgeKey = src.id + '->' + tgt.id;
+      const cpEdge = (this._criticalPath && this._criticalPathEdges) ? this._criticalPathEdges.get(edgeKey) : null;
+      const isCriticalEdge = !!cpEdge;
+
       // Focus opacity logic
       let opacity = 0.65;
-      if (activeNode) {
+      if (this._criticalPath) {
+        opacity = isCriticalEdge ? 1.0 : 0.08;
+      } else if (activeNode) {
         const isIncident = (src.id === activeNode.id || tgt.id === activeNode.id);
         opacity = isIncident ? 1.0 : 0.12;
       }
 
       const edgeParticles = this._particles.filter(p => p.edgeIdx === i);
-      this._drawSingleEdge(ctx, src, tgt, e, opacity, edgeParticles);
+      this._drawSingleEdge(ctx, src, tgt, e, opacity, edgeParticles, cpEdge);
     }
   }
 
-  _drawSingleEdge(ctx, src, tgt, edge, opacity, particles) {
+  _drawSingleEdge(ctx, src, tgt, edge, opacity, particles, cpEdge = null) {
     const dx = tgt.x - src.x;
     const dy = tgt.y - src.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1566,21 +1863,38 @@ class ForceGraph {
     const mx = (sx + ex) / 2 - uy * 22;
     const my = (sy + ey) / 2 + ux * 22;
 
-    const baseColor = GC.edgeKind[edge.kind] || GC.edgeKind.default;
+    const isCritical = !!cpEdge;
+    const isSameComm = src.community !== undefined && src.community === tgt.community;
+    const baseColor = isCritical
+      ? '#f59e0b'
+      : (isSameComm && src.communityColor
+          ? hexToRgba(src.communityColor, 0.45)
+          : (GC.edgeKind[edge.kind] || GC.edgeKind.default));
 
     ctx.save();
+
+    // Critical Path edge halo
+    if (isCritical) {
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(mx, my, ex, ey);
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.45)';
+      ctx.lineWidth = 6.0;
+      ctx.stroke();
+    }
+
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.quadraticCurveTo(mx, my, ex, ey);
     ctx.strokeStyle = hexToRgba(baseColor, opacity);
-    ctx.lineWidth = opacity > 0.8 ? 2.2 : 1.4;
+    ctx.lineWidth = isCritical ? 3.4 : (opacity > 0.8 ? 2.2 : 1.4);
     ctx.stroke();
 
     // Arrowhead
     const tx = 2 * (ex - mx);
     const ty = 2 * (ey - my);
     const ta = Math.atan2(ty, tx);
-    const as = 8.5;
+    const as = isCritical ? 10.5 : 8.5;
 
     ctx.beginPath();
     ctx.moveTo(ex, ey);
@@ -1590,20 +1904,41 @@ class ForceGraph {
     ctx.fillStyle = hexToRgba(baseColor, opacity);
     ctx.fill();
 
+    // Step badge circle on critical edge
+    if (isCritical && cpEdge && cpEdge.step) {
+      ctx.beginPath();
+      ctx.arc(mx, my, 9.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.0;
+      ctx.stroke();
+
+      ctx.font = 'bold 10px JetBrains Mono, monospace';
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(cpEdge.step), mx, my);
+    }
+
     // Flowing Energy Particles
-    if (particles && particles.length > 0 && opacity > 0.3) {
-      for (const p of particles) {
+    if ((particles && particles.length > 0 && opacity > 0.3) || (isCritical && opacity > 0.5)) {
+      const activeParticles = (particles && particles.length > 0) ? particles : [
+        { t: ((Date.now() % 2000) / 2000) },
+        { t: (((Date.now() + 1000) % 2000) / 2000) }
+      ];
+      for (const p of activeParticles) {
         const mt = 1 - p.t;
         const px = mt * mt * sx + 2 * mt * p.t * mx + p.t * p.t * ex;
         const py = mt * mt * sy + 2 * mt * p.t * my + p.t * p.t * ey;
 
         ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
-        ctx.fillStyle = hexToRgba(baseColor, 0.45);
+        ctx.arc(px, py, isCritical ? 5.5 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(baseColor, 0.5);
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(px, py, 1.8, 0, Math.PI * 2);
+        ctx.arc(px, py, isCritical ? 2.5 : 1.8, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
       }
@@ -1638,7 +1973,10 @@ class ForceGraph {
       }
 
       let opacity = 1.0;
-      if (activeNode) {
+      const isCriticalNode = !!(this._criticalPathNodes && this._criticalPathNodes.has(node.id));
+      if (this._criticalPath) {
+        opacity = isCriticalNode ? 1.0 : 0.12;
+      } else if (activeNode) {
         const isSelf = (node.id === activeNode.id);
         const isNeighbor = connectedSet && connectedSet.has(node.id);
         opacity = (isSelf || isNeighbor) ? 1.0 : 0.18;
@@ -1648,26 +1986,35 @@ class ForceGraph {
       const isSelected = (node === this._selectedNode);
       const isConnected = connectedSet && connectedSet.has(node.id);
 
-      // Semantic LOD: when zoomed out (zoom < 0.6), hide labels unless active/hovered
+      // Semantic LOD: when zoomed out (zoom < 0.6), hide labels unless active/hovered or on critical path
       let shouldDrawLabel = this._showLabels && !isZoomedOutLOD;
-      if (this._showLabels && isDenseGraph && !isZoomedIn) {
+      if (isCriticalNode) {
+        shouldDrawLabel = true;
+      } else if (this._showLabels && isDenseGraph && !isZoomedIn) {
         shouldDrawLabel = isHovered || isSelected || isConnected || node.role === 'root' || node.role === 'class' || (node.degree >= 5);
       }
 
-      this._drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel);
+      this._drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel, isCriticalNode);
     }
   }
 
-  _drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel = true) {
+  _drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel = true, isCriticalNode = false) {
     const r = node.radius;
     const x = node.x;
     const y = node.y;
 
+    const cpNode = (isCriticalNode && this._criticalPath && Array.isArray(this._criticalPath.nodes))
+      ? this._criticalPath.nodes.find(n => n.id === node.id)
+      : null;
+    const isCurrentStep = cpNode && (this._criticalStepIndex === cpNode.step);
+
     // Pick base and glow color
-    let mainColor = node.communityColor;
+    let mainColor = isCriticalNode ? (cpNode && cpNode.archetypeColor ? cpNode.archetypeColor : '#f59e0b') : node.communityColor;
     let heatRatio = 0;
 
-    if (this._heatMode) {
+    const hasSingleRoot = this._nodes && this._nodes.filter(n => n.role === 'root').length === 1;
+
+    if (this._heatMode && !isCriticalNode) {
       const count = (this._heatData[node.id] !== undefined)
         ? this._heatData[node.id]
         : ((node.label && this._heatData[node.label] !== undefined)
@@ -1683,19 +2030,21 @@ class ForceGraph {
       } else {
         mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.35) / 0.65);
       }
-    } else if (node.role === 'root') {
+    } else if (node.role === 'root' && hasSingleRoot && !isCriticalNode) {
       mainColor = GC.roles.root;
     }
 
     ctx.save();
     ctx.globalAlpha = opacity;
 
-    // 1. Ambient Bloom Glow (Branch Core / Hovered / Selected / Root)
-    if (node.isBranchCore || isHovered || isSelected || node.role === 'root' || (this._heatMode && heatRatio > 0.15)) {
-      const glowRadius = r + (isSelected ? 18 : (node.isBranchCore ? 14 : 10)) + heatRatio * 12;
+    // 1. Ambient Bloom Glow (Branch Core / Hovered / Selected / Root / Critical Path)
+    const isSingleRoot = node.role === 'root' && hasSingleRoot;
+    if (isCriticalNode || node.isBranchCore || isHovered || isSelected || isSingleRoot || (this._heatMode && heatRatio > 0.15)) {
+      const glowRadius = r + (isCurrentStep ? 24 : (isCriticalNode ? 18 : (isSelected ? 18 : (node.isBranchCore ? 14 : 10)))) + heatRatio * 12;
       const glowGrad = ctx.createRadialGradient(x, y, r * 0.8, x, y, glowRadius);
-      glowGrad.addColorStop(0, hexToRgba(mainColor, node.isBranchCore ? 0.55 : 0.45));
-      glowGrad.addColorStop(0.6, hexToRgba(mainColor, node.isBranchCore ? 0.2 : 0.1));
+      const glowColor = isCriticalNode ? (isCurrentStep ? '#fbbf24' : '#f59e0b') : mainColor;
+      glowGrad.addColorStop(0, hexToRgba(glowColor, isCurrentStep ? 0.75 : (isCriticalNode ? 0.55 : (node.isBranchCore ? 0.55 : 0.45))));
+      glowGrad.addColorStop(0.6, hexToRgba(glowColor, isCurrentStep ? 0.35 : (isCriticalNode ? 0.22 : (node.isBranchCore ? 0.2 : 0.1))));
       glowGrad.addColorStop(1, 'transparent');
 
       ctx.beginPath();
@@ -1703,13 +2052,13 @@ class ForceGraph {
       ctx.fillStyle = glowGrad;
       ctx.fill();
 
-      // Core pulsating corona ring for hottest branch node
-      if (node.isBranchCore) {
+      // Core pulsating corona ring for hottest branch node or active step
+      if (node.isBranchCore || isCurrentStep) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = hexToRgba(mainColor, 0.6);
-        ctx.lineWidth = 1.2;
-        ctx.setLineDash([3, 3]);
+        ctx.arc(x, y, r + 4.5, 0, Math.PI * 2);
+        ctx.strokeStyle = isCurrentStep ? '#fbbf24' : hexToRgba(mainColor, 0.6);
+        ctx.lineWidth = isCurrentStep ? 2.0 : 1.2;
+        ctx.setLineDash(isCurrentStep ? [4, 3] : [3, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
       }
@@ -1728,10 +2077,10 @@ class ForceGraph {
     // 3. High-Contrast Border Ring
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = isSelected
-      ? '#ffffff'
-      : (isHovered ? '#ffffff' : hexToRgba('#ffffff', 0.45));
-    ctx.lineWidth = isSelected ? 2.4 : (isHovered ? 2.0 : 1.4);
+    ctx.strokeStyle = isCurrentStep
+      ? '#fef08a'
+      : (isCriticalNode ? '#fbbf24' : (isSelected ? '#ffffff' : (isHovered ? '#ffffff' : hexToRgba('#ffffff', 0.45))));
+    ctx.lineWidth = isCurrentStep ? 3.4 : (isCriticalNode ? 2.8 : (isSelected ? 2.4 : (isHovered ? 2.0 : 1.4)));
     ctx.stroke();
 
     // 4. Type Glyph / Icon inside node (Standard IDE symbols)
@@ -1743,13 +2092,32 @@ class ForceGraph {
       ENUM:      'E',
       RECORD:    'R',
     };
-    const glyph = typeIcons[node.type] || 'm';
+    const glyph = isCriticalNode && cpNode && cpNode.archetypeBadge ? cpNode.archetypeBadge.slice(0, 2) : (typeIcons[node.type] || 'm');
 
-    ctx.font = `bold ${Math.max(8, Math.round(r * 0.75))}px JetBrains Mono, monospace`;
+    ctx.font = `bold ${Math.max(8, Math.round(r * (glyph.length > 1 ? 0.62 : 0.75)))}px JetBrains Mono, monospace`;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, x, y);
+
+    // 4b. Step badge circle on node (top-right corner)
+    if (isCriticalNode && cpNode && cpNode.step) {
+      const bx = x + r * 0.72;
+      const by = y - r * 0.72;
+      ctx.beginPath();
+      ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(cpNode.step), bx, by);
+    }
 
     // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels & shouldDrawLabel)
     if (!this._showLabels || !shouldDrawLabel) { ctx.restore(); return; }
@@ -1757,7 +2125,7 @@ class ForceGraph {
     const fullLabel = node.label || node.id.split('.').pop() || '';
     const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
 
-    ctx.font = `${node.role === 'root' || isSelected ? 'bold' : '500'} 11px Space Grotesk, system-ui, sans-serif`;
+    ctx.font = `${node.role === 'root' || isSelected || isCriticalNode ? 'bold' : '500'} 11px Space Grotesk, system-ui, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
@@ -1772,12 +2140,23 @@ class ForceGraph {
     const px = x - pw / 2;
 
     // Theme-specific label pill styling
-    const themeKey = this._activeTheme || 'midnight';
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    const themeKey = this._activeTheme || (isBodyLight ? 'light' : 'dark');
     let pillBg, pillBorder, pillText;
-    if (themeKey === 'arctic') {
-      pillBg = 'rgba(255, 255, 255, 0.96)';
-      pillBorder = isSelected ? '#1e6bb8' : (isHovered ? mainColor : 'rgba(30, 107, 184, 0.35)');
-      pillText = isSelected ? '#1e6bb8' : '#1e293b';
+    if (isCriticalNode) {
+      if (isBodyLight || themeKey === 'light' || themeKey === 'arctic') {
+        pillBg = 'rgba(255, 255, 255, 0.98)';
+        pillBorder = isCurrentStep ? '#d97706' : '#f59e0b';
+        pillText = isCurrentStep ? '#b45309' : '#0f172a';
+      } else {
+        pillBg = 'rgba(26, 21, 16, 0.96)';
+        pillBorder = isCurrentStep ? '#fbbf24' : '#f59e0b';
+        pillText = isCurrentStep ? '#ffffff' : '#fef3c7';
+      }
+    } else if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
+      pillBg = 'rgba(255, 255, 255, 0.98)';
+      pillBorder = isSelected ? '#059669' : (isHovered ? mainColor : 'rgba(0, 0, 0, 0.16)');
+      pillText = isSelected ? '#059669' : '#0f172a';
     } else if (themeKey === 'cyberpunk') {
       pillBg = 'rgba(12, 6, 20, 0.95)';
       pillBorder = isSelected ? '#00e5ff' : (isHovered ? '#e040fb' : 'rgba(224, 64, 251, 0.55)');
@@ -1798,7 +2177,7 @@ class ForceGraph {
 
     ctx.fillStyle = pillBg;
     ctx.strokeStyle = pillBorder;
-    ctx.lineWidth = isSelected ? 1.8 : (isHovered ? 1.4 : 1.0);
+    ctx.lineWidth = isSelected || isCriticalNode ? 1.8 : (isHovered ? 1.4 : 1.0);
     ctx.beginPath();
     ctx.roundRect(px, lblY - ph / 2, pw, ph, 5);
     ctx.fill();
@@ -1825,12 +2204,13 @@ class ForceGraph {
     const MW = this._minimapCanvas.width;
     const MH = this._minimapCanvas.height;
 
-    const themeKey = this._activeTheme || 'midnight';
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    const themeKey = this._activeTheme || (isBodyLight ? 'light' : 'dark');
     let mmBg, mmVpStroke, mmVpFill;
-    if (themeKey === 'arctic') {
-      mmBg = 'rgba(241, 245, 249, 0.96)';
-      mmVpStroke = 'rgba(30, 107, 184, 0.9)';
-      mmVpFill = 'rgba(30, 107, 184, 0.10)';
+    if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
+      mmBg = 'rgba(248, 250, 252, 0.96)';
+      mmVpStroke = 'rgba(5, 150, 105, 0.9)';
+      mmVpFill = 'rgba(5, 150, 105, 0.12)';
     } else if (themeKey === 'cyberpunk') {
       mmBg = 'rgba(4, 0, 8, 0.96)';
       mmVpStroke = 'rgba(0, 229, 255, 0.9)';
@@ -1910,53 +2290,30 @@ class ForceGraph {
   _initHudControls() {
     const isCodebase = Boolean(this._container && this._container.closest('#codebase-view'));
 
-    // Zoom & Fit Buttons
-    const fitIds = isCodebase ? ['btn-codebase-fit', 'btn-fit'] : ['btn-fit', 'btn-codebase-fit'];
-    const zoomInIds = isCodebase ? ['btn-codebase-zoom-in', 'btn-zoom-in'] : ['btn-zoom-in', 'btn-codebase-zoom-in'];
-    const zoomOutIds = isCodebase ? ['btn-codebase-zoom-out', 'btn-zoom-out'] : ['btn-zoom-out', 'btn-codebase-zoom-out'];
-    const resetIds = isCodebase ? ['btn-codebase-reset', 'btn-reset'] : ['btn-reset', 'btn-codebase-reset'];
-    const hullsIds = isCodebase ? ['btn-codebase-toggle-hulls', 'btn-toggle-hulls'] : ['btn-toggle-hulls', 'btn-codebase-toggle-hulls'];
-    const physicsIds = isCodebase ? ['btn-codebase-toggle-physics', 'btn-toggle-physics'] : ['btn-toggle-physics', 'btn-codebase-toggle-physics'];
-    const heatIds = isCodebase ? ['btn-codebase-heat', 'btn-heat'] : ['btn-heat', 'btn-codebase-heat'];
-    const pojoIds = isCodebase ? ['btn-codebase-filter-getters', 'btn-filter-getters'] : ['btn-filter-getters', 'btn-codebase-filter-getters'];
+    const hullsId = isCodebase ? 'btn-codebase-toggle-hulls' : 'btn-toggle-hulls';
+    const physicsId = isCodebase ? 'btn-codebase-toggle-physics' : 'btn-toggle-physics';
+    const heatId = isCodebase ? 'btn-codebase-heat' : 'btn-heat';
+    const pojoId = isCodebase ? 'btn-codebase-filter-getters' : 'btn-filter-getters';
 
-    const bindClick = (ids, fn) => {
-      ids.forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.onclick = fn;
-      });
+    const bindToggle = (id, fn) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.onclick = fn;
     };
 
-    bindClick(fitIds, () => this.fitToScreen());
-    bindClick(zoomInIds, () => this.zoomBy(1.25));
-    bindClick(zoomOutIds, () => this.zoomBy(0.8));
-    bindClick(resetIds, () => {
-      if (isCodebase) this.fitToScreen();
-      else this.clear();
-    });
-
-    bindClick(hullsIds, () => this.toggleHulls());
-    bindClick(physicsIds, () => this.togglePhysics());
-    bindClick(heatIds, () => this.toggleHeat());
-    bindClick(pojoIds, () => this.toggleHideGetters());
+    bindToggle(hullsId, () => this.toggleHulls());
+    bindToggle(physicsId, () => this.togglePhysics());
+    bindToggle(heatId, () => this.toggleHeat());
+    bindToggle(pojoId, () => this.toggleHideGetters());
 
     // Initialize active states for buttons
-    hullsIds.forEach(id => {
-      const btn = document.getElementById(id);
-      if (btn) btn.classList.toggle('active', Boolean(this._showHulls));
-    });
-    physicsIds.forEach(id => {
-      const btn = document.getElementById(id);
-      if (btn) btn.classList.toggle('active', Boolean(this._physicsEnabled));
-    });
-    heatIds.forEach(id => {
-      const btn = document.getElementById(id);
-      if (btn) btn.classList.toggle('active', Boolean(this._heatMode));
-    });
-    pojoIds.forEach(id => {
-      const btn = document.getElementById(id);
-      if (btn) btn.classList.toggle('active', Boolean(this._hideGetters));
-    });
+    const hullsBtn = document.getElementById(hullsId);
+    if (hullsBtn) hullsBtn.classList.toggle('active', Boolean(this._showHulls));
+    const physicsBtn = document.getElementById(physicsId);
+    if (physicsBtn) physicsBtn.classList.toggle('active', Boolean(this._physicsEnabled));
+    const heatBtn = document.getElementById(heatId);
+    if (heatBtn) heatBtn.classList.toggle('active', Boolean(this._heatMode));
+    const pojoBtn = document.getElementById(pojoId);
+    if (pojoBtn) pojoBtn.classList.toggle('active', Boolean(this._hidePojoGetters));
 
     // Node card close
     const btnNodeCardClose = document.getElementById('btn-node-card-close');
@@ -1989,7 +2346,7 @@ class ForceGraph {
     }
     if (!legendWrap || !legendList) return;
 
-    if (this._communities.length === 0) {
+    if (this._communities.length === 0 || this._criticalPath) {
       legendWrap.style.display = 'none';
       return;
     }
@@ -2217,8 +2574,11 @@ class ForceGraph {
     const tGlyph = typeGlyphs[nodeType] || 'M';
 
     // Dynamic colorful card shell
-    card.style.borderColor = hexToRgba(commColor, 0.45);
-    card.style.boxShadow = `0 16px 44px rgba(0, 0, 0, 0.7), 0 0 24px ${hexToRgba(commColor, 0.2)}, inset 0 1px 0 rgba(255, 255, 255, 0.10)`;
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    card.style.borderColor = hexToRgba(commColor, isBodyLight ? 0.6 : 0.45);
+    card.style.boxShadow = isBodyLight
+      ? `0 12px 32px rgba(0, 0, 0, 0.12), 0 0 16px ${hexToRgba(commColor, 0.15)}, inset 0 1px 0 rgba(255, 255, 255, 0.8)`
+      : `0 16px 44px rgba(0, 0, 0, 0.7), 0 0 24px ${hexToRgba(commColor, 0.2)}, inset 0 1px 0 rgba(255, 255, 255, 0.10)`;
 
     if (accentBar) {
       accentBar.style.background = `linear-gradient(90deg, ${commColor}, ${tColor}, transparent)`;
@@ -2325,9 +2685,26 @@ class ForceGraph {
       const cardH = card.offsetHeight || 280;
 
       // Position adjacent to the node if room permits
-      let x = sx + (node.radius * this._sc) + 16;
-      if (x + cardW + pad > cWidth) {
-        x = sx - (node.radius * this._sc) - cardW - 16;
+      let x, y;
+      if (this._criticalPath) {
+        // In Critical Path mode, avoid covering forward path flow or adjacent steps.
+        // Prefer placing below the node if space permits, or to the left.
+        if (sy + (node.radius * this._sc) + cardH + 20 < cHeight - bottomPad) {
+          x = sx - cardW / 2;
+          y = sy + (node.radius * this._sc) + 20;
+        } else if (sx - (node.radius * this._sc) - cardW - 16 > pad) {
+          x = sx - (node.radius * this._sc) - cardW - 16;
+          y = sy - 24;
+        } else {
+          x = sx + (node.radius * this._sc) + 16;
+          y = sy - 24;
+        }
+      } else {
+        x = sx + (node.radius * this._sc) + 16;
+        if (x + cardW + pad > cWidth) {
+          x = sx - (node.radius * this._sc) - cardW - 16;
+        }
+        y = sy - 24;
       }
       if (x < pad) {
         x = pad;
@@ -2336,7 +2713,6 @@ class ForceGraph {
         x = Math.max(pad, cWidth - cardW - pad);
       }
 
-      let y = sy - 24;
       if (y + cardH + bottomPad > cHeight) {
         y = cHeight - cardH - bottomPad;
       }
@@ -2693,7 +3069,8 @@ class ForceGraph {
 
   applyTheme(graphTheme) {
     if (!graphTheme) return;
-    this._activeTheme = graphTheme.key || 'midnight';
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    this._activeTheme = graphTheme.key || (isBodyLight ? 'light' : 'dark');
     if (graphTheme.bg)        GC.bg   = graphTheme.bg;
     if (graphTheme.grid)      GC.grid = graphTheme.grid;
     if (graphTheme.roles)     Object.assign(GC.roles, graphTheme.roles);
@@ -2704,6 +3081,8 @@ class ForceGraph {
     // Update minimap wrap visibility for Arctic (light bg)
     const mmWrap = document.getElementById('graph-minimap-wrap');
     if (mmWrap) mmWrap.style.display = this._showMinimap ? '' : 'none';
+    this._markDirty();
+    this.requestRender();
   }
 
   applySettings(s) {

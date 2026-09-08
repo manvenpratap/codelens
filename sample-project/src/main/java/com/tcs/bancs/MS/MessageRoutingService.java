@@ -2,10 +2,12 @@ package com.tcs.bancs.MS;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.PM.*;
 
 /**
  * TCS BaNCS Core Domain Service: MessageRoutingService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class MessageRoutingService {
 
@@ -44,5 +46,20 @@ public class MessageRoutingService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: MSTORecordAuditLog
+     */
+    public boolean MSTORecordAuditLog(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "MSTORecordAuditLog", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: MSTCSyncGeneralLedger
+     */
+    public void MSTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCSyncGeneralLedger", correlationId, operation);
     }
 }

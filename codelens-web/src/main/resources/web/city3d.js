@@ -771,7 +771,61 @@
       if (this._ambientLight) this._ambientLight.intensity = 0.50 * factor;   // was 0.95
       if (this._dirLight)     this._dirLight.intensity     = 0.55 * factor;   // was 1.1
       if (this._dirLight2)    this._dirLight2.intensity    = 0.30 * factor;   // was 0.65
-      if (this._topLight)     this._topLight.intensity     = 0.35 * factor;   // was 0.7
+    }
+
+    zoomBy(factor) {
+      if (!this._camera || !this._controls) return;
+      this._targetCameraPos = null;
+      this._targetControlsTarget = null;
+      const target = this._controls.target;
+      const offset = this._camera.position.clone().sub(target);
+      offset.divideScalar(factor);
+      const dist = offset.length();
+      const minDist = this._controls.minDistance || 20;
+      const maxDist = this._controls.maxDistance || 1800;
+      if (dist < minDist) offset.setLength(minDist);
+      if (dist > maxDist) offset.setLength(maxDist);
+      this._camera.position.copy(target).add(offset);
+      this._controls.update();
+    }
+
+    fitToScreen() {
+      if (!this._camera || !this._controls) return;
+      if (this._buildings && this._buildings.length > 0 && typeof THREE !== 'undefined') {
+        const box = new THREE.Box3();
+        let count = 0;
+        for (const b of this._buildings) {
+          if (b.visible) {
+            box.expandByObject(b);
+            count++;
+          }
+        }
+        if (count > 0 && !box.isEmpty()) {
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const maxDim = Math.max(size.x, size.y, size.z, 80);
+          const fov = (this._camera.fov || 60) * (Math.PI / 180);
+          let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.45;
+          cameraDistance = Math.max(cameraDistance, 120);
+          const dir = new THREE.Vector3(1, 1.1, 1.4).normalize();
+          this._targetCameraPos = center.clone().add(dir.multiplyScalar(cameraDistance));
+          this._targetControlsTarget = center;
+          if (this._controls) this._controls.update();
+          return;
+        }
+      }
+      this._targetCameraPos = new THREE.Vector3(240, 280, 360);
+      this._targetControlsTarget = new THREE.Vector3(0, 0, 0);
+      if (this._controls) this._controls.update();
+    }
+
+    resetView() {
+      if (!this._camera || !this._controls) return;
+      this._targetCameraPos = new THREE.Vector3(240, 280, 360);
+      this._targetControlsTarget = new THREE.Vector3(0, 0, 0);
+      if (this._controls) this._controls.update();
     }
 
     destroy() {

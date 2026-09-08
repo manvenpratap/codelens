@@ -493,14 +493,39 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Generates a deterministic UUID based on relationship source, target, kind, and line.
+     * Generates a fast, deterministic, collision-resistant 128-bit hex ID based on relationship
+     * source, target, kind, and line without the allocation and lock overhead of MessageDigest / UUID.
      * Guarantees 100% idempotency across parallel workers and rescans.
      */
     public static String deterministicRelId(String from, String to, String kind, int line) {
-        String key = (from != null ? from : "") + "|" +
-                     (kind != null ? kind : "") + "|" +
-                     (to != null ? to : "") + "|" + line;
-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+        long h1 = 0xcbf29ce484222325L;
+        long h2 = 0x100000001b3L;
+        if (from != null) {
+            for (int i = 0; i < from.length(); i++) {
+                char c = from.charAt(i);
+                h1 = (h1 ^ c) * 0x100000001b3L;
+                h2 = (h2 ^ (c * 31L)) * 0xcbf29ce484222325L;
+            }
+        }
+        h1 = (h1 ^ '|') * 0x100000001b3L;
+        if (kind != null) {
+            for (int i = 0; i < kind.length(); i++) {
+                char c = kind.charAt(i);
+                h1 = (h1 ^ c) * 0x100000001b3L;
+                h2 = (h2 ^ (c * 31L)) * 0xcbf29ce484222325L;
+            }
+        }
+        h1 = (h1 ^ '|') * 0x100000001b3L;
+        if (to != null) {
+            for (int i = 0; i < to.length(); i++) {
+                char c = to.charAt(i);
+                h1 = (h1 ^ c) * 0x100000001b3L;
+                h2 = (h2 ^ (c * 31L)) * 0xcbf29ce484222325L;
+            }
+        }
+        h1 = (h1 ^ (line & 0xFFFFFFFFL)) * 0x100000001b3L;
+        h2 = (h2 ^ ((long) line << 16)) * 0xcbf29ce484222325L;
+        return Long.toHexString(h1) + Long.toHexString(h2);
     }
 
     /** Build a CodeRelationship quickly. */

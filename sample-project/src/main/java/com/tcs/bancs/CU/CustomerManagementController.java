@@ -5,37 +5,48 @@ import com.tcs.bancs.common.*;
 
 /**
  * TCS BaNCS Inbound Channel Controller: CustomerManagementController
- * Dispatches inbound requests from REST, Branch, ISO, and FIX channels.
+ * Dispatches inbound requests to primary service transaction methods.
  */
 public class CustomerManagementController {
 
-    private final CUBTOnboardCustomer businessTransaction;
-    private final CUETGetCustomerProfile elementaryTransaction;
+    private final CustomerOnboardingService service;
 
     public CustomerManagementController() {
-        this.businessTransaction = new CUBTOnboardCustomer();
-        this.elementaryTransaction = new CUETGetCustomerProfile();
+        this.service = new CustomerOnboardingService();
     }
 
-    public CustomerManagementController(CUBTOnboardCustomer bt, CUETGetCustomerProfile et) {
-        this.businessTransaction = bt;
-        this.elementaryTransaction = et;
+    public CustomerManagementController(CustomerOnboardingService service) {
+        this.service = service;
     }
 
     /**
-     * Inbound mutating command handler.
+     * Inbound Business Transaction dispatch method: CUBTOnboardCustomer
+     */
+    public MO_OUT_CustomerOnboarding CUBTOnboardCustomer(MO_INP_CustomerOnboarding request) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustomerManagementController", request != null ? request.getMessageCorrelationId() : "", "MUTATION");
+        return this.service.CUBTOnboardCustomer(request);
+    }
+
+    /**
+     * Inbound Elementary Transaction dispatch method: CUETGetCustomerProfile
+     */
+    public MO_OUT_CustomerOnboarding CUETGetCustomerProfile(String queryKey) {
+        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustomerManagementController", queryKey, "INQUIRY");
+        return this.service.CUETGetCustomerProfile(queryKey);
+    }
+
+    /**
+     * Generic execute request handler delegating to CUBTOnboardCustomer.
      */
     public MO_OUT_CustomerOnboarding handleExecuteRequest(MO_INP_CustomerOnboarding request) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustomerManagementController", request.getMessageCorrelationId(), "MUTATION");
-        return this.businessTransaction.CUBTOnboardCustomerExecute(request);
+        return this.CUBTOnboardCustomer(request);
     }
 
     /**
-     * Inbound read-only query handler.
+     * Generic inquiry request handler delegating to CUETGetCustomerProfile.
      */
     public MO_OUT_CustomerOnboarding handleInquiryRequest(String queryKey) {
-        AuditTrailService.logAuditEvent("CONTROLLER_INBOUND", "CustomerManagementController", queryKey, "INQUIRY");
-        return this.elementaryTransaction.CUETGetCustomerProfileFetch(queryKey);
+        return this.CUETGetCustomerProfile(queryKey);
     }
 
     public boolean ping() {

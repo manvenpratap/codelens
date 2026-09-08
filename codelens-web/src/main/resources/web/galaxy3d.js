@@ -1025,6 +1025,61 @@
       }
     }
 
+    zoomBy(factor) {
+      if (!this._camera || !this._controls) return;
+      this._targetCamPos = null;
+      this._targetCtrlTgt = null;
+      const target = this._controls.target;
+      const offset = this._camera.position.clone().sub(target);
+      offset.divideScalar(factor);
+      const dist = offset.length();
+      const minDist = this._controls.minDistance || 50;
+      const maxDist = this._controls.maxDistance || 2500;
+      if (dist < minDist) offset.setLength(minDist);
+      if (dist > maxDist) offset.setLength(maxDist);
+      this._camera.position.copy(target).add(offset);
+      this._controls.update();
+    }
+
+    fitToScreen() {
+      if (!this._camera || !this._controls) return;
+      if (this._nodeMeshes && this._nodeMeshes.length > 0 && typeof THREE !== 'undefined') {
+        const box = new THREE.Box3();
+        let count = 0;
+        for (const m of this._nodeMeshes) {
+          if (m.visible) {
+            box.expandByObject(m);
+            count++;
+          }
+        }
+        if (count > 0 && !box.isEmpty()) {
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const maxDim = Math.max(size.x, size.y, size.z, 100);
+          const fov = (this._camera.fov || 60) * (Math.PI / 180);
+          let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.4;
+          cameraDistance = Math.max(cameraDistance, 150);
+          const dir = new THREE.Vector3(0, 0.45, 1).normalize();
+          this._targetCamPos = center.clone().add(dir.multiplyScalar(cameraDistance));
+          this._targetCtrlTgt = center;
+          if (this._controls) this._controls.update();
+          return;
+        }
+      }
+      this._targetCamPos = new THREE.Vector3(0, 200, 550);
+      this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
+      if (this._controls) this._controls.update();
+    }
+
+    resetView() {
+      if (!this._camera || !this._controls) return;
+      this._targetCamPos = new THREE.Vector3(0, 200, 550);
+      this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
+      if (this._controls) this._controls.update();
+    }
+
     /* ─────────────────── Destroy / Cleanup ─────────────────── */
 
     destroy() {

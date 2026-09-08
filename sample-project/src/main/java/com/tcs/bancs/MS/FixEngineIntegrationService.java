@@ -2,10 +2,12 @@ package com.tcs.bancs.MS;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.PM.*;
 
 /**
  * TCS BaNCS Core Domain Service: FixEngineIntegrationService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class FixEngineIntegrationService {
 
@@ -44,5 +46,20 @@ public class FixEngineIntegrationService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: MSTOValidateMessageHeader
+     */
+    public boolean MSTOValidateMessageHeader(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "MSTOValidateMessageHeader", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: MSTCVerifyCustomerKYC
+     */
+    public void MSTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCVerifyCustomerKYC", correlationId, operation);
     }
 }

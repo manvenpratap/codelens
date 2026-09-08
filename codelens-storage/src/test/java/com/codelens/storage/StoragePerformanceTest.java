@@ -258,4 +258,83 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testBatchInsertChunkFastAndNoLeak() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-chunk-fast-test-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            db.prepareForBulkLoad();
+
+            // Simulate 5 consecutive chunks of data
+            for (int c = 0; c < 5; c++) {
+                List<CodePackage> pkgs = List.of(new CodePackage("com.example.chunk" + c));
+
+                List<CodeType> types = new ArrayList<>();
+                List<CodeField> fields = new ArrayList<>();
+                List<CodeMethod> methods = new ArrayList<>();
+                List<CodeRelationship> rels = new ArrayList<>();
+                List<FileMeta> metas = new ArrayList<>();
+
+                for (int i = 0; i < 200; i++) {
+                    String typeFqn = "com.example.chunk" + c + ".Type" + i;
+                    CodeType t = new CodeType();
+                    t.setId(typeFqn);
+                    t.setFqn(typeFqn);
+                    t.setSimpleName("Type" + i);
+                    t.setPackageFqn("com.example.chunk" + c);
+                    t.setKind("CLASS");
+                    t.setSourceFile("/src/chunk" + c + "/Type" + i + ".java");
+                    types.add(t);
+
+                    CodeField f = new CodeField();
+                    f.setId(typeFqn + ".f");
+                    f.setFqn(typeFqn + ".f");
+                    f.setSimpleName("f");
+                    f.setDeclaringTypeFqn(typeFqn);
+                    fields.add(f);
+
+                    CodeMethod m = new CodeMethod();
+                    m.setId(typeFqn + ".m()");
+                    m.setFqn(typeFqn + ".m()");
+                    m.setSimpleName("m");
+                    m.setDeclaringTypeFqn(typeFqn);
+                    methods.add(m);
+
+                    CodeRelationship r = new CodeRelationship();
+                    r.setId("rel-" + c + "-" + i);
+                    r.setFromEntityFqn(typeFqn + ".m()");
+                    r.setToEntityFqn("com.example.target.m()");
+                    r.setKind("CALLS");
+                    r.setSourceLine(10);
+                    rels.add(r);
+
+                    metas.add(new FileMeta("/src/chunk" + c + "/Type" + i + ".java", 1000L, 2000L, 1));
+                }
+
+                dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, metas);
+            }
+
+            db.finishBulkLoad();
+
+            Map<String, Object> stats = dao.getStats();
+            assertEquals(5, ((Number) stats.get("packages")).intValue(), "packages count");
+            assertEquals(1000, ((Number) stats.get("types")).intValue(), "types count");
+            assertEquals(1000, ((Number) stats.get("fields")).intValue(), "fields count");
+            assertEquals(1000, ((Number) stats.get("methods")).intValue(), "methods count");
+            assertEquals(1000, ((Number) stats.get("relationships")).intValue(), "relationships count");
+
+            // Verify signatures with limit
+            List<Map<String, String>> sigs = dao.findMethodSignatures();
+            assertEquals(1000, sigs.size(), "method signatures size");
+
+            Map<String, FileMeta> allMeta = dao.getAllFileMeta();
+            assertEquals(1000, allMeta.size(), "file meta size");
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

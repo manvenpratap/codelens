@@ -2,10 +2,12 @@ package com.tcs.bancs.MS;
 
 import java.util.*;
 import com.tcs.bancs.common.*;
+import com.tcs.bancs.AM.*;
+import com.tcs.bancs.PM.*;
 
 /**
  * TCS BaNCS Core Domain Service: DeadLetterQueueService
- * Implements business calculation logic, validations, and domain rules.
+ * Implements transaction methods (ET/BT), tasks (TO/TC), and domain calculations.
  */
 public class DeadLetterQueueService {
 
@@ -44,5 +46,20 @@ public class DeadLetterQueueService {
             entity.Modify("RECONCILED");
         }
         return entity;
+    }
+
+    /**
+     * TCS BaNCS Own Task delegate: MSTOEnqueueOutboundQueue
+     */
+    public boolean MSTOEnqueueOutboundQueue(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "MSTOEnqueueOutboundQueue", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    }
+
+    /**
+     * TCS BaNCS Common Task delegate: MSTCNotifyChannel
+     */
+    public void MSTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCNotifyChannel", correlationId, operation);
     }
 }
