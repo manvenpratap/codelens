@@ -577,16 +577,47 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         return count[0] + 1; // baseline of 1
     }
 
-    /** First 16 hex chars of SHA-256 of normalised body text. */
-    private String hashBody(String body) {
+    private static final ThreadLocal<MessageDigest> TL_DIGEST = ThreadLocal.withInitial(() -> {
         try {
-            String normalised = body.replaceAll("\\s+", " ").trim();
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(normalised.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.substring(0, 16);
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    });
+
+    private static final char[] HEX_ARRAY = "0123456789abcdef".toCharArray();
+
+    /** First 16 hex chars of SHA-256 of normalised body text without regex or String.format churn. */
+    private String hashBody(String body) {
+        if (body == null || body.isEmpty()) return "0000000000000000";
+        try {
+            MessageDigest md = TL_DIGEST.get();
+            md.reset();
+
+            // Direct byte streaming with in-flight whitespace collapse (no regex replaceAll)
+            boolean inWhitespace = false;
+            for (int i = 0; i < body.length(); i++) {
+                char c = body.charAt(i);
+                if (Character.isWhitespace(c)) {
+                    if (!inWhitespace) {
+                        md.update((byte) ' ');
+                        inWhitespace = true;
+                    }
+                } else {
+                    inWhitespace = false;
+                    md.update((byte) c);
+                }
+            }
+
+            byte[] hash = md.digest();
+            char[] hexChars = new char[16];
+            for (int j = 0; j < 8; j++) {
+                int v = hash[j] & 0xFF;
+                hexChars[j * 2]     = HEX_ARRAY[v >>> 4];
+                hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+            }
+            return new String(hexChars);
+        } catch (Exception e) {
             return "0000000000000000";
         }
     }

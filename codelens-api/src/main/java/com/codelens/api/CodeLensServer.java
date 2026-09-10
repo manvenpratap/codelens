@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 
@@ -101,6 +102,29 @@ public class CodeLensServer {
     // ── Graph Layout Cache & Disk Persistence ────────────────────────────────
     private final Map<String, CallGraphAnalyzer.GraphView> layoutCache = new ConcurrentHashMap<>();
     private final ObjectMapper jsonMapper = new ObjectMapper();
+    private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
+    private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
+
+    public boolean handleConditionalETag(Context ctx, String cacheKey) {
+        long rev = this.scanRevision.get();
+        long keyHash;
+        synchronized (crc32) {
+            crc32.reset();
+            crc32.update(cacheKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            keyHash = crc32.getValue();
+        }
+        String etag = "W/\"" + rev + "-" + Long.toHexString(keyHash) + "\"";
+
+        ctx.header("ETag", etag);
+        ctx.header("Cache-Control", "private, no-cache, must-revalidate");
+
+        String ifNoneMatch = ctx.header("If-None-Match");
+        if (ifNoneMatch != null && ifNoneMatch.trim().equals(etag)) {
+            ctx.status(304);
+            return true;
+        }
+        return false;
+    }
 
     public File getGraphCacheDir() {
         String dataDir = getActiveConfig().getDataDir();
@@ -155,6 +179,7 @@ public class CodeLensServer {
 
     public void invalidateGraphCache() {
         layoutCache.clear();
+        scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
             File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
@@ -163,7 +188,7 @@ public class CodeLensServer {
                     f.delete();
                 }
             }
-            log.info("Cleared in-memory and disk graph layout cache");
+            log.info("Cleared in-memory and disk graph layout cache (rev={})", scanRevision.get());
         } catch (Exception e) {
             log.warn("Error invalidating graph cache: {}", e.getMessage());
         }
@@ -190,8 +215,20 @@ public class CodeLensServer {
                 new LayoutTask("arch-raw:methods:none", "Architecture Methods", () -> callGraph.architectureGraphView("methods", null)),
                 new LayoutTask("full-raw:true", "Full Codebase Graph", () -> callGraph.fullGraphView(true)),
                 new LayoutTask("full-raw:false", "Method Call Graph", () -> callGraph.fullGraphView(false)),
-                new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null)),
-                new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true))
+                new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null, (phase, curr, tot, detail) -> {
+                    if (progress != null) {
+                        progress.setCurrentDetail(detail);
+                        progress.setSubProgress(curr, tot, "Clustering classes");
+                        progress.setDynamicMetrics("Layouts Ready", "4 / 6", "Active Layout", "Sunflower (Classes)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
+                    }
+                })),
+                new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true, (phase, curr, tot, detail) -> {
+                    if (progress != null) {
+                        progress.setCurrentDetail(detail);
+                        progress.setSubProgress(curr, tot, "Clustering full graph");
+                        progress.setDynamicMetrics("Layouts Ready", "5 / 6", "Active Layout", "Sunflower (Full)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
+                    }
+                }))
             );
 
             int total = tasks.size();
@@ -207,13 +244,29 @@ public class CodeLensServer {
                     progress.setCurrentPhase("Precomputing Layouts");
                     progress.setMessage(String.format("Precomputing graph layouts (%d/%d)…", step, total));
                     progress.setCurrentDetail(String.format("[%d/%d] Generating %s layout", step, total, task.name));
+                    progress.setSubProgress(step, total, task.name);
+                    progress.setDynamicMetrics(
+                        "Layouts Ready", String.format("%d / %d", i, total),
+                        "Active Layout", task.name,
+                        "Clusters", "Calculating…",
+                        "Placed Nodes", "In progress"
+                    );
                     progress.setPercentage(92 + (int) ((i / (float) total) * 7.0));
                 }
                 getOrComputeLayout(task.key, task.supplier);
+                if (progress != null) {
+                    progress.setDynamicMetrics(
+                        "Layouts Ready", String.format("%d / %d", step, total),
+                        "Active Layout", task.name,
+                        "Clusters", "Complete",
+                        "Placed Nodes", "Ready"
+                    );
+                }
             }
 
             if (progress != null) {
                 progress.setCurrentDetail(String.format("Precomputed all %d graph layouts", total));
+                progress.setSubProgress(total, total, "All layouts ready");
             }
             log.info("Finished graph layout warm-up: {} layouts ready in {}ms",
                 total, System.currentTimeMillis() - start);
@@ -257,6 +310,7 @@ public class CodeLensServer {
                 cfg.staticFiles.add("/web", Location.CLASSPATH);
             }
             cfg.jsonMapper(new JavalinJackson());
+            cfg.http.gzipOnlyCompression();
             // Allow all origins during local use (no cross-origin issues)
             cfg.bundledPlugins.enableCors(cors ->
                 cors.addRule(rule -> rule.anyHost()));
@@ -629,18 +683,40 @@ public class CodeLensServer {
                         lucene.addBatch(types, methods, fields);
                     }
                 },
-                (done, total, file) -> {
-                    progress.setTotalFiles(total);
-                    progress.setProcessedFiles(done);
-                    String fileName = file;
-                    if (file != null) {
-                        int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
-                        fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                new JavaSourceScanner.ProgressCallback() {
+                    @Override
+                    public void onFile(int done, int total, String file) {
+                        onProgress(done, total, file, progress.getTypesFound(), progress.getMethodsFound(), progress.getFieldsFound(), progress.getRelationshipsFound());
                     }
-                    progress.setCurrentDetail(fileName);
-                    progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
-                    float parseFraction = total > 0 ? (float) done / total : 0f;
-                    progress.setPercentage(2 + (int) (parseFraction * 68)); // 2% -> 70%
+
+                    @Override
+                    public void onProgress(int done, int total, String file, int types, int methods, int fields, int rels) {
+                        progress.setTypesFound(types);
+                        progress.setMethodsFound(methods);
+                        progress.setFieldsFound(fields);
+                        progress.setRelationshipsFound(rels);
+                        progress.setTotalFiles(total);
+                        progress.setProcessedFiles(done);
+                        String fileName = file;
+                        if (file != null && !file.startsWith("Persisting")) {
+                            int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+                            fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                            progress.setCurrentDetail(fileName);
+                            progress.setMessage(String.format("Parsing %s (%d/%d)", fileName, done, total));
+                        } else if (file != null) {
+                            progress.setCurrentDetail("Persisting parsed records to database…");
+                            progress.setMessage("Flushing & persisting parsed records…");
+                        }
+                        float parseFraction = total > 0 ? (float) done / total : 0f;
+                        progress.setPercentage(2 + (int) (parseFraction * 68)); // 2% -> 70%
+                        progress.setSubProgress(done, total, fileName);
+                        progress.setDynamicMetrics(
+                            "Types", String.format("%,d", types),
+                            "Methods", String.format("%,d", methods),
+                            "Fields", String.format("%,d", fields),
+                            "Relationships", String.format("%,d", rels)
+                        );
+                    }
                 },
                 () -> cancelRequested);
 
@@ -667,12 +743,43 @@ public class CodeLensServer {
             progress.setActiveStage("INDEX");
             progress.setCurrentPhase("Finalizing Index");
             progress.setMessage("Committing search index & rebuilding database indexes…");
-            progress.setCurrentDetail("Committing Lucene index…");
+            progress.setCurrentDetail("Committing Lucene search documents…");
             progress.setPercentage(71);
+            int totalDocsEstimate = result.typesFound + result.methodsFound + result.fieldsFound;
+            progress.setSubProgress(1, 13, "Lucene Search Index");
+            progress.setDynamicMetrics(
+                "Lucene Docs", String.format("%,d", totalDocsEstimate),
+                "DB Indexes", "0 / 12",
+                "Target Table", "lucene-index",
+                "Indexed Records", String.format("%,d docs", totalDocsEstimate)
+            );
             lucene.finishIndexRebuild();
-            progress.setCurrentDetail("Rebuilding database indexes…");
-            progress.setPercentage(73);
-            db.finishBulkLoad();
+
+            progress.setCurrentDetail("Rebuilding secondary database indexes…");
+            progress.setPercentage(72);
+            db.finishBulkLoad((step, totalSteps, indexName, tableName, description) -> {
+                progress.setSubProgress(step, totalSteps, indexName);
+                float fraction = (float) step / totalSteps;
+                progress.setPercentage(72 + (int)(fraction * 2.0)); // 72% -> 74%
+                progress.setMessage(String.format("Rebuilding DB indexes (%d/%d)…", step, totalSteps));
+                progress.setCurrentDetail(String.format("[%d/%d] %s: %s", step, totalSteps, indexName, description));
+
+                String rowEstimate = "-";
+                if ("types".equalsIgnoreCase(tableName)) rowEstimate = String.format("%,d rows", result.typesFound);
+                else if ("methods".equalsIgnoreCase(tableName)) rowEstimate = String.format("%,d rows", result.methodsFound);
+                else if ("fields".equalsIgnoreCase(tableName)) rowEstimate = String.format("%,d rows", result.fieldsFound);
+                else if ("relationships".equalsIgnoreCase(tableName)) rowEstimate = String.format("%,d rows", result.relationshipsFound);
+                else if ("packages".equalsIgnoreCase(tableName)) rowEstimate = "package hierarchy";
+                else if ("all tables".equalsIgnoreCase(tableName)) rowEstimate = "full database";
+                else rowEstimate = tableName;
+
+                progress.setDynamicMetrics(
+                    "Lucene Docs", String.format("%,d", totalDocsEstimate),
+                    "DB Indexes", String.format("%d / %d", step, totalSteps),
+                    "Target Table", tableName,
+                    "Indexed Records", rowEstimate
+                );
+            });
 
             if (cancelRequested) {
                 return;
@@ -683,18 +790,41 @@ public class CodeLensServer {
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Computing call graph & topology…");
             progress.setPercentage(75);
+            progress.setSubProgress(0, 4, "Querying methods from storage");
+            progress.setDynamicMetrics("Graph Vertices", "Querying…", "Call Edges", "Pending", "Field Links", "Pending", "Caller Triggers", "Pending");
+
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            progress.setCurrentDetail(String.format("Fetched %,d methods from storage", allMethodFqns.size()));
+            int totalMethods = allMethodFqns.size();
+            progress.setCurrentDetail(String.format("Fetched %,d methods from storage", totalMethods));
+            progress.setSubProgress(1, 4, "Querying call pairs from storage");
+            progress.setDynamicMetrics("Graph Vertices", String.format("%,d loaded", totalMethods), "Call Edges", "Querying…", "Field Links", "Pending", "Caller Triggers", "Pending");
+
             List<String[]> callPairs = dao.findCallRelationshipPairs();
-            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", callPairs.size()));
+            int totalCallEdges = callPairs.size();
+            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", totalCallEdges));
+            progress.setSubProgress(2, 4, "Mapping call graph");
 
             callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6)); // 75% -> 81%
+                    progress.setSubProgress(curr, total, "Indexing vertices");
+                    progress.setDynamicMetrics(
+                        "Graph Vertices", String.format("%,d / %,d", curr, total),
+                        "Call Edges", "0 / " + totalCallEdges,
+                        "Field Links", "Pending",
+                        "Caller Triggers", "Pending"
+                    );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(81 + (int)(f * 6)); // 81% -> 87%
+                    progress.setSubProgress(curr, total, "Mapping edges");
+                    progress.setDynamicMetrics(
+                        "Graph Vertices", String.format("%,d", totalMethods),
+                        "Call Edges", String.format("%,d / %,d", curr, total),
+                        "Field Links", "Pending",
+                        "Caller Triggers", "Pending"
+                    );
                 }
                 progress.setCurrentPhase("Call Graph Analysis");
                 progress.setMessage(phase);
@@ -710,15 +840,32 @@ public class CodeLensServer {
             progress.setMessage("Indexing field dependencies & propagation…");
             progress.setPercentage(87);
             progress.setCurrentDetail("Querying field relationships from database…");
-            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
-            progress.setCurrentDetail(String.format("Found %,d field relationships; querying calling methods…", fieldRels.size()));
-            Set<String> callingMethods = dao.findCallingMethodFqns();
+            progress.setSubProgress(3, 4, "Querying field relationships");
+            progress.setDynamicMetrics(
+                "Graph Vertices", String.format("%,d", totalMethods),
+                "Call Edges", String.format("%,d", totalCallEdges),
+                "Field Links", "Querying…",
+                "Caller Triggers", "Querying…"
+            );
 
-            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", fieldRels.size(), callingMethods.size()));
+            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
+            Set<String> callingMethods = dao.findCallingMethodFqns();
+            int totalFieldRels = fieldRels.size();
+            int totalCallers = callingMethods.size();
+
+            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
+            progress.setSubProgress(4, 4, "Indexing field relations");
             fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
                 progress.setPercentage(87 + (int)(f * 5)); // 87% -> 92%
                 progress.setCurrentDetail(detail);
+                progress.setSubProgress(curr, total, "Indexing field relations");
+                progress.setDynamicMetrics(
+                    "Graph Vertices", String.format("%,d", totalMethods),
+                    "Call Edges", String.format("%,d", totalCallEdges),
+                    "Field Links", String.format("%,d / %,d", curr, total),
+                    "Caller Triggers", String.format("%,d", totalCallers)
+                );
             });
 
             if (cancelRequested) {
@@ -748,6 +895,13 @@ public class CodeLensServer {
             progress.setMessage("Scan complete");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
+            progress.setSubProgress(result.totalFiles, result.totalFiles, "Complete");
+            progress.setDynamicMetrics(
+                "Types", String.format("%,d", result.typesFound),
+                "Methods", String.format("%,d", result.methodsFound),
+                "Fields", String.format("%,d", result.fieldsFound),
+                "Relationships", String.format("%,d", result.relationshipsFound)
+            );
 
             // Persist scan metadata to H2 for instant session restore
             dao.saveScanMeta(progress);
@@ -824,18 +978,40 @@ public class CodeLensServer {
                         lucene.indexBatch(types, methods, fields);
                     }
                 },
-                (done, total, file) -> {
-                    progress.setTotalFiles(total);
-                    progress.setProcessedFiles(done);
-                    String fileName = file;
-                    if (file != null) {
-                        int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
-                        fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                new JavaSourceScanner.ProgressCallback() {
+                    @Override
+                    public void onFile(int done, int total, String file) {
+                        onProgress(done, total, file, progress.getTypesFound(), progress.getMethodsFound(), progress.getFieldsFound(), progress.getRelationshipsFound());
                     }
-                    progress.setCurrentDetail(fileName);
-                    progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
-                    float parseFraction = total > 0 ? (float) done / total : 0f;
-                    progress.setPercentage(5 + (int) (parseFraction * 65));
+
+                    @Override
+                    public void onProgress(int done, int total, String file, int types, int methods, int fields, int rels) {
+                        progress.setTypesFound(types);
+                        progress.setMethodsFound(methods);
+                        progress.setFieldsFound(fields);
+                        progress.setRelationshipsFound(rels);
+                        progress.setTotalFiles(total);
+                        progress.setProcessedFiles(done);
+                        String fileName = file;
+                        if (file != null && !file.startsWith("Persisting")) {
+                            int lastSlash = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+                            fileName = lastSlash >= 0 ? file.substring(lastSlash + 1) : file;
+                            progress.setCurrentDetail(fileName);
+                            progress.setMessage(String.format("Parsing delta %s (%d/%d)", fileName, done, total));
+                        } else if (file != null) {
+                            progress.setCurrentDetail("Persisting parsed records to database…");
+                            progress.setMessage("Flushing & persisting parsed records…");
+                        }
+                        float parseFraction = total > 0 ? (float) done / total : 0f;
+                        progress.setPercentage(5 + (int) (parseFraction * 65));
+                        progress.setSubProgress(done, total, fileName);
+                        progress.setDynamicMetrics(
+                            "Types", String.format("%,d", types),
+                            "Methods", String.format("%,d", methods),
+                            "Fields", String.format("%,d", fields),
+                            "Relationships", String.format("%,d", rels)
+                        );
+                    }
                 },
                 () -> cancelRequested
             );
@@ -863,7 +1039,10 @@ public class CodeLensServer {
             progress.setActiveStage("INDEX");
             progress.setCurrentPhase("Updating Search Index");
             progress.setMessage("Committing incremental search index…");
+            progress.setCurrentDetail("Committing Lucene index to disk…");
             progress.setPercentage(72);
+            progress.setSubProgress(1, 1, "Lucene Delta Index");
+            progress.setDynamicMetrics("Lucene Delta", String.format("%,d files", toParse.size()), "DB Status", "Ready", "Target", "lucene-index", "State", "Committing");
             lucene.finishIndexRebuild();
 
             if (cancelRequested) return;
@@ -872,15 +1051,41 @@ public class CodeLensServer {
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Refreshing call graph & topology…");
             progress.setPercentage(75);
+            progress.setSubProgress(0, 4, "Querying methods from storage");
+            progress.setDynamicMetrics("Graph Vertices", "Querying…", "Call Edges", "Pending", "Field Links", "Pending", "Caller Triggers", "Pending");
+
             List<String> allMethodFqns = dao.findAllMethodFqns();
+            int totalMethods = allMethodFqns.size();
+            progress.setCurrentDetail(String.format("Fetched %,d methods from storage", totalMethods));
+            progress.setSubProgress(1, 4, "Querying call pairs from storage");
+            progress.setDynamicMetrics("Graph Vertices", String.format("%,d loaded", totalMethods), "Call Edges", "Querying…", "Field Links", "Pending", "Caller Triggers", "Pending");
+
             List<String[]> callPairs = dao.findCallRelationshipPairs();
+            int totalCallEdges = callPairs.size();
+            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", totalCallEdges));
+            progress.setSubProgress(2, 4, "Mapping call graph");
+
             callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6));
+                    progress.setSubProgress(curr, total, "Indexing vertices");
+                    progress.setDynamicMetrics(
+                        "Graph Vertices", String.format("%,d / %,d", curr, total),
+                        "Call Edges", "0 / " + totalCallEdges,
+                        "Field Links", "Pending",
+                        "Caller Triggers", "Pending"
+                    );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(81 + (int)(f * 6));
+                    progress.setSubProgress(curr, total, "Mapping edges");
+                    progress.setDynamicMetrics(
+                        "Graph Vertices", String.format("%,d", totalMethods),
+                        "Call Edges", String.format("%,d / %,d", curr, total),
+                        "Field Links", "Pending",
+                        "Caller Triggers", "Pending"
+                    );
                 }
                 progress.setCurrentPhase("Call Graph Analysis");
                 progress.setMessage(phase);
@@ -892,12 +1097,32 @@ public class CodeLensServer {
             progress.setCurrentPhase("Field Impact Analysis");
             progress.setMessage("Indexing field dependencies & propagation…");
             progress.setPercentage(87);
+            progress.setSubProgress(3, 4, "Querying field relationships");
+            progress.setDynamicMetrics(
+                "Graph Vertices", String.format("%,d", totalMethods),
+                "Call Edges", String.format("%,d", totalCallEdges),
+                "Field Links", "Querying…",
+                "Caller Triggers", "Querying…"
+            );
+
             List<CodeRelationship> fieldRels = dao.findFieldRelationships();
             Set<String> callingMethods = dao.findCallingMethodFqns();
+            int totalFieldRels = fieldRels.size();
+            int totalCallers = callingMethods.size();
+
+            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
+            progress.setSubProgress(4, 4, "Indexing field relations");
             fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
                 progress.setPercentage(87 + (int)(f * 5));
                 progress.setCurrentDetail(detail);
+                progress.setSubProgress(curr, total, "Indexing field relations");
+                progress.setDynamicMetrics(
+                    "Graph Vertices", String.format("%,d", totalMethods),
+                    "Call Edges", String.format("%,d", totalCallEdges),
+                    "Field Links", String.format("%,d / %,d", curr, total),
+                    "Caller Triggers", String.format("%,d", totalCallers)
+                );
             });
 
             if (cancelRequested) return;
@@ -905,9 +1130,9 @@ public class CodeLensServer {
             // Recompute scan totals from DB
             Map<String, Object> stats = dao.getStats();
             int totalTypes = stats.containsKey("types") ? ((Number) stats.get("types")).intValue() : 0;
-            int totalMethods = stats.containsKey("methods") ? ((Number) stats.get("methods")).intValue() : 0;
-            int totalFields = stats.containsKey("fields") ? ((Number) stats.get("fields")).intValue() : 0;
-            int totalRels = stats.containsKey("relationships") ? ((Number) stats.get("relationships")).intValue() : 0;
+            int totalMethodsCount = stats.containsKey("methods") ? ((Number) stats.get("methods")).intValue() : 0;
+            int totalFieldsCount = stats.containsKey("fields") ? ((Number) stats.get("fields")).intValue() : 0;
+            int totalRelsCount = stats.containsKey("relationships") ? ((Number) stats.get("relationships")).intValue() : 0;
 
             Map<String, FileMeta> allMeta = dao.getAllFileMeta();
             progress.setTotalFiles(allMeta.size());
@@ -915,9 +1140,9 @@ public class CodeLensServer {
             progress.setParsedFiles(allMeta.size());
             progress.setErrorFiles(result.errorFiles);
             progress.setTypesFound(totalTypes);
-            progress.setMethodsFound(totalMethods);
-            progress.setFieldsFound(totalFields);
-            progress.setRelationshipsFound(totalRels);
+            progress.setMethodsFound(totalMethodsCount);
+            progress.setFieldsFound(totalFieldsCount);
+            progress.setRelationshipsFound(totalRelsCount);
 
             // Phase 5: Invalidate obsolete cached graph layouts and warm up fresh ones
             invalidateGraphCache();
@@ -933,6 +1158,13 @@ public class CodeLensServer {
             progress.setPercentage(100);
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
+            progress.setSubProgress(allMeta.size(), allMeta.size(), "Complete");
+            progress.setDynamicMetrics(
+                "Types", String.format("%,d", totalTypes),
+                "Methods", String.format("%,d", totalMethodsCount),
+                "Fields", String.format("%,d", totalFieldsCount),
+                "Relationships", String.format("%,d", totalRelsCount)
+            );
 
             dao.saveScanMeta(progress);
 
@@ -1015,6 +1247,12 @@ public class CodeLensServer {
         Optional<CodeType> type = dao.findTypeById(m.get().getDeclaringTypeFqn());
         detail.put("sourceFile", type.isPresent() ? type.get().getSourceFile() : "");
         detail.put("packageFqn", type.isPresent() ? type.get().getPackageFqn() : "");
+
+        String methodFqn = m.get().getFqn();
+        int callers = (callGraph != null) ? callGraph.callerCount(methodFqn) : 0;
+        int callees = (callGraph != null) ? callGraph.calleeCount(methodFqn) : 0;
+        detail.put("callerCount", callers);
+        detail.put("calleeCount", callees);
         ctx.json(detail);
     }
 
@@ -1044,6 +1282,9 @@ public class CodeLensServer {
         // layout + physics simulation produces the tree-like clustered visualization
         // with distinct colors per package branch.
         String key = "full-raw:" + hideGetters;
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
         ctx.json(getOrComputeLayout(key, () -> callGraph.fullGraphView(hideGetters)));
     }
 
@@ -1053,6 +1294,9 @@ public class CodeLensServer {
         // Return raw graph (no precomputed x,y) so the client-side blooming tree
         // layout + physics simulation produces the tree-like clustered visualization.
         String key = "arch-raw:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
         ctx.json(getOrComputeLayout(key, () -> callGraph.architectureGraphView(scope, filter)));
     }
 
@@ -1060,11 +1304,15 @@ public class CodeLensServer {
         String scope  = ctx.queryParam("scope");
         String filter = ctx.queryParam("filter");
         boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        String key = ("all".equalsIgnoreCase(scope) || "methods".equalsIgnoreCase(scope))
+            ? "full:" + hideGetters
+            : "arch:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
         if ("all".equalsIgnoreCase(scope) || "methods".equalsIgnoreCase(scope)) {
-            String key = "full:" + hideGetters;
             ctx.json(getOrComputeLayout(key, () -> callGraph.precomputedFullGraphView(hideGetters)));
         } else {
-            String key = "arch:" + (scope != null ? scope : "classes") + ":" + (filter != null ? filter : "none");
             ctx.json(getOrComputeLayout(key, () -> callGraph.precomputedArchitectureGraphView(scope, filter)));
         }
     }
@@ -1095,6 +1343,10 @@ public class CodeLensServer {
     private void getTreemap(Context ctx) throws Exception {
         String scope  = ctx.queryParam("scope");
         String filter = ctx.queryParam("filter");
+        String key = "treemap:" + (scope != null ? scope : "all") + ":" + (filter != null ? filter : "none");
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
 

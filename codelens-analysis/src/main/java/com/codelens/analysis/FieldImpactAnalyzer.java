@@ -48,9 +48,12 @@ public class FieldImpactAnalyzer {
                 index.computeIfAbsent(rel.getToEntityFqn(), k -> new ArrayList<>(4)).add(rel);
             }
             count++;
-            if (listener != null && (count % 2000 == 0 || count == total)) {
+            if (listener != null && (count % 250 == 0 || count == total)) {
+                String target = (rel != null && rel.getToEntityFqn() != null) ? rel.getToEntityFqn() : "field";
+                int lastDot = target.lastIndexOf('.');
+                String shortTarget = lastDot >= 0 ? target.substring(lastDot + 1) : target;
                 listener.onProgress("Field Impact: Indexing Relations", count, total,
-                    String.format("Indexed %,d / %,d field relationships", count, total));
+                    String.format("Indexed %,d / %,d field relations (%s)", count, total, shortTarget));
             }
         }
         this.fieldRelIndex = Collections.unmodifiableMap(index);

@@ -23,6 +23,8 @@ public class EntityDao {
 
     @SuppressWarnings("unused")
     private static final Logger log = LoggerFactory.getLogger(EntityDao.class);
+    private static final TypeReference<List<String>> TYPE_REF_STRING_LIST = new TypeReference<>() {};
+    private static final TypeReference<List<MethodParam>> TYPE_REF_PARAMS = new TypeReference<>() {};
 
     private final DatabaseManager db;
     private final ObjectMapper    json = new ObjectMapper();
@@ -965,8 +967,7 @@ public class EntityDao {
         String ifaces = rs.getString("interfaces");
         if (ifaces != null) {
             try {
-                t.setInterfaces(json.readValue(ifaces,
-                    new TypeReference<List<String>>() {}));
+                t.setInterfaces(json.readValue(ifaces, TYPE_REF_STRING_LIST));
             } catch (Exception e) { /* leave empty */ }
         }
         return t;
@@ -1000,8 +1001,7 @@ public class EntityDao {
         String params = rs.getString("parameters");
         if (params != null) {
             try {
-                m.setParameters(json.readValue(params,
-                    new TypeReference<List<MethodParam>>() {}));
+                m.setParameters(json.readValue(params, TYPE_REF_PARAMS));
             } catch (Exception e) { /* leave empty */ }
         }
         return m;

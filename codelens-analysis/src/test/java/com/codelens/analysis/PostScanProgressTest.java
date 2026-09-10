@@ -192,4 +192,52 @@ public class PostScanProgressTest {
             assertNotNull(n.y, "Node y coordinate must be non-null");
         }
     }
+
+    public void testScanProgressSubProgressAndDynamicMetrics() {
+        ScanProgress p = new ScanProgress();
+        p.setSubProgress(7, 10, "idx_rels_from");
+        assertEquals(7, p.getStageCurrent(), "stageCurrent should be 7");
+        assertEquals(10, p.getStageTotal(), "stageTotal should be 10");
+        assertEquals("idx_rels_from", p.getStageItem(), "stageItem should match");
+
+        p.setDynamicMetrics("Lucene Docs", "28,450", "DB Indexes", "7 / 10", "Target Table", "relationships", "Rows", "142,800");
+        assertEquals("Lucene Docs", p.getMetric1Label(), "metric1Label");
+        assertEquals("28,450", p.getMetric1Value(), "metric1Value");
+        assertEquals("DB Indexes", p.getMetric2Label(), "metric2Label");
+        assertEquals("7 / 10", p.getMetric2Value(), "metric2Value");
+        assertEquals("Target Table", p.getMetric3Label(), "metric3Label");
+        assertEquals("relationships", p.getMetric3Value(), "metric3Value");
+        assertEquals("Rows", p.getMetric4Label(), "metric4Label");
+        assertEquals("142,800", p.getMetric4Value(), "metric4Value");
+    }
+
+    public void testCallGraphAnalyzerLayoutProgressListener() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+
+        List<String> methodFqns = List.of(
+            "com.tcs.bancs.AM.AccountService.AMETFetchBalance",
+            "com.tcs.bancs.AM.AccountService.AMBTTransferFunds",
+            "com.tcs.bancs.PM.PaymentService.PMBTProcess",
+            "com.tcs.bancs.TR.TradeService.TRBTExecute"
+        );
+
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn("com.tcs.bancs.AM.AccountService.AMBTTransferFunds");
+        r1.setToEntityFqn("com.tcs.bancs.PM.PaymentService.PMBTProcess");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        analyzer.rebuild(methodFqns, rels);
+
+        AtomicInteger clusterCallbacks = new AtomicInteger(0);
+        CallGraphAnalyzer.GraphView v = analyzer.precomputedFullGraphView(false, (phase, curr, total, detail) -> {
+            clusterCallbacks.incrementAndGet();
+            assertTrue(phase.contains("Layout"), "Phase should mention Layout");
+            assertTrue(detail.contains("Cluster"), "Detail should mention Cluster");
+        });
+
+        assertNotNull(v, "View should exist");
+        assertTrue(clusterCallbacks.get() > 0, "Layout cluster callbacks must be fired");
+    }
 }

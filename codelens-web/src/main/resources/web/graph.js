@@ -171,6 +171,11 @@ class ForceGraph {
 
     this._ticks       = 0;
     this._rafId       = null;
+    this._isLoopRunning = false;
+    this._dirty       = true;
+    this._isDragging  = false;
+    this._isPanning   = false;
+    this._lastInteractionTime = Date.now();
     this._physicsEnabled = true;
     this._showHulls   = true;
 
@@ -804,20 +809,39 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
   _markDirty() {
     this._dirty = true;
+    this.requestFrame();
   }
 
   requestRender() {
-    this._draw();
-    if (this._showMinimap) this._drawMinimap();
+    this.requestFrame();
   }
 
   _requestRender() {
-    this.requestRender();
+    this.requestFrame();
+  }
+
+  requestFrame() {
+    this._dirty = true;
+    if (this._paused || !this._canvas) return;
+    if (!this._rafId) {
+      this._isLoopRunning = true;
+      if (!this._loopFn) {
+        this._startLoop();
+      } else {
+        this._rafId = requestAnimationFrame(this._loopFn);
+      }
+    }
+  }
+
+  _hasActiveAnimations() {
+    if (this._physicsEnabled && this._nodes && this._nodes.length > 0 && this._ticks < (PHYSICS.maxTicks || 180)) return true;
+    if (this._isDragging || this._isPanning) return true;
+    if (this._showParticles && this._particles.length > 0) return true;
+    return false;
   }
 
   _recomputeConvexHulls() {
     this._markDirty();
-    this.requestRender();
   }
 
 
@@ -883,6 +907,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     } else {
       this._hiddenCommunities.add(cid);
     }
+    this.requestFrame();
   }
 
   toggleEntity(entityIdOrName, visible, fqn = null, pkg = null) {
@@ -897,6 +922,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         this._hiddenClasses.add(id);
       }
     });
+    this.requestFrame();
   }
 
   setArchetypeFilter(ruleId) {
@@ -1128,7 +1154,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       n.vx *= 0.2;
       n.vy *= 0.2;
     }
-    this._startLoop();
+    this._lastInteractionTime = Date.now();
+    this.requestFrame();
   }
 
   _simulateTick() {
@@ -1415,27 +1442,51 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
     }
+    this._isLoopRunning = false;
   }
 
   resume() {
     if (!this._paused) return;
     this._paused = false;
     this._resize();
-    this._startLoop();
+    this._lastInteractionTime = Date.now();
+    this.requestFrame();
   }
 
   _startLoop() {
-    const loop = () => {
-      if (!this._canvas || !this._ctx || this._paused) return;
-      if (this._physicsEnabled && this._ticks < PHYSICS.maxTicks) {
-        this._simulateTick();
-      }
-      this._draw();
-      if (this._showMinimap) this._drawMinimap();
-      this._rafId = requestAnimationFrame(loop);
-    };
-    if (this._rafId) cancelAnimationFrame(this._rafId);
-    this._rafId = requestAnimationFrame(loop);
+    if (!this._loopFn) {
+      this._loopFn = () => {
+        this._rafId = null;
+        if (!this._canvas || !this._ctx || this._paused) {
+          this._isLoopRunning = false;
+          return;
+        }
+
+        const hasPhysics = this._physicsEnabled && this._nodes && this._nodes.length > 0 && this._ticks < (PHYSICS.maxTicks || 180);
+        if (hasPhysics) {
+          this._simulateTick();
+        }
+
+        const needsDraw = this._dirty || hasPhysics || this._hasActiveAnimations();
+        if (needsDraw) {
+          this._dirty = false;
+          this._draw();
+          if (this._showMinimap) this._drawMinimap();
+        }
+
+        if (this._dirty || this._hasActiveAnimations()) {
+          this._isLoopRunning = true;
+          this._rafId = requestAnimationFrame(this._loopFn);
+        } else {
+          this._isLoopRunning = false;
+        }
+      };
+    }
+    this._dirty = true;
+    if (!this._paused && this._canvas && !this._rafId) {
+      this._isLoopRunning = true;
+      this._rafId = requestAnimationFrame(this._loopFn);
+    }
   }
 
   _draw() {
@@ -1780,8 +1831,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   _drawEdges(ctx) {
     const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const now = Date.now();
-    // Spawn energy particles periodically if motion is enabled
-    if (this._showParticles && !reducedMotion && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
+    // Spawn energy particles only if user interacted recently (<2.5s) or physics is still active
+    const isUserActive = (now - this._lastInteractionTime < 2500) || (this._physicsEnabled && this._ticks < (PHYSICS.maxTicks || 180));
+    if (this._showParticles && !reducedMotion && isUserActive && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
       this._lastParticleSpawn = now;
       const edgeIdx = Math.floor(Math.random() * this._edges.length);
       this._particles.push({ edgeIdx, t: 0, speed: 0.007 + Math.random() * 0.006 });
@@ -2840,17 +2892,22 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     this._onMouseDown = e => {
       if (e.button !== 0) return;
+      this._lastInteractionTime = Date.now();
       const hit = this._hitTest(e.offsetX, e.offsetY);
       clickStart = { x: e.offsetX, y: e.offsetY };
 
       if (hit) {
         draggingNode = hit;
+        this._isDragging = true;
         hit.pinned = true;
         cv.style.cursor = 'grabbing';
+        this.requestFrame();
       } else {
         isPanning = true;
+        this._isPanning = true;
         lastPoint = { x: e.offsetX, y: e.offsetY };
         cv.style.cursor = 'grabbing';
+        this.requestFrame();
       }
     };
 
@@ -2859,6 +2916,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       const rect = cv.getBoundingClientRect();
       const ox = e.clientX - rect.left;
       const oy = e.clientY - rect.top;
+      this._lastInteractionTime = Date.now();
 
       if (draggingNode) {
         const wp = this._screenToWorld(ox, oy);
@@ -2866,23 +2924,33 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         draggingNode.y = wp.y;
         draggingNode.vx = 0;
         draggingNode.vy = 0;
+        this.requestFrame();
       } else if (isPanning && lastPoint) {
         this._tx += ox - lastPoint.x;
         this._ty += oy - lastPoint.y;
         lastPoint = { x: ox, y: oy };
+        this.requestFrame();
       } else if (ox >= 0 && ox <= rect.width && oy >= 0 && oy <= rect.height) {
         const hit = this._hitTest(ox, oy);
-        this._hoveredNode = hit;
+        if (hit !== this._hoveredNode) {
+          this._hoveredNode = hit;
+          this.requestFrame();
+        }
         cv.style.cursor = hit ? 'pointer' : 'grab';
         if (hit) this._showTooltip(hit, e.clientX, e.clientY);
         else this._hideTooltip();
       } else {
+        if (this._hoveredNode) {
+          this._hoveredNode = null;
+          this.requestFrame();
+        }
         this._hideTooltip();
       }
     };
 
     this._onMouseUp = e => {
       if (draggingNode) {
+        this._isDragging = false;
         const rect = cv.getBoundingClientRect();
         const ox = e.clientX - rect.left;
         const oy = e.clientY - rect.top;
@@ -2896,19 +2964,26 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         }
         draggingNode.pinned = false;
         draggingNode = null;
+        this.requestFrame();
       }
       isPanning = false;
+      this._isPanning = false;
       lastPoint = null;
       cv.style.cursor = 'grab';
+      this.requestFrame();
     };
 
     this._onMouseLeave = () => {
-      this._hoveredNode = null;
+      if (this._hoveredNode) {
+        this._hoveredNode = null;
+        this.requestFrame();
+      }
       this._hideTooltip();
     };
 
     this._onWheel = e => {
       e.preventDefault();
+      this._lastInteractionTime = Date.now();
       const delta = e.deltaY > 0 ? 0.88 : 1.14;
       const ox = e.offsetX;
       const oy = e.offsetY;
@@ -2918,6 +2993,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       this._tx = ox - (ox - this._tx) * (newSc / oldSc);
       this._ty = oy - (oy - this._ty) * (newSc / oldSc);
       this._sc = newSc;
+      this.requestFrame();
     };
 
     cv.addEventListener('mousedown', this._onMouseDown);
@@ -2948,6 +3024,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     // Keep floating node card clamped within visible viewport
     this._clampNodeCardToViewport();
+    this.requestFrame();
   }
 
   _hitTest(screenX, screenY) {
@@ -3128,6 +3205,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
     }
+    this._isLoopRunning = false;
+    this._loopFn = null;
     if (this._animId) {
       cancelAnimationFrame(this._animId);
       this._animId = null;

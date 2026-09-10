@@ -842,15 +842,16 @@
         this._scene.traverse((obj) => {
           if (obj.geometry) obj.geometry.dispose();
           if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((m) => {
-                if (m.map) m.map.dispose();
-                m.dispose();
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach((m) => {
+              if (!m) return;
+              Object.keys(m).forEach(k => {
+                if (m[k] && typeof m[k] === 'object' && m[k].isTexture) {
+                  m[k].dispose();
+                }
               });
-            } else {
-              if (obj.material.map) obj.material.map.dispose();
-              obj.material.dispose();
-            }
+              m.dispose();
+            });
           }
         });
       }
@@ -859,7 +860,11 @@
         this._controls = null;
       }
       if (this._renderer) {
+        if (this._renderer.renderLists) this._renderer.renderLists.dispose();
         this._renderer.dispose();
+        if (typeof this._renderer.forceContextLoss === 'function') {
+          this._renderer.forceContextLoss();
+        }
         this._renderer = null;
       }
       if (this._el) {

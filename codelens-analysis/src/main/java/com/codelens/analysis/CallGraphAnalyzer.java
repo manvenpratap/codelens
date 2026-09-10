@@ -59,6 +59,12 @@ public class CallGraphAnalyzer {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    private static String dedup(Map<String, String> pool, String s) {
+        if (s == null) return null;
+        String existing = pool.putIfAbsent(s, s);
+        return existing != null ? existing : s;
+    }
+
     /**
      * Rebuilds the call graph by streaming edges directly from a database cursor with optional progress updates.
      */
@@ -66,19 +72,20 @@ public class CallGraphAnalyzer {
         Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
         int totalMethods = allMethodFqns != null ? allMethodFqns.size() : 0;
         Map<String, List<String>> byName = new HashMap<>(totalMethods);
+        Map<String, String> dedupPool = new HashMap<>(totalMethods * 2);
 
-        // Populate vertex set with interned strings to deduplicate repeated package/class prefixes
+        // Populate vertex set with scoped deduplicated strings
         if (allMethodFqns != null) {
             int mCount = 0;
             for (String fqn : allMethodFqns) {
-                String interned = fqn.intern();
+                String interned = dedup(dedupPool, fqn);
                 g.addVertex(interned);
-                String simpleName = simpleMethodName(interned).intern();
+                String simpleName = dedup(dedupPool, simpleMethodName(interned));
                 byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
                 mCount++;
-                if (listener != null && (mCount % 1000 == 0 || mCount == totalMethods)) {
+                if (listener != null && (mCount % 250 == 0 || mCount == totalMethods)) {
                     listener.onProgress("Call Graph: Indexing Methods", mCount, totalMethods,
-                        String.format("Indexed %,d / %,d method vertices", mCount, totalMethods));
+                        String.format("Indexed %,d / %,d method vertices (%s)", mCount, totalMethods, simpleName));
                 }
             }
         }
@@ -88,14 +95,14 @@ public class CallGraphAnalyzer {
             final int[] edgeCount = new int[]{0};
             edgeStreamer.stream((rawFrom, rawTo) -> {
                 if (rawFrom == null || rawTo == null) return;
-                String from = rawFrom.intern();
+                String from = dedup(dedupPool, rawFrom);
                 String to   = rawTo;
 
                 if (to.startsWith("~")) {
                     to = resolve(to, byName);
                 }
                 if (to == null || to.startsWith("~")) return;
-                to = to.intern();
+                to = dedup(dedupPool, to);
 
                 g.addVertex(from);
                 g.addVertex(to);
@@ -104,9 +111,9 @@ public class CallGraphAnalyzer {
                 catch (Exception ignored) { /* duplicate edge */ }
 
                 edgeCount[0]++;
-                if (listener != null && edgeCount[0] % 2000 == 0) {
+                if (listener != null && edgeCount[0] % 250 == 0) {
                     listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], -1,
-                        String.format("Mapped %,d call edges", edgeCount[0]));
+                        String.format("Mapped %,d call edges (%s → %s)", edgeCount[0], simpleMethodName(from), simpleMethodName(to)));
                 }
             });
             if (listener != null) {
@@ -135,9 +142,10 @@ public class CallGraphAnalyzer {
                 for (String[] pair : callPairs) {
                     consumer.accept(pair[0], pair[1]);
                     pCount++;
-                    if (listener != null && (pCount % 2000 == 0 || pCount == totalPairs)) {
+                    if (listener != null && (pCount % 250 == 0 || pCount == totalPairs)) {
                         listener.onProgress("Call Graph: Mapping Edges", pCount, totalPairs,
-                            String.format("Mapped %,d / %,d call edges", pCount, totalPairs));
+                            String.format("Mapped %,d / %,d call edges (%s → %s)",
+                                pCount, totalPairs, simpleMethodName(pair[0]), simpleMethodName(pair[1])));
                     }
                 }
             }
@@ -254,17 +262,53 @@ public class CallGraphAnalyzer {
     /**
      * Returns the number of direct callers (in-degree) for the given method.
      */
-    public int callerCount(String methodFqn) {
-        if (!callGraph.containsVertex(methodFqn)) return 0;
-        return callGraph.inDegreeOf(methodFqn);
+    public synchronized int callerCount(String methodFqn) {
+        if (methodFqn == null || callGraph == null) return 0;
+        if (callGraph.containsVertex(methodFqn)) {
+            return callGraph.inDegreeOf(methodFqn);
+        }
+        String alt = methodFqn.endsWith("()")
+            ? methodFqn.substring(0, methodFqn.length() - 2)
+            : methodFqn + "()";
+        if (callGraph.containsVertex(alt)) {
+            return callGraph.inDegreeOf(alt);
+        }
+        int count = 0;
+        boolean foundAny = false;
+        String prefix = methodFqn + "(";
+        for (String v : callGraph.vertexSet()) {
+            if (v.startsWith(prefix)) {
+                count += callGraph.inDegreeOf(v);
+                foundAny = true;
+            }
+        }
+        return foundAny ? count : 0;
     }
 
     /**
      * Returns the number of direct callees (out-degree) for the given method.
      */
-    public int calleeCount(String methodFqn) {
-        if (!callGraph.containsVertex(methodFqn)) return 0;
-        return callGraph.outDegreeOf(methodFqn);
+    public synchronized int calleeCount(String methodFqn) {
+        if (methodFqn == null || callGraph == null) return 0;
+        if (callGraph.containsVertex(methodFqn)) {
+            return callGraph.outDegreeOf(methodFqn);
+        }
+        String alt = methodFqn.endsWith("()")
+            ? methodFqn.substring(0, methodFqn.length() - 2)
+            : methodFqn + "()";
+        if (callGraph.containsVertex(alt)) {
+            return callGraph.outDegreeOf(alt);
+        }
+        int count = 0;
+        boolean foundAny = false;
+        String prefix = methodFqn + "(";
+        for (String v : callGraph.vertexSet()) {
+            if (v.startsWith(prefix)) {
+                count += callGraph.outDegreeOf(v);
+                foundAny = true;
+            }
+        }
+        return foundAny ? count : 0;
     }
 
     /**
@@ -498,11 +542,19 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView precomputedArchitectureGraphView(String scope, String filter) {
-        return computePrecomputedLayout(architectureGraphView(scope, filter));
+        return precomputedArchitectureGraphView(scope, filter, null);
+    }
+
+    public GraphView precomputedArchitectureGraphView(String scope, String filter, ProgressListener listener) {
+        return computePrecomputedLayout(architectureGraphView(scope, filter), listener);
     }
 
     public GraphView precomputedFullGraphView(boolean hideGetters) {
-        return computePrecomputedLayout(fullGraphView(hideGetters));
+        return precomputedFullGraphView(hideGetters, null);
+    }
+
+    public GraphView precomputedFullGraphView(boolean hideGetters, ProgressListener listener) {
+        return computePrecomputedLayout(fullGraphView(hideGetters), listener);
     }
 
     /** Module-level aggregated graph view (e.g. 50 modules). */
@@ -774,6 +826,10 @@ public class CallGraphAnalyzer {
      * This eliminates the need for expensive client-side physics simulation.
      */
     public GraphView computePrecomputedLayout(GraphView view) {
+        return computePrecomputedLayout(view, null);
+    }
+
+    public GraphView computePrecomputedLayout(GraphView view, ProgressListener listener) {
         if (view == null || view.nodes == null || view.nodes.isEmpty()) return view;
 
         Map<String, List<GraphNode>> groups = new LinkedHashMap<>();
@@ -798,6 +854,7 @@ public class CallGraphAnalyzer {
         double groupSpread = Math.max(400.0, Math.sqrt(view.nodes.size()) * 52.0 + totalGroups * 36.0);
         double goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0)); // ~137.5 degrees
 
+        int placedNodes = 0;
         for (int gIdx = 0; gIdx < totalGroups; gIdx++) {
             String grp = groupKeys.get(gIdx);
             List<GraphNode> groupNodes = groups.get(grp);
@@ -821,6 +878,13 @@ public class CallGraphAnalyzer {
                 nd.x = Math.round((gcx + Math.cos(ringAngle) * ringDist) * 10.0) / 10.0;
                 nd.y = Math.round((gcy + Math.sin(ringAngle) * ringDist) * 10.0) / 10.0;
                 nd.packageFqn = grp;
+            }
+            placedNodes += groupNodes.size();
+
+            if (listener != null) {
+                listener.onProgress("Layout: Positioning Clusters", gIdx + 1, totalGroups,
+                    String.format("Cluster [%d/%d] %s (%d nodes) placed · %,d/%,d nodes",
+                        gIdx + 1, totalGroups, grp, groupNodes.size(), placedNodes, view.nodes.size()));
             }
         }
 

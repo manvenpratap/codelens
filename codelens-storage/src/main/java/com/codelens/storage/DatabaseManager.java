@@ -62,7 +62,22 @@ public class DatabaseManager {
         dataSource = new HikariDataSource(cfg);
 
         createSchema();
-        log.info("H2 database initialised at {}/codelens_db (compression enabled)", dataDir);
+        ensureSecondaryIndexes();
+        log.info("H2 database initialised at {}/codelens_db (indexes verified)", dataDir);
+    }
+
+    /** Self-healing check: verify secondary indexes exist; rebuild if dropped by a previous crash during bulk load. */
+    private void ensureSecondaryIndexes() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'METHODS' AND INDEX_NAME = 'IDX_METHODS_TYPE'")) {
+            if (rs.next() && rs.getInt(1) == 0) {
+                log.warn("Secondary index idx_methods_type missing (prior crash during bulk load). Self-healing indexes now...");
+                finishBulkLoad();
+            }
+        } catch (Exception e) {
+            log.warn("Could not verify secondary indexes: {}", e.getMessage());
+        }
     }
 
     public void close() {
@@ -271,26 +286,66 @@ public class DatabaseManager {
         }
     }
 
+    @FunctionalInterface
+    public interface IndexProgressListener {
+        void onIndexProgress(int currentStep, int totalSteps, String indexName, String tableName, String description);
+    }
+
+    private static class IndexTask {
+        final String sql;
+        final String indexName;
+        final String tableName;
+        final String description;
+        IndexTask(String sql, String indexName, String tableName, String description) {
+            this.sql = sql;
+            this.indexName = indexName;
+            this.tableName = tableName;
+            this.description = description;
+        }
+    }
+
     /** Rebuilds secondary indexes and runs query analyzer after bulk ingestion finishes. */
     public void finishBulkLoad() throws SQLException {
-        String[] indexStatements = {
-            "CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)",
-            "CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)",
-            "CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)",
-            "CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)",
-            "CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)",
-            "CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)",
-            "CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)",
-            "CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)",
-            "CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)",
-            "CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
-            "ANALYZE",
-            "SET WRITE_DELAY 500"
+        finishBulkLoad(null);
+    }
+
+    /** Rebuilds secondary indexes and runs query analyzer with live progress reporting. */
+    public void finishBulkLoad(IndexProgressListener listener) throws SQLException {
+        IndexTask[] tasks = {
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)",
+                          "idx_types_pkg", "types", "Package lookup index on types(package_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)",
+                          "idx_types_src", "types", "Source file index on types(source_file)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_types_kind     ON types(kind)",
+                          "idx_types_kind", "types", "Type kind filter index on types(kind)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)",
+                          "idx_types_pkg_kind", "types", "Composite package/kind index on types(package_fqn, kind)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)",
+                          "idx_fields_type", "fields", "Declaring class index on fields(declaring_type_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)",
+                          "idx_methods_type", "methods", "Declaring class index on methods(declaring_type_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)",
+                          "idx_rels_from", "relationships", "Source caller/reader index on relationships(from_entity_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)",
+                          "idx_rels_to", "relationships", "Target callee/field index on relationships(to_entity_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)",
+                          "idx_rels_kind", "relationships", "Relationship kind filter on relationships(kind)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
+                          "idx_pkgs_parent", "packages", "Package hierarchy tree index on packages(parent_fqn)"),
+            new IndexTask("ANALYZE",
+                          "ANALYZE", "all tables", "Computing cost-based query optimizer table statistics"),
+            new IndexTask("SET WRITE_DELAY 500",
+                          "SET WRITE_DELAY", "h2 engine", "Restoring safe transaction commit flush delay")
         };
-        for (String sql : indexStatements) {
+
+        for (int i = 0; i < tasks.length; i++) {
+            IndexTask t = tasks[i];
+            if (listener != null) {
+                listener.onIndexProgress(i + 1, tasks.length, t.indexName, t.tableName, t.description);
+            }
             try (Connection conn = getConnection();
                  Statement stmt = conn.createStatement()) {
-                stmt.execute(sql);
+                stmt.execute(t.sql);
             }
         }
         log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");

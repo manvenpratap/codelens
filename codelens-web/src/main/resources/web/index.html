@@ -2089,23 +2089,23 @@
   aria-label="Codebase scan progress"
 >
   <div class="scan-modal-card">
-    <!-- Close / Minimize Button (top-right) -->
-    <button id="btn-minimize-scan" class="scan-card-close-btn" title="Run in background (scan continues)" aria-label="Minimize scan dialog">
-      <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-
-    <!-- Header: Animated Spinner Ring + Title + Phase Badge -->
+    <!-- Header: Animated Spinner Ring + Title + Actions (Phase Badge & Close Button) -->
     <div class="scan-card-header">
       <div class="scan-card-title-group">
         <div class="scan-spinner-ring" aria-hidden="true">
           <div class="scan-spinner-core"></div>
         </div>
         <div class="scan-card-title-text">
-          <div class="scan-card-heading">Analyzing Codebase</div>
-          <div class="scan-card-sub" id="scan-card-source-path">/workspace/src</div>
+          <div class="scan-card-heading" id="scan-card-heading">Analyzing Codebase</div>
+          <div class="scan-card-sub" id="scan-card-source-path" title="/workspace/src">/workspace/src</div>
         </div>
       </div>
-      <span class="scan-phase-badge" id="scan-phase-badge">AST Parsing</span>
+      <div class="scan-card-header-actions">
+        <span class="scan-phase-badge" id="scan-phase-badge">AST Parsing</span>
+        <button id="btn-minimize-scan" class="scan-card-close-btn" title="Run in background (scan continues)" aria-label="Minimize scan dialog">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
     </div>
 
     <!-- Pipeline Stage Progress Steps -->
@@ -2114,17 +2114,17 @@
         <span class="step-dot"></span>
         <span class="step-label">1. Parse AST</span>
       </div>
-      <div class="scan-step-divider"></div>
+      <div class="scan-step-divider" data-after="PARSE"></div>
       <div class="scan-pipeline-step step-pending" data-step="INDEX">
         <span class="step-dot"></span>
         <span class="step-label">2. Index</span>
       </div>
-      <div class="scan-step-divider"></div>
+      <div class="scan-step-divider" data-after="INDEX"></div>
       <div class="scan-pipeline-step step-pending" data-step="GRAPH">
         <span class="step-dot"></span>
-        <span class="step-label">3. Call & Field Graph</span>
+        <span class="step-label">3. Call &amp; Field Graph</span>
       </div>
-      <div class="scan-step-divider"></div>
+      <div class="scan-step-divider" data-after="GRAPH"></div>
       <div class="scan-pipeline-step step-pending" data-step="LAYOUT">
         <span class="step-dot"></span>
         <span class="step-label">4. Precompute Layouts</span>
@@ -2134,7 +2134,7 @@
     <!-- Progress Section: Status Message + Percentage + Animated Bar Track -->
     <div class="scan-progress-section">
       <div class="scan-progress-numbers">
-        <span class="scan-status-text" id="scan-status-text">Parsing Java source files…</span>
+        <span class="scan-status-text scan-card-status-text" id="scan-card-status-text">Initializing analysis…</span>
         <span class="scan-pct" id="scan-pct">0%</span>
       </div>
       <div class="scan-card-bar-track">
@@ -2156,26 +2156,26 @@
     </div>
 
     <!-- Live Discovered Metrics Grid (4 tiles) -->
-    <div class="scan-live-metrics-grid">
+    <div class="scan-live-metrics-grid" id="scan-live-metrics-grid">
       <div class="scan-metric-tile">
         <span class="scan-metric-val" id="scan-live-types">0</span>
-        <span class="scan-metric-lbl">Types</span>
+        <span class="scan-metric-lbl" id="scan-live-types-lbl">Types</span>
       </div>
       <div class="scan-metric-tile">
         <span class="scan-metric-val" id="scan-live-methods">0</span>
-        <span class="scan-metric-lbl">Methods</span>
+        <span class="scan-metric-lbl" id="scan-live-methods-lbl">Methods</span>
       </div>
       <div class="scan-metric-tile">
         <span class="scan-metric-val" id="scan-live-fields">0</span>
-        <span class="scan-metric-lbl">Fields</span>
+        <span class="scan-metric-lbl" id="scan-live-fields-lbl">Fields</span>
       </div>
       <div class="scan-metric-tile">
         <span class="scan-metric-val" id="scan-live-rels">0</span>
-        <span class="scan-metric-lbl">Relationships</span>
+        <span class="scan-metric-lbl" id="scan-live-rels-lbl">Relationships</span>
       </div>
     </div>
 
-    <!-- Footer: Elapsed Timer & Cancel Button -->
+    <!-- Footer: Elapsed Timer & Actions -->
     <div class="scan-card-footer">
       <div class="scan-timer-pill" id="scan-timer-pill">
         <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -2189,6 +2189,13 @@
         <button id="btn-cancel-scan" class="btn btn-sm btn-cancel-scan" title="Cancel active scan" aria-label="Cancel active scan">
           <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           Cancel Scan
+        </button>
+        <button id="btn-dismiss-scan" class="btn btn-sm btn-ghost" style="display:none;" title="Close dialog">
+          Close
+        </button>
+        <button id="btn-explore-scan" class="btn btn-sm btn-primary" style="display:none;" title="Explore graph visualization">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Explore Graph
         </button>
       </div>
     </div>

@@ -101,7 +101,7 @@ const api = {
     return res.json();
   },
 
-  get:    (path)         => api.request(path),
+  get:    (path, options = {}) => api.request(path, options),
   post:   (path, body)   => api.request(path, { method: 'POST',   body: JSON.stringify(body) }),
   delete: (path)         => api.request(path, { method: 'DELETE' }),
 
@@ -172,7 +172,7 @@ const api = {
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
-  search:             (q, n=30)   => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`),
+  search:             (q, n=30, options={}) => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`, options),
   scanStatus:         ()          => api.get('/scan/status'),
   scanChanges:        (sourcePath) => api.get(`/scan/changes${sourcePath ? '?sourcePath=' + encodeURIComponent(sourcePath) : ''}`),
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
@@ -387,7 +387,17 @@ async function startScan(targetPath) {
   const excludePatterns = settings.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
 
   App.scanModalDismissed = false;
+  App.lastScanProgress = { status: 'SCANNING', activeStage: 'PREPARE', currentPhase: 'Preparing Storage', message: 'Initializing analysis…', percentage: 1, sourcePath: path };
   setScanUI('scanning');
+  const modalCard = qs('.scan-modal-card');
+  if (modalCard) modalCard.classList.remove('is-complete');
+  if (qs('#scan-card-heading')) qs('#scan-card-heading').textContent = 'Analyzing Codebase';
+  if (qs('#scan-card-status-text')) qs('#scan-card-status-text').textContent = 'Initializing analysis…';
+  if (qs('#scan-pct')) qs('#scan-pct').textContent = '0%';
+  if (qs('#scan-card-bar-fill')) qs('#scan-card-bar-fill').style.width = '0%';
+  if (qs('#scan-files-ratio')) qs('#scan-files-ratio').textContent = 'Preparing scanner…';
+  if (qs('#scan-remaining-files')) qs('#scan-remaining-files').textContent = '';
+  if (qs('#scan-detail-text')) qs('#scan-detail-text').textContent = 'Preparing storage & file list…';
   qs('#scan-status-bar')?.classList.add('visible');
   showBanner(`Rescanning codebase at "${path}"…`);
   try {
@@ -464,10 +474,35 @@ function updateScanProgress(s) {
     phaseBadge.textContent = s.currentPhase || (pct < 100 ? 'Scanning' : 'Finishing');
   }
 
+  // Stage resolution & Heading
+  const stage = s.activeStage || 'PARSE';
+  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
+  const currentStepNum = stageOrder[stage] || 1;
+  const headingEl = qs('#scan-card-heading');
+  const modalCard = qs('.scan-modal-card');
+
+  if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+    if (headingEl) headingEl.textContent = 'Analysis Complete';
+    if (modalCard) modalCard.classList.add('is-complete');
+  } else {
+    if (headingEl) headingEl.textContent = 'Analyzing Codebase';
+    if (modalCard) modalCard.classList.remove('is-complete');
+  }
+
   // Action status message
-  const statusText = qs('#scan-status-text') || qs('.scan-status-text');
+  const statusText = qs('#scan-card-status-text') || qs('.scan-card-status-text') || qs('#scan-status-text');
   if (statusText) {
-    statusText.textContent = s.message || 'Scanning codebase…';
+    if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+      statusText.textContent = 'Codebase analysis complete';
+    } else if (stage === 'LAYOUT' || (s.currentPhase && s.currentPhase.includes('Layout'))) {
+      statusText.textContent = 'Precomputing graph layouts…';
+    } else if (stage === 'GRAPH' || (s.currentPhase && s.currentPhase.includes('Graph'))) {
+      statusText.textContent = 'Analyzing call hierarchy & field impact…';
+    } else if (stage === 'INDEX' || (s.currentPhase && s.currentPhase.includes('Index'))) {
+      statusText.textContent = 'Rebuilding search & storage indexes…';
+    } else {
+      statusText.textContent = s.message || 'Scanning codebase…';
+    }
   }
 
   // Current active file name / path
@@ -476,10 +511,7 @@ function updateScanProgress(s) {
     detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing…');
   }
 
-  // Update pipeline step track
-  const stage = s.activeStage || 'PARSE';
-  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
-  const currentStepNum = stageOrder[stage] || 1;
+  // Update pipeline step track and connector dividers
   qsa('.scan-pipeline-step').forEach(stepEl => {
     const stepName = stepEl.dataset.step;
     const stepNum = stageOrder[stepName] || 1;
@@ -493,11 +525,24 @@ function updateScanProgress(s) {
     }
   });
 
+  qsa('.scan-step-divider').forEach(divEl => {
+    const afterStep = divEl.dataset.after;
+    const divStepNum = stageOrder[afterStep] || 1;
+    if (s.status === 'COMPLETE' || currentStepNum > divStepNum) {
+      divEl.classList.add('step-divider-complete');
+    } else {
+      divEl.classList.remove('step-divider-complete');
+    }
+  });
+
   // Dynamic detail label & icon
   const detailLabel = qs('#scan-detail-label');
   const detailIcon = qs('#scan-detail-icon');
   const phase = s.currentPhase || '';
-  if (stage === 'LAYOUT' || phase.includes('Layout')) {
+  if (s.status === 'COMPLETE') {
+    if (detailLabel) detailLabel.textContent = 'Analysis Status';
+    if (detailIcon) detailIcon.innerHTML = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
+  } else if (stage === 'LAYOUT' || phase.includes('Layout')) {
     if (detailLabel) detailLabel.textContent = 'Layout Precomputation';
     if (detailIcon) detailIcon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>';
   } else if (stage === 'GRAPH' || phase.includes('Graph') || phase.includes('Field')) {
@@ -519,13 +564,19 @@ function updateScanProgress(s) {
   // Source path
   const sourcePathEl = qs('#scan-card-source-path');
   if (sourcePathEl) {
-    sourcePathEl.textContent = s.sourcePath || qs('#scan-path-input')?.value?.trim() || '';
+    const p = s.sourcePath || qs('#scan-path-input')?.value?.trim() || '';
+    sourcePathEl.textContent = p;
+    sourcePathEl.title = p;
   }
 
   // Files processed vs remaining ratio
   const filesRatio = qs('#scan-files-ratio');
   if (filesRatio) {
-    if (stage === 'LAYOUT' || phase.includes('Layout')) {
+    if (s.status === 'COMPLETE') {
+      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files indexed` : 'Scan complete';
+    } else if (s.stageItem && currentStepNum > 1) {
+      filesRatio.textContent = s.stageItem;
+    } else if (stage === 'LAYOUT' || phase.includes('Layout')) {
       filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Precomputing layouts` : 'Precomputing layouts…';
     } else if (stage === 'GRAPH' || phase.includes('Graph') || phase.includes('Field')) {
       filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing dependencies` : 'Analyzing dependencies…';
@@ -537,7 +588,11 @@ function updateScanProgress(s) {
   }
   const remainingFiles = qs('#scan-remaining-files');
   if (remainingFiles) {
-    if (currentStepNum > 1) {
+    if (s.status === 'COMPLETE') {
+      remainingFiles.textContent = 'All 4 stages finished';
+    } else if (s.stageTotal > 0 && currentStepNum > 1 && currentStepNum <= 4) {
+      remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} / ${s.stageTotal.toLocaleString()} · Step ${currentStepNum} of 4`;
+    } else if (currentStepNum > 1 && currentStepNum <= 4) {
       remainingFiles.textContent = `Step ${currentStepNum} of 4`;
     } else {
       const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
@@ -545,24 +600,69 @@ function updateScanProgress(s) {
     }
   }
 
-  // Live discovered entity counters
-  const liveTypes = qs('#scan-live-types');
-  if (liveTypes) liveTypes.textContent = (s.typesFound || 0).toLocaleString();
+  // Dynamic context-aware entity & stage metric counters
+  let m1Lbl = s.metric1Label, m1Val = s.metric1Value;
+  let m2Lbl = s.metric2Label, m2Val = s.metric2Value;
+  let m3Lbl = s.metric3Label, m3Val = s.metric3Value;
+  let m4Lbl = s.metric4Label, m4Val = s.metric4Value;
 
-  const liveMethods = qs('#scan-live-methods');
-  if (liveMethods) liveMethods.textContent = (s.methodsFound || 0).toLocaleString();
+  // Fallback defaults if backend hasn't provided explicit metric labels
+  if (!m1Lbl) {
+    if (stage === 'INDEX') {
+      m1Lbl = 'Lucene Docs'; m1Val = ((s.typesFound || 0) + (s.methodsFound || 0) + (s.fieldsFound || 0)).toLocaleString();
+      m2Lbl = 'DB Indexes';  m2Val = (s.stageCurrent ? `${s.stageCurrent} / ${s.stageTotal || 12}` : 'Rebuilding…');
+      m3Lbl = 'Target Table'; m3Val = s.stageItem || 'Secondary';
+      m4Lbl = 'Rows Indexed'; m4Val = (s.relationshipsFound || 0).toLocaleString();
+    } else if (stage === 'GRAPH') {
+      m1Lbl = 'Graph Vertices'; m1Val = (s.methodsFound || 0).toLocaleString();
+      m2Lbl = 'Call Edges';     m2Val = (s.stageCurrent && s.stageTotal ? `${s.stageCurrent.toLocaleString()} / ${s.stageTotal.toLocaleString()}` : (s.relationshipsFound || 0).toLocaleString());
+      m3Lbl = 'Field Links';    m3Val = (s.fieldsFound || 0).toLocaleString();
+      m4Lbl = 'Caller Triggers'; m4Val = 'Mapping…';
+    } else if (stage === 'LAYOUT') {
+      m1Lbl = 'Layouts Ready';  m1Val = (s.stageCurrent ? `${s.stageCurrent} / ${s.stageTotal || 6}` : 'In progress');
+      m2Lbl = 'Active Layout';  m2Val = s.stageItem || 'Sunflower';
+      m3Lbl = 'Clusters';       m3Val = 'Packages';
+      m4Lbl = 'Placed Nodes';   m4Val = (s.methodsFound || 0).toLocaleString();
+    } else {
+      m1Lbl = 'Types';         m1Val = (s.typesFound || 0).toLocaleString();
+      m2Lbl = 'Methods';       m2Val = (s.methodsFound || 0).toLocaleString();
+      m3Lbl = 'Fields';        m3Val = (s.fieldsFound || 0).toLocaleString();
+      m4Lbl = 'Relationships'; m4Val = (s.relationshipsFound || 0).toLocaleString();
+    }
+  }
 
-  const liveFields = qs('#scan-live-fields');
-  if (liveFields) liveFields.textContent = (s.fieldsFound || 0).toLocaleString();
+  const live1Val = qs('#scan-live-types');
+  const live1Lbl = qs('#scan-live-types-lbl');
+  if (live1Val) live1Val.textContent = m1Val !== undefined && m1Val !== null ? m1Val : '0';
+  if (live1Lbl) live1Lbl.textContent = m1Lbl || 'Types';
 
-  const liveRels = qs('#scan-live-rels');
-  if (liveRels) liveRels.textContent = (s.relationshipsFound || 0).toLocaleString();
+  const live2Val = qs('#scan-live-methods');
+  const live2Lbl = qs('#scan-live-methods-lbl');
+  if (live2Val) live2Val.textContent = m2Val !== undefined && m2Val !== null ? m2Val : '0';
+  if (live2Lbl) live2Lbl.textContent = m2Lbl || 'Methods';
+
+  const live3Val = qs('#scan-live-fields');
+  const live3Lbl = qs('#scan-live-fields-lbl');
+  if (live3Val) live3Val.textContent = m3Val !== undefined && m3Val !== null ? m3Val : '0';
+  if (live3Lbl) live3Lbl.textContent = m3Lbl || 'Fields';
+
+  const live4Val = qs('#scan-live-rels');
+  const live4Lbl = qs('#scan-live-rels-lbl');
+  if (live4Val) live4Val.textContent = m4Val !== undefined && m4Val !== null ? m4Val : '0';
+  if (live4Lbl) live4Lbl.textContent = m4Lbl || 'Relationships';
 
   // Elapsed timer
   const elapsedEl = qs('#scan-elapsed-time');
   if (elapsedEl) {
     const durMs = s.durationMs || (s.startTime > 0 ? Date.now() - s.startTime : 0);
-    elapsedEl.textContent = (durMs / 1000).toFixed(1) + 's';
+    const totalSec = durMs / 1000;
+    if (totalSec >= 60) {
+      const mins = Math.floor(totalSec / 60);
+      const remSec = Math.floor(totalSec % 60);
+      elapsedEl.textContent = `${totalSec.toFixed(1)}s (${mins}m ${remSec}s)`;
+    } else {
+      elapsedEl.textContent = totalSec.toFixed(1) + 's';
+    }
   }
 
   // Percent text
@@ -586,6 +686,24 @@ function updateScanProgress(s) {
   if (fInd) {
     fInd.className = 'status-indicator busy';
     fInd.title = 'Active scan running (Click to view scan dialog)';
+  }
+
+  // Toggle footer action buttons based on scan completion
+  const btnBg = qs('#btn-bg-scan');
+  const btnCancel = qs('#btn-cancel-scan');
+  const btnDismiss = qs('#btn-dismiss-scan');
+  const btnExplore = qs('#btn-explore-scan');
+
+  if (s.status === 'COMPLETE') {
+    if (btnBg) btnBg.style.display = 'none';
+    if (btnCancel) btnCancel.style.display = 'none';
+    if (btnDismiss) btnDismiss.style.display = 'inline-flex';
+    if (btnExplore) btnExplore.style.display = 'inline-flex';
+  } else {
+    if (btnBg) btnBg.style.display = 'inline-flex';
+    if (btnCancel) btnCancel.style.display = 'inline-flex';
+    if (btnDismiss) btnDismiss.style.display = 'none';
+    if (btnExplore) btnExplore.style.display = 'none';
   }
 
   // Progressive feature readiness
@@ -1076,6 +1194,7 @@ function selectPackage(pkg, itemEl) {
 
 /** Debounced search - triggers Lucene search after 280 ms of idle. */
 let searchDebounce = null;
+let activeSearchAbort = null;
 function onSearchInput(e) {
   const q = e.target.value.trim();
   const clearBtn = qs('#search-clear-btn');
@@ -1085,6 +1204,10 @@ function onSearchInput(e) {
 
   clearTimeout(searchDebounce);
   if (!q) {
+    if (activeSearchAbort) {
+      activeSearchAbort.abort();
+      activeSearchAbort = null;
+    }
     showExplorer();
     return;
   }
@@ -1095,16 +1218,27 @@ function onSearchInput(e) {
 async function runSearch(q) {
   const query = (q || '').trim();
   if (!query) {
+    if (activeSearchAbort) {
+      activeSearchAbort.abort();
+      activeSearchAbort = null;
+    }
     showExplorer();
     return;
   }
+
+  if (activeSearchAbort) {
+    activeSearchAbort.abort();
+  }
+  activeSearchAbort = new AbortController();
+  const currentSignal = activeSearchAbort.signal;
 
   showSearchResults();
   const resultsEl = qs('#search-results');
   resultsEl.innerHTML = '<div class="list-empty">Searching…</div>';
 
   try {
-    let hits = await api.search(query);
+    let hits = await api.search(query, 30, { signal: currentSignal });
+    if (currentSignal.aborted) return;
     resultsEl.innerHTML = '';
 
     // If entity kind filter is active in explorer chips, filter results
@@ -1123,6 +1257,7 @@ async function runSearch(q) {
       return;
     }
 
+    const fragment = document.createDocumentFragment();
     for (const hit of hits) {
       const item = createElement('div', { class: 'search-result-item fade-in' });
       item.innerHTML = `
@@ -1143,9 +1278,11 @@ async function runSearch(q) {
         else if (hit.kind === 'FIELD')  selectField(hit.id);
       });
 
-      resultsEl.appendChild(item);
+      fragment.appendChild(item);
     }
+    resultsEl.replaceChildren(fragment);
   } catch (e) {
+    if (e.name === 'AbortError') return;
     resultsEl.innerHTML = `<div class="list-empty">Error: ${e.message}</div>`;
   }
 }
@@ -1698,19 +1835,363 @@ async function openSourceFile(filePath, lineNum = null, skipTabSwitch = false) {
 
 /* ── Knowledge base view ─────────────────────────────────────────────────────── */
 
+/* ── Knowledge base archetype helper functions ─────────────────────────────── */
+
+/** Group an array of types by archetype into ordered categories. */
+function groupTypesByArchetype(types, pkgFqn) {
+  const groupsMap = new Map();
+
+  const getOrCreateGroup = (key, badge, label, color, description, orderWeight) => {
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, {
+        key,
+        badge,
+        label,
+        color: color || '#64748b',
+        description: description || '',
+        orderWeight: orderWeight || 100,
+        items: []
+      });
+    }
+    return groupsMap.get(key);
+  };
+
+  for (const t of types) {
+    let matched = false;
+    if (window.CodeLensClassifier) {
+      const arch = window.CodeLensClassifier.classifyType(t, t.fqn || t.id, t.packageFqn || pkgFqn);
+      if (arch) {
+        let weight = 50;
+        const b = (arch.badge || '').toUpperCase();
+        if (b === 'MSG-OBJECT') weight = 10;
+        else if (b === 'PERSISTENT') weight = 20;
+        else if (b === 'DATA-GRABBER') weight = 30;
+        else if (b === 'SRV') weight = 40;
+        else if (b === 'CTRL') weight = 45;
+        else if (b === 'REPO') weight = 46;
+
+        const g = getOrCreateGroup(
+          arch.ruleId || arch.badge,
+          arch.badge,
+          arch.label,
+          arch.color,
+          arch.description,
+          weight
+        );
+        g.items.push(t);
+        matched = true;
+      }
+    }
+
+    if (!matched) {
+      const kind = (t.kind || 'CLASS').toUpperCase();
+      const sName = t.simpleName || '';
+      if (kind === 'INTERFACE') {
+        const g = getOrCreateGroup('kind-interface', 'IFACE', 'Interfaces', '#38bdf8', 'Interface definitions and contracts', 60);
+        g.items.push(t);
+      } else if (kind === 'RECORD') {
+        const g = getOrCreateGroup('kind-record', 'RECORD', 'Records', '#c084fc', 'Immutable record data carriers', 70);
+        g.items.push(t);
+      } else if (kind === 'ENUM') {
+        const g = getOrCreateGroup('kind-enum', 'ENUM', 'Enums', '#fbbf24', 'Enumeration definitions', 80);
+        g.items.push(t);
+      } else if (sName.endsWith('Service') || sName.endsWith('ServiceImpl')) {
+        const g = getOrCreateGroup('kind-service', 'SRV', 'Business Services', '#10b981', 'Service orchestration layer', 40);
+        g.items.push(t);
+      } else if (sName.endsWith('Controller')) {
+        const g = getOrCreateGroup('kind-controller', 'CTRL', 'Controllers', '#3b82f6', 'REST and MVC controllers', 45);
+        g.items.push(t);
+      } else if (sName.endsWith('Repository')) {
+        const g = getOrCreateGroup('kind-repository', 'REPO', 'Repositories', '#8b5cf6', 'Data access repositories', 46);
+        g.items.push(t);
+      } else {
+        const g = getOrCreateGroup('kind-class', 'CLASS', 'General Classes', '#94a3b8', 'Standard domain classes and implementations', 90);
+        g.items.push(t);
+      }
+    }
+  }
+
+  return Array.from(groupsMap.values()).sort((a, b) => {
+    if (a.orderWeight !== b.orderWeight) return a.orderWeight - b.orderWeight;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+/** Group an array of methods by archetype into ordered categories. */
+function groupMethodsByArchetype(methods, type, pkgFqn) {
+  const groupsMap = new Map();
+
+  const getOrCreateGroup = (key, badge, label, color, description, orderWeight) => {
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, {
+        key,
+        badge,
+        label,
+        color: color || '#64748b',
+        description: description || '',
+        orderWeight: orderWeight || 100,
+        items: []
+      });
+    }
+    return groupsMap.get(key);
+  };
+
+  for (const m of methods) {
+    const isConstructor = m.simpleName === '<init>' || m.constructor === true || m.simpleName === type.simpleName;
+    if (isConstructor) {
+      const g = getOrCreateGroup('method-ctor', 'CTOR', 'Constructors', '#f59e0b', 'Constructors and initializers', 10);
+      g.items.push(m);
+      continue;
+    }
+
+    let matched = false;
+    if (window.CodeLensClassifier) {
+      const arch = window.CodeLensClassifier.classifyMethod(m, type.fqn || type.id, pkgFqn || type.packageFqn);
+      if (arch) {
+        let weight = 50;
+        const b = (arch.badge || '').toUpperCase();
+        if (b === 'TASK-OWN') weight = 20;
+        else if (b === 'TASK-COMMON') weight = 25;
+        else if (b === 'MUTATE') weight = 30;
+        else if (b === 'FETCH') weight = 35;
+        else if (b === 'BATCH') weight = 40;
+        else if (b === 'PRE-BATCH') weight = 41;
+        else if (b === 'POST-BATCH') weight = 42;
+
+        const g = getOrCreateGroup(
+          arch.ruleId || arch.badge,
+          arch.badge,
+          arch.label,
+          arch.color,
+          arch.description,
+          weight
+        );
+        g.items.push(m);
+        matched = true;
+      }
+    }
+
+    if (!matched) {
+      const isPojo = window.CodeLensClassifier ? window.CodeLensClassifier.isPojo(m, type.fqn || type.id, pkgFqn || type.packageFqn) : false;
+      if (isPojo) {
+        const g = getOrCreateGroup('method-pojo', 'POJO', 'Accessors & Properties', '#64748b', 'Getters, setters, and boilerplate methods', 80);
+        g.items.push(m);
+      } else {
+        const g = getOrCreateGroup('method-operation', 'METHOD', 'Operations & Methods', '#6366f1', 'Declared business operations and routines', 60);
+        g.items.push(m);
+      }
+    }
+  }
+
+  return Array.from(groupsMap.values()).sort((a, b) => {
+    if (a.orderWeight !== b.orderWeight) return a.orderWeight - b.orderWeight;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+/** Renders a collapsible accordion for an archetype group with deferred DOM hydration. */
+function renderArchetypeAccordion({ group, renderItemRow, initialOpen = false }) {
+  const accordion = createElement('div', { class: `kb-archetype-accordion ${initialOpen ? 'is-open' : ''}`, 'data-archetype': group.key });
+
+  const header = createElement('div', {
+    class: 'kb-archetype-header',
+    role: 'button',
+    tabindex: '0',
+    'aria-expanded': initialOpen ? 'true' : 'false'
+  });
+
+  header.innerHTML = `
+    <div class="kb-archetype-header-left">
+      <span class="kb-archetype-chevron">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </span>
+      <span class="kb-archetype-badge" style="background:${group.color}1a; color:${group.color}; border:1px solid ${group.color}55;" title="${esc(group.description)}">${esc(group.badge)}</span>
+      <span class="kb-archetype-title" title="${esc(group.description)}">${esc(group.label)}</span>
+    </div>
+    <div class="kb-archetype-header-right">
+      <span class="kb-archetype-count-badge">${group.items.length}</span>
+    </div>
+  `;
+
+  const body = createElement('div', {
+    class: 'kb-archetype-body',
+    style: initialOpen ? '' : 'display:none;'
+  });
+
+  let isHydrated = false;
+  const hydrate = () => {
+    if (isHydrated) return;
+    const frag = document.createDocumentFragment();
+    for (const item of group.items) {
+      frag.appendChild(renderItemRow(item, group));
+    }
+    body.appendChild(frag);
+    isHydrated = true;
+  };
+
+  if (initialOpen) {
+    hydrate();
+  }
+
+  accordion._hydrate = hydrate;
+  accordion._isHydrated = () => isHydrated;
+
+  const toggle = () => {
+    const isOpen = accordion.classList.toggle('is-open');
+    header.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (isOpen) {
+      hydrate();
+      body.style.display = '';
+    } else {
+      body.style.display = 'none';
+    }
+  };
+
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
+
+  accordion.appendChild(header);
+  accordion.appendChild(body);
+  return accordion;
+}
+
+/** Attaches toggle all behavior to an "Expand All / Collapse All" button. */
+function attachAccordionToggleAll(sectionEl, listSelector) {
+  const toggleBtn = sectionEl.querySelector('.kb-accordion-toggle-all-btn');
+  if (!toggleBtn) return;
+
+  toggleBtn.addEventListener('click', () => {
+    const accordions = sectionEl.querySelectorAll(`${listSelector} .kb-archetype-accordion`);
+    const isCurrentlyExpanded = toggleBtn.getAttribute('data-state') === 'expanded';
+    const newState = !isCurrentlyExpanded;
+
+    accordions.forEach(acc => {
+      const header = acc.querySelector('.kb-archetype-header');
+      const body = acc.querySelector('.kb-archetype-body');
+      if (newState) {
+        if (typeof acc._hydrate === 'function') acc._hydrate();
+        acc.classList.add('is-open');
+        if (header) header.setAttribute('aria-expanded', 'true');
+        if (body) body.style.display = '';
+      } else {
+        acc.classList.remove('is-open');
+        if (header) header.setAttribute('aria-expanded', 'false');
+        if (body) body.style.display = 'none';
+      }
+    });
+
+    toggleBtn.setAttribute('data-state', newState ? 'expanded' : 'collapsed');
+    const labelSpan = toggleBtn.querySelector('span');
+    if (labelSpan) {
+      labelSpan.textContent = newState ? 'Collapse All' : 'Expand All';
+    }
+  });
+}
+
+function renderTypeRow(t) {
+  const tKind = (t.kind || 'CLASS').toUpperCase();
+  const tKindClass = `kind-${tKind.toLowerCase()}`;
+  let archBadge = '';
+  if (window.CodeLensClassifier) {
+    const arch = window.CodeLensClassifier.classifyType(t, t.fqn || t.id, t.packageFqn);
+    if (arch) {
+      archBadge = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66; margin-left:6px;" title="${esc(arch.description)}">${esc(arch.badge)}</span>`;
+    }
+  }
+  const row = createElement('div', { 
+    class: 'kb-row kb-member-row',
+    'data-kind': 'type',
+    'data-id': t.id,
+    role: 'button',
+    tabindex: '0'
+  });
+  row.innerHTML = `
+    <div class="kb-row-left">
+      <div class="kb-row-icon icon-type" title="${esc(tKind)}">
+        <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </div>
+      <div class="kb-row-info">
+        <div class="kb-row-name-wrap">
+          <span class="kb-row-name">${esc(t.simpleName)}</span>
+          <span class="kb-kind-badge ${tKindClass}">${esc(tKind)}</span>
+          ${archBadge}
+        </div>
+        <div class="kb-row-meta">
+          ${t.lineCount > 0 ? `<span>${t.lineCount} lines</span>` : ''}
+          ${t.fieldCount > 0 ? `<span>· ${t.fieldCount} fields</span>` : ''}
+          ${t.methodCount > 0 ? `<span>· ${t.methodCount} methods</span>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="kb-row-right">
+      <span class="kb-type-pill">Explore &rarr;</span>
+    </div>
+  `;
+  return row;
+}
+
+function renderMethodRow(m, type) {
+  const isConstructor = m.simpleName === '<init>' || m.constructor === true || m.simpleName === type.simpleName;
+  const displayName = isConstructor ? type.simpleName : m.simpleName;
+  const cc = m.cyclomaticComplexity || 1;
+  const ccTier = cc <= 4 ? 'cc-low' : cc <= 10 ? 'cc-med' : 'cc-high';
+  const ccLabel = cc <= 4 ? 'Low' : cc <= 10 ? 'Med' : 'High';
+
+  let paramsFormatted = '()';
+  if (m.parameters && m.parameters.length > 0) {
+    paramsFormatted = '(' + m.parameters.map(p => {
+      const pType = (p.type || '').split('.').pop();
+      return `<span class="kb-param-type">${esc(pType)}</span> <span class="kb-param-name">${esc(p.name || '')}</span>`;
+    }).join(', ') + ')';
+  }
+
+  const row = createElement('div', { 
+    class: 'kb-row kb-member-row',
+    'data-kind': 'method',
+    'data-id': m.id || m.fqn,
+    role: 'button',
+    tabindex: '0'
+  });
+  row.innerHTML = `
+    <div class="kb-row-left">
+      <div class="kb-row-icon icon-method" title="${isConstructor ? 'Constructor' : 'Method'}">
+        <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
+      </div>
+      <div class="kb-row-info">
+        <div class="kb-row-name-wrap">
+          <span class="kb-row-name">${esc(displayName)}</span>
+          ${isConstructor ? '<span class="kb-mod-pill" style="color:var(--amber);background:rgba(245,158,11,0.1)">constructor</span>' : ''}
+          ${m.modifiers ? `<span class="kb-mod-pill">${esc(m.modifiers)}</span>` : ''}
+        </div>
+        <div class="kb-row-meta">
+          <span>${paramsFormatted}</span>
+          ${m.startLine ? `<span>· Line ${m.startLine}</span>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="kb-row-right">
+      <span class="kb-cc-pill ${ccTier}" title="Cyclomatic Complexity: ${cc}">CC: ${cc} (${ccLabel})</span>
+      <span class="kb-type-pill" title="Return type">${esc(m.returnType || (isConstructor ? 'void' : 'void'))}</span>
+    </div>
+  `;
+  return row;
+}
+
 /** Load and render all types for a given package in the KB tab. */
 async function loadKnowledgeBase(pkgFqn) {
   const view = qs('#knowledge-view');
   if (!view) return;
   view.innerHTML = '';
+  view.scrollTop = 0;
 
   try {
     const types = await api.typesByPackage(pkgFqn);
-    const activeKind = (App.activeFilter || 'all').toUpperCase();
-    const filteredTypes = types.filter(t => {
-      if (activeKind === 'ALL') return true;
-      return (t.kind || '').toUpperCase() === activeKind;
-    });
+    let activeKind = (App.activeFilter || 'all').toUpperCase();
 
     // ── Package Hero Card ─────────────────────────────────────────────────────
     const hero = createElement('div', { class: 'kb-hero-card fade-in' });
@@ -1728,11 +2209,11 @@ async function loadKnowledgeBase(pkgFqn) {
         </div>
       </div>
       <div class="kb-hero-meta-row">
-        <div class="kb-meta-item"><span class="kb-meta-label">Total Types:</span> <span class="kb-meta-val">${types.length}</span></div>
+        <div class="kb-meta-item"><span class="kb-meta-label">Total Types:</span> <span class="kb-meta-val" id="kb-pkg-total-count">${types.length}</span></div>
         <div class="kb-meta-divider"></div>
-        <div class="kb-meta-item"><span class="kb-meta-label">Showing:</span> <span class="kb-meta-val">${filteredTypes.length}</span></div>
+        <div class="kb-meta-item"><span class="kb-meta-label">Showing:</span> <span class="kb-meta-val" id="kb-pkg-showing-count">0</span></div>
         <div class="kb-meta-divider"></div>
-        <div class="kb-meta-item"><span class="kb-meta-label">Filter:</span> <span class="kb-meta-val">${activeKind}</span></div>
+        <div class="kb-meta-item"><span class="kb-meta-label">Filter:</span> <span class="kb-meta-val" id="kb-pkg-filter-label">${activeKind}</span></div>
       </div>
     `;
     hero.querySelector('#kb-pkg-graph')?.addEventListener('click', () => {
@@ -1740,72 +2221,140 @@ async function loadKnowledgeBase(pkgFqn) {
     });
     view.appendChild(hero);
 
-    if (filteredTypes.length === 0) {
-      const msg = activeKind === 'ALL'
-        ? 'No types found in this package.'
-        : `No ${activeKind.toLowerCase()}s found in this package (active filter: ${activeKind}).`;
-      const empty = createElement('div', { class: 'kb-empty-container fade-in' });
-      empty.innerHTML = `
-        <div class="kb-empty-icon">
-          <svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <div class="kb-empty-title">No Matching Types</div>
-        <div class="kb-empty-desc">${esc(msg)}</div>
-      `;
-      view.appendChild(empty);
-      return;
-    }
+    // ── Package View Tabs ───────────────────────────────────────────────────────
+    const counts = {
+      ALL: types.length,
+      CLASS: types.filter(t => (t.kind || '').toUpperCase() === 'CLASS').length,
+      INTERFACE: types.filter(t => (t.kind || '').toUpperCase() === 'INTERFACE').length,
+      RECORD: types.filter(t => (t.kind || '').toUpperCase() === 'RECORD').length,
+      ENUM: types.filter(t => (t.kind || '').toUpperCase() === 'ENUM').length
+    };
 
-    const typesSection = createElement('div', { class: 'kb-section fade-in' });
-    typesSection.innerHTML = `
-      <div class="kb-section-title">
-        <div class="kb-section-title-left">
-          <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          <span>Declared Types</span>
-        </div>
-        <span class="kb-section-badge">${filteredTypes.length}</span>
+    const pkgTabsBar = createElement('div', { class: 'kb-members-nav-bar fade-in' });
+    pkgTabsBar.innerHTML = `
+      <div class="kb-members-tabs" role="tablist">
+        <button class="kb-tab-pill ${activeKind === 'ALL' ? 'active' : ''}" data-filter="ALL">
+          <span>All Types</span>
+          <span class="kb-tab-badge">${counts.ALL}</span>
+        </button>
+        <button class="kb-tab-pill ${activeKind === 'CLASS' ? 'active' : ''}" data-filter="CLASS">
+          <span>Classes</span>
+          <span class="kb-tab-badge">${counts.CLASS}</span>
+        </button>
+        <button class="kb-tab-pill ${activeKind === 'INTERFACE' ? 'active' : ''}" data-filter="INTERFACE">
+          <span>Interfaces</span>
+          <span class="kb-tab-badge">${counts.INTERFACE}</span>
+        </button>
+        <button class="kb-tab-pill ${activeKind === 'RECORD' ? 'active' : ''}" data-filter="RECORD">
+          <span>Records</span>
+          <span class="kb-tab-badge">${counts.RECORD}</span>
+        </button>
+        <button class="kb-tab-pill ${activeKind === 'ENUM' ? 'active' : ''}" data-filter="ENUM">
+          <span>Enums</span>
+          <span class="kb-tab-badge">${counts.ENUM}</span>
+        </button>
       </div>
-      <div class="kb-list" id="kb-types-list"></div>
     `;
-    const typesList = typesSection.querySelector('#kb-types-list');
+    view.appendChild(pkgTabsBar);
 
-    for (const t of filteredTypes) {
-      const tKind = (t.kind || 'CLASS').toUpperCase();
-      const tKindClass = `kind-${tKind.toLowerCase()}`;
-      let archBadge = '';
-      if (window.CodeLensClassifier) {
-        const arch = window.CodeLensClassifier.classifyType(t, t.fqn || t.id, t.packageFqn);
-        if (arch) {
-          archBadge = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66; margin-left:6px;" title="${esc(arch.description)}">${esc(arch.badge)}</span>`;
-        }
+    // Container for types section or empty state
+    const contentContainer = createElement('div', { id: 'kb-pkg-content-container' });
+    view.appendChild(contentContainer);
+
+    function renderFilteredTypes(filterKind) {
+      activeKind = filterKind;
+      contentContainer.innerHTML = '';
+
+      const filteredTypes = types.filter(t => {
+        if (activeKind === 'ALL') return true;
+        return (t.kind || '').toUpperCase() === activeKind;
+      });
+
+      // Update meta in hero
+      const showingEl = qs('#kb-pkg-showing-count');
+      const filterEl = qs('#kb-pkg-filter-label');
+      if (showingEl) showingEl.textContent = filteredTypes.length;
+      if (filterEl) filterEl.textContent = activeKind;
+
+      // Update tabs active state
+      pkgTabsBar.querySelectorAll('.kb-tab-pill').forEach(pill => {
+        pill.classList.toggle('active', pill.dataset.filter === activeKind);
+      });
+
+      if (filteredTypes.length === 0) {
+        const msg = activeKind === 'ALL'
+          ? 'No types found in this package.'
+          : `No ${activeKind.toLowerCase()}s found in this package (active filter: ${activeKind}).`;
+        const empty = createElement('div', { class: 'kb-empty-container fade-in' });
+        empty.innerHTML = `
+          <div class="kb-empty-icon">
+            <svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="kb-empty-title">No Matching Types</div>
+          <div class="kb-empty-desc">${esc(msg)}</div>
+        `;
+        contentContainer.appendChild(empty);
+        return;
       }
-      const row = createElement('div', { class: 'kb-row' });
-      row.innerHTML = `
-        <div class="kb-row-left">
-          <div class="kb-row-icon icon-type" title="${esc(tKind)}">
-            <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+
+      const typesSection = createElement('div', { class: 'kb-section fade-in' });
+      typesSection.innerHTML = `
+        <div class="kb-section-title">
+          <div class="kb-section-title-left">
+            <svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            <span>Declared Types</span>
+            <span class="kb-section-badge">${filteredTypes.length}</span>
           </div>
-          <div class="kb-row-info">
-            <div class="kb-row-name-wrap">
-              <span class="kb-row-name">${esc(t.simpleName)}</span>
-              <span class="kb-kind-badge ${tKindClass}">${esc(tKind)}</span>
-              ${archBadge}
-            </div>
-            <div class="kb-row-meta">
-              ${t.lineCount > 0 ? `<span>${t.lineCount} lines</span>` : ''}
-              ${t.fieldCount > 0 ? `<span>· ${t.fieldCount} fields</span>` : ''}
-              ${t.methodCount > 0 ? `<span>· ${t.methodCount} methods</span>` : ''}
-            </div>
+          <div class="kb-section-title-right">
+            <button class="kb-accordion-toggle-all-btn" data-state="collapsed" title="Expand or collapse all archetype sections">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+              <span>Expand All</span>
+            </button>
           </div>
         </div>
-        <div class="kb-row-right">
-          <span class="kb-type-pill">Explore &rarr;</span>
-        </div>
+        <div class="kb-list" id="kb-types-list"></div>
       `;
-      row.addEventListener('click', () => selectType(t.id));
-      typesList.appendChild(row);
+      const typesList = typesSection.querySelector('#kb-types-list');
+
+      const groups = groupTypesByArchetype(filteredTypes, pkgFqn);
+      for (const group of groups) {
+        const accordion = renderArchetypeAccordion({
+          group,
+          renderItemRow: renderTypeRow,
+          initialOpen: false
+        });
+        typesList.appendChild(accordion);
+      }
+
+      attachAccordionToggleAll(typesSection, '#kb-types-list');
+
+      typesList.addEventListener('click', (e) => {
+        const row = e.target.closest('.kb-member-row');
+        if (row && row.dataset.id && row.dataset.kind === 'type') {
+          selectType(row.dataset.id);
+        }
+      });
+      typesList.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          const row = e.target.closest('.kb-member-row');
+          if (row && row.dataset.id && row.dataset.kind === 'type') {
+            e.preventDefault();
+            selectType(row.dataset.id);
+          }
+        }
+      });
+
+      contentContainer.appendChild(typesSection);
     }
-    view.appendChild(typesSection);
+
+    // Attach listeners to filter tabs
+    pkgTabsBar.querySelectorAll('.kb-tab-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        renderFilteredTypes(pill.dataset.filter);
+      });
+    });
+
+    renderFilteredTypes(activeKind);
   } catch (e) {
     const errorCard = createElement('div', { class: 'kb-empty-container fade-in' });
     errorCard.innerHTML = `
@@ -3193,8 +3742,8 @@ function renderTypeDetail(data) {
 
   // Action buttons
   body.appendChild(actionRow([
-    { label: '🎯 Trace Critical Path', action: () => loadAndVisualizeCriticalPath(type.fqn) },
-    { label: 'View All Methods', action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
+    { label: '🎯 Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
+    { label: 'View All Methods', badge: methods.length, title: `View all ${methods.length} methods in Knowledge Base`, action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
   ]));
 
   // Notes
@@ -3206,6 +3755,7 @@ function renderKnowledgeBaseForType(data) {
   const view = qs('#knowledge-view');
   if (!view) return;
   view.innerHTML = '';
+  view.scrollTop = 0;
 
   const isRecord = (type.kind || '').toUpperCase() === 'RECORD';
   const kind = (type.kind || 'CLASS').toUpperCase();
@@ -3306,28 +3856,56 @@ function renderKnowledgeBaseForType(data) {
   `;
   view.appendChild(legendBar);
 
+  // ── Member Navigation Tabs ───────────────────────────────────────────────────
+  const navTabsBar = createElement('div', { class: 'kb-members-nav-bar fade-in' });
+  navTabsBar.innerHTML = `
+    <div class="kb-members-tabs" role="tablist">
+      <button class="kb-tab-pill active" data-tab="all" title="View all declared members">
+        <span>All Members</span>
+        <span class="kb-tab-badge">${fields.length + methods.length}</span>
+      </button>
+      <button class="kb-tab-pill" data-tab="methods" title="View methods and constructors">
+        <span>${isRecord ? 'Methods & Accessors' : 'Methods & Constructors'}</span>
+        <span class="kb-tab-badge">${methods.length}</span>
+      </button>
+      <button class="kb-tab-pill" data-tab="fields" title="View fields and components">
+        <span>${isRecord ? 'Record Components' : 'Fields'}</span>
+        <span class="kb-tab-badge">${fields.length}</span>
+      </button>
+    </div>
+  `;
+  view.appendChild(navTabsBar);
+
   // ── Members Grid (2-column on desktop) ──────────────────────────────────────
   if (fields.length > 0 || methods.length > 0) {
     const isSingleCol = (fields.length === 0 || methods.length === 0);
     const membersGrid = createElement('div', { class: `kb-members-grid ${isSingleCol ? 'single-col' : ''}` });
+    let fieldsSection = null;
+    let methodsSection = null;
 
     // ── Fields / Record Components Section ────────────────────────────────────
     if (fields.length > 0) {
-      const fieldsSection = createElement('div', { class: 'kb-section fade-in' });
+      fieldsSection = createElement('div', { class: 'kb-section fade-in' });
       fieldsSection.innerHTML = `
         <div class="kb-section-title">
           <div class="kb-section-title-left">
             <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
             <span>${isRecord ? 'Record Components' : 'Fields'}</span>
+            <span class="kb-section-badge">${fields.length}</span>
           </div>
-          <span class="kb-section-badge">${fields.length}</span>
         </div>
         <div class="kb-list" id="kb-fields-list"></div>
       `;
       const fieldsList = fieldsSection.querySelector('#kb-fields-list');
 
       for (const f of fields) {
-        const row = createElement('div', { class: 'kb-row' });
+        const row = createElement('div', { 
+          class: 'kb-row kb-member-row',
+          'data-kind': 'field',
+          'data-id': f.id || f.fqn,
+          role: 'button',
+          tabindex: '0'
+        });
         row.innerHTML = `
           <div class="kb-row-left">
             <div class="kb-row-icon icon-field" title="Field">
@@ -3348,70 +3926,102 @@ function renderKnowledgeBaseForType(data) {
             <span class="kb-type-pill" title="${esc(f.fieldType || '')}">${esc(f.fieldType || 'Object')}</span>
           </div>
         `;
-        row.addEventListener('click', () => selectField(f.id || f.fqn));
         fieldsList.appendChild(row);
       }
+
+      fieldsList.addEventListener('click', (e) => {
+        const row = e.target.closest('.kb-member-row');
+        if (row && row.dataset.id && row.dataset.kind === 'field') {
+          selectField(row.dataset.id);
+        }
+      });
+      fieldsList.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          const row = e.target.closest('.kb-member-row');
+          if (row && row.dataset.id && row.dataset.kind === 'field') {
+            e.preventDefault();
+            selectField(row.dataset.id);
+          }
+        }
+      });
+
       membersGrid.appendChild(fieldsSection);
     }
 
     // ── Methods & Constructors Section ────────────────────────────────────────
     if (methods.length > 0) {
-      const methodsSection = createElement('div', { class: 'kb-section fade-in' });
+      methodsSection = createElement('div', { class: 'kb-section fade-in' });
       methodsSection.innerHTML = `
         <div class="kb-section-title">
           <div class="kb-section-title-left">
             <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
             <span>${isRecord ? 'Methods & Accessors' : 'Methods & Constructors'}</span>
+            <span class="kb-section-badge">${methods.length}</span>
           </div>
-          <span class="kb-section-badge">${methods.length}</span>
+          <div class="kb-section-title-right">
+            <button class="kb-accordion-toggle-all-btn" data-state="collapsed" title="Expand or collapse all method archetype sections">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+              <span>Expand All</span>
+            </button>
+          </div>
         </div>
         <div class="kb-list" id="kb-methods-list"></div>
       `;
       const methodsList = methodsSection.querySelector('#kb-methods-list');
 
-      for (const m of methods) {
-        const isConstructor = m.simpleName === '<init>' || m.simpleName === type.simpleName;
-        const displayName = isConstructor ? type.simpleName : m.simpleName;
-        const cc = m.cyclomaticComplexity || 1;
-        const ccTier = cc <= 4 ? 'cc-low' : cc <= 10 ? 'cc-med' : 'cc-high';
-        const ccLabel = cc <= 4 ? 'Low' : cc <= 10 ? 'Med' : 'High';
-
-        let paramsFormatted = '()';
-        if (m.parameters && m.parameters.length > 0) {
-          paramsFormatted = '(' + m.parameters.map(p => {
-            const pType = (p.type || '').split('.').pop();
-            return `<span class="kb-param-type">${esc(pType)}</span> <span class="kb-param-name">${esc(p.name || '')}</span>`;
-          }).join(', ') + ')';
-        }
-
-        const row = createElement('div', { class: 'kb-row' });
-        row.innerHTML = `
-          <div class="kb-row-left">
-            <div class="kb-row-icon icon-method" title="${isConstructor ? 'Constructor' : 'Method'}">
-              <svg class="svg-icon icon-indigo icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
-            </div>
-            <div class="kb-row-info">
-              <div class="kb-row-name-wrap">
-                <span class="kb-row-name">${esc(displayName)}</span>
-                ${isConstructor ? '<span class="kb-mod-pill" style="color:var(--amber);background:rgba(245,158,11,0.1)">constructor</span>' : ''}
-                ${m.modifiers ? `<span class="kb-mod-pill">${esc(m.modifiers)}</span>` : ''}
-              </div>
-              <div class="kb-row-meta">
-                <span>${paramsFormatted}</span>
-                ${m.startLine ? `<span>· Line ${m.startLine}</span>` : ''}
-              </div>
-            </div>
-          </div>
-          <div class="kb-row-right">
-            <span class="kb-cc-pill ${ccTier}" title="Cyclomatic Complexity: ${cc}">CC: ${cc} (${ccLabel})</span>
-            <span class="kb-type-pill" title="Return type">${esc(m.returnType || (isConstructor ? 'void' : 'void'))}</span>
-          </div>
-        `;
-        row.addEventListener('click', () => selectMethod(m.id || m.fqn));
-        methodsList.appendChild(row);
+      const methodGroups = groupMethodsByArchetype(methods, type, type.packageFqn);
+      for (const group of methodGroups) {
+        const accordion = renderArchetypeAccordion({
+          group,
+          renderItemRow: (m) => renderMethodRow(m, type),
+          initialOpen: false
+        });
+        methodsList.appendChild(accordion);
       }
+
+      attachAccordionToggleAll(methodsSection, '#kb-methods-list');
+
+      methodsList.addEventListener('click', (e) => {
+        const row = e.target.closest('.kb-member-row');
+        if (row && row.dataset.id && row.dataset.kind === 'method') {
+          selectMethod(row.dataset.id);
+        }
+      });
+      methodsList.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          const row = e.target.closest('.kb-member-row');
+          if (row && row.dataset.id && row.dataset.kind === 'method') {
+            e.preventDefault();
+            selectMethod(row.dataset.id);
+          }
+        }
+      });
+
       membersGrid.appendChild(methodsSection);
     }
+
+    // Wire member navigation tabs
+    navTabsBar.querySelectorAll('.kb-tab-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        navTabsBar.querySelectorAll('.kb-tab-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        const tab = pill.dataset.tab;
+
+        if (tab === 'all') {
+          if (fieldsSection) fieldsSection.style.display = '';
+          if (methodsSection) methodsSection.style.display = '';
+          membersGrid.classList.toggle('single-col', isSingleCol);
+        } else if (tab === 'methods') {
+          if (fieldsSection) fieldsSection.style.display = 'none';
+          if (methodsSection) methodsSection.style.display = '';
+          membersGrid.classList.add('single-col');
+        } else if (tab === 'fields') {
+          if (fieldsSection) fieldsSection.style.display = '';
+          if (methodsSection) methodsSection.style.display = 'none';
+          membersGrid.classList.add('single-col');
+        }
+      });
+    });
 
     view.appendChild(membersGrid);
   }
@@ -3502,10 +4112,51 @@ function renderMethodDetail(data) {
     </div>`;
   body.appendChild(ccRow);
 
-  // Call graph action buttons
+  // Call graph action buttons with caller & callee count badges
+  const callerCount = (typeof data.callerCount === 'number')
+    ? data.callerCount
+    : (data.method && typeof data.method.callerCount === 'number'
+        ? data.method.callerCount
+        : (data.inDegree !== undefined ? data.inDegree : 0));
+
+  const calleeCount = (typeof data.calleeCount === 'number')
+    ? data.calleeCount
+    : (data.method && typeof data.method.calleeCount === 'number'
+        ? data.method.calleeCount
+        : (data.outDegree !== undefined ? data.outDegree : 0));
+
+  const isCallersActive = App.activeGraphMode === 'callers' && App.selected && App.selected.id === method.id;
+  const isCalleesActive = App.activeGraphMode === 'callees' && App.selected && App.selected.id === method.id;
+
   body.appendChild(actionRow([
-    { label: '⬆ Callers', title: 'Trace all upstream methods that call this method (BFS)', action: () => { switchTab('graph'); loadCallersGraph(method.id); } },
-    { label: '⬇ Callees', title: 'Trace all downstream methods invoked by this method (BFS)', action: () => { switchTab('graph'); loadCalleesGraph(method.id); } },
+    {
+      id: 'btn-inspect-callers',
+      label: '⬆ Callers',
+      badge: callerCount,
+      badgeClass: 'count-badge-callers',
+      className: 'action-btn-callers' + (isCallersActive ? ' active' : ''),
+      title: `Trace upstream callers (${callerCount.toLocaleString()} direct caller${callerCount === 1 ? '' : 's'})`,
+      action: () => {
+        switchTab('graph');
+        loadCallersGraph(method.id);
+        qs('#btn-inspect-callers')?.classList.add('active');
+        qs('#btn-inspect-callees')?.classList.remove('active');
+      }
+    },
+    {
+      id: 'btn-inspect-callees',
+      label: '⬇ Callees',
+      badge: calleeCount,
+      badgeClass: 'count-badge-callees',
+      className: 'action-btn-callees' + (isCalleesActive ? ' active' : ''),
+      title: `Trace downstream callees (${calleeCount.toLocaleString()} direct callee${calleeCount === 1 ? '' : 's'})`,
+      action: () => {
+        switchTab('graph');
+        loadCalleesGraph(method.id);
+        qs('#btn-inspect-callees')?.classList.add('active');
+        qs('#btn-inspect-callers')?.classList.remove('active');
+      }
+    },
   ]));
 
   renderNotes(method.fqn, notes);
@@ -4456,6 +5107,15 @@ async function init() {
   qs('#btn-bg-scan')?.addEventListener('click', (e) => {
     e.stopPropagation();
     minimizeScanModal();
+  });
+  qs('#btn-dismiss-scan')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    minimizeScanModal();
+  });
+  qs('#btn-explore-scan')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    minimizeScanModal();
+    switchTab('graph');
   });
   qs('#scan-status-bar')?.addEventListener('click', (e) => {
     if (e.target === qs('#scan-status-bar')) {
@@ -5759,9 +6419,25 @@ function actionRow(actions) {
   const row = createElement('div', { class: 'action-row' });
   for (const a of actions) {
     const btn = createElement('button', { class: 'action-btn' });
-    btn.textContent = a.label;
+    if (a.id) btn.id = a.id;
+    if (a.className) {
+      a.className.split(' ').filter(Boolean).forEach(c => btn.classList.add(c));
+    }
     if (a.title) btn.title = a.title;
     btn.addEventListener('click', a.action);
+
+    const lbl = createElement('span', { class: 'action-btn-label' });
+    lbl.textContent = a.label;
+    btn.appendChild(lbl);
+
+    if (a.badge !== undefined && a.badge !== null) {
+      const isZero = a.badge === 0 || a.badge === '0';
+      const badgeClass = 'action-btn-badge' + (a.badgeClass ? ' ' + a.badgeClass : '') + (isZero ? ' is-zero' : '');
+      const badgeSpan = createElement('span', { class: badgeClass });
+      badgeSpan.textContent = typeof a.badge === 'number' ? a.badge.toLocaleString() : a.badge;
+      btn.appendChild(badgeSpan);
+    }
+
     row.appendChild(btn);
   }
   return row;

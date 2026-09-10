@@ -56,6 +56,13 @@ public class CallGraphAndReportTest {
         CallGraphAnalyzer.GraphView archView = analyzer.architectureGraphView("classes", null);
         assertNotNull(archView, "archView not null");
         assertFalse(archView.nodes.isEmpty(), "archView nodes not empty");
+
+        // Test caller and callee counts
+        assertEquals(1, analyzer.callerCount("com.tcs.bancs.AM.AccountService.AMETFetchBalance"), "callerCount for target");
+        assertEquals(0, analyzer.calleeCount("com.tcs.bancs.AM.AccountService.AMETFetchBalance"), "calleeCount for target");
+        assertEquals(0, analyzer.callerCount("com.tcs.bancs.AM.AccountService.AMBTTransferFunds"), "callerCount for caller");
+        assertEquals(1, analyzer.calleeCount("com.tcs.bancs.AM.AccountService.AMBTTransferFunds"), "calleeCount for caller");
+        assertEquals(0, analyzer.callerCount("com.nonexistent.Method"), "callerCount for nonexistent");
     }
 
     public void testGenerateInteractiveHtmlSnapshot() {

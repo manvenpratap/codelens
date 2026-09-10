@@ -25,6 +25,17 @@ public class ScanProgress {
     private String errorDetail;
     private int percentage = -1;
     private String activeStage = "IDLE";
+    private int stageCurrent = 0;
+    private int stageTotal = 0;
+    private String stageItem;
+    private String metric1Label;
+    private String metric1Value;
+    private String metric2Label;
+    private String metric2Value;
+    private String metric3Label;
+    private String metric3Value;
+    private String metric4Label;
+    private String metric4Value;
 
     public ScanProgress() {}
     public ScanProgress(Status status) { this.status = status; }
@@ -94,5 +105,49 @@ public class ScanProgress {
     public void setEndTime(long t)             { this.endTime = t; }
     public String getErrorDetail()              { return errorDetail; }
     public void setErrorDetail(String e)       { this.errorDetail = e; }
+
+    public int getStageCurrent()                { return stageCurrent; }
+    public void setStageCurrent(int c)          { this.stageCurrent = c; }
+    public int getStageTotal()                  { return stageTotal; }
+    public void setStageTotal(int t)            { this.stageTotal = t; }
+    public String getStageItem()                { return stageItem; }
+    public void setStageItem(String item)       { this.stageItem = item; }
+
+    public void setSubProgress(int current, int total, String item) {
+        this.stageCurrent = current;
+        this.stageTotal = total;
+        this.stageItem = item;
+    }
+
+    public String getMetric1Label()             { return metric1Label; }
+    public void setMetric1Label(String l)       { this.metric1Label = l; }
+    public String getMetric1Value()             { return metric1Value; }
+    public void setMetric1Value(String v)       { this.metric1Value = v; }
+
+    public String getMetric2Label()             { return metric2Label; }
+    public void setMetric2Label(String l)       { this.metric2Label = l; }
+    public String getMetric2Value()             { return metric2Value; }
+    public void setMetric2Value(String v)       { this.metric2Value = v; }
+
+    public String getMetric3Label()             { return metric3Label; }
+    public void setMetric3Label(String l)       { this.metric3Label = l; }
+    public String getMetric3Value()             { return metric3Value; }
+    public void setMetric3Value(String v)       { this.metric3Value = v; }
+
+    public String getMetric4Label()             { return metric4Label; }
+    public void setMetric4Label(String l)       { this.metric4Label = l; }
+    public String getMetric4Value()             { return metric4Value; }
+    public void setMetric4Value(String v)       { this.metric4Value = v; }
+
+    public void setDynamicMetrics(String l1, String v1, String l2, String v2, String l3, String v3, String l4, String v4) {
+        this.metric1Label = l1;
+        this.metric1Value = v1;
+        this.metric2Label = l2;
+        this.metric2Value = v2;
+        this.metric3Label = l3;
+        this.metric3Value = v3;
+        this.metric4Label = l4;
+        this.metric4Value = v4;
+    }
 }
 

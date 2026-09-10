@@ -48,6 +48,11 @@ public class JavaSourceScanner {
     @FunctionalInterface
     public interface ProgressCallback {
         void onFile(int processed, int total, String filePath);
+
+        default void onProgress(int processed, int total, String filePath,
+                                int typesFound, int methodsFound, int fieldsFound, int relsFound) {
+            onFile(processed, total, filePath);
+        }
     }
 
     /** Consumer invoked when a batch of parsed entities is ready to be flushed to DB/storage. */
@@ -126,15 +131,24 @@ public class JavaSourceScanner {
         String relStr = relativePath.toString().replace('\\', '/');
         if (relStr.startsWith("/")) relStr = relStr.substring(1);
 
-        // Fast segment exact match for folder names like "target", ".mvn", etc.
-        String[] segments = relStr.split("/");
-        for (String seg : segments) {
-            for (String raw : rawPatterns) {
-                if (raw != null && !raw.contains("/") && !raw.contains("*") && !raw.contains("?")
-                        && seg.equalsIgnoreCase(raw.trim())) {
-                    return true;
+        // Fast segment exact match for folder names like "target", ".mvn", etc. (Zero-allocation index scan)
+        int start = 0;
+        int len = relStr.length();
+        while (start < len) {
+            int end = relStr.indexOf('/', start);
+            if (end == -1) end = len;
+            int segLen = end - start;
+            if (segLen > 0) {
+                for (String raw : rawPatterns) {
+                    if (raw != null && !raw.contains("/") && !raw.contains("*") && !raw.contains("?")) {
+                        String trimmed = raw.trim();
+                        if (trimmed.length() == segLen && relStr.regionMatches(true, start, trimmed, 0, segLen)) {
+                            return true;
+                        }
+                    }
                 }
             }
+            start = end + 1;
         }
 
         // PathMatcher checks for globs and path patterns
@@ -465,7 +479,8 @@ public class JavaSourceScanner {
 
                     int done = count.incrementAndGet();
                     if (progressCallback != null && (done % 10 == 0 || done == javaFiles.size())) {
-                        progressCallback.onFile(done, javaFiles.size(), javaFile.toString());
+                        progressCallback.onProgress(done, javaFiles.size(), javaFile.toString(),
+                                totalTypes.get(), totalMethods.get(), totalFields.get(), totalRels.get());
                     }
                 }
 
@@ -489,6 +504,11 @@ public class JavaSourceScanner {
             throw new IOException("Scanning execution interrupted", e);
         } finally {
             THREAD_PARSER.remove();
+        }
+
+        if (progressCallback != null) {
+            progressCallback.onProgress(javaFiles.size(), javaFiles.size(), "Persisting and flushing parsed records…",
+                    totalTypes.get(), totalMethods.get(), totalFields.get(), totalRels.get());
         }
 
         // Complete asynchronous flusher thread

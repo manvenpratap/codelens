@@ -1090,14 +1090,31 @@
           if (obj.geometry) obj.geometry.dispose();
           if (obj.material) {
             (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => {
-              if (m.map) m.map.dispose(); m.dispose();
+              if (!m) return;
+              Object.keys(m).forEach(k => {
+                if (m[k] && typeof m[k] === 'object' && m[k].isTexture) {
+                  m[k].dispose();
+                }
+              });
+              m.dispose();
             });
           }
         });
       }
+      if (this._bloomPass) {
+        try { if (typeof this._bloomPass.dispose === 'function') this._bloomPass.dispose(); } catch (_) {}
+        this._bloomPass = null;
+      }
       if (this._composer) { try { this._composer.dispose(); } catch (_) {} this._composer = null; }
       if (this._controls) { this._controls.dispose(); this._controls = null; }
-      if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
+      if (this._renderer) {
+        if (this._renderer.renderLists) this._renderer.renderLists.dispose();
+        this._renderer.dispose();
+        if (typeof this._renderer.forceContextLoss === 'function') {
+          this._renderer.forceContextLoss();
+        }
+        this._renderer = null;
+      }
       if (this._el)       { this._el.remove(); this._el = null; }
       this._scene = this._camera = this._clock = null;
       this._ambientLight = this._hemiLight = this._coreLight = this._dirLight = null;

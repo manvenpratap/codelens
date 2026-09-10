@@ -44,10 +44,22 @@ public class LuceneService {
     private static final String F_EXTRA         = "extra";      // modifiers, return type, etc.
     private static final String F_SEARCH        = "search";     // all-in-one search field
 
+    private static final String[] SEARCH_FIELDS = { F_SIMPLE_NAME, F_FQN, F_SEARCH };
+    private static final Map<String, Float> FIELD_BOOSTS;
+    static {
+        Map<String, Float> b = new LinkedHashMap<>();
+        b.put(F_SIMPLE_NAME, 3.0f);
+        b.put(F_FQN,         2.0f);
+        b.put(F_SEARCH,      1.0f);
+        FIELD_BOOSTS = Collections.unmodifiableMap(b);
+    }
+
     private final Path indexDir;
     private FSDirectory     directory;
     private StandardAnalyzer analyzer;
     private IndexWriter      writer;
+    private SearcherManager  searcherManager;
+    private ThreadLocal<MultiFieldQueryParser> queryParser;
 
     public LuceneService(String dataDir) {
         this.indexDir = Paths.get(dataDir, "lucene-index");
@@ -57,7 +69,7 @@ public class LuceneService {
     // Lifecycle
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Opens (or creates) the index directory and initialises the IndexWriter. */
+    /** Opens (or creates) the index directory and initialises the IndexWriter and SearcherManager. */
     public void initialize() throws IOException {
         Files.createDirectories(indexDir);
         try {
@@ -66,16 +78,25 @@ public class LuceneService {
             directory = FSDirectory.open(indexDir);
         }
         analyzer  = new StandardAnalyzer();
+        queryParser = ThreadLocal.withInitial(() -> {
+            MultiFieldQueryParser p = new MultiFieldQueryParser(SEARCH_FIELDS, analyzer, FIELD_BOOSTS);
+            p.setDefaultOperator(QueryParser.Operator.AND);
+            p.setAllowLeadingWildcard(true);
+            return p;
+        });
         IndexWriterConfig cfg = new IndexWriterConfig(analyzer);
         cfg.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
         cfg.setRAMBufferSizeMB(256.0);
         writer    = new IndexWriter(directory, cfg);
-        log.info("Lucene index initialised at {}", indexDir);
+        searcherManager = new SearcherManager(writer, true, true, new SearcherFactory());
+        log.info("Lucene index initialised at {} with SearcherManager", indexDir);
     }
 
     /** Flush and close the writer; release OS file handles. */
     public void close() {
         try {
+            if (queryParser != null) queryParser.remove();
+            if (searcherManager != null) searcherManager.close();
             if (writer != null) writer.close();
             if (directory != null) directory.close();
         } catch (IOException e) {
@@ -159,9 +180,12 @@ public class LuceneService {
         }
     }
 
-    /** Commits all indexed batches to disk. */
+    /** Commits all indexed batches to disk and refreshes the SearcherManager. */
     public synchronized void finishIndexRebuild() throws IOException {
         writer.commit();
+        if (searcherManager != null) {
+            searcherManager.maybeRefresh();
+        }
         log.info("Lucene index rebuild completed and committed to disk");
     }
 
@@ -187,7 +211,7 @@ public class LuceneService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Full-text search across all indexed entities.
+     * Full-text search across all indexed entities using persistent in-memory SearcherManager.
      *
      * @param queryStr  raw user query; supports wildcards (foo*) and phrases ("place order")
      * @param maxHits   maximum number of results to return (capped at 100)
@@ -197,20 +221,18 @@ public class LuceneService {
         if (queryStr == null || queryStr.isBlank()) return Collections.emptyList();
         maxHits = Math.min(maxHits, 100);
 
-        try (DirectoryReader reader = DirectoryReader.open(directory)) {
-            IndexSearcher searcher = new IndexSearcher(reader);
+        if (searcherManager == null) {
+            return Collections.emptyList();
+        }
 
-            // Multi-field parser: simpleName and fqn get highest boost
-            Map<String, Float> boosts = new LinkedHashMap<>();
-            boosts.put(F_SIMPLE_NAME, 3.0f);
-            boosts.put(F_FQN,         2.0f);
-            boosts.put(F_SEARCH,      1.0f);
-
-            MultiFieldQueryParser parser = new MultiFieldQueryParser(
-                new String[]{F_SIMPLE_NAME, F_FQN, F_SEARCH},
-                analyzer, boosts);
-            parser.setDefaultOperator(QueryParser.Operator.AND);
-            parser.setAllowLeadingWildcard(true);
+        IndexSearcher searcher = searcherManager.acquire();
+        try {
+            MultiFieldQueryParser parser = (queryParser != null) ? queryParser.get() : null;
+            if (parser == null) {
+                parser = new MultiFieldQueryParser(SEARCH_FIELDS, analyzer, FIELD_BOOSTS);
+                parser.setDefaultOperator(QueryParser.Operator.AND);
+                parser.setAllowLeadingWildcard(true);
+            }
 
             // Escape special chars then re-add trailing wildcard for prefix matching
             String escaped = QueryParser.escape(queryStr.trim());
@@ -238,6 +260,8 @@ public class LuceneService {
                     sd.score));
             }
             return results;
+        } finally {
+            searcherManager.release(searcher);
         }
     }
 
