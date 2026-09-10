@@ -1,6 +1,7 @@
 package com.codelens.parser;
 
 import com.codelens.core.model.*;
+import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.expr.*;
@@ -32,15 +33,37 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         public String packageName  = "";
         public String currentTypeFqn   = "";
         public String currentMethodFqn = "";
+
+        // Map simple class name -> fully qualified name from explicit import statements
+        public final Map<String, String> imports = new HashMap<>();
+
         // field names declared on the current type — used to distinguish field
         // reads/writes from local variable accesses
         public Set<String> currentTypeFieldNames = new HashSet<>();
+        // field names -> declared type name
+        public Map<String, String> currentTypeFieldTypes = new HashMap<>();
+        // active local variables and parameters in current method/constructor scope -> declared type name
+        public Map<String, String> currentScopeVarTypes = new HashMap<>();
 
         public final List<CodePackage>      packages      = new ArrayList<>();
         public final List<CodeType>         types         = new ArrayList<>();
         public final List<CodeField>        fields        = new ArrayList<>();
         public final List<CodeMethod>       methods       = new ArrayList<>();
         public final List<CodeRelationship> relationships = new ArrayList<>();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Imports
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void visit(ImportDeclaration n, VisitContext ctx) {
+        String fqn = n.getNameAsString();
+        if (!n.isAsterisk()) {
+            int dot = fqn.lastIndexOf('.');
+            String simpleName = (dot >= 0) ? fqn.substring(dot + 1) : fqn;
+            ctx.imports.put(simpleName, fqn);
+        }
+        super.visit(n, ctx);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -59,8 +82,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     public void visit(ClassOrInterfaceDeclaration n, VisitContext ctx) {
-        String prevTypeFqn       = ctx.currentTypeFqn;
-        Set<String> prevFields   = ctx.currentTypeFieldNames;
+        String prevTypeFqn                 = ctx.currentTypeFqn;
+        Set<String> prevFields             = ctx.currentTypeFieldNames;
+        Map<String, String> prevFieldTypes = ctx.currentTypeFieldTypes;
 
         String simpleName = n.getNameAsString();
         String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
@@ -68,6 +92,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn       = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
+        ctx.currentTypeFieldTypes = new HashMap<>();
 
         CodeType type = new CodeType();
         type.setId(fqn);
@@ -106,6 +131,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.currentTypeFqn       = prevTypeFqn;
         ctx.currentTypeFieldNames = prevFields;
+        ctx.currentTypeFieldTypes = prevFieldTypes;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -113,8 +139,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     public void visit(EnumDeclaration n, VisitContext ctx) {
-        String prevTypeFqn     = ctx.currentTypeFqn;
-        Set<String> prevFields = ctx.currentTypeFieldNames;
+        String prevTypeFqn                 = ctx.currentTypeFqn;
+        Set<String> prevFields             = ctx.currentTypeFieldNames;
+        Map<String, String> prevFieldTypes = ctx.currentTypeFieldTypes;
 
         String simpleName = n.getNameAsString();
         String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
@@ -122,6 +149,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn        = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
+        ctx.currentTypeFieldTypes = new HashMap<>();
 
         CodeType type = new CodeType();
         type.setId(fqn);  type.setFqn(fqn);
@@ -142,6 +170,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.currentTypeFqn        = prevTypeFqn;
         ctx.currentTypeFieldNames = prevFields;
+        ctx.currentTypeFieldTypes = prevFieldTypes;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -149,8 +178,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     public void visit(RecordDeclaration n, VisitContext ctx) {
-        String prevTypeFqn     = ctx.currentTypeFqn;
-        Set<String> prevFields = ctx.currentTypeFieldNames;
+        String prevTypeFqn                 = ctx.currentTypeFqn;
+        Set<String> prevFields             = ctx.currentTypeFieldNames;
+        Map<String, String> prevFieldTypes = ctx.currentTypeFieldTypes;
 
         String simpleName = n.getNameAsString();
         String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
@@ -158,12 +188,15 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             : (ctx.packageName.isEmpty() ? simpleName : ctx.packageName + "." + simpleName);
         ctx.currentTypeFqn        = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
+        ctx.currentTypeFieldTypes = new HashMap<>();
 
         // Register record components (parameters) as fields and accessor methods
         for (Parameter p : n.getParameters()) {
             String paramName = p.getNameAsString();
             String paramType = p.getType().asString();
+            String normType = normalizeTypeName(paramType);
             ctx.currentTypeFieldNames.add(paramName);
+            ctx.currentTypeFieldTypes.put(paramName, normType);
 
             // Record Component Field
             CodeField field = new CodeField();
@@ -267,6 +300,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.currentTypeFqn        = prevTypeFqn;
         ctx.currentTypeFieldNames = prevFields;
+        ctx.currentTypeFieldTypes = prevFieldTypes;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -306,9 +340,11 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     public void visit(FieldDeclaration n, VisitContext ctx) {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
 
+        String declaredType = normalizeTypeName(n.getElementType().asString());
         for (VariableDeclarator var : n.getVariables()) {
             String name = var.getNameAsString();
             ctx.currentTypeFieldNames.add(name);   // register for read/write detection
+            ctx.currentTypeFieldTypes.put(name, declaredType);
 
             CodeField field = new CodeField();
             String fqn = ctx.currentTypeFqn + "." + name;
@@ -335,6 +371,12 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     public void visit(MethodDeclaration n, VisitContext ctx) {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
         String prevMethod = ctx.currentMethodFqn;
+        Map<String, String> prevScopeVars = ctx.currentScopeVarTypes;
+        ctx.currentScopeVarTypes = new HashMap<>(prevScopeVars != null ? prevScopeVars : Collections.emptyMap());
+
+        for (Parameter p : n.getParameters()) {
+            ctx.currentScopeVarTypes.put(p.getNameAsString(), normalizeTypeName(p.getType().asString()));
+        }
 
         String paramSig = n.getParameters().stream()
             .map(p -> p.getType().asString())
@@ -361,8 +403,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         n.getBody().ifPresent(body -> method.setBodyHash(hashBody(body.toString())));
 
         ctx.methods.add(method);
-        super.visit(n, ctx);   // recurse to pick up calls inside this method
+        super.visit(n, ctx);   // recurse to pick up variables & calls inside this method
 
+        ctx.currentScopeVarTypes = prevScopeVars;
         ctx.currentMethodFqn = prevMethod;
     }
 
@@ -373,6 +416,12 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     public void visit(ConstructorDeclaration n, VisitContext ctx) {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
         String prevMethod = ctx.currentMethodFqn;
+        Map<String, String> prevScopeVars = ctx.currentScopeVarTypes;
+        ctx.currentScopeVarTypes = new HashMap<>(prevScopeVars != null ? prevScopeVars : Collections.emptyMap());
+
+        for (Parameter p : n.getParameters()) {
+            ctx.currentScopeVarTypes.put(p.getNameAsString(), normalizeTypeName(p.getType().asString()));
+        }
 
         String paramSig = n.getParameters().stream()
             .map(p -> p.getType().asString())
@@ -399,7 +448,24 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.methods.add(method);
         super.visit(n, ctx);
+
+        ctx.currentScopeVarTypes = prevScopeVars;
         ctx.currentMethodFqn = prevMethod;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Local Variable Declaration (tracks variable types inside method bodies)
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void visit(VariableDeclarator n, VisitContext ctx) {
+        if (ctx.currentMethodFqn != null && !ctx.currentMethodFqn.isEmpty() && ctx.currentScopeVarTypes != null) {
+            String name = n.getNameAsString();
+            String normType = normalizeTypeName(n.getType().asString());
+            if (!normType.isEmpty() && !"var".equalsIgnoreCase(normType)) {
+                ctx.currentScopeVarTypes.put(name, normType);
+            }
+        }
+        super.visit(n, ctx);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -413,13 +479,46 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         String calleeTarget;
 
         if (n.getScope().isPresent()) {
-            String scopeStr = n.getScope().get().toString();
+            String scopeStr = n.getScope().get().toString().trim();
             if ("this".equals(scopeStr) || "super".equals(scopeStr)) {
                 // Same-class call — we can build the exact FQN target
                 calleeTarget = ctx.currentTypeFqn + "." + calleeName;
             } else {
-                // Unknown receiver type — mark with "~" prefix for post-scan resolution
-                calleeTarget = "~" + scopeStr + "." + calleeName;
+                String targetType = null;
+                if (scopeStr.startsWith("this.")) {
+                    String fieldName = scopeStr.substring(5).trim();
+                    targetType = ctx.currentTypeFieldTypes.get(fieldName);
+                } else if (!scopeStr.contains("(") && !scopeStr.contains(" ")) {
+                    // 1. Check active scope local variables or parameters
+                    targetType = ctx.currentScopeVarTypes != null ? ctx.currentScopeVarTypes.get(scopeStr) : null;
+                    // 2. Check class field
+                    if (targetType == null || targetType.isEmpty()) {
+                        targetType = ctx.currentTypeFieldTypes.get(scopeStr);
+                    }
+                    // 3. Check if scopeStr itself looks like a class name (e.g. Account or AccountService)
+                    if ((targetType == null || targetType.isEmpty()) && scopeStr.matches("^[A-Z][a-zA-Z0-9_]*$")) {
+                        targetType = scopeStr;
+                    }
+                }
+
+                if (targetType != null && !targetType.isEmpty()) {
+                    // Resolve simple type to FQN if in imports or current package
+                    String resolvedFqn = ctx.imports.get(targetType);
+                    if (resolvedFqn == null) {
+                        if (targetType.contains(".")) {
+                            resolvedFqn = targetType;
+                        } else if (!ctx.packageName.isEmpty()) {
+                            // Candidate in the same package
+                            resolvedFqn = ctx.packageName + "." + targetType;
+                        } else {
+                            resolvedFqn = targetType;
+                        }
+                    }
+                    calleeTarget = "~" + resolvedFqn + "." + calleeName;
+                } else {
+                    // Unknown receiver type — mark with "~" prefix for post-scan resolution
+                    calleeTarget = "~" + scopeStr + "." + calleeName;
+                }
             }
         } else {
             // No scope → assumed same-class method call
@@ -620,5 +719,25 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         } catch (Exception e) {
             return "0000000000000000";
         }
+    }
+
+    private static String normalizeTypeName(String typeStr) {
+        if (typeStr == null) return "";
+        String s = typeStr.trim();
+        while (s.endsWith("[]")) {
+            s = s.substring(0, s.length() - 2).trim();
+        }
+        if (s.contains("<") && s.endsWith(">")) {
+            int open = s.indexOf('<');
+            int close = s.lastIndexOf('>');
+            if (open > 0 && close > open) {
+                String outer = s.substring(0, open).trim();
+                String inner = s.substring(open + 1, close).trim();
+                if (outer.endsWith("Optional") || outer.endsWith("CompletableFuture") || outer.endsWith("Supplier") || outer.endsWith("AtomicReference")) {
+                    s = inner;
+                }
+            }
+        }
+        return s;
     }
 }

@@ -71,7 +71,9 @@ public class CallGraphAnalyzer {
     public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
         Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
         int totalMethods = allMethodFqns != null ? allMethodFqns.size() : 0;
-        Map<String, List<String>> byName = new HashMap<>(totalMethods);
+        Map<String, List<String>> byName = new HashMap<>();
+        Map<String, List<String>> byClassAndMethod = new HashMap<>();
+        Map<String, List<String>> byClassFqnAndMethod = new HashMap<>();
         Map<String, String> dedupPool = new HashMap<>(totalMethods * 2);
 
         // Populate vertex set with scoped deduplicated strings
@@ -82,6 +84,16 @@ public class CallGraphAnalyzer {
                 g.addVertex(interned);
                 String simpleName = dedup(dedupPool, simpleMethodName(interned));
                 byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
+
+                String classFqn = extractClassFqn(interned);
+                int lastDot = classFqn.lastIndexOf('.');
+                String simpleClass = (lastDot >= 0) ? classFqn.substring(lastDot + 1) : classFqn;
+                String classMethodKey = (simpleClass + "." + simpleName).toLowerCase();
+                String fqnMethodKey = (classFqn + "." + simpleName).toLowerCase();
+
+                byClassAndMethod.computeIfAbsent(classMethodKey, k -> new ArrayList<>(2)).add(interned);
+                byClassFqnAndMethod.computeIfAbsent(fqnMethodKey, k -> new ArrayList<>(2)).add(interned);
+
                 mCount++;
                 if (listener != null && (mCount % 250 == 0 || mCount == totalMethods)) {
                     listener.onProgress("Call Graph: Indexing Methods", mCount, totalMethods,
@@ -99,7 +111,7 @@ public class CallGraphAnalyzer {
                 String to   = rawTo;
 
                 if (to.startsWith("~")) {
-                    to = resolve(to, byName);
+                    to = resolve(from, to, byName, byClassAndMethod, byClassFqnAndMethod);
                 }
                 if (to == null || to.startsWith("~")) return;
                 to = dedup(dedupPool, to);
@@ -786,23 +798,136 @@ public class CallGraphAnalyzer {
         return result;
     }
 
-    private String resolve(String unresolved, Map<String, List<String>> byName) {
+    private String resolve(String from,
+                           String unresolved,
+                           Map<String, List<String>> byName,
+                           Map<String, List<String>> byClassAndMethod,
+                           Map<String, List<String>> byClassFqnAndMethod) {
         String stripped = unresolved.substring(1); // remove "~"
         int dot = stripped.lastIndexOf('.');
         if (dot < 0) return null;
         String scopeHint  = stripped.substring(0, dot).toLowerCase();
         String methodName = stripped.substring(dot + 1);
+        String methodKey  = methodName.toLowerCase();
 
+        // 1. Direct match on Class FQN + method name (e.g. "com.tcs.bancs.tr.tradeexecution.get")
+        List<String> fqnMatches = byClassFqnAndMethod.get(scopeHint + "." + methodKey);
+        if (fqnMatches != null && !fqnMatches.isEmpty()) {
+            if (fqnMatches.size() == 1) return fqnMatches.get(0);
+            String best = disambiguateByCaller(from, fqnMatches);
+            if (best != null) return best;
+            return fqnMatches.get(0);
+        }
+
+        // 2. Direct match on Simple Class Name + method name (e.g. "tradeexecution.get")
+        String scopeSimpleClass = scopeHint.contains(".") ? scopeHint.substring(scopeHint.lastIndexOf('.') + 1) : scopeHint;
+        List<String> classMatches = byClassAndMethod.get(scopeSimpleClass + "." + methodKey);
+        if (classMatches != null && !classMatches.isEmpty()) {
+            if (classMatches.size() == 1) return classMatches.get(0);
+            String best = disambiguateByCaller(from, classMatches);
+            if (best != null) return best;
+            return classMatches.get(0);
+        }
+
+        // 3. Fallback to candidate methods matching methodName
         List<String> candidates = byName.getOrDefault(methodName, Collections.emptyList());
         if (candidates.isEmpty()) return null;
-        if (candidates.size() == 1) return candidates.get(0);
 
+        // 3a. If scopeHint contains or matches a candidate class name (e.g. "order" matches "TradeOrder" or "OrderEntity")
+        List<String> scopeMatches = new ArrayList<>();
         for (String c : candidates) {
-            if (c.toLowerCase().contains(scopeHint)) {
-                return c;
+            String cClass = extractClassFqn(c).toLowerCase();
+            if (cClass.contains(scopeHint) || scopeHint.contains(cClass)) {
+                scopeMatches.add(c);
             }
         }
-        return candidates.get(0);
+        if (!scopeMatches.isEmpty()) {
+            if (scopeMatches.size() == 1) return scopeMatches.get(0);
+            String best = disambiguateByCaller(from, scopeMatches);
+            if (best != null) return best;
+            return scopeMatches.get(0);
+        }
+
+        // 4. ScopeHint didn't match any class name (e.g. generic variable "entity", "sample", "item", "target").
+        // Check caller package proximity: does any candidate reside in the SAME PACKAGE as caller?
+        if (from != null && !from.isEmpty()) {
+            String callerPkg = extractPackageFqn(from);
+            if (callerPkg != null && !callerPkg.isEmpty() && !"(default)".equalsIgnoreCase(callerPkg)) {
+                List<String> samePkgCandidates = new ArrayList<>();
+                for (String c : candidates) {
+                    if (callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
+                        samePkgCandidates.add(c);
+                    }
+                }
+                if (samePkgCandidates.size() == 1) {
+                    return samePkgCandidates.get(0);
+                }
+                if (samePkgCandidates.size() > 1) {
+                    // Disambiguate by caller class affinity
+                    String callerClass = extractClassFqn(from).toLowerCase();
+                    for (String spc : samePkgCandidates) {
+                        String candClass = extractClassFqn(spc).toLowerCase();
+                        int candDot = candClass.lastIndexOf('.');
+                        String candSimple = candDot >= 0 ? candClass.substring(candDot + 1) : candClass;
+                        if (callerClass.contains(candSimple) || candSimple.contains(callerClass)) {
+                            return spc;
+                        }
+                    }
+                    return samePkgCandidates.get(0);
+                }
+            }
+
+            // 5. Check caller module proximity: does any candidate reside in the SAME MODULE as caller?
+            String callerMod = extractModuleName(from);
+            if (callerMod != null && !callerMod.isEmpty() && !"default".equalsIgnoreCase(callerMod)) {
+                List<String> sameModCandidates = new ArrayList<>();
+                for (String c : candidates) {
+                    if (callerMod.equalsIgnoreCase(extractModuleName(c))) {
+                        sameModCandidates.add(c);
+                    }
+                }
+                if (sameModCandidates.size() == 1) {
+                    return sameModCandidates.get(0);
+                }
+            }
+        }
+
+        // 6. If there is globally only ONE method in the entire codebase with this name, resolve to it.
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+
+        // 7. Multiple candidates exist across unrelated classes, and none match the receiver type,
+        // caller package, or caller module! DO NOT randomly pick candidates.get(0). Return null so
+        // that distinct methods like Get(), Create(), Modify() across different classes are never
+        // conflated or funneled into an arbitrary class.
+        return null;
+    }
+
+    private static String disambiguateByCaller(String from, List<String> candidates) {
+        if (candidates == null || candidates.isEmpty()) return null;
+        if (candidates.size() == 1) return candidates.get(0);
+        if (from == null || from.isEmpty()) return candidates.get(0);
+
+        String callerPkg = extractPackageFqn(from);
+        if (callerPkg != null && !callerPkg.isEmpty()) {
+            for (String c : candidates) {
+                if (callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
+                    return c;
+                }
+            }
+        }
+
+        String callerMod = extractModuleName(from);
+        if (callerMod != null && !callerMod.isEmpty() && !"default".equalsIgnoreCase(callerMod)) {
+            for (String c : candidates) {
+                if (callerMod.equalsIgnoreCase(extractModuleName(c))) {
+                    return c;
+                }
+            }
+        }
+
+        return null;
     }
 
     private String simpleMethodName(String fqn) {

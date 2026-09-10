@@ -105,6 +105,17 @@ public class Application {
             lucene.finishIndexRebuild();
             db.finishBulkLoad();
 
+            // Invalidate disk graph cache so subsequent runs don't serve stale layouts
+            File graphCacheDir = new File(dataDir, "graph-cache");
+            if (graphCacheDir.exists()) {
+                File[] cacheFiles = graphCacheDir.listFiles((d, name) -> name.endsWith(".json"));
+                if (cacheFiles != null) {
+                    for (File f : cacheFiles) {
+                        f.delete();
+                    }
+                }
+            }
+
             progress.setTotalFiles(result.totalFiles);
             progress.setProcessedFiles(result.totalFiles);
             progress.setParsedFiles(result.parsedFiles);
