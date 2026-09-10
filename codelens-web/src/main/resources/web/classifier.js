@@ -452,6 +452,8 @@
 
       name = name.replace(/\(.*\)$/, '').trim();
       if (!name) return false;
+      if (name.includes('.')) name = name.split('.').pop().trim();
+      if (!name) return false;
 
       // Never treat BaNCS persistent lifecycle methods (Get, Create, Modify) as POJO accessors
       if (['Get', 'Create', 'Modify'].includes(name)) return false;
@@ -733,6 +735,8 @@
       }
 
       name = name.replace(/\(.*\)$/, '').trim();
+      if (!name) return null;
+      if (targetType === 'METHOD' && name.includes('.')) name = name.split('.').pop().trim();
       if (!name) return null;
 
       const activeRules = this._rules.filter(r => {

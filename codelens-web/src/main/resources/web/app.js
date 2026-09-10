@@ -2765,14 +2765,22 @@ async function loadWholeCodebaseGraph(level, granularity) {
   const supportsGranularity = ['city3d', 'galaxy3d', 'graph2d', 'dsm', 'chord'].includes(effectiveLevel);
   if (granCtrl) granCtrl.style.display = supportsGranularity ? 'flex' : 'none';
 
-  // Toggle 2D Graph specific controls (POJO filter, Clusters/Hulls, Physics, Heat)
+  // Toggle POJO filter button (visible on 3D views when choosing methods level, on 2D Graph, and in hierarchical views)
+  const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
   const isGraph2D = (effectiveLevel === 'graph2d');
+  const pojoCtrl = qs('#codebase-pojo-controls');
+  const pojoDiv = qs('#codebase-pojo-divider');
+  const showPojoFilter = (isMethods && (is3D || supportsGranularity)) || isGraph2D || (effectiveLevel === 'sunburst') || (effectiveLevel === 'treemap');
+  if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'inline-flex' : 'none';
+  if (pojoDiv) pojoDiv.style.display = (showPojoFilter && supportsGranularity) ? '' : 'none';
+
+  // Toggle 2D Graph specific controls (Clusters/Hulls, Physics, Heat)
   const graphTogglesCtrl = qs('#codebase-graph-toggles');
+  const graphTogglesDiv = qs('#codebase-graph-toggles-divider');
   if (graphTogglesCtrl) graphTogglesCtrl.style.display = isGraph2D ? 'inline-flex' : 'none';
-  if (granDiv) granDiv.style.display = isGraph2D ? '' : 'none';
+  if (graphTogglesDiv) graphTogglesDiv.style.display = isGraph2D ? '' : 'none';
 
   // Toggle Call Arcs filter button in Codebase HUD (visible for 3D modes: 3D City & 3D Galaxy)
-  const is3D = (effectiveLevel === 'city3d' || effectiveLevel === 'galaxy3d');
   const arcsCtrl = qs('#codebase-arcs-controls');
   const arcsDiv = qs('#codebase-arcs-divider');
   if (arcsCtrl) arcsCtrl.style.display = is3D ? 'block' : 'none';
@@ -2793,7 +2801,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
   // Toggle visibility of bottom canvas toolbar
   const canvasToolbar = qs('#codebase-canvas-toolbar');
-  const hasBottomControls = (supportsGranularity || is3D || isGraph2D || showCameraControls);
+  const hasBottomControls = (supportsGranularity || is3D || isGraph2D || showCameraControls || showPojoFilter);
   if (canvasToolbar) canvasToolbar.style.display = hasBottomControls ? 'flex' : 'none';
 
 
@@ -2834,6 +2842,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
           return;
         }
         const renderer = new window.CodeCity3DRenderer(mountContainer);
+        if (typeof App.codebaseHidePojo === 'boolean' && typeof renderer.setHidePojo === 'function') {
+          renderer.setHidePojo(App.codebaseHidePojo);
+        }
         renderer.setData(graphData, treeData);
         if (typeof renderer.setBrightness === 'function') {
           renderer.setBrightness(App.codebaseBrightness || 1.0);
@@ -2851,6 +2862,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
           return;
         }
         const renderer = new window.Galaxy3DRenderer(mountContainer);
+        if (typeof App.codebaseHidePojo === 'boolean' && typeof renderer.setHidePojo === 'function') {
+          renderer.setHidePojo(App.codebaseHidePojo);
+        }
         renderer.setData(data);
         if (typeof renderer.setBrightness === 'function') {
           renderer.setBrightness(App.codebaseBrightness || 1.0);
@@ -2872,6 +2886,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
         const tooltip = qs('#codebase-tooltip') || qs('#graph-tooltip');
         const fg = new window.ForceGraph(mountContainer, tooltip);
+        if (typeof App.codebaseHidePojo === 'boolean' && typeof fg.setHidePojo === 'function') {
+          fg.setHidePojo(App.codebaseHidePojo);
+        }
         if (App.settings) fg.applySettings(App.settings);
         if (App.gitSummary && App.gitSummary.hotEntities) {
           const heatMap = {};
@@ -2945,6 +2962,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
           return;
         }
         const renderer = new window.DSMRenderer(mountContainer);
+        if (typeof App.codebaseHidePojo === 'boolean' && typeof renderer.setHidePojo === 'function') {
+          renderer.setHidePojo(App.codebaseHidePojo);
+        }
         renderer.onScopeChange(async (newScope) => {
           try {
             showBanner(`Loading DSM (${newScope})...`);
@@ -2953,7 +2973,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
             qsa('#codebase-granularity-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.granularity === (isMethodsNow ? 'methods' : 'arch')));
             const pojoCtrl = qs('#codebase-pojo-controls');
             const pojoDiv = qs('#codebase-pojo-divider');
-            if (pojoCtrl) pojoCtrl.style.display = isMethodsNow ? 'block' : 'none';
+            if (pojoCtrl) pojoCtrl.style.display = isMethodsNow ? 'inline-flex' : 'none';
             if (pojoDiv) pojoDiv.style.display = isMethodsNow ? '' : 'none';
             const scopedData = await api.dsmData(newScope);
             renderer.setData(scopedData);
@@ -5569,10 +5589,18 @@ async function init() {
   const codebasePojoBtn = qs('#btn-codebase-filter-getters');
   if (codebasePojoBtn) {
     codebasePojoBtn.addEventListener('click', () => {
+      let newState;
       if (App.activeAltRenderer && typeof App.activeAltRenderer.toggleHideGetters === 'function') {
-        App.activeAltRenderer.toggleHideGetters();
+        newState = App.activeAltRenderer.toggleHideGetters();
       } else if (App.graph && typeof App.graph.toggleHideGetters === 'function') {
-        App.graph.toggleHideGetters();
+        newState = App.graph.toggleHideGetters();
+      }
+      if (typeof newState === 'boolean') {
+        App.codebaseHidePojo = newState;
+      } else if (codebasePojoBtn.classList.contains('active')) {
+        App.codebaseHidePojo = true;
+      } else {
+        App.codebaseHidePojo = false;
       }
     });
   }

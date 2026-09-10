@@ -828,13 +828,19 @@
           </div>
         </div>
 
-        <div class="hud-divider" id="codebase-graph-toggles-divider" style="display:none;"></div>
+        <div class="hud-divider" id="codebase-pojo-divider" style="display:none;"></div>
 
-        <!-- 2D Graph View Specific Feature Toggles (POJOs, Clusters, Physics, Heat) -->
-        <div id="codebase-graph-toggles" class="graph-hud-actions" style="display:none;">
+        <!-- Codebase POJO Filter Toggle (For 2D Graph, 3D Views, etc. when at Methods scope) -->
+        <div id="codebase-pojo-controls" class="graph-hud-actions" style="display:none;">
           <button id="btn-codebase-filter-getters" class="hud-btn active" title="Hide trivial POJO getters, setters, and accessor boilerplate">
             <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span class="hud-btn-text" id="btn-codebase-filter-getters-text">Hide POJOs</span>
           </button>
+        </div>
+
+        <div class="hud-divider" id="codebase-graph-toggles-divider" style="display:none;"></div>
+
+        <!-- 2D Graph View Specific Feature Toggles (Clusters, Physics, Heat) -->
+        <div id="codebase-graph-toggles" class="graph-hud-actions" style="display:none;">
           <button id="btn-codebase-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
             <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
           </button>

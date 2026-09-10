@@ -435,6 +435,24 @@ class ForceGraph {
     if (this._rawNodes && this._rawNodes.length > 0) {
       this._applyData(this._rawNodes, this._rawEdges);
     }
+    return this._hideGetters;
+  }
+
+  setHidePojo(hide) {
+    this._hideGetters = Boolean(hide);
+    const btn1 = document.getElementById('btn-filter-getters');
+    const btn2 = document.getElementById('btn-codebase-filter-getters');
+    if (btn1) btn1.classList.toggle('active', this._hideGetters);
+    if (btn2) btn2.classList.toggle('active', this._hideGetters);
+
+    if (this._rawNodes && this._rawNodes.length > 0) {
+      this._applyData(this._rawNodes, this._rawEdges);
+    }
+    return this._hideGetters;
+  }
+
+  setHideGetters(hide) {
+    return this.setHidePojo(hide);
   }
 
   _applyData(rawNodes, rawEdges) {
@@ -2342,30 +2360,39 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   _initHudControls() {
     const isCodebase = Boolean(this._container && this._container.closest('#codebase-view'));
 
-    const hullsId = isCodebase ? 'btn-codebase-toggle-hulls' : 'btn-toggle-hulls';
-    const physicsId = isCodebase ? 'btn-codebase-toggle-physics' : 'btn-toggle-physics';
-    const heatId = isCodebase ? 'btn-codebase-heat' : 'btn-heat';
-    const pojoId = isCodebase ? 'btn-codebase-filter-getters' : 'btn-filter-getters';
+    if (isCodebase) {
+      // For Codebase view, HUD buttons are centrally wired in app.js via App.activeAltRenderer.
+      // We only synchronize current active button states for the 2D Graph view.
+      const hullsBtn = document.getElementById('btn-codebase-toggle-hulls');
+      if (hullsBtn) hullsBtn.classList.toggle('active', Boolean(this._showHulls));
+      const physicsBtn = document.getElementById('btn-codebase-toggle-physics');
+      if (physicsBtn) physicsBtn.classList.toggle('active', Boolean(this._physicsEnabled));
+      const heatBtn = document.getElementById('btn-codebase-heat');
+      if (heatBtn) heatBtn.classList.toggle('active', Boolean(this._heatMode));
+      const pojoBtn = document.getElementById('btn-codebase-filter-getters');
+      if (pojoBtn) pojoBtn.classList.toggle('active', Boolean(this._hideGetters));
+      return;
+    }
 
     const bindToggle = (id, fn) => {
       const btn = document.getElementById(id);
       if (btn) btn.onclick = fn;
     };
 
-    bindToggle(hullsId, () => this.toggleHulls());
-    bindToggle(physicsId, () => this.togglePhysics());
-    bindToggle(heatId, () => this.toggleHeat());
-    bindToggle(pojoId, () => this.toggleHideGetters());
+    bindToggle('btn-toggle-hulls', () => this.toggleHulls());
+    bindToggle('btn-toggle-physics', () => this.togglePhysics());
+    bindToggle('btn-heat', () => this.toggleHeat());
+    bindToggle('btn-filter-getters', () => this.toggleHideGetters());
 
     // Initialize active states for buttons
-    const hullsBtn = document.getElementById(hullsId);
+    const hullsBtn = document.getElementById('btn-toggle-hulls');
     if (hullsBtn) hullsBtn.classList.toggle('active', Boolean(this._showHulls));
-    const physicsBtn = document.getElementById(physicsId);
+    const physicsBtn = document.getElementById('btn-toggle-physics');
     if (physicsBtn) physicsBtn.classList.toggle('active', Boolean(this._physicsEnabled));
-    const heatBtn = document.getElementById(heatId);
+    const heatBtn = document.getElementById('btn-heat');
     if (heatBtn) heatBtn.classList.toggle('active', Boolean(this._heatMode));
-    const pojoBtn = document.getElementById(pojoId);
-    if (pojoBtn) pojoBtn.classList.toggle('active', Boolean(this._hidePojoGetters));
+    const pojoBtn = document.getElementById('btn-filter-getters');
+    if (pojoBtn) pojoBtn.classList.toggle('active', Boolean(this._hideGetters));
 
     // Node card close
     const btnNodeCardClose = document.getElementById('btn-node-card-close');

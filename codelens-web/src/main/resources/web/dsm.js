@@ -47,6 +47,23 @@ class DSMRenderer {
     return this._hidePojo;
   }
 
+  setHidePojo(hide) {
+    this._hidePojo = Boolean(hide);
+    ['btn-filter-getters', 'btn-codebase-filter-getters'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle('active', this._hidePojo);
+        btn.title = this._hidePojo ? 'POJO getters & setters hidden' : 'Click to hide POJO getters & setters';
+      }
+    });
+    this._render();
+    return this._hidePojo;
+  }
+
+  setHideGetters(hide) {
+    return this.setHidePojo(hide);
+  }
+
   setArchetypeFilter(ruleId) {
     this._archetypeFilter = ruleId || 'ALL';
     this._render();
