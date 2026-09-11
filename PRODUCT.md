@@ -31,12 +31,25 @@ A zero-cloud, 100% local-first Java codebase intelligence engine. Unlike cloud S
 - **Dual Visual Themes**: Highly calibrated Dark Theme (slate/carbon high-contrast workbench) and Light Theme (crisp paper/clean enterprise view).
 - **Interactive Visualizers**:
   - Force-directed Call Hierarchy & Community Constellations (`ForceGraph.js` on HTML5 Canvas).
-  - Dependency Structure Matrix (DSM).
-  - Hierarchical Treemaps (Complexity & LOC).
+  - 🏙️ **3D Software City** (Three.js WebGL urban layout with building heights, bloom shaders, and thermal heat mode).
+  - 🌌 **3D Galaxy** (Orbital gravitational star system).
+  - 📊 **Interactive Dependency Structure Matrix (DSM)** with double-click method-level drilldown, breadcrumbs, DAG acyclicity rating, and CSV/JSON downloads.
+  - Hierarchical Treemaps (Complexity & LOC) and Radial Package/Class Sunburst Hierarchies.
   - Inter-class Call Chord Diagrams.
-  - Radial Package/Class Sunburst Hierarchies.
   - POJO & Accessor noise-filtering HUD toggles.
-- **Embedded Architecture**: Javalin HTTP/WebSocket server, embedded H2 database, Lucene 9 search engine, JavaParser AST scanner, and JGit repository inspector.
+- **Scope Management & Boundary Control**:
+  - Exclude noise, external test mocks, or generated DTOs directly from Explorer via hover `×` or right-click context menu.
+  - Atomic cascading purge across H2 storage, Apache Lucene full-text index, in-memory call graphs, and reports.
+  - Scope Manager dialog for one-click selective or bulk restoration without requiring a full rescan.
+- **Behavioral Hotspots Intelligence**:
+  - Evaluates refactoring risk via compound metric $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$.
+  - Thermal shader rendering across both 2D Blooming Tree canvas and 3D Software City (<kbd>H</kbd>).
+- **Reports Hub & Compliance Audits**:
+  - 11 enterprise architectural & quality reports (Change Risk, Circular Dependencies, Dead Code, API Surface, Behavioral Hotspots, God Classes, Coupling & Cohesion, Security, etc.).
+  - 1-click downloads in CSV, Standalone Interactive HTML, and Markdown.
+- **Modular Two-JAR Distribution**:
+  - Ultra-lightweight `codelens-app.jar` (~1.1 MB) linking to cached `codelens-deps.jar` (~22 MB) enabling ~3-4 second fast builds and enterprise distribution.
+- **Embedded Architecture**: Javalin HTTP/WebSocket server, embedded H2 database (LZF compressed), Lucene 9 search engine, JavaParser AST scanner, and JGit repository inspector.
 
 ## Brand Commitments
 
@@ -53,11 +66,12 @@ A zero-cloud, 100% local-first Java codebase intelligence engine. Unlike cloud S
 
 1. **Local & Private First**: All indexing, parsing, querying, and rendering occurs 100% locally with zero cloud dependencies or telemetry leaks.
 2. **High Information Density**: Dense, scannable layouts with instant search, deep filtering, and zero wasted screen real estate.
-3. **Signal Over Noise**: Intelligently filter boilerplate (POJOs, accessors) while elevating actual business logic, cyclomatic hotspots, and architectural dependencies.
-4. **Instant Interactivity**: Sub-second UI response times, smooth canvas physics, and keyboard shortcuts (`1-5`, `F`, `H`, `Space`).
+3. **Signal Over Noise**: Intelligently filter boilerplate (POJOs, accessors, excluded scope) while elevating actual business logic, cyclomatic hotspots, and architectural dependencies.
+4. **Instant Interactivity**: Sub-second UI response times, smooth canvas physics, and full keyboard shortcuts (`1-5`, `R`, `M`, `H`, `?`, `\`, `Space`, `F`, `[`, `]`, `Esc`).
 
 ## Accessibility & Inclusion
 
 - High contrast text and icon ratios across both Dark and Light modes.
 - Full keyboard navigation for tabs, explorer trees, search palettes, and graph camera controls.
 - Accessible semantic ARIA roles and labels on all HUD overlays, modals, and data tables.
+- Stacking context isolation ensuring Help and Settings modals never clash or obscure each other.

@@ -71,15 +71,19 @@ A high-performance, **100% offline**, self-contained Java codebase intelligence 
 | 1 | **Source AST Indexing** | Scans 100% of `.java` source files, extracting packages, types, methods, fields, modifiers, and line numbers into an embedded database. | JavaParser 3.25.8 + Embedded H2 Database |
 | 2 | **Dynamic Call Hierarchies** | Computes upstream callers and downstream callees across methods with user-selectable BFS traversal depths (1 to 15 hops / Max). | In-memory JGraphT directed graph + reversed BFS iterator |
 | 3 | **Field Impact & Propagation Chains** | Maps every method that reads or writes a field, and traces multi-hop upstream triggers (`Field` $\leftarrow$ `Writers` $\leftarrow$ `Callers`) across the entire repository. | Custom relationship visitor + caller propagation engine |
-| 4 | **Critical Path Execution Trace** | Traces end-to-end execution sequences from controllers through domain services down to persistent entity mutations (`Get`, `Create`, `Modify`) and downstream audit sinks. | Multi-hop graph search + Risk scoring + Stepper Dock |
-| 5 | **Semantic Archetypes Engine** | Classifies methods and types into domain-specific roles (BaNCS ET/BT/TO/TC/Batch, Spring, DDD) with module token substitution (`{MODULE}`) and custom rules. | Regex & Prefix token substitution + LocalStorage persistence |
-| 6 | **Structural Inconsistency Detection** | 3-pass heuristic engine identifying signature divergences, naming drift, and duplicate AST body hashes across classes. | Levenshtein distance + AST Normalizer + SHA-256 body hashing |
-| 7 | **Git Blame & Churn Heatmap** | Computes commit counts, top contributing authors, and churn frequency per entity, rendering commit heat directly on graph nodes. | JGit 6.9 engine + Dynamic Canvas Color Shaders |
-| 8 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
-| 9 | **Export Reports Hub** | Export comprehensive Architecture, Security/Quality Audit, and Inventory/Metrics reports in Markdown, standalone HTML, structured JSON, and tabular CSV with print-to-PDF support. | ReportService + REST export endpoints + Standalone HTML templates |
-| 10 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
-| 11 | **Storage Compression & Compaction** | LZF compressed H2 page storage with single-transaction chunk commits and MVStore tuning, eliminating leaks and reducing disk footprints by ~95%. | H2 MVStore Compression + HikariCP Transaction Safety |
-| 12 | **Headless CLI Scan Mode** | High-throughput headless command-line scanning directly into H2 & Lucene without launching a web server, ideal for CI/CD batch pipelines. | Dedicated CLI mode + Fast bulk ingestion |
+| 4 | **Scope Management & Boundary Control** | Exclude classes or packages directly from Explorer (hover `×` or right-click). Cascadingly purges entities from H2, Lucene, call graphs, DSM, and reports, with instant one-click restoration. | Cascading H2 DAO + Multi-doc Lucene purge + Scope Manager |
+| 5 | **Behavioral Hotspots Intelligence** | Evaluates code risk and technical debt via composite metric $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$. Overlays heat shaders on 2D Blooming Tree and 3D Software City. | JGit churn log + AST complexity scorer + Thermal shaders |
+| 6 | **Interactive DSM with Method Drilldown** | Multi-tier Dependency Structure Matrix (`Modules` $\to$ `Packages` $\to$ `Classes` $\to$ `Methods`). Double-click headers to drill into method invocations with breadcrumbs, DAG acyclicity rating, and CSV/JSON exports. | Matrix permutation engine + Tarjan cycles + Adjacency exporter |
+| 7 | **Critical Path Execution Trace** | Traces end-to-end execution sequences from controllers through domain services down to persistent entity mutations (`Get`, `Create`, `Modify`) and downstream audit sinks. | Multi-hop graph search + Risk scoring + Stepper Dock |
+| 8 | **Semantic Archetypes Engine** | Classifies methods and types into domain-specific roles (BaNCS ET/BT/TO/TC/Batch, Spring, DDD) with module token substitution (`{MODULE}`) and custom rules. | Regex & Prefix token substitution + LocalStorage persistence |
+| 9 | **Structural Inconsistency Detection** | 3-pass heuristic engine identifying signature divergences, naming drift, and duplicate AST body hashes across classes. | Levenshtein distance + AST Normalizer + SHA-256 body hashing |
+| 10 | **Git Blame & Churn Heatmap** | Computes commit counts, top contributing authors, and churn frequency per entity, rendering commit heat directly on graph nodes. | JGit 6.9 engine + Dynamic Canvas Color Shaders |
+| 11 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
+| 12 | **Reports Hub & Compliance Audits** | 11 comprehensive enterprise reports (Change Risk, Circular Dependencies, Dead Code, API Surface, etc.) with CSV, standalone HTML, and Markdown exports. | ReportService + REST export endpoints + Standalone HTML templates |
+| 13 | **Modular Two-JAR Distribution** | Lightweight `codelens-app.jar` (~1.1 MB) referencing pre-extracted `codelens-deps.jar` (~22 MB) for ~4-second fast rebuilds and seamless enterprise distribution. | Maven Shade + Class-Path manifest isolation |
+| 14 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
+| 15 | **Storage Compression & Compaction** | LZF compressed H2 page storage with single-transaction chunk commits and MVStore tuning, eliminating leaks and reducing disk footprints by ~95%. | H2 MVStore Compression + HikariCP Transaction Safety |
+| 16 | **Headless CLI Scan Mode** | High-throughput headless command-line scanning directly into H2 & Lucene without launching a web server, ideal for CI/CD batch pipelines. | Dedicated CLI mode + Fast bulk ingestion |
 
 ---
 
@@ -131,32 +135,36 @@ codelens/
 
 ## Build & Quick Start
 
-### 1. Build the Fat JAR
+### 1. Build the Modular Two-JAR Distribution
 From the project root:
 ```bash
 ./mvnw clean package -DskipTests
 ```
-The standalone executable JAR will be generated at:
-```
-codelens-app/target/codelens-app-1.0.0.jar
-```
+This generates an optimized **Two-JAR Modular Architecture**:
+- **`codelens-app/target/codelens-app.jar` (~1.1 MB)**: Contains all application logic, REST endpoints, analysis engines, and web resources. Daily feature updates compile in **~3-4 seconds**.
+- **`codelens-app/target/codelens-deps.jar` (~22 MB)**: Pre-packaged external dependencies (Javalin, Jetty, Jackson, Lucene, JGit, JavaParser, H2, HikariCP, JGraphT). Referenced automatically via `Class-Path: codelens-deps.jar`.
+- **`codelens-app/target/codelens-app-all.jar` (~23.9 MB)**: Self-contained monolithic fat JAR fallback.
 
 ### 2. Launch the Application
 ```bash
-java -jar codelens-app/target/codelens-app-1.0.0.jar
+# Launch using the modular JAR (fastest, requires codelens-deps.jar in same directory):
+java -jar codelens-app/target/codelens-app.jar
+
+# Or launch using the monolithic fat JAR:
+java -jar codelens-app/target/codelens-app-all.jar
 ```
 Once launched, open your web browser at: **`http://localhost:7878`**
 
 ### Optional JVM Flags & Parameters
 ```bash
 # Custom HTTP Port
-java -Dcodelens.port=9090 -jar codelens-app/target/codelens-app-1.0.0.jar
+java -Dcodelens.port=9090 -jar codelens-app/target/codelens-app.jar
 
 # Custom Data & Index Directory
-java -Dcodelens.data=/custom/path/codelens-data -jar codelens-app/target/codelens-app-1.0.0.jar
+java -Dcodelens.data=/custom/path/codelens-data -jar codelens-app/target/codelens-app.jar
 
 # Production Memory Allocation (for 30k+ file projects)
-java -Xms1g -Xmx4g -XX:+UseG1GC -jar codelens-app/target/codelens-app-1.0.0.jar
+java -Xms1g -Xmx4g -XX:+UseG1GC -jar codelens-app/target/codelens-app.jar
 ```
 
 ### 3. Headless CLI Scan Mode (Direct Ingestion)
@@ -164,43 +172,49 @@ Scan and index any Java codebase directly into the embedded H2 database and Luce
 
 ```bash
 # Scan a specific directory
-java -jar codelens-app/target/codelens-app-1.0.0.jar scan ./path/to/java/src
+java -jar codelens-app/target/codelens-app.jar scan ./path/to/java/src
 
 # Scan default configured path with custom data directory
-java -Dcodelens.data=./codelens-data -jar codelens-app/target/codelens-app-1.0.0.jar scan
+java -Dcodelens.data=./codelens-data -jar codelens-app/target/codelens-app.jar scan
 
 # Production high-speed headless scan
-java -Xms2g -Xmx6g -XX:+UseG1GC -jar codelens-app/target/codelens-app-1.0.0.jar scan /path/to/enterprise/repo
+java -Xms2g -Xmx6g -XX:+UseG1GC -jar codelens-app/target/codelens-app.jar scan /path/to/enterprise/repo
 ```
 
 ---
 
 ## Shipping & Deployment Handbook
 
-CodeLens is designed as a **zero-dependency, single-binary distribution**. The fat JAR packages the Javalin/Jetty web server, Lucene search engine, H2 database, static UI assets, and AST parser into a single self-contained executable.
+CodeLens offers two distribution options:
 
-### Method 1: Standalone Single-File Fat JAR (Fastest)
+### Method 1: Lightweight Two-JAR Deployment (Recommended)
 
-You only need to transfer **one file** to the target machine.
-
-1. **Build the Fat JAR on your development machine**:
+1. **Build the JARs on your development machine**:
    ```bash
    ./mvnw clean package -DskipTests
    ```
-2. **Copy the JAR to the new computer**:
-   Transfer `codelens-app/target/codelens-app-1.0.0.jar` via `scp`, USB drive, or internal artifact registry:
+2. **Copy the JAR pair**:
+   Copy both `codelens-app.jar` (1.1 MB) and `codelens-deps.jar` (22 MB) into your deployment directory:
    ```bash
-   scp codelens-app/target/codelens-app-1.0.0.jar user@remote-machine:/opt/codelens/codelens.jar
+   scp codelens-app/target/codelens-app.jar codelens-app/target/codelens-deps.jar user@remote-machine:/opt/codelens/
    ```
-3. **Run on the new machine** (requires only Java 17+):
+   *Subsequent code updates only require transferring the tiny `codelens-app.jar` (1.1 MB)!*
+3. **Run on target machine** (requires Java 17+):
    ```bash
-   java -jar codelens.jar
+   cd /opt/codelens && java -jar codelens-app.jar
    ```
 4. Access `http://localhost:7878` in any browser.
 
+### Method 2: Monolithic Single-File Fat JAR (Fallback)
+
+If strict single-file deployment is required, deploy `codelens-app-all.jar` (~23.9 MB):
+```bash
+java -jar codelens-app-all.jar
+```
+
 ---
 
-### Method 2: Building from Source on the New Machine
+### Method 3: Building from Source on the New Machine
 
 If shipping the source repository (or cloning via Git):
 
@@ -219,12 +233,12 @@ If shipping the source repository (or cloning via Git):
    ```
 3. **Run**:
    ```bash
-   java -jar codelens-app/target/codelens-app-1.0.0.jar
+   java -jar codelens-app/target/codelens-app.jar
    ```
 
 ---
 
-### Method 3: Docker Container Deployment
+### Method 4: Docker Container Deployment
 
 To run CodeLens inside an isolated container:
 
@@ -245,11 +259,11 @@ To run CodeLens inside an isolated container:
 
 ---
 
-### Method 4: Production Linux Systemd Service
+### Method 5: Production Linux Systemd Service
 
 To run CodeLens as a background system daemon on Linux servers:
 
-1. Copy `codelens-app-1.0.0.jar` to `/opt/codelens/codelens.jar`.
+1. Copy `codelens-app.jar` and `codelens-deps.jar` to `/opt/codelens/`.
 2. Create `/etc/systemd/system/codelens.service`:
    ```ini
    [Unit]
@@ -260,7 +274,7 @@ To run CodeLens as a background system daemon on Linux servers:
    Type=simple
    User=codelens
    WorkingDirectory=/opt/codelens
-   ExecStart=/usr/bin/java -Xms1g -Xmx4g -XX:+UseG1GC -Dcodelens.port=7878 -Dcodelens.data=/var/lib/codelens -jar /opt/codelens/codelens.jar
+   ExecStart=/usr/bin/java -Xms1g -Xmx4g -XX:+UseG1GC -Dcodelens.port=7878 -Dcodelens.data=/var/lib/codelens -jar /opt/codelens/codelens-app.jar
    Restart=always
    RestartSec=5
 
@@ -276,7 +290,7 @@ To run CodeLens as a background system daemon on Linux servers:
 
 ---
 
-### Method 5: macOS LaunchAgent Daemon
+### Method 6: macOS LaunchAgent Daemon
 
 To run CodeLens automatically at login in the background on macOS:
 
@@ -489,21 +503,40 @@ CodeLens automatically discovers common namespace roots (e.g. `com.company.proje
 
 ---
 
+### 8. Scope Management & Boundary Control (Excluding & Restoring Classes/Packages)
+
+CodeLens provides fine-grained, interactive boundary management so engineers can eliminate external mocks, generated DTOs, or legacy boilerplate from their architectural intelligence:
+
+- **Quick Hover Exclude**: Hover over any class, interface, enum, record, or package in the Left Explorer tree to reveal the red `×` exclusion trigger.
+- **Right-Click Context Menu**: Right-click any entity or package to trigger a dedicated context menu with actions: *Exclude Class / Package from Scope*, *Inspect Entity*, and *Copy FQN*.
+- **Cascading Purge**: When an entity or package is excluded, CodeLens atomically:
+  1. Persists the exclusion rule into the embedded H2 `EXCLUDED_SCOPE` table.
+  2. Recursively cascades deletions across types, methods, fields, and relationships.
+  3. Purges corresponding documents from the Apache Lucene search index.
+  4. Prunes graph vertices/edges from in-memory Call Graphs, DSM matrices, and Reports.
+- **Dedicated Scope Manager Dialog**: Click the `🎯 Scope (N)` button in the Left Explorer header to inspect all active exclusions.
+- **Instant Restoration**: Restore individual classes or packages with one click (or "Restore All"), automatically re-indexing them into the active graph and database without needing a full rescan.
+
+---
+
 ## Workspace Views & Feature Guide
 
 ### 1. Header Bar & Project Telemetry
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ ⬡ CodeLens  [ /path/to/source/dir                    ] [ Browse… ] [ Scan ] [ ⚙ ] [ ❓ ]│
-│             [ 124 types ] [ 890 methods ] [ 430 fields ] [ 2,140 rels ]                │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ⬡ CodeLens  [ /path/to/source/dir         ] [ Browse… ] [ Scan ▼ ] [ 3D Studio ] [ Reports Hub ] [ ⚙ ] [ ❓ ]│
+│             [ 124 types ] [ 890 methods ] [ 430 fields ] [ 2,140 rels ]                                     │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Source Path Input**: Accepts absolute filesystem paths to Java source trees.
 - **Browse… Button**: Native directory chooser with automatic Git repository discovery.
 - **Scan / Rescan Dropdown**: One-click triggers for Full Scan and Incremental Delta Scan.
-- **⚙ Settings & Themes Modal**: Manage Dark (Obsidian OLED) vs Light (Daylight) themes, exclude patterns, package display modes, physics sliders, archetype engine rules, and server shutdown.
+- **3D Studio Button (<kbd>M</kbd>)**: Opens the dedicated Macro 3D Codebase Studio featuring 3D Software City and 3D Star Galaxy.
+- **Reports Hub Button (<kbd>R</kbd>)**: Opens the comprehensive compliance & quality reports hub with 11 downloadable reports.
+- **⚙ Settings Modal**: Configure Dark/Light themes, exclusion patterns, package display modes, physics parameters, archetype rules, and graceful server shutdown.
+- **❓ User Guide Button (<kbd>?</kbd>)**: Opens the interactive 5-tab in-app Feature & User Guide.
 - **Realtime Entity Counters**: Instant counts for Types, Methods, Fields, and Relationships.
 
 ---
@@ -511,46 +544,45 @@ CodeLens automatically discovers common namespace roots (e.g. `com.company.proje
 ### 2. Left Explorer & Lucene Search Engine
 
 ```
-┌─────────────────────────────────────────────────┐
-│ ⌕ Search classes, methods, fields… (⌘K)         │
-│ [ All ] [ Class ] [ Iface ] [ Enum ] [ Record ] │
-│ Explorer                                        │
-│ ▾ com.example.trading                           │
-│   🔷 Portfolio                                  │
-│   🔷 TradeProcessor                             │
-│   🔷 RiskEngine                                 │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ ⌕ Search classes, methods, fields… (⌘K)                 │
+│ [ All ] [ Class ] [ Iface ] [ Enum ] [ Record ]         │
+│ Explorer                        [ 🎯 Scope (2) ] [ Collapse ]│
+│ ▾ com.example.trading                                [×]│
+│   🔷 Portfolio                                       [×]│
+│   🔷 TradeProcessor                                  [×]│
+│   🔷 RiskEngine                                      [×]│
+└─────────────────────────────────────────────────────────┘
 ```
 
 - **Lucene Search (`⌘K` / `Ctrl+K`)**: Sub-millisecond indexed search across all classes, interfaces, enums, records, methods, fields, and signatures.
 - **Kind Filter Chips**: Filter the explorer tree to display only Classes, Interfaces, Enums, or Records.
+- **Scope Manager Button (`🎯 Scope (N)`)**: View and restore excluded classes and packages.
+- **Hover & Context Menu Exclusion**: Click `×` or right-click any item to prune out-of-scope boundaries.
 - **Collapsible Package Tree**: Full package hierarchy with instant member navigation.
 
 ---
 
 ### 3. Interactive Center Workspace Views
 
-#### A. Graph Canvas (Graphify Knowledge Graph & Verlet Physics)
-- **Verlet Physics Engine**: Real-time multi-body force simulation calculating Coulomb repulsion, Hooke spring tension, package clustering, and anti-collision.
-- **Convex Hull Clustering (`◈ Clusters`)**: Visualizes architectural modules as colored translucent hulls.
-- **Git Churn Heatmap (`♨ Heat` / <kbd>H</kbd>)**: Thermal glows highlight actively modified hotspots.
-- **BFS Depth Controls (1–15 hops / Max)**: Explore transitive callers and callee dependencies.
+CodeLens organizes primary codebase intelligence into 5 dedicated workspace screens, accompanied by top-level 3D Studio and Reports Hub:
 
-#### B. Knowledge Base Catalog & Complexity Analysis
+#### 1. Graph Canvas (Graphify Knowledge Graph & Verlet Physics)
+- **Verlet Physics Simulation**: Real-time multi-body force simulation calculating Coulomb repulsion, Hooke spring tension, package clustering, and anti-collision.
+- **Convex Hull Clustering (`◈ Clusters`)**: Visualizes architectural modules as colored translucent hulls.
+- **Behavioral Hotspots Heat Mode (`♨ Heat` / <kbd>H</kbd>)**: Overlays thermal shaders on nodes based on composite risk $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$.
+- **BFS Depth Controls (1–15 hops / Max)**: Explore transitive callers and callee dependencies.
+- **Camera Controls**: Auto-fit (<kbd>F</kbd>), Zoom In/Out (`+`/`-`), Reset Zoom (<kbd>0</kbd>), and Freeze Physics (<kbd>Space</kbd>).
+
+#### 2. Knowledge Base Catalog & Complexity Analysis
 - Complete tabular catalog of all scanned types, member variables, and methods.
 - Computes **Cyclomatic Complexity (CC)** scores for every method with color health badges:
   - 🟢 **Low Complexity (1–4)**: Clean, straightforward execution path.
   - 🟡 **Moderate Complexity (5–10)**: Branching logic requiring thorough unit tests.
   - 🔴 **High Complexity (11+)**: Heavy nesting; prime candidate for refactoring.
+- Filtering by visibility (Public, Protected, Package-private, Private) and archetype roles.
 
-#### C. Visualizations Suite (3D City, 3D Galaxy, Treemap, Sunburst, DSM, Chord)
-- 🏙️ **3D Software City**: Interactive Three.js urban layout mapping packages to city blocks, classes to skyscrapers, LOC to height, and complexity/churn to roof colors. Includes exposure controls.
-- 🌌 **3D Galaxy**: Orbital gravitational star system rendering classes as stars orbiting central module clusters.
-- 🗺️ **Treemap & Sunburst**: Hierarchical area partitioners with sub-pixel LOD culling.
-- 📊 **Dependency Structure Matrix (DSM)**: Sparse grid matrix displaying coupling strength and circular dependencies.
-- ⭕ **Chord Diagram**: Radial flows visualising cross-package references.
-
-#### D. On-Demand Code Review & 32-Rule Static Auditor
+#### 3. Code Review & 32-Rule Static Auditor
 32 deep AST static analysis rules across 6 critical quality categories:
 1. **Correctness**: Null pointer hazards, unclosed streams, switch fallthroughs, array reference leaks.
 2. **Concurrency**: Non-atomic shared state mutation, unsynchronized collections in multithreaded classes.
@@ -559,18 +591,55 @@ CodeLens automatically discovers common namespace roots (e.g. `com.company.proje
 5. **API Contracts**: Missing interface contracts, broken `equals`/`hashCode` symmetry.
 6. **Architectural Blast Radius**: Core utility methods with extreme upstream caller fan-in.
 
-#### E. Git Analytics & Churn Heatmap
+#### 4. Git Analytics & Churn Heatmap
 - **Top Authors Leaderboard**: Contribution metrics, entities touched, and recent commit dates.
 - **Hot Churn Entities**: Ranked bar chart of highest-churn classes and methods.
+- **Blame Annotations**: Detailed author breakdown and last modified timestamps per entity.
 
-#### F. Integrated Monaco Source Code Editor
+#### 5. Integrated Monaco Source Code Editor
 - Embedded Microsoft Monaco editor (VS Code engine).
-- Click any source code link (e.g. `OrderService.java:142`) to jump directly to the exact line number with full syntax highlighting.
-- In-place editing and direct save back to disk.
+- Jump directly to exact line numbers from graph nodes, member lists, or code review findings.
+- Full syntax highlighting, breadcrumb navigation, and in-place editing back to disk.
 
 ---
 
-### 4. Right Inspector Panel & Multi-Hop Propagation
+### 4. 3D Codebase Studio & 2D Architectural Macro Views
+
+Accessible anytime via the **3D Studio** header button (<kbd>M</kbd>) or Visualizations menu:
+
+- 🏙️ **3D Software City**: Interactive Three.js WebGL urban layout mapping packages to city blocks, classes to skyscrapers, LOC to building height, and complexity or churn to roof colors. Includes Bloom post-processing, camera fly-throughs, and Thermal Heat Mode.
+- 🌌 **3D Galaxy**: Orbital gravitational star system rendering classes as stars orbiting central module suns.
+- 📊 **Interactive Dependency Structure Matrix (DSM)**:
+  - Multi-tier dependency grid (`Modules` $\to$ `Packages` $\to$ `Classes` $\to$ `Methods`).
+  - **Method-Level Drilldown**: Double-click any class header to inspect precise method call invocations, complete with breadcrumb navigation.
+  - **DAG Acyclicity Rating**: Calculates strict acyclic ordering and highlights cyclic dependencies in red.
+  - **Adjacency Exports**: Download DSM data as CSV or structured JSON.
+- 🗺️ **Treemap & Sunburst**: Hierarchical area partitioners with sub-pixel Level-of-Detail (LOD) culling.
+- ⭕ **Chord Diagram**: Radial flows visualizing cross-package coupling.
+
+---
+
+### 5. Reports Hub & Compliance Audits (<kbd>R</kbd>)
+
+Click the **Reports Hub** button in the header (<kbd>R</kbd>) to access 11 enterprise architectural and quality reports:
+
+1. **Change Risk Analysis**: Combines blast radius and historical churn into a compound refactoring risk score.
+2. **Circular Dependencies**: Identifies recursive call loops and package dependency cycles using Tarjan's strongly connected components algorithm.
+3. **Dead Code & Unused Methods**: Detects unreferenced private methods and orphan classes with 0 incoming callers.
+4. **API Surface & Exposure**: Inventories public API contracts, exposed interfaces, and external boundaries.
+5. **Behavioral Hotspots**: Quantifies technical debt via $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$.
+6. **God Classes & Bloat**: Identifies monolithic classes exceeding LOC, field, and method thresholds.
+7. **Coupling & Cohesion**: Analyzes Afferent ($C_a$) and Efferent ($C_e$) coupling and Martin instability metrics.
+8. **Security & Vulnerability Audit**: Surfaces OWASP-relevant patterns (unvalidated input flows, raw SQL concatenation).
+9. **Inheritance Depth**: Analyzes deep inheritance hierarchies and class coupling.
+10. **Exception Flow**: Identifies unhandled, swallowed, or broad `catch (Throwable)` blocks.
+11. **Comprehensive Executive Summary**: High-level code health score, aggregate metrics, and prioritized remediation actions.
+
+*All reports offer 1-click export to **CSV**, **Standalone Interactive HTML**, and **Markdown**.*
+
+---
+
+### 6. Right Inspector Panel & Multi-Hop Propagation
 
 - **Metadata Card**: Displays modifiers, inheritance, implemented interfaces, lines, and Git history.
 - **Action Triggers**:
@@ -581,7 +650,7 @@ CodeLens automatically discovers common namespace roots (e.g. `com.company.proje
 
 ---
 
-### 5. Analyst Notes Engine
+### 7. Analyst Notes Engine
 
 - Free-text markdown notes attached to any class, interface, method, or field.
 - Persisted locally in the H2 database and included in exported reports.
@@ -810,13 +879,18 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 | `2` | Switch to Knowledge Base Catalog view | Global |
 | `3` | Switch to Code Review & Logic Auditor view | Global |
 | `4` | Switch to Git Analytics & Churn view | Global |
-| `Space` | Toggle Force Physics simulation (Freeze / Unfreeze) | Graph Tab |
-| `H` | Toggle Git Churn Heatmap overlay | Graph Tab |
-| `F` | Fit entire graph to screen (Auto-Zoom) | Graph Tab |
-| `+` / `-` | Zoom in / Zoom out on canvas | Graph Tab |
-| `0` | Reset zoom to 100% | Graph Tab |
+| `5` | Switch to Source Code (Monaco Editor) view | Global |
+| `M` | Open Macro 3D Codebase Studio (City & Galaxy) | Global |
+| `R` | Open Reports Hub (11 Architecture & Quality Reports) | Global |
+| `?` | Open Feature & User Guide | Global |
+| `\` / `\|` | Toggle Critical Path Stepper Dock | Global |
 | `[` | Toggle Left Explorer panel visibility | Global |
 | `]` | Toggle Right Inspector panel visibility | Global |
+| `H` | Toggle Behavioral Hotspots / Git Churn Heat Mode | Graph & 3D City |
+| `Space` | Toggle Force Physics simulation (Freeze / Unfreeze) | Graph Tab |
+| `F` | Fit entire graph to screen (Auto-Zoom & Center) | Graph Tab |
+| `+` / `-` | Zoom in / Zoom out on canvas | Graph Tab |
+| `0` | Reset zoom to 100% | Graph Tab |
 
 ---
 

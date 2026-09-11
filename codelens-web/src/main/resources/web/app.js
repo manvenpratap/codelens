@@ -5652,9 +5652,8 @@ async function init() {
 
   // Wire Settings modal → Feature Guide full-open button
   qs('#settings-guide-open-btn')?.addEventListener('click', () => {
-    const settingsModal = qs('#settings-modal');
-    if (settingsModal) settingsModal.setAttribute('aria-hidden', 'true');
-    openHelpModal();
+    closeSettings();
+    openHelpModal(qs('#settings-guide-open-btn'));
   });
 
   // Initialize code review controls

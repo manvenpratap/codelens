@@ -233,9 +233,9 @@ CodeLens uses a tailored three-tier typographic stack:
 ## Layout
 
 - **Three-Panel Grid with Header**:
-  - Header: Fixed `56px` top bar with quick project pill, search bar, active view switcher, settings, and export.
-  - Left Panel (`310px` default, resizable): Multi-module package explorer tree, quick search filters, and member list.
-  - Center Panel (`1fr` flexible): Primary visualization viewport hosting the ForceGraph canvas, DSM matrix, Treemap, Sunburst, or Monaco Source editor.
+  - Header: Fixed `56px` top bar with quick project telemetry, source path chooser, scan dropdown, 3D Studio trigger (<kbd>M</kbd>), Reports Hub trigger (<kbd>R</kbd>), Settings (<kbd>⚙</kbd>), and User Guide (<kbd>?</kbd>).
+  - Left Panel (`310px` default, resizable): Multi-module package explorer tree with kind filters, Scope Manager trigger (`🎯 Scope (N)`), hover exclude button (`×`), right-click context menu, and member list.
+  - Center Panel (`1fr` flexible): Primary visualization viewport hosting the 5 primary tabs (Graph Canvas, Knowledge Base, Code Review, Git Analytics, Monaco Source Editor) alongside Macro 3D Studio (City 3D, Galaxy 3D) and Reports Hub (11 audit reports).
   - Right Panel (`370px` default, resizable): Detail Inspector, Knowledge Base member list, AST Review findings, and Git blame/history.
   - Footer: `24px` persistent status bar with server port, active DB metrics, and keyboard shortcut helpers.
 
@@ -250,8 +250,9 @@ CodeLens uses a tailored three-tier typographic stack:
   - Elevated: `10`
   - Headers & Resizers: `40` / `50`
   - Canvas Floating HUDs: `60`
-  - Modals / Drawers: `100`
-  - Tooltips: `200`
+  - Standard Modals / Drawers (Settings, Scan, Scope Manager, Reports Hub): `1000`
+  - Feature Guide Modal (`#help-modal`): `1100` (strictly layered above Settings)
+  - Tooltips & Context Menus: `2000` / `9999`
 
 ---
 
@@ -268,8 +269,15 @@ CodeLens uses a tailored three-tier typographic stack:
 
 ## Components
 
-- **Graph HUD Toolbar**: Floating glass bar at top center of canvas with Depth selector (`1`, `2`, `3`, `5`, `Max`), Cluster toggles, POJO filter (`⚡ Hide POJOs`), Physics switch, and Camera controls.
-- **Explorer Tree**: Hierarchical folder & package trees with distinct icons for packages (`📦`), classes (`ⓒ`), interfaces (`ⓘ`), enums (`ⓔ`), and records (`®`).
+- **Graph HUD Toolbar**: Floating glass bar at top center of canvas with Depth selector (`1`, `2`, `3`, `5`, `Max`), Cluster toggles, POJO filter (`⚡ Hide POJOs`), Behavioral Hotspots Heat Mode (`♨ Heat`), Physics switch, and Camera controls.
+- **Explorer Tree & Scope Boundary Control**:
+  - Hierarchical folder & package trees with distinct icons for packages (`📦`), classes (`ⓒ`), interfaces (`ⓘ`), enums (`ⓔ`), and records (`®`).
+  - Hover `×` button and right-click context menu for atomic cascading scope exclusion.
+  - Dedicated Scope Manager modal for viewing and restoring excluded classes or packages.
+- **Feature & User Guide Modal (`#help-modal`)**:
+  - 5-tab comprehensive in-app documentation (Overview & 5 Screens, 3D & 2D Views, Scope Management, Quality & Hotspots Engine, Keyboard Shortcuts).
+  - Accessible via header button, shortcut <kbd>?</kbd>, or embedded button inside Settings modal (automatically dismissing Settings and opening Guide in front at `z-index: 1100`).
+- **Reports Hub Modal**: 11 enterprise architectural and quality reports with instant CSV, HTML, and Markdown export.
 - **Code Review Finding Cards**: Severity-coded badges with line anchors that jump directly to Monaco editor with highlight animations.
 - **Inspector Key-Value Rows**: Label on left in muted typography, monospaced tabular values on right with copyable pill chips.
 
@@ -279,9 +287,10 @@ CodeLens uses a tailored three-tier typographic stack:
 
 ### Do's
 - **Preserve Tabular Numbers**: Always use `font-variant-numeric: tabular-nums` for counts, line numbers, complexities, and percentages.
-- **Support Keyboard Navigation**: Ensure shortcuts (`1-5`, `F`, `H`, `Space`, `/`) remain functional for instant developer speed.
+- **Support Keyboard Navigation**: Ensure shortcuts (`1-5`, `R`, `M`, `H`, `?`, `\`, `Space`, `F`, `[`, `]`, `Esc`) remain functional for instant developer speed.
 - **Maintain High Density**: Keep padding tight and avoid oversized whitespace gaps in data grids and member lists.
 - **Filter Noise Intelligently**: Keep POJO getters/setters and boilerplate accessors filtered by default in call graphs to emphasize business flow.
+- **Enforce Stacking Contexts**: Always isolate higher-priority modals (like Feature Guide) at `z-index: 1100` so nested dialog invocations never get trapped underneath parent dialogs.
 
 ### Don'ts
 - **No Heavy Drop Shadows**: Avoid heavy blurry box-shadows; use crisp borders and tonal layer stepping instead.
