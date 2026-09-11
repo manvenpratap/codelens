@@ -44,6 +44,94 @@
       this._onSelectEntity = null;
       this._targetCameraPos = null;
       this._targetControlsTarget = null;
+      this._heatData = {};
+      this._heatMode = false;
+      this._heatMax = 1;
+    }
+
+    setHeatData(heatMap) {
+      this._heatData = heatMap || {};
+      let max = 1;
+      for (const v of Object.values(this._heatData)) {
+        if (typeof v === 'number' && v > max) max = v;
+        else if (v && typeof v.score === 'number' && v.score > max) max = v.score;
+        else if (v && typeof v.commitCount === 'number' && v.commitCount > max) max = v.commitCount;
+      }
+      this._heatMax = max;
+      if (this._heatMode) {
+        this._updateHeatColors();
+      }
+    }
+
+    toggleHeat(enabled) {
+      this._heatMode = (enabled !== undefined) ? Boolean(enabled) : !this._heatMode;
+      ['btn-heat', 'btn-codebase-heat'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.classList.toggle('active', this._heatMode);
+          btn.setAttribute('aria-pressed', String(this._heatMode));
+        }
+      });
+      if (this._heatMode && Object.keys(this._heatData).length === 0) {
+        if (typeof window.loadGitHeatData === 'function') {
+          window.loadGitHeatData();
+        }
+      }
+      this._updateHeatColors();
+      return this._heatMode;
+    }
+
+    _updateHeatColors() {
+      if (!this._buildings || this._buildings.length === 0) return;
+      this._buildings.forEach(mesh => {
+        if (!mesh.material) return;
+        const id = (mesh.userData && mesh.userData.entity) ? (mesh.userData.entity.id || mesh.userData.entity.label || mesh.userData.entity.simpleName) : null;
+        if (!this._heatMode) {
+          mesh.material.color.setHex(mesh.userData.origColor);
+          mesh.material.emissive.setHex(mesh.userData.origColor);
+          mesh.material.emissiveIntensity = 0.42;
+          return;
+        }
+
+        let heatScore = 0;
+        const rawHeat = id ? (
+          (this._heatData[id] !== undefined)
+            ? this._heatData[id]
+            : ((mesh.userData.entity.label && this._heatData[mesh.userData.entity.label] !== undefined)
+                ? this._heatData[mesh.userData.entity.label]
+                : this._heatData[id.replace(/\(.*\)/, '')])
+        ) : null;
+
+        if (rawHeat != null) {
+          if (typeof rawHeat === 'number') heatScore = rawHeat;
+          else if (typeof rawHeat === 'object') {
+            heatScore = rawHeat.score != null ? rawHeat.score : (rawHeat.commitCount || 0);
+          }
+        }
+
+        const ratio = Math.min(heatScore / (this._heatMax || 1), 1);
+        let hex = 0x334155; // Dark slate for 0 churn/hotspot
+        if (heatScore > 0) {
+          if (ratio < 0.35) {
+            // Emerald (0x10b981) -> Amber (0xf59e0b)
+            const t = ratio / 0.35;
+            const r = Math.round(16 + (245 - 16) * t);
+            const g = Math.round(185 + (158 - 185) * t);
+            const b = Math.round(129 + (11 - 129) * t);
+            hex = (r << 16) | (g << 8) | b;
+          } else {
+            // Amber (0xf59e0b) -> Crimson Red (0xef4444)
+            const t = (ratio - 0.35) / 0.65;
+            const r = Math.round(245 + (239 - 245) * t);
+            const g = Math.round(158 + (68 - 158) * t);
+            const b = Math.round(11 + (68 - 11) * t);
+            hex = (r << 16) | (g << 8) | b;
+          }
+        }
+        mesh.material.color.setHex(hex);
+        mesh.material.emissive.setHex(hex);
+        mesh.material.emissiveIntensity = heatScore > 0 ? (0.35 + ratio * 0.55) : 0.12;
+      });
     }
 
     setArchetypeFilter(ruleId) {
@@ -495,6 +583,9 @@
       // Build Inter-Class Call Arcs across the Skyline
       this._buildSkylineCallArcs();
       this._buildOverlayControls(pkgs);
+      if (this._heatMode) {
+        this._updateHeatColors();
+      }
     }
 
     _buildSkylineCallArcs() {
@@ -644,7 +735,8 @@
         if (this._hoveredMesh !== hit) {
           this._resetHover();
           this._hoveredMesh = hit;
-          hit.material.emissiveIntensity = 0.55;
+          hit.userData.prevEmissiveIntensity = hit.material.emissiveIntensity;
+          hit.material.emissiveIntensity = 0.65;
           this._el.style.cursor = 'pointer';
         }
 
@@ -668,12 +760,32 @@
           }
         }
 
+        let hotspotHtml = '';
+        const id = data.id || data.label || data.simpleName;
+        const rawHeat = id ? (
+          (this._heatData[id] !== undefined)
+            ? this._heatData[id]
+            : ((data.label && this._heatData[data.label] !== undefined)
+                ? this._heatData[data.label]
+                : this._heatData[id.replace(/\(.*\)/, '')])
+        ) : null;
+        if (rawHeat && typeof rawHeat === 'object' && rawHeat.score != null) {
+          const riskColor = rawHeat.riskTier === 'CRITICAL' ? '#ef4444' : (rawHeat.riskTier === 'HIGH' ? '#f97316' : '#f59e0b');
+          hotspotHtml = `<div style="margin-top:5px;"><span class="archetype-badge" style="background:${riskColor}22; border:1px solid ${riskColor}; color:${riskColor}; font-size:10px; padding:2px 6px; border-radius:4px; font-weight:700;"><svg class="svg-icon icon-red icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; width:11px; height:11px;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Hotspot: ${Math.round(rawHeat.score)}/100 (CC:${rawHeat.cc} &times; ${rawHeat.commits} ch) [${rawHeat.riskTier || 'HIGH'}]</span></div>`;
+        } else if (rawHeat != null) {
+          const hVal = typeof rawHeat === 'number' ? rawHeat : (rawHeat && rawHeat.commitCount ? rawHeat.commitCount : 0);
+          if (this._heatMode || hVal > 0) {
+            hotspotHtml = `<div style="margin-top:5px;"><span class="archetype-badge" style="background:rgba(245, 158, 11, 0.18); border:1px solid rgba(245, 158, 11, 0.45); color:#f59e0b; font-size:10px; padding:2px 6px; border-radius:4px;"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; width:11px; height:11px;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Churn: ${hVal} commits</span></div>`;
+          }
+        }
+
         this._tooltip.innerHTML = `
           <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
             <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
             <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
             <div style="font-size:11px; font-family:JetBrains Mono,monospace; margin-top:4px;">${subInfo}</div>
             ${archetypeHtml}
+            ${hotspotHtml}
           </div>
         `;
         this._tooltip.style.left = `${event.clientX - rect.left + 14}px`;
@@ -688,7 +800,9 @@
 
     _resetHover() {
       if (this._hoveredMesh) {
-        this._hoveredMesh.material.emissiveIntensity = 0.12;
+        this._hoveredMesh.material.emissiveIntensity = (this._hoveredMesh.userData && this._hoveredMesh.userData.prevEmissiveIntensity != null)
+          ? this._hoveredMesh.userData.prevEmissiveIntensity
+          : (this._heatMode ? 0.2 : 0.42);
         this._hoveredMesh = null;
       }
     }

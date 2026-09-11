@@ -755,6 +755,23 @@ public class ReportService {
         public List<ClassRiskItem> classRiskRankings = new ArrayList<>();
         public List<FieldMutationHotspot> fieldMutationHotspots = new ArrayList<>();
         public List<HighRiskMethodItem> highRiskMethods = new ArrayList<>();
+        public List<BehavioralHotspot> behavioralHotspots = new ArrayList<>();
+        public int behavioralHotspotCount;
+    }
+
+    public static class BehavioralHotspot {
+        public String entityFqn;
+        public String simpleName;
+        public String packageName;
+        public String kind; // "CLASS" or "METHOD"
+        public int cyclomaticComplexity;
+        public int commitCount;
+        public int linesOfCode;
+        public int hotspotScore; // 0 - 100
+        public String riskTier; // "CRITICAL", "HIGH", "MEDIUM", "LOW"
+        public String lastAuthor;
+        public long lastCommitTime;
+        public String recommendation;
     }
 
     public static class ClassRiskItem {
@@ -793,6 +810,14 @@ public class ReportService {
                                                     List<CodeMethod> methods,
                                                     List<CodeField> fields,
                                                     List<CodeRelationship> relationships) {
+        return buildChangeRiskData(types, methods, fields, relationships, Collections.emptyList());
+    }
+
+    public ChangeRiskReportData buildChangeRiskData(List<CodeType> types,
+                                                    List<CodeMethod> methods,
+                                                    List<CodeField> fields,
+                                                    List<CodeRelationship> relationships,
+                                                    List<GitMeta> gitMetas) {
         ChangeRiskReportData data = new ChangeRiskReportData();
         data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         data.totalClassesAnalyzed = types.size();
@@ -950,6 +975,110 @@ public class ReportService {
             data.highRiskMethods = new ArrayList<>(data.highRiskMethods.subList(0, 25));
         }
 
+        // Build GitMeta map
+        Map<String, GitMeta> gitMap = new HashMap<>();
+        if (gitMetas != null) {
+            for (GitMeta gm : gitMetas) {
+                if (gm != null && gm.getEntityFqn() != null) {
+                    gitMap.put(gm.getEntityFqn(), gm);
+                }
+            }
+        }
+
+        // Aggregate method CC per class and identify high-risk method and class hotspots
+        Map<String, Integer> classTotalCC = new HashMap<>();
+        Map<String, Integer> classMethodCount = new HashMap<>();
+        for (CodeMethod m : methods) {
+            int cc = Math.max(1, m.getCyclomaticComplexity());
+            String cFqn = m.getDeclaringTypeFqn();
+            if (cFqn != null) {
+                classTotalCC.merge(cFqn, cc, Integer::sum);
+                classMethodCount.merge(cFqn, 1, Integer::sum);
+            }
+        }
+
+        List<BehavioralHotspot> allHotspots = new ArrayList<>();
+
+        // 1. Evaluate Method-Level Hotspots
+        for (CodeMethod m : methods) {
+            int cc = Math.max(1, m.getCyclomaticComplexity());
+            GitMeta gm = gitMap.get(m.getFqn());
+            int commits = (gm != null && gm.getCommitCount() > 0) ? gm.getCommitCount() : 1;
+            int loc = Math.max(1, m.getEndLine() - m.getStartLine() + 1);
+
+            // Behavioral formula: CC * log2(1 + commits) * max(1.0, log10(loc))
+            double rawScore = cc * (Math.log(1 + commits) / Math.log(2.0)) * Math.max(1.0, Math.log10(Math.max(10, loc)));
+            int hotspotScore = (int) Math.min(100, Math.max(1, Math.round(rawScore * 3.0)));
+
+            if (cc >= 5 || commits >= 3 || hotspotScore >= 35) {
+                BehavioralHotspot spot = new BehavioralHotspot();
+                spot.entityFqn = m.getFqn();
+                spot.simpleName = m.getSimpleName() != null ? m.getSimpleName() : extractSimpleMethodName(m.getFqn());
+                spot.packageName = classToPackage.getOrDefault(m.getDeclaringTypeFqn(), "(default)");
+                spot.kind = "METHOD";
+                spot.cyclomaticComplexity = cc;
+                spot.commitCount = commits;
+                spot.linesOfCode = loc;
+                spot.hotspotScore = hotspotScore;
+                spot.riskTier = hotspotScore >= 70 ? "CRITICAL" : (hotspotScore >= 45 ? "HIGH" : (hotspotScore >= 25 ? "MEDIUM" : "LOW"));
+                spot.lastAuthor = gm != null && gm.getLastAuthorName() != null ? gm.getLastAuthorName() : "Unknown";
+                spot.lastCommitTime = gm != null ? gm.getLastCommitTime() : 0L;
+
+                if (hotspotScore >= 70) {
+                    spot.recommendation = "Decompose cyclomatic branching & increase unit test coverage before introducing new modifications.";
+                } else if (commits >= 8) {
+                    spot.recommendation = "High revision volatility with moderate complexity; extract stable helper abstractions.";
+                } else {
+                    spot.recommendation = "Maintain automated test regression safeguards during changes.";
+                }
+                allHotspots.add(spot);
+            }
+        }
+
+        // 2. Evaluate Class-Level Hotspots
+        for (CodeType t : types) {
+            int totalCC = classTotalCC.getOrDefault(t.getFqn(), 1);
+            int mCount = classMethodCount.getOrDefault(t.getFqn(), 1);
+            int avgCC = Math.max(1, totalCC / Math.max(1, mCount));
+            GitMeta gm = gitMap.get(t.getFqn());
+            int commits = (gm != null && gm.getCommitCount() > 0) ? gm.getCommitCount() : 1;
+            int loc = t.getLineCount() > 0 ? t.getLineCount() : Math.max(10, t.getEndLine() - t.getStartLine() + 1);
+
+            double rawScore = (totalCC * 0.7 + avgCC * 0.3) * (Math.log(1 + commits) / Math.log(2.0)) * Math.max(1.0, Math.log10(Math.max(10, loc)));
+            int hotspotScore = (int) Math.min(100, Math.max(1, Math.round(rawScore * 2.2)));
+
+            if (totalCC >= 12 || commits >= 3 || hotspotScore >= 35) {
+                BehavioralHotspot spot = new BehavioralHotspot();
+                spot.entityFqn = t.getFqn();
+                spot.simpleName = t.getSimpleName();
+                spot.packageName = t.getPackageFqn() != null ? t.getPackageFqn() : "(default)";
+                spot.kind = "CLASS";
+                spot.cyclomaticComplexity = totalCC;
+                spot.commitCount = commits;
+                spot.linesOfCode = loc;
+                spot.hotspotScore = hotspotScore;
+                spot.riskTier = hotspotScore >= 70 ? "CRITICAL" : (hotspotScore >= 45 ? "HIGH" : (hotspotScore >= 25 ? "MEDIUM" : "LOW"));
+                spot.lastAuthor = gm != null && gm.getLastAuthorName() != null ? gm.getLastAuthorName() : "Unknown";
+                spot.lastCommitTime = gm != null ? gm.getLastCommitTime() : 0L;
+
+                if (hotspotScore >= 70) {
+                    spot.recommendation = "Core architectural hotspot: High change frequency and high complexity. Candidate for modular splitting.";
+                } else if (commits >= 10) {
+                    spot.recommendation = "Rapidly evolving class: enforce strict interface boundaries to prevent ripple defects.";
+                } else {
+                    spot.recommendation = "Monitor cyclomatic complexity growth during feature releases.";
+                }
+                allHotspots.add(spot);
+            }
+        }
+
+        allHotspots.sort(Comparator.comparingInt((BehavioralHotspot h) -> h.hotspotScore).reversed());
+        if (allHotspots.size() > 30) {
+            allHotspots = new ArrayList<>(allHotspots.subList(0, 30));
+        }
+        data.behavioralHotspots = allHotspots;
+        data.behavioralHotspotCount = allHotspots.size();
+
         return data;
     }
 
@@ -979,8 +1108,24 @@ public class ReportService {
         }
         sb.append("\n");
 
+        if (d.behavioralHotspots != null && !d.behavioralHotspots.isEmpty()) {
+            sb.append("## 3. Behavioral Code Hotspots (Complexity × Git Churn)\n\n");
+            sb.append("Code entities where high branching complexity coincides with frequent Git commit churn, indicating prime architectural debt:\n\n");
+            sb.append("| Entity | Kind | Package | CC | Commits | Hotspot Score | Risk Tier | Last Author | Recommendation |\n");
+            sb.append("| :--- | :---: | :--- | :---: | :---: | :---: | :---: | :--- | :--- |\n");
+            for (BehavioralHotspot spot : d.behavioralHotspots) {
+                String tierBadge = "CRITICAL".equals(spot.riskTier) ? "🔴 CRITICAL" : ("HIGH".equals(spot.riskTier) ? "🟠 HIGH" : "🟡 MEDIUM");
+                sb.append("| `").append(spot.simpleName).append("` | `").append(spot.kind).append("` | `")
+                  .append(spot.packageName).append("` | ").append(spot.cyclomaticComplexity).append(" | ")
+                  .append(spot.commitCount).append(" | **").append(spot.hotspotScore).append("/100** | ")
+                  .append(tierBadge).append(" | ").append(spot.lastAuthor).append(" | ")
+                  .append(spot.recommendation).append(" |\n");
+            }
+            sb.append("\n");
+        }
+
         if (!d.fieldMutationHotspots.isEmpty()) {
-            sb.append("## 3. High-Impact Mutable State Hotspots\n\n");
+            sb.append("## 4. High-Impact Mutable State Hotspots\n\n");
             sb.append("Methods modifying state that cascades to multiple reader methods across business modules:\n\n");
             sb.append("| Modified Field | Modifying Method | Downstream Readers | Modules Impacted |\n");
             sb.append("| :--- | :--- | :---: | :---: |\n");
@@ -992,7 +1137,7 @@ public class ReportService {
         }
 
         if (!d.highRiskMethods.isEmpty()) {
-            sb.append("## 4. Top High-Risk Methods\n\n");
+            sb.append("## 5. Top High-Risk Methods\n\n");
             sb.append("| Method | Declaring Class | Direct Callers | Callees | Field Blast | Level |\n");
             sb.append("| :--- | :--- | :---: | :---: | :---: | :---: |\n");
             for (HighRiskMethodItem m : d.highRiskMethods) {
@@ -1061,6 +1206,26 @@ public class ReportService {
         }
         sb.append("</tbody></table>\n");
 
+        if (d.behavioralHotspots != null && !d.behavioralHotspots.isEmpty()) {
+            sb.append("<h2>Behavioral Code Hotspots (Complexity × Git Churn)</h2>\n");
+            sb.append("<p style=\"color:var(--muted); font-size:13px;\">Entities combining high cyclomatic complexity with frequent git revisions. Prioritize these for test hardening and refactoring.</p>\n");
+            sb.append("<table><thead><tr><th>Entity</th><th>Kind</th><th>Package</th><th style=\"text-align:right;\">CC</th><th style=\"text-align:right;\">Commits</th><th style=\"text-align:center;\">Hotspot Score</th><th>Risk Tier</th><th>Recommendation</th></tr></thead><tbody>\n");
+            for (BehavioralHotspot spot : d.behavioralHotspots) {
+                String badgeCls = "CRITICAL".equals(spot.riskTier) ? "badge-crit" : ("HIGH".equals(spot.riskTier) ? "badge-high" : "badge-med");
+                sb.append("<tr>");
+                sb.append("<td><code>").append(escapeHtml(spot.simpleName)).append("</code></td>");
+                sb.append("<td><span class=\"badge badge-low\">").append(escapeHtml(spot.kind)).append("</span></td>");
+                sb.append("<td><code>").append(escapeHtml(spot.packageName)).append("</code></td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(spot.cyclomaticComplexity).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(spot.commitCount).append("</td>");
+                sb.append("<td style=\"text-align:center; font-family:monospace; font-weight:bold;\">").append(spot.hotspotScore).append("</td>");
+                sb.append("<td><span class=\"badge ").append(badgeCls).append("\">").append(spot.riskTier).append("</span></td>");
+                sb.append("<td style=\"font-size:12px; color:#cbd5e1;\">").append(escapeHtml(spot.recommendation)).append("</td>");
+                sb.append("</tr>\n");
+            }
+            sb.append("</tbody></table>\n");
+        }
+
         if (!d.fieldMutationHotspots.isEmpty()) {
             sb.append("<h2>High-Impact Mutable State Hotspots</h2>\n");
             sb.append("<table><thead><tr><th>Modified Field</th><th>Writer Method</th><th style=\"text-align:right;\">Downstream Readers</th><th style=\"text-align:right;\">Impacted Modules</th></tr></thead><tbody>\n");
@@ -1081,6 +1246,7 @@ public class ReportService {
 
     public String renderChangeRiskCsv(ChangeRiskReportData d) {
         StringBuilder sb = new StringBuilder();
+        sb.append("# CLASS_RISK_RANKINGS\n");
         sb.append("ClassFqn,SimpleName,Package,AfferentCoupling,EfferentCoupling,FieldBlastRadius,CallInDegree,RiskScore,RiskLevel\n");
         for (ClassRiskItem item : d.classRiskRankings) {
             sb.append(escapeCsv(item.classFqn)).append(",")
@@ -1092,6 +1258,23 @@ public class ReportService {
               .append(item.callInDegree).append(",")
               .append(item.riskScore).append(",")
               .append(escapeCsv(item.riskLevel)).append("\n");
+        }
+        if (d.behavioralHotspots != null && !d.behavioralHotspots.isEmpty()) {
+            sb.append("\n# BEHAVIORAL_HOTSPOTS\n");
+            sb.append("EntityFqn,SimpleName,Kind,Package,CyclomaticComplexity,CommitCount,LinesOfCode,HotspotScore,RiskTier,LastAuthor,Recommendation\n");
+            for (BehavioralHotspot h : d.behavioralHotspots) {
+                sb.append(escapeCsv(h.entityFqn)).append(",")
+                  .append(escapeCsv(h.simpleName)).append(",")
+                  .append(escapeCsv(h.kind)).append(",")
+                  .append(escapeCsv(h.packageName)).append(",")
+                  .append(h.cyclomaticComplexity).append(",")
+                  .append(h.commitCount).append(",")
+                  .append(h.linesOfCode).append(",")
+                  .append(h.hotspotScore).append(",")
+                  .append(escapeCsv(h.riskTier)).append(",")
+                  .append(escapeCsv(h.lastAuthor)).append(",")
+                  .append(escapeCsv(h.recommendation)).append("\n");
+            }
         }
         return sb.toString();
     }

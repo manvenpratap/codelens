@@ -1390,10 +1390,19 @@ function openMacroStudio(level, granularity) {
     App.lastGranularTab = App.activeTab;
   }
   document.body.classList.add('macro-studio-mode');
-  switchTab('codebase');
   if (level) {
-    loadWholeCodebaseGraph(level, granularity);
+    App.codebaseMacroLevel = level;
   }
+  if (granularity) {
+    App.codebaseGranularity = granularity;
+  }
+  App._suppressTabLoad = true;
+  try {
+    switchTab('codebase');
+  } finally {
+    App._suppressTabLoad = false;
+  }
+  loadWholeCodebaseGraph(level || App.codebaseMacroLevel || 'city3d', granularity || App.codebaseGranularity || 'arch');
   requestAnimationFrame(() => triggerRelayout());
 }
 
@@ -1404,6 +1413,8 @@ function closeMacroStudio() {
   switchTab(targetTab);
   requestAnimationFrame(() => triggerRelayout());
 }
+window.openMacroStudio = openMacroStudio;
+window.closeMacroStudio = closeMacroStudio;
 
 /** Switch the active tab in the centre panel. */
 function switchTab(tabName) {
@@ -2802,11 +2813,18 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (pojoCtrl) pojoCtrl.style.display = showPojoFilter ? 'inline-flex' : 'none';
   if (pojoDiv) pojoDiv.style.display = (showPojoFilter && supportsGranularity) ? '' : 'none';
 
-  // Toggle 2D Graph specific controls (Clusters/Hulls, Physics, Heat)
+  // Toggle 2D Graph specific controls (Clusters/Hulls, Physics, Heat) & 3D City Heat
   const graphTogglesCtrl = qs('#codebase-graph-toggles');
   const graphTogglesDiv = qs('#codebase-graph-toggles-divider');
-  if (graphTogglesCtrl) graphTogglesCtrl.style.display = isGraph2D ? 'inline-flex' : 'none';
-  if (graphTogglesDiv) graphTogglesDiv.style.display = isGraph2D ? '' : 'none';
+  const showGraphToggles = isGraph2D || effectiveLevel === 'city3d';
+  if (graphTogglesCtrl) {
+    graphTogglesCtrl.style.display = showGraphToggles ? 'inline-flex' : 'none';
+    const hullsBtn = qs('#btn-codebase-toggle-hulls');
+    const physicsBtn = qs('#btn-codebase-toggle-physics');
+    if (hullsBtn) hullsBtn.style.display = isGraph2D ? '' : 'none';
+    if (physicsBtn) physicsBtn.style.display = isGraph2D ? '' : 'none';
+  }
+  if (graphTogglesDiv) graphTogglesDiv.style.display = showGraphToggles ? '' : 'none';
 
   // Toggle Call Arcs filter button in Codebase HUD (visible for 3D modes: 3D City & 3D Galaxy)
   const arcsCtrl = qs('#codebase-arcs-controls');
@@ -2848,13 +2866,16 @@ async function loadWholeCodebaseGraph(level, granularity) {
     return;
   }
 
+  const mountContainer = isAltViz ? qs('#codebase-canvas-wrap') : qs('#graph-view');
+
   // Destroy any previous alternate renderer
   if (App.activeAltRenderer) {
     App.activeAltRenderer.destroy();
     App.activeAltRenderer = null;
   }
-
-  const mountContainer = isAltViz ? qs('#codebase-canvas-wrap') : qs('#graph-view');
+  if (mountContainer) {
+    mountContainer.innerHTML = '';
+  }
 
   if (isAltViz) {
     hideCodebaseEmpty();
@@ -2993,9 +3014,9 @@ async function loadWholeCodebaseGraph(level, granularity) {
         if (typeof App.codebaseHidePojo === 'boolean' && typeof renderer.setHidePojo === 'function') {
           renderer.setHidePojo(App.codebaseHidePojo);
         }
-        renderer.onScopeChange(async (newScope) => {
+        renderer.onScopeChange(async (newScope, filter) => {
           try {
-            showBanner(`Loading DSM (${newScope})...`);
+            showBanner(filter ? `Loading DSM (${newScope}: ${filter})...` : `Loading DSM (${newScope})...`);
             const isMethodsNow = (newScope === 'methods');
             App.codebaseGranularity = (isMethodsNow ? 'methods' : 'arch');
             qsa('#codebase-granularity-selector .level-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.granularity === (isMethodsNow ? 'methods' : 'arch')));
@@ -3003,11 +3024,11 @@ async function loadWholeCodebaseGraph(level, granularity) {
             const pojoDiv = qs('#codebase-pojo-divider');
             if (pojoCtrl) pojoCtrl.style.display = isMethodsNow ? 'inline-flex' : 'none';
             if (pojoDiv) pojoDiv.style.display = isMethodsNow ? '' : 'none';
-            const scopedData = await api.dsmData(newScope);
-            renderer.setData(scopedData);
-            renderAltVizInspector('DSM', scopedData.classes.length, 0);
+            const scopedData = await api.dsmData(newScope, filter);
+            renderer.setData(scopedData, filter);
+            renderAltVizInspector(`DSM (${newScope})`, scopedData.classes.length, 0);
             renderCodebaseLegend(scopedData.classes.map(c => ({ id: c, package: c.split('.').slice(0, -1).join('.') || 'default' })));
-            showBanner(`DSM loaded: ${scopedData.classes.length} ${newScope}`);
+            showBanner(`DSM loaded: ${scopedData.classes.length} ${newScope}` + (filter ? ` [${filter}]` : ''));
           } catch (err) {
             showBanner('Error changing DSM scope: ' + err.message);
           }
@@ -6382,14 +6403,32 @@ async function loadGitSummary() {
     console.warn('Git summary fetch failed:', err);
   }
 }
-/** Load heat data (entityFqn -> commitCount) and register it with the graph. */
+/** Load heat data (entityFqn -> Behavioral Hotspot / commitCount) and register it with the graph. */
 async function loadGitHeatData() {
   try {
     const summary = await api.gitSummary();
-    if (!summary.hotEntities) return;
+    if (!summary) return;
     const heatMap = {};
-    for (const e of summary.hotEntities) {
-      heatMap[e.entityFqn] = e.commitCount;
+    if (summary.behavioralHotspots && summary.behavioralHotspots.length > 0) {
+      for (const h of summary.behavioralHotspots) {
+        heatMap[h.entityFqn] = {
+          score: h.hotspotScore,
+          cc: h.cyclomaticComplexity,
+          commits: h.commitCount,
+          loc: h.linesOfCode,
+          riskTier: h.riskTier,
+          recommendation: h.recommendation
+        };
+      }
+    } else if (summary.hotEntities) {
+      for (const e of summary.hotEntities) {
+        heatMap[e.entityFqn] = {
+          score: e.commitCount,
+          cc: e.cyclomaticComplexity || 1,
+          commits: e.commitCount,
+          commitCount: e.commitCount
+        };
+      }
     }
     App.graph?.setHeatData(heatMap);
     if (App.activeAltRenderer && typeof App.activeAltRenderer.setHeatData === 'function') {
@@ -6400,6 +6439,33 @@ async function loadGitHeatData() {
   } catch (_) { /* non-fatal */ }
 }
 window.loadGitHeatData = loadGitHeatData;
+
+window.selectEntity = function(fqn) {
+  if (!fqn) return;
+  if (fqn.includes('(')) {
+    loadMethodDetails(fqn);
+  } else {
+    loadClassDetails(fqn);
+  }
+};
+window.selectClass = function(fqn) {
+  window.selectEntity(fqn);
+};
+
+window.jumpToGraphHeat = async function(fqn) {
+  App.codebaseLevel = 'graph2d';
+  switchTab('graph');
+  await loadCodebaseVisualization();
+  if (App.graph && !App.graph._heatMode) {
+    App.graph.toggleHeat();
+  }
+  if (fqn && App.graph) {
+    App.graph.selectNode(fqn);
+    if (typeof App.graph.focusNode === 'function') {
+      App.graph.focusNode(fqn);
+    }
+  }
+};
 
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -8407,10 +8473,91 @@ const ReportsHub = {
           <span class="report-kpi-sub">Fields mutated &amp; read downstream</span>
         </div>
 
+        <div class="report-kpi-card" style="--kpi-accent: #ef4444;">
+          <span class="report-kpi-label">Behavioral Hotspots</span>
+          <div class="report-kpi-val">${d.behavioralHotspotCount || (d.behavioralHotspots ? d.behavioralHotspots.length : 0)}</div>
+          <span class="report-kpi-sub">Complexity &times; Git Churn Correlated</span>
+        </div>
+
         <div class="report-kpi-card" style="--kpi-accent: #10b981;">
           <span class="report-kpi-label">Classes Evaluated</span>
           <div class="report-kpi-val">${d.totalClassesAnalyzed || 0}</div>
           <span class="report-kpi-sub">Graph &amp; field matrix nodes</span>
+        </div>
+      </div>
+
+      <!-- Behavioral Hotspots (Complexity x Git Churn) -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            <span>Behavioral Hotspots (Complexity &times; Git Churn Correlation)</span>
+          </div>
+          <span class="report-section-badge">${(d.behavioralHotspots || []).length} Hotspots</span>
+        </div>
+        <div style="padding: 8px 16px 4px; font-size: 12px; color: var(--text-muted);">
+          Correlates AST Cyclomatic Complexity (CC) and Lines of Code (LOC) with historical Git commit churn. Entities scoring high carry the highest statistical defect probability.
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Entity Name</th>
+                <th>Package</th>
+                <th>Hotspot Score</th>
+                <th>Risk Tier</th>
+                <th>Complexity (CC)</th>
+                <th>Git Churn</th>
+                <th>LOC</th>
+                <th>Prescribed Action</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (d.behavioralHotspots && d.behavioralHotspots.length > 0) {
+      d.behavioralHotspots.slice(0, 25).forEach(h => {
+        const tierClass = h.riskTier === 'CRITICAL' ? 'risk-critical' : (h.riskTier === 'HIGH' ? 'risk-high' : 'risk-medium');
+        html += `
+          <tr>
+            <td>
+              <strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(h.simpleName)}</strong>
+              <span style="font-size:10px; color:var(--text-muted); margin-left:4px;">(${esc(h.kind)})</span>
+            </td>
+            <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(h.packageName)}">${esc(h.packageName)}</td>
+            <td><span class="risk-badge ${tierClass}">${Math.round(h.hotspotScore)} / 100</span></td>
+            <td><span class="risk-badge ${tierClass}">${esc(h.riskTier)}</span></td>
+            <td style="font-family:var(--font-mono);">${h.cyclomaticComplexity}</td>
+            <td style="font-family:var(--font-mono);">${h.commitCount} commits</td>
+            <td style="font-family:var(--font-mono);">${h.linesOfCode}</td>
+            <td style="font-size:11px; color:var(--text-secondary); max-width:260px;">${esc(h.recommendation)}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectClass('${esc(h.entityFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
+                  KB →
+                </button>
+                <button class="btn-ghost" style="font-size:11px; padding:3px 7px; color:#ef4444;" onclick="jumpToGraphHeat('${esc(h.entityFqn)}');" title="View in Graph Heat Mode">
+                  Graph ♨ →
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    } else {
+      html += `
+        <tr>
+          <td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">
+            No git churn history recorded yet or all entities have low behavioral risk.
+          </td>
+        </tr>
+      `;
+    }
+
+    html += `
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -8681,6 +8828,20 @@ const ReportsHub = {
           <div class="report-kpi-val">${(d.classCycles ? d.classCycles.length : 0) + (d.packageTangles ? d.packageTangles.length : 0)}</div>
           <span class="report-kpi-sub">Prescribed architectural break points</span>
         </div>
+      </div>
+
+      <!-- Quick Action: DSM Matrix Isolation -->
+      <div style="margin-bottom:16px; padding:12px 16px; background:linear-gradient(90deg, rgba(239, 68, 68, 0.10), rgba(245, 158, 11, 0.06)); border:1px solid rgba(239, 68, 68, 0.35); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <div>
+            <strong style="color:var(--text-primary); font-size:13px;">Explore &amp; Decouple Cycles in Dependency Structure Matrix (DSM)</strong>
+            <div style="color:var(--text-muted); font-size:11.5px;">Interactive matrix view with automatic cycle isolation, layered feedforward ranking, and CSV/JSON export.</div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="openMacroStudio('dsm');" style="display:flex; align-items:center; gap:6px;">
+          Open DSM Matrix →
+        </button>
       </div>
 
       <!-- Class Dependency Cycles -->

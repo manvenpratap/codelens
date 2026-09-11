@@ -778,6 +778,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     let max = 1;
     for (const v of Object.values(this._heatData)) {
       if (typeof v === 'number' && v > max) max = v;
+      else if (v && typeof v.score === 'number' && v.score > max) max = v.score;
       else if (v && typeof v.commitCount === 'number' && v.commitCount > max) max = v.commitCount;
     }
     this._heatMax = max;
@@ -2085,15 +2086,19 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const hasSingleRoot = this._nodes && this._nodes.filter(n => n.role === 'root').length === 1;
 
     if (this._heatMode && !isCriticalNode) {
-      const count = (this._heatData[node.id] !== undefined)
+      const raw = (this._heatData[node.id] !== undefined)
         ? this._heatData[node.id]
         : ((node.label && this._heatData[node.label] !== undefined)
             ? this._heatData[node.label]
             : (node.id ? this._heatData[node.id.replace(/\(.*\)/, '')] : 0)) || 0;
 
-      heatRatio = Math.min(count / (this._heatMax || 1), 1);
+      const scoreVal = (typeof raw === 'number')
+        ? raw
+        : (raw && typeof raw.score === 'number' ? raw.score : (raw && raw.commitCount ? raw.commitCount : 0));
 
-      if (count === 0) {
+      heatRatio = Math.min(scoreVal / (this._heatMax || 1), 1);
+
+      if (scoreVal === 0) {
         mainColor = '#475569';
       } else if (heatRatio < 0.35) {
         mainColor = lerpColor('#34d399', '#f59e0b', heatRatio / 0.35);
@@ -3099,10 +3104,22 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const tColor = typeColors[nodeType] || commColor;
     const tGlyph = typeGlyphs[nodeType] || 'm';
 
-    const heatVal = this._heatData[node.id] || 0;
-    const heatSnippet = (this._heatMode || heatVal > 0)
-      ? `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Churn: ${heatVal}</span>`
-      : '';
+    const rawHeat = (this._heatData[node.id] !== undefined)
+      ? this._heatData[node.id]
+      : ((node.label && this._heatData[node.label] !== undefined)
+          ? this._heatData[node.label]
+          : (node.id ? this._heatData[node.id.replace(/\(.*\)/, '')] : 0)) || 0;
+
+    let heatSnippet = '';
+    if (rawHeat && typeof rawHeat === 'object' && rawHeat.score != null) {
+      const riskColor = rawHeat.riskTier === 'CRITICAL' ? '#ef4444' : (rawHeat.riskTier === 'HIGH' ? '#f97316' : '#f59e0b');
+      heatSnippet = `<span class="tt-tag-pill" style="background:${riskColor}22; color:${riskColor}; border:1px solid ${riskColor}66; font-weight:700;"><svg class="svg-icon icon-red icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Hotspot: ${Math.round(rawHeat.score)}/100 (CC:${rawHeat.cc} &times; ${rawHeat.commits} ch) [${rawHeat.riskTier || 'HIGH'}]</span>`;
+    } else {
+      const heatVal = typeof rawHeat === 'number' ? rawHeat : (rawHeat && rawHeat.commitCount ? rawHeat.commitCount : 0);
+      if (this._heatMode || heatVal > 0) {
+        heatSnippet = `<span class="tt-tag-pill" style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.45);"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Churn: ${heatVal}</span>`;
+      }
+    }
 
     const roleName = node.role ? String(node.role).toUpperCase() : 'NODE';
     const roleColors = {

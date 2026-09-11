@@ -32,6 +32,8 @@ class DSMRenderer {
     this._onSelectCell = null;
     this._onSelectEntity = null;
     this._tooltip = null;
+    this._breadcrumbs = [];
+    this._currentFilter = null;
   }
 
   toggleHideGetters() {
@@ -165,9 +167,91 @@ class DSMRenderer {
     this._onSelectEntity = callback;
   }
 
-  setData(payload) {
+  setData(payload, filter = undefined) {
     this._data = payload;
+    if (filter !== undefined) {
+      this._currentFilter = filter;
+    }
     this._render();
+  }
+
+  drillDown(entity) {
+    if (!entity || !this._data) return;
+    const currentScope = this._data.scope || 'classes';
+    let nextScope = null;
+    if (currentScope === 'modules') nextScope = 'packages';
+    else if (currentScope === 'packages') nextScope = 'classes';
+    else if (currentScope === 'classes') nextScope = 'methods';
+
+    if (!nextScope) return;
+
+    if (this._breadcrumbs.length === 0) {
+      this._breadcrumbs.push({
+        label: 'All ' + this._capitalize(currentScope),
+        scope: currentScope,
+        filter: null,
+        baseScope: currentScope
+      });
+    }
+
+    this._breadcrumbs.push({
+      label: this._shortName(entity),
+      scope: nextScope,
+      filter: entity
+    });
+
+    this._currentFilter = entity;
+    if (this._onScopeChange) {
+      this._onScopeChange(nextScope, entity);
+    }
+  }
+
+  jumpBreadcrumb(idx) {
+    if (idx < 0 || idx >= this._breadcrumbs.length) {
+      const baseScope = (this._breadcrumbs[0] && this._breadcrumbs[0].baseScope) || 'classes';
+      this._breadcrumbs = [];
+      this._currentFilter = null;
+      if (this._onScopeChange) this._onScopeChange(baseScope, null);
+    } else {
+      const target = this._breadcrumbs[idx];
+      this._breadcrumbs = this._breadcrumbs.slice(0, idx + 1);
+      this._currentFilter = target.filter;
+      if (this._onScopeChange) this._onScopeChange(target.scope, target.filter);
+    }
+  }
+
+  exportCsv() {
+    if (!this._data) return;
+    const scope = this._data.scope || 'classes';
+    const filter = this._currentFilter || '';
+    const url = `/api/graph/dsm?format=csv` +
+      (scope ? `&scope=${encodeURIComponent(scope)}` : '') +
+      (filter ? `&filter=${encodeURIComponent(filter)}` : '');
+    window.open(url, '_blank');
+  }
+
+  exportJson() {
+    if (!this._data) return;
+    const blob = new Blob([JSON.stringify(this._data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `codelens-${this._data.scope || 'dsm'}-matrix.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  _capitalize(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+
+  _getNextScopeLabel(currentScope) {
+    if (currentScope === 'modules') return 'Packages';
+    if (currentScope === 'packages') return 'Classes';
+    if (currentScope === 'classes') return 'Methods';
+    return '';
   }
 
   destroy() {
@@ -302,7 +386,10 @@ class DSMRenderer {
 
     const totalDeps = rawMatrix.flat().reduce((s, v) => s + (v > 0 ? 1 : 0), 0) - n;
     const cycleCount = cycles.size / 2;
-    const scopeLabel = currentScope === 'modules' ? 'Modules' : (currentScope === 'packages' ? 'Packages' : 'Classes');
+    const scopeLabel = currentScope === 'modules' ? 'Modules' : (currentScope === 'packages' ? 'Packages' : (currentScope === 'methods' ? 'Methods' : 'Classes'));
+    const acyclicity = this._data.acyclicityRating != null
+      ? Math.round(this._data.acyclicityRating)
+      : (totalDeps > 0 ? Math.round(Math.max(0, 100 - (cycleCount * 2 / totalDeps) * 100)) : 100);
 
     toolbar.innerHTML = `
       <div class="dsm-toolbar-left">
@@ -311,6 +398,7 @@ class DSMRenderer {
           <button class="dsm-scope-btn ${currentScope === 'modules' ? 'active' : ''}" data-scope="modules">Modules</button>
           <button class="dsm-scope-btn ${currentScope === 'packages' ? 'active' : ''}" data-scope="packages">Packages</button>
           <button class="dsm-scope-btn ${currentScope === 'classes' ? 'active' : ''}" data-scope="classes">Classes</button>
+          <button class="dsm-scope-btn ${currentScope === 'methods' ? 'active' : ''}" data-scope="methods">Methods</button>
         </div>
 
         <!-- Architectural Ordering Selector -->
@@ -338,6 +426,16 @@ class DSMRenderer {
           ${this._filterCyclesOnly ? 'Showing Cycles Only' : 'Highlight Cycles'}
         </button>
 
+        <!-- Export CSV & JSON -->
+        <div style="display:flex; align-items:center; gap:4px;">
+          <button class="dsm-export-btn" id="dsm-export-csv" title="Export current DSM matrix as CSV">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV
+          </button>
+          <button class="dsm-export-btn" id="dsm-export-json" title="Export current DSM matrix as JSON">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> JSON
+          </button>
+        </div>
+
         <!-- Live Search Box -->
         <div class="dsm-search-wrap">
           <input type="text" class="dsm-search-input" placeholder="Filter entities..." value="${this._escHtml(this._searchQuery)}" />
@@ -349,6 +447,7 @@ class DSMRenderer {
           <span class="dsm-chip" title="Total entities in view"><strong class="dsm-chip-num">${n}</strong> ${scopeLabel}</span>
           <span class="dsm-chip" title="Total non-diagonal dependencies"><strong class="dsm-chip-num">${Math.max(0, totalDeps)}</strong> Deps</span>
           <span class="dsm-chip ${cycleCount > 0 ? 'dsm-chip-warn' : ''}" title="Circular dependency pairs"><strong class="dsm-chip-num">${cycleCount}</strong> Cycles</span>
+          <span class="dsm-chip ${acyclicity < 80 ? 'dsm-chip-warn' : ''}" title="Acyclicity Rating (% of dependencies not in cycles)"><strong class="dsm-chip-num">${acyclicity}%</strong> DAG</span>
         </div>
       </div>
     `;
@@ -357,9 +456,21 @@ class DSMRenderer {
     toolbar.querySelectorAll('.dsm-scope-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const scope = e.currentTarget.dataset.scope;
-        if (this._onScopeChange) this._onScopeChange(scope);
+        this._breadcrumbs = [];
+        this._currentFilter = null;
+        if (this._onScopeChange) this._onScopeChange(scope, null);
       });
     });
+
+    // Wire export buttons
+    const exportCsvBtn = toolbar.querySelector('#dsm-export-csv');
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => this.exportCsv());
+    }
+    const exportJsonBtn = toolbar.querySelector('#dsm-export-json');
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', () => this.exportJson());
+    }
 
     // Wire sort buttons
     toolbar.querySelectorAll('.dsm-sort-btn').forEach(btn => {
@@ -396,12 +507,41 @@ class DSMRenderer {
 
     wrap.appendChild(toolbar);
 
+    // Render breadcrumbs bar when drilling down
+    if (this._breadcrumbs && this._breadcrumbs.length > 0) {
+      const breadcrumbsBar = document.createElement('div');
+      breadcrumbsBar.className = 'dsm-breadcrumbs-bar';
+      const rootLabel = `All ${this._capitalize(this._breadcrumbs[0].baseScope || 'Modules')}`;
+      let bHtml = `<span class="dsm-crumb" data-idx="-1"><svg class="svg-icon icon-blue icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> ${this._escHtml(rootLabel)}</span>`;
+      this._breadcrumbs.forEach((crumb, idx) => {
+        if (idx === 0) return;
+        const isLast = (idx === this._breadcrumbs.length - 1);
+        bHtml += `<span class="dsm-crumb-sep">/</span>`;
+        if (isLast) {
+          bHtml += `<span class="dsm-crumb dsm-crumb-active">${this._escHtml(crumb.label)} (${crumb.scope})</span>`;
+        } else {
+          bHtml += `<span class="dsm-crumb" data-idx="${idx}">${this._escHtml(crumb.label)} (${crumb.scope})</span>`;
+        }
+      });
+      breadcrumbsBar.innerHTML = bHtml;
+      breadcrumbsBar.querySelectorAll('.dsm-crumb[data-idx]').forEach(cr => {
+        cr.addEventListener('click', (e) => {
+          const idx = parseInt(e.currentTarget.dataset.idx, 10);
+          this.jumpBreadcrumb(idx);
+        });
+      });
+      wrap.appendChild(breadcrumbsBar);
+    }
+
     // Scrollable matrix area
     const scroll = document.createElement('div');
     scroll.className = 'dsm-scroll';
 
     const table = document.createElement('table');
     table.className = 'dsm-table';
+
+    const nextScopeLabel = this._getNextScopeLabel(currentScope);
+    const drillHint = nextScopeLabel ? `\n(Double-click to drill down into ${nextScopeLabel})` : '';
 
     // Header row with rotated column labels & entity color tags
     const thead = document.createElement('thead');
@@ -423,7 +563,7 @@ class DSMRenderer {
       th.className = 'dsm-col-header';
       th.dataset.col = j;
       th.dataset.entity = cls;
-      th.title = `[${j + 1}] ${cls}`;
+      th.title = `[${j + 1}] ${cls}${drillHint}`;
 
       const textWrap = document.createElement('div');
       textWrap.className = 'dsm-col-text-wrap';
@@ -437,6 +577,12 @@ class DSMRenderer {
       th.addEventListener('click', () => {
         if (this._onSelectEntity) this._onSelectEntity(cls);
       });
+      if (nextScopeLabel) {
+        th.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          this.drillDown(cls);
+        });
+      }
 
       headerRow.appendChild(th);
     }
@@ -475,7 +621,7 @@ class DSMRenderer {
       // Row header with matching color tag
       const rowHeader = document.createElement('td');
       rowHeader.className = 'dsm-row-header';
-      rowHeader.title = `[${i + 1}] ${rowCls} (In: ${inDegrees[indices[i]]}, Out: ${outDegrees[indices[i]]})`;
+      rowHeader.title = `[${i + 1}] ${rowCls} (In: ${inDegrees[indices[i]]}, Out: ${outDegrees[indices[i]]})${drillHint}`;
       rowHeader.innerHTML = `
         <span class="dsm-idx" style="border-left: 2.5px solid ${rowColor}">${i + 1}</span>
         <span class="dsm-color-dot" style="background:${rowColor}; box-shadow: 0 0 6px ${rowColor}66;"></span>
@@ -485,6 +631,12 @@ class DSMRenderer {
       rowHeader.addEventListener('click', () => {
         if (this._onSelectEntity) this._onSelectEntity(rowCls);
       });
+      if (nextScopeLabel) {
+        rowHeader.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          this.drillDown(rowCls);
+        });
+      }
       tr.appendChild(rowHeader);
 
       // Data cells

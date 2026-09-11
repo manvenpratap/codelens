@@ -1339,7 +1339,32 @@ public class CodeLensServer {
     private void getDSM(Context ctx) throws Exception {
         String scope  = ctx.queryParam("scope");
         String filter = ctx.queryParam("filter");
-        ctx.json(callGraph.dsmView(scope, filter));
+        String format = ctx.queryParam("format");
+        CallGraphAnalyzer.DSMPayload dsm = callGraph.dsmView(scope, filter);
+
+        if ("csv".equalsIgnoreCase(format)) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Caller/Callee");
+            for (String c : dsm.classes) {
+                sb.append(",\"").append(c.replace("\"", "\"\"")).append("\"");
+            }
+            sb.append("\n");
+            for (int r = 0; r < dsm.classes.size(); r++) {
+                sb.append("\"").append(dsm.classes.get(r).replace("\"", "\"\"")).append("\"");
+                for (int c = 0; c < dsm.classes.size(); c++) {
+                    int val = (dsm.matrix != null && r < dsm.matrix.length && c < dsm.matrix[r].length)
+                        ? dsm.matrix[r][c] : 0;
+                    sb.append(",").append(val);
+                }
+                sb.append("\n");
+            }
+            String safeScope = (scope != null && !scope.isBlank()) ? scope : "dsm";
+            ctx.contentType("text/csv; charset=UTF-8")
+               .header("Content-Disposition", "attachment; filename=\"codelens-" + safeScope + "-matrix.csv\"")
+               .result(sb.toString());
+        } else {
+            ctx.json(dsm);
+        }
     }
 
     private void getTreemap(Context ctx) throws Exception {
@@ -1597,7 +1622,44 @@ public class CodeLensServer {
     private void getGitSummary(Context ctx) throws Exception {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("topAuthors",  dao.findTopAuthors(10));
-        summary.put("hotEntities", dao.findHottestEntities(500));
+        List<Map<String, Object>> hotEntities = dao.findHottestEntities(500);
+
+        // Enrich hotEntities with AST cyclomatic complexity & compute behavioral hotspot score
+        List<CodeMethod> allMethods = dao.findAllMethods();
+        Map<String, Integer> methodCC = new HashMap<>();
+        Map<String, Integer> classCC = new HashMap<>();
+        for (CodeMethod m : allMethods) {
+            int cc = Math.max(1, m.getCyclomaticComplexity());
+            methodCC.put(m.getFqn(), cc);
+            if (m.getDeclaringTypeFqn() != null) {
+                classCC.merge(m.getDeclaringTypeFqn(), cc, Integer::sum);
+            }
+        }
+
+        List<Map<String, Object>> behavioralHotspots = new ArrayList<>();
+        for (Map<String, Object> e : hotEntities) {
+            String fqn = (String) e.get("entityFqn");
+            int commits = ((Number) e.getOrDefault("commitCount", 1)).intValue();
+            int cc = methodCC.getOrDefault(fqn, classCC.getOrDefault(fqn, 1));
+            double raw = cc * (Math.log(1 + commits) / Math.log(2.0));
+            int score = (int) Math.min(100, Math.max(1, Math.round(raw * 3.0)));
+
+            e.put("cyclomaticComplexity", cc);
+            e.put("hotspotScore", score);
+            e.put("riskTier", score >= 70 ? "CRITICAL" : (score >= 45 ? "HIGH" : (score >= 25 ? "MEDIUM" : "LOW")));
+
+            if (score >= 25 || commits >= 3) {
+                behavioralHotspots.add(e);
+            }
+        }
+
+        behavioralHotspots.sort((a, b) -> Integer.compare(
+            ((Number) b.getOrDefault("hotspotScore", 0)).intValue(),
+            ((Number) a.getOrDefault("hotspotScore", 0)).intValue()
+        ));
+
+        summary.put("hotEntities", hotEntities);
+        summary.put("behavioralHotspots", behavioralHotspots);
         ctx.json(summary);
     }
 
@@ -1975,8 +2037,9 @@ public class CodeLensServer {
             List<CodeMethod> methods = dao.findAllMethods();
             List<CodeField> fields = dao.findAllFields();
             List<CodeRelationship> rels = dao.findAllRelationships();
+            List<GitMeta> gitMetas = dao.findAllGitMeta();
 
-            ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels);
+            ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
 
             if ("html".equals(format)) {
                 ctx.contentType("text/html; charset=UTF-8").result(reportService.renderChangeRiskHtml(data));

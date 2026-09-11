@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Builds an in-memory directed call graph from CALLS relationships and answers
@@ -1185,6 +1186,8 @@ public class CallGraphAnalyzer {
                 return classDsmView(filter);
             }
             return pkgDsm;
+        } else if ("methods".equalsIgnoreCase(effectiveScope) || "method".equalsIgnoreCase(effectiveScope)) {
+            return methodDsmView(filter);
         } else {
             return classDsmView(filter);
         }
@@ -1333,13 +1336,89 @@ public class CallGraphAnalyzer {
         return new DSMPayload(classList, matrix, classPackages, "classes");
     }
 
+    private DSMPayload methodDsmView(String filter) {
+        Graph<String, DefaultEdge> g = callGraph;
+        Map<String, Map<String, Integer>> methodCalls = new LinkedHashMap<>();
+        Set<String> allMethods = new TreeSet<>();
+
+        for (String v : g.vertexSet()) {
+            if (filter != null && !filter.isEmpty()) {
+                String mod = extractModuleName(v);
+                String pkg = extractPackageFqn(v);
+                String cls = extractClassFqn(v);
+                if (!mod.equalsIgnoreCase(filter) && !pkg.equalsIgnoreCase(filter) && !cls.equalsIgnoreCase(filter) && !v.contains(filter)) {
+                    continue;
+                }
+            }
+            allMethods.add(v);
+
+            for (DefaultEdge e : g.outgoingEdgesOf(v)) {
+                String tgt = g.getEdgeTarget(e);
+                if (filter != null && !filter.isEmpty()) {
+                    String tgtMod = extractModuleName(tgt);
+                    String tgtPkg = extractPackageFqn(tgt);
+                    String tgtCls = extractClassFqn(tgt);
+                    if (!tgtMod.equalsIgnoreCase(filter) && !tgtPkg.equalsIgnoreCase(filter) && !tgtCls.equalsIgnoreCase(filter) && !tgt.contains(filter)) {
+                        continue;
+                    }
+                }
+                allMethods.add(tgt);
+                methodCalls.computeIfAbsent(v, k -> new LinkedHashMap<>())
+                           .merge(tgt, 1, Integer::sum);
+            }
+        }
+
+        List<String> methodList;
+        if ((filter == null || filter.isEmpty()) && allMethods.size() > 200) {
+            Map<String, Integer> degrees = new HashMap<>();
+            for (String m : allMethods) {
+                int deg = g.inDegreeOf(m) + g.outDegreeOf(m);
+                degrees.put(m, deg);
+            }
+            methodList = allMethods.stream()
+                .sorted(Comparator.comparingInt((String m) -> degrees.getOrDefault(m, 0)).reversed())
+                .limit(200)
+                .sorted()
+                .collect(Collectors.toList());
+        } else {
+            methodList = new ArrayList<>(allMethods);
+        }
+
+        Map<String, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < methodList.size(); i++) indexMap.put(methodList.get(i), i);
+
+        int n = methodList.size();
+        int[][] matrix = new int[n][n];
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : methodCalls.entrySet()) {
+            Integer si = indexMap.get(srcEntry.getKey());
+            if (si == null) continue;
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                Integer ti = indexMap.get(tgtEntry.getKey());
+                if (ti == null) continue;
+                matrix[si][ti] = tgtEntry.getValue();
+            }
+        }
+
+        Map<String, String> methodContainers = new LinkedHashMap<>();
+        for (String m : methodList) {
+            methodContainers.put(m, extractClassFqn(m));
+        }
+
+        return new DSMPayload(methodList, matrix, methodContainers, "methods");
+    }
+
     public static class DSMSparseCell {
         public final int r;
         public final int c;
         public final int v;
+        public final boolean isCycle;
+
+        public DSMSparseCell(int r, int c, int v, boolean isCycle) {
+            this.r = r; this.c = c; this.v = v; this.isCycle = isCycle;
+        }
 
         public DSMSparseCell(int r, int c, int v) {
-            this.r = r; this.c = c; this.v = v;
+            this(r, c, v, false);
         }
     }
 
@@ -1350,22 +1429,46 @@ public class CallGraphAnalyzer {
         public final Map<String, String> packages;
         public final String scope;
         public final List<DSMSparseCell> cells;
+        public final int totalDependencies;
+        public final int cycleCount;
+        public final double acyclicityRating;
+        public final List<String> cyclesList;
 
         public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages, String scope) {
-            this.classes = classes;
+            this.classes = classes != null ? classes : Collections.emptyList();
             this.matrix  = matrix;
-            this.packages = packages;
+            this.packages = packages != null ? packages : Collections.emptyMap();
             this.scope = scope;
             this.cells = new ArrayList<>();
+            List<String> cycles = new ArrayList<>();
+            int totalDeps = 0;
+            int cycleCells = 0;
+
             if (matrix != null) {
-                for (int r = 0; r < matrix.length; r++) {
+                int n = matrix.length;
+                for (int r = 0; r < n; r++) {
                     for (int c = 0; c < matrix[r].length; c++) {
-                        if (matrix[r][c] > 0) {
-                            this.cells.add(new DSMSparseCell(r, c, matrix[r][c]));
+                        int val = matrix[r][c];
+                        if (val > 0) {
+                            totalDeps++;
+                            boolean cycle = (r != c && c < n && r < matrix[c].length && matrix[c][r] > 0);
+                            if (cycle) {
+                                cycleCells++;
+                                if (r < c && r < this.classes.size() && c < this.classes.size()) {
+                                    cycles.add(this.classes.get(r) + " <-> " + this.classes.get(c));
+                                }
+                            }
+                            this.cells.add(new DSMSparseCell(r, c, val, cycle));
                         }
                     }
                 }
             }
+            this.totalDependencies = totalDeps;
+            this.cycleCount = cycles.size();
+            this.cyclesList = cycles;
+            this.acyclicityRating = totalDeps > 0
+                ? Math.round((1.0 - ((double) cycleCells / totalDeps)) * 1000.0) / 10.0
+                : 100.0;
         }
 
         public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages) {
