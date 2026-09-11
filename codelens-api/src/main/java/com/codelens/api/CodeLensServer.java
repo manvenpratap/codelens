@@ -1,6 +1,7 @@
 package com.codelens.api;
 
 import com.codelens.analysis.*;
+import com.codelens.core.ExcludedScope;
 import com.codelens.core.model.*;
 import com.codelens.git.GitBlameService;
 import com.codelens.git.GitRepoLocator;
@@ -399,6 +400,12 @@ public class CodeLensServer {
         app.post("/api/config/import",  this::importConfig);
         app.post("/api/config/reset",   this::resetConfig);
 
+        // ── Scope Management (Exclusion / Restore) ──────────────────────────
+        app.post("/api/scope/exclude",  this::excludeScope);
+        app.get("/api/scope/excluded",  this::getExcludedScopes);
+        app.post("/api/scope/restore",  this::restoreScope);
+        app.post("/api/scope/clear",    this::clearExcludedScopes);
+
         // ── Documentation ──────────────────────────────────────────────────────
         app.get("/api/readme",          this::getReadme);
 
@@ -666,6 +673,20 @@ public class CodeLensServer {
             progress.setCurrentPhase("AST Parsing & Storage");
             progress.setMessage("Scanning Java source files in parallel…");
 
+            List<ExcludedScope> excludedScopes = Collections.emptyList();
+            try {
+                excludedScopes = dao.findAllExcludedScopes();
+            } catch (Exception ignored) {}
+            final Set<String> excludedTypeFqns = new HashSet<>();
+            final Set<String> excludedPkgFqns = new HashSet<>();
+            for (ExcludedScope s : excludedScopes) {
+                if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
+                    excludedPkgFqns.add(s.fqn());
+                } else {
+                    excludedTypeFqns.add(s.fqn());
+                }
+            }
+
             JavaSourceScanner scanner = new JavaSourceScanner();
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
@@ -681,8 +702,9 @@ public class CodeLensServer {
                     public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
                                         List<CodeMethod> methods, List<CodeRelationship> rels,
                                         List<FileMeta> fileMetas) throws Exception {
-                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
-                        lucene.addBatch(types, methods, fields);
+                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, excludedTypeFqns, excludedPkgFqns);
+                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fileMetas);
+                        lucene.addBatch(fb.types, fb.methods, fb.fields);
                     }
                 },
                 new JavaSourceScanner.ProgressCallback() {
@@ -962,6 +984,20 @@ public class CodeLensServer {
             progress.setCurrentPhase("Incremental AST Parsing");
             progress.setMessage(String.format("Parsing %d changed files…", toParse.size()));
 
+            List<ExcludedScope> excludedScopes = Collections.emptyList();
+            try {
+                excludedScopes = dao.findAllExcludedScopes();
+            } catch (Exception ignored) {}
+            final Set<String> excludedTypeFqns = new HashSet<>();
+            final Set<String> excludedPkgFqns = new HashSet<>();
+            for (ExcludedScope s : excludedScopes) {
+                if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
+                    excludedPkgFqns.add(s.fqn());
+                } else {
+                    excludedTypeFqns.add(s.fqn());
+                }
+            }
+
             JavaSourceScanner.ScanResult result = scanner.scanFiles(
                 root,
                 toParse,
@@ -976,8 +1012,9 @@ public class CodeLensServer {
                     public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
                                         List<CodeMethod> methods, List<CodeRelationship> rels,
                                         List<FileMeta> fileMetas) throws Exception {
-                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
-                        lucene.indexBatch(types, methods, fields);
+                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, excludedTypeFqns, excludedPkgFqns);
+                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fileMetas);
+                        lucene.indexBatch(fb.types, fb.methods, fb.fields);
                     }
                 },
                 new JavaSourceScanner.ProgressCallback() {
@@ -2284,6 +2321,215 @@ public class CodeLensServer {
         } catch (Exception e) {
             ctx.status(500).contentType("text/markdown; charset=utf-8").result("# Error reading README: " + e.getMessage());
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scope Management Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+    private void excludeScope(Context ctx) {
+        try {
+            Map<?, ?> body = ctx.bodyAsClass(Map.class);
+            String type = body.get("type") != null ? body.get("type").toString() : "CLASS";
+            String fqn = body.get("fqn") != null ? body.get("fqn").toString() : null;
+            if (fqn == null || fqn.isBlank()) {
+                ctx.status(400).json(Map.of("error", "fqn is required"));
+                return;
+            }
+            fqn = fqn.trim();
+
+            if ("PACKAGE".equalsIgnoreCase(type)) {
+                dao.excludePackage(fqn);
+                lucene.deletePackageFromIndex(fqn);
+                log.info("Excluded package from scope: {}", fqn);
+            } else {
+                dao.excludeType(fqn);
+                lucene.deleteTypeFromIndex(fqn);
+                log.info("Excluded class from scope: {}", fqn);
+            }
+
+            // Invalidate layout cache and rebuild in-memory call graph and field impact
+            invalidateGraphCache();
+            List<String> allMethodFqns = dao.findAllMethodFqns();
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+
+            ctx.json(Map.of(
+                "success", true,
+                "fqn", fqn,
+                "type", type.toUpperCase(),
+                "excluded", dao.findAllExcludedScopes()
+            ));
+        } catch (Exception e) {
+            log.error("Failed to exclude scope: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
+    private void getExcludedScopes(Context ctx) {
+        try {
+            List<ExcludedScope> excluded = dao.findAllExcludedScopes();
+            ctx.json(excluded);
+        } catch (Exception e) {
+            log.error("Failed to get excluded scopes: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
+    private void restoreScope(Context ctx) {
+        try {
+            Map<?, ?> body = ctx.bodyAsClass(Map.class);
+            String fqn = (String) body.get("fqn");
+            if (fqn == null || fqn.isBlank()) {
+                ctx.status(400).json(Map.of("error", "fqn is required"));
+                return;
+            }
+            fqn = fqn.trim();
+            Optional<ExcludedScope> scopeOpt = dao.findExcludedScopeByFqn(fqn);
+            boolean removed = dao.restoreScope(fqn);
+
+            String sourceFile = "";
+            if (scopeOpt.isPresent()) {
+                sourceFile = scopeOpt.get().sourceFile();
+                if (sourceFile != null && !sourceFile.isBlank()) {
+                    try {
+                        dao.deleteFileMeta(sourceFile);
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            ctx.json(Map.of(
+                "success", removed,
+                "fqn", fqn,
+                "sourceFile", sourceFile != null ? sourceFile : "",
+                "remainingExcluded", dao.findAllExcludedScopes()
+            ));
+        } catch (Exception e) {
+            log.error("Failed to restore scope: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
+    private void clearExcludedScopes(Context ctx) {
+        try {
+            dao.clearAllExcludedScopes();
+            ctx.json(Map.of("success", true, "message", "All excluded scopes cleared"));
+        } catch (Exception e) {
+            log.error("Failed to clear excluded scopes: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+        }
+    }
+
+    private static class FilteredBatch {
+        final List<CodePackage> pkgs;
+        final List<CodeType> types;
+        final List<CodeField> fields;
+        final List<CodeMethod> methods;
+        final List<CodeRelationship> rels;
+
+        FilteredBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                      List<CodeMethod> methods, List<CodeRelationship> rels) {
+            this.pkgs = pkgs;
+            this.types = types;
+            this.fields = fields;
+            this.methods = methods;
+            this.rels = rels;
+        }
+    }
+
+    private FilteredBatch filterExcludedScopeBatch(List<CodePackage> pkgs, List<CodeType> types,
+                                                  List<CodeField> fields, List<CodeMethod> methods,
+                                                  List<CodeRelationship> rels,
+                                                  Set<String> excludedTypeFqns, Set<String> excludedPkgFqns) {
+        if (excludedTypeFqns.isEmpty() && excludedPkgFqns.isEmpty()) {
+            return new FilteredBatch(pkgs, types, fields, methods, rels);
+        }
+
+        Set<String> droppedTypeFqns = new HashSet<>(excludedTypeFqns);
+
+        List<CodeType> filteredTypes = new ArrayList<>();
+        if (types != null) {
+            for (CodeType t : types) {
+                if (isExcludedEntity(t.getFqn(), t.getPackageFqn(), excludedTypeFqns, excludedPkgFqns)) {
+                    droppedTypeFqns.add(t.getFqn());
+                } else {
+                    filteredTypes.add(t);
+                }
+            }
+        }
+
+        List<CodeField> filteredFields = new ArrayList<>();
+        if (fields != null) {
+            for (CodeField f : fields) {
+                if (!droppedTypeFqns.contains(f.getDeclaringTypeFqn()) &&
+                    !isExcludedEntity(f.getDeclaringTypeFqn(), null, excludedTypeFqns, excludedPkgFqns)) {
+                    filteredFields.add(f);
+                }
+            }
+        }
+
+        List<CodeMethod> filteredMethods = new ArrayList<>();
+        if (methods != null) {
+            for (CodeMethod m : methods) {
+                if (!droppedTypeFqns.contains(m.getDeclaringTypeFqn()) &&
+                    !isExcludedEntity(m.getDeclaringTypeFqn(), null, excludedTypeFqns, excludedPkgFqns)) {
+                    filteredMethods.add(m);
+                }
+            }
+        }
+
+        List<CodePackage> filteredPkgs = new ArrayList<>();
+        if (pkgs != null) {
+            for (CodePackage p : pkgs) {
+                if (!isExcludedPkg(p.getFqn(), excludedPkgFqns)) {
+                    filteredPkgs.add(p);
+                }
+            }
+        }
+
+        List<CodeRelationship> filteredRels = new ArrayList<>();
+        if (rels != null) {
+            for (CodeRelationship r : rels) {
+                String from = r.getFromEntityFqn();
+                String to = r.getToEntityFqn();
+                if (!isEntityFqnDropped(from, droppedTypeFqns, excludedPkgFqns) &&
+                    !isEntityFqnDropped(to, droppedTypeFqns, excludedPkgFqns)) {
+                    filteredRels.add(r);
+                }
+            }
+        }
+
+        return new FilteredBatch(filteredPkgs, filteredTypes, filteredFields, filteredMethods, filteredRels);
+    }
+
+    private static boolean isExcludedEntity(String fqn, String pkgFqn, Set<String> excludedTypeFqns, Set<String> excludedPkgFqns) {
+        if (fqn != null && excludedTypeFqns.contains(fqn)) return true;
+        if (pkgFqn != null && isExcludedPkg(pkgFqn, excludedPkgFqns)) return true;
+        if (fqn != null) {
+            for (String pkg : excludedPkgFqns) {
+                if (fqn.startsWith(pkg + ".")) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isExcludedPkg(String pkgFqn, Set<String> excludedPkgFqns) {
+        if (pkgFqn == null) return false;
+        for (String pkg : excludedPkgFqns) {
+            if (pkgFqn.equals(pkg) || pkgFqn.startsWith(pkg + ".")) return true;
+        }
+        return false;
+    }
+
+    private static boolean isEntityFqnDropped(String fqn, Set<String> droppedTypeFqns, Set<String> excludedPkgFqns) {
+        if (fqn == null) return false;
+        if (droppedTypeFqns.contains(fqn)) return true;
+        for (String typeFqn : droppedTypeFqns) {
+            if (fqn.startsWith(typeFqn + "#") || fqn.startsWith(typeFqn + ".")) return true;
+        }
+        for (String pkg : excludedPkgFqns) {
+            if (fqn.startsWith(pkg + ".")) return true;
+        }
+        return false;
     }
 }
 

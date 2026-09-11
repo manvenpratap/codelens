@@ -337,4 +337,120 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testScopeManagementAndCascadeExclusion() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-scope-test-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        LuceneService lucene = new LuceneService(tempDir.toString());
+        try {
+            db.initialize();
+            lucene.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            db.prepareForBulkLoad();
+
+            // Insert package
+            dao.batchInsertPackagesFast(List.of(new CodePackage("com.bank.service")));
+
+            // Insert 2 types
+            CodeType t1 = new CodeType();
+            t1.setId("com.bank.service.OrderService");
+            t1.setFqn("com.bank.service.OrderService");
+            t1.setSimpleName("OrderService");
+            t1.setPackageFqn("com.bank.service");
+            t1.setKind("CLASS");
+            t1.setSourceFile("/src/OrderService.java");
+
+            CodeType t2 = new CodeType();
+            t2.setId("com.bank.service.PaymentService");
+            t2.setFqn("com.bank.service.PaymentService");
+            t2.setSimpleName("PaymentService");
+            t2.setPackageFqn("com.bank.service");
+            t2.setKind("CLASS");
+            t2.setSourceFile("/src/PaymentService.java");
+
+            dao.batchInsertTypesFast(List.of(t1, t2));
+
+            // Insert method and field
+            CodeMethod m1 = new CodeMethod();
+            m1.setId("com.bank.service.OrderService#placeOrder()");
+            m1.setFqn("com.bank.service.OrderService#placeOrder()");
+            m1.setSimpleName("placeOrder");
+            m1.setDeclaringTypeFqn("com.bank.service.OrderService");
+
+            CodeMethod m2 = new CodeMethod();
+            m2.setId("com.bank.service.PaymentService#charge()");
+            m2.setFqn("com.bank.service.PaymentService#charge()");
+            m2.setSimpleName("charge");
+            m2.setDeclaringTypeFqn("com.bank.service.PaymentService");
+
+            dao.batchInsertMethodsFast(List.of(m1, m2));
+
+            CodeField f1 = new CodeField();
+            f1.setId("com.bank.service.OrderService.total");
+            f1.setFqn("com.bank.service.OrderService.total");
+            f1.setSimpleName("total");
+            f1.setDeclaringTypeFqn("com.bank.service.OrderService");
+            f1.setFieldType("double");
+
+            dao.batchInsertFieldsFast(List.of(f1));
+
+            CodeRelationship rel = new CodeRelationship();
+            rel.setId(UUID.randomUUID().toString());
+            rel.setFromEntityFqn("com.bank.service.OrderService#placeOrder()");
+            rel.setToEntityFqn("com.bank.service.PaymentService#charge()");
+            rel.setKind("CALLS");
+            dao.batchInsertRelationshipsFast(List.of(rel));
+
+            db.finishBulkLoad();
+
+            // Index in Lucene
+            lucene.prepareIndexRebuild();
+            lucene.indexBatch(List.of(t1, t2), List.of(m1, m2), List.of(f1));
+            lucene.finishIndexRebuild();
+
+            // Verify initial state
+            assertEquals(2, dao.findAllTypes().size(), "Initial types count");
+            assertEquals(3, lucene.search("OrderService", 10).size(), "Lucene finds 3 docs for OrderService (type, method, field)");
+            assertEquals(2, lucene.search("PaymentService", 10).size(), "Lucene finds 2 docs for PaymentService (type, method)");
+
+            // Exclude OrderService
+            com.codelens.core.ExcludedScope excluded = dao.excludeType("com.bank.service.OrderService");
+            assertTrue(excluded != null, "excludeType returned non-null ExcludedScope");
+            lucene.deleteTypeFromIndex("com.bank.service.OrderService");
+
+            // Verify cascading removal
+            assertEquals(1, dao.findAllTypes().size(), "Types count after excluding OrderService");
+            assertEquals("com.bank.service.PaymentService", dao.findAllTypes().get(0).getFqn(), "Only PaymentService remains");
+            assertEquals(0, dao.findMethodsByType("com.bank.service.OrderService").size(), "OrderService methods removed");
+            assertEquals(0, dao.findFieldsByType("com.bank.service.OrderService").size(), "OrderService fields removed");
+            assertEquals(1, dao.findAllExcludedScopes().size(), "Excluded scope record exists");
+            assertEquals("com.bank.service.OrderService", dao.findAllExcludedScopes().get(0).fqn(), "Excluded scope record FQN matches");
+
+            // Verify Lucene index updated
+            assertEquals(0, lucene.search("OrderService", 10).size(), "Lucene no longer finds OrderService");
+            assertEquals(2, lucene.search("PaymentService", 10).size(), "Lucene still finds PaymentService");
+
+            // Exclude package
+            dao.excludePackage("com.bank.service");
+            lucene.deletePackageFromIndex("com.bank.service");
+            assertEquals(0, dao.findAllTypes().size(), "No types left after package exclusion");
+            assertEquals(0, lucene.search("PaymentService", 10).size(), "PaymentService removed from Lucene after package exclusion");
+            assertEquals(2, dao.findAllExcludedScopes().size(), "Two excluded scope records");
+
+            // Restore OrderService
+            boolean restored = dao.restoreScope("com.bank.service.OrderService");
+            assertTrue(restored, "OrderService restored from exclusions");
+            assertEquals(1, dao.findAllExcludedScopes().size(), "One excluded scope remains");
+
+            // Clear all
+            dao.clearAllExcludedScopes();
+            assertEquals(0, dao.findAllExcludedScopes().size(), "No excluded scopes remain after clear");
+
+        } finally {
+            lucene.close();
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

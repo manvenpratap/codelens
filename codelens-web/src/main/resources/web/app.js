@@ -195,6 +195,10 @@ const api = {
   writeFile:          (path, content) => api.post('/files/write', { path, content }),
   persistentClasses:  ()          => api.get('/analysis/persistent-classes'),
   criticalPath:       (classFqn, mode) => api.get(`/analysis/critical-path?class=${enc(classFqn)}${mode ? '&mode=' + encodeURIComponent(mode) : ''}`),
+  excludeScope:       (type, fqn) => api.post('/scope/exclude', { type, fqn }),
+  excludedScopes:     ()          => api.get('/scope/excluded'),
+  restoreScope:       (fqn)       => api.post('/scope/restore', { fqn }),
+  clearExcludedScopes:()          => api.post('/scope/clear', {}),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -1076,6 +1080,25 @@ function renderPackageTree(nodes, container, depth) {
       item.appendChild(count);
     }
 
+    // Remove package from scope button
+    const removeBtn = createElement('button', {
+      class: 'tree-remove-btn',
+      title: `Remove package ${node.name || node.fqn} from scope`,
+      'aria-label': `Remove package ${node.name || node.fqn} from scope`
+    });
+    removeBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    removeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      confirmExcludeScope({ type: 'PACKAGE', fqn: node.fqn, name: node.name || node.fqn, el: item, childContainer });
+    });
+    item.appendChild(removeBtn);
+
+    item.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      showExplorerContextMenu(e.clientX, e.clientY, { type: 'PACKAGE', fqn: node.fqn, name: node.name || node.fqn, el: item, childContainer });
+    });
+
     container.appendChild(item);
 
     // Child nodes container (types + sub-packages)
@@ -1159,6 +1182,7 @@ async function loadTypesInTree(pkgFqn, container, depth) {
         class: `tree-item tree-type-item${App.selected.id === t.id ? ' active' : ''}`,
         'data-depth': depth,
         'data-id': t.id,
+        'data-fqn': t.id || t.fqn,
         style: `border-left-color: ${pkgColor}88;`,
       });
 
@@ -1178,6 +1202,25 @@ async function loadTypesInTree(pkgFqn, container, depth) {
         meta.title = `${t.methodCount} methods, ${t.fieldCount || 0} fields`;
         item.appendChild(meta);
       }
+
+      // Remove class from scope button
+      const removeBtn = createElement('button', {
+        class: 'tree-remove-btn',
+        title: `Remove ${t.simpleName} from scope`,
+        'aria-label': `Remove ${t.simpleName} from scope`
+      });
+      removeBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      removeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        confirmExcludeScope({ type: 'CLASS', fqn: t.id || t.fqn, name: t.simpleName, el: item, pkgFqn });
+      });
+      item.appendChild(removeBtn);
+
+      item.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        showExplorerContextMenu(e.clientX, e.clientY, { type: 'CLASS', fqn: t.id || t.fqn, name: t.simpleName, el: item, pkgFqn });
+      });
 
       item.addEventListener('click', e => {
         e.stopPropagation();
@@ -5530,6 +5573,7 @@ async function init() {
   });
 
   bindKeyboard();
+  initScopeManagement();
 
   // Eagerly initialize graph canvas instance
   ensureGraph();
@@ -6469,6 +6513,350 @@ window.jumpToGraphHeat = async function(fqn) {
 
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCOPE MANAGEMENT (Exclusion, Restoration, Context Menu)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+let _pendingScopeTarget = null;
+let _currentExcludedScopes = [];
+
+function confirmExcludeScope(target) {
+  _pendingScopeTarget = target;
+  const modal = qs('#scope-confirm-modal');
+  if (!modal) return;
+
+  const kindEl = qs('#scope-target-kind');
+  const fqnEl = qs('#scope-target-fqn');
+  const titleEl = qs('#scope-confirm-title');
+
+  if (kindEl) kindEl.textContent = (target.type || 'CLASS').toUpperCase();
+  if (fqnEl) fqnEl.textContent = target.fqn;
+  if (titleEl) titleEl.textContent = `Remove ${target.type === 'PACKAGE' ? 'Package' : 'Class'} from Scope?`;
+
+  showAccessibleModal(modal);
+}
+
+async function executeExcludeScope() {
+  if (!_pendingScopeTarget) return;
+  const { type, fqn, name, el, childContainer, pkgFqn } = _pendingScopeTarget;
+  hideAccessibleModal(qs('#scope-confirm-modal'));
+  _pendingScopeTarget = null;
+
+  try {
+    showToast(`Excluding ${name || fqn} from scope…`, 'info', 2000);
+    await api.excludeScope(type, fqn);
+
+    // 1. Animate and remove from DOM
+    if (el) {
+      el.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(-10px)';
+      setTimeout(() => {
+        el.remove();
+        if (childContainer) childContainer.remove();
+      }, 200);
+    }
+
+    // 2. If it was a class, decrement parent package type count badge
+    if (type === 'CLASS' && pkgFqn) {
+      const pkgEl = qs(`.tree-item[data-fqn="${CSS.escape(pkgFqn)}"]`);
+      if (pkgEl) {
+        const countBadge = pkgEl.querySelector('.tree-count');
+        if (countBadge) {
+          const currentCount = parseInt(countBadge.textContent, 10) || 0;
+          if (currentCount > 1) {
+            countBadge.textContent = currentCount - 1;
+          } else {
+            countBadge.remove();
+          }
+        }
+      }
+    }
+
+    // 3. Clear graph caches
+    GraphDataCache.clear();
+
+    // 4. Update the Scope Manager badge
+    await updateExcludedScopeBadge();
+
+    // 5. Invalidate and refresh current view
+    if (App.activeTab === 'graph') {
+      loadCodebaseVisualization();
+    } else if (App.activeTab === 'dsm') {
+      loadDSM();
+    } else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) {
+      window.City3D.reload();
+    } else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') {
+      loadActiveReport();
+    } else if (App.activeTab === 'knowledge') {
+      if (App.selected && App.selected.id === fqn) {
+        App.selected = { kind: null, id: null, data: null };
+        const kbContainer = qs('#kb-detail-container');
+        if (kbContainer) kbContainer.innerHTML = '<div class="kb-placeholder">Selected entity has been removed from scope.</div>';
+      }
+    }
+
+    showToast(`Removed "${name || fqn}" from analysis scope.`, 'success', 4000);
+  } catch (err) {
+    console.error('Failed to exclude scope:', err);
+    showToast(`Failed to exclude ${name || fqn}: ${err.message || err}`, 'error', 5000);
+  }
+}
+
+async function updateExcludedScopeBadge() {
+  const badge = qs('#excluded-scope-badge');
+  if (!badge) return;
+  try {
+    const list = await api.excludedScopes();
+    _currentExcludedScopes = list || [];
+    const count = _currentExcludedScopes.length;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'inline-flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (err) {
+    console.warn('Could not update scope badge:', err);
+  }
+}
+
+async function openScopeManagerModal() {
+  const modal = qs('#scope-manager-modal');
+  if (!modal) return;
+  showAccessibleModal(modal, qs('#btn-manage-scope'));
+  await renderScopeManagerList();
+}
+
+async function renderScopeManagerList(filterText = '') {
+  const tbody = qs('#scope-items-tbody');
+  const countBadge = qs('#scope-manager-count');
+  const emptyState = qs('#scope-empty-state');
+  const table = qs('#scope-items-table');
+  if (!tbody) return;
+
+  try {
+    const list = await api.excludedScopes();
+    _currentExcludedScopes = list || [];
+  } catch (e) {
+    console.warn('Error fetching excluded scopes:', e);
+  }
+
+  const query = (filterText || '').toLowerCase().trim();
+  const items = _currentExcludedScopes.filter(item => {
+    if (!query) return true;
+    return (item.fqn || '').toLowerCase().includes(query) ||
+           (item.simpleName || '').toLowerCase().includes(query) ||
+           (item.sourceFile || '').toLowerCase().includes(query);
+  });
+
+  if (countBadge) {
+    countBadge.textContent = `${_currentExcludedScopes.length} excluded`;
+  }
+
+  if (_currentExcludedScopes.length === 0) {
+    if (table) table.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'flex';
+    tbody.innerHTML = '';
+    return;
+  }
+
+  if (table) table.style.display = '';
+  if (emptyState) emptyState.style.display = 'none';
+
+  tbody.innerHTML = '';
+  for (const item of items) {
+    const tr = createElement('tr');
+
+    // Type
+    const tdType = createElement('td');
+    const badge = createElement('span', {
+      class: `scope-badge-tag type-${(item.entityType || 'CLASS').toLowerCase()}`
+    });
+    badge.textContent = (item.entityType || 'CLASS').toUpperCase();
+    tdType.appendChild(badge);
+    tr.appendChild(tdType);
+
+    // FQN
+    const tdFqn = createElement('td');
+    const fqnCode = createElement('code', { style: 'font-weight: 600;' });
+    fqnCode.textContent = item.fqn;
+    tdFqn.appendChild(fqnCode);
+    tr.appendChild(tdFqn);
+
+    // Source file
+    const tdSrc = createElement('td', { style: 'color: var(--text-muted); font-size: 11px;' });
+    tdSrc.textContent = item.sourceFile || '—';
+    tr.appendChild(tdSrc);
+
+    // Action
+    const tdAction = createElement('td', { style: 'text-align: right;' });
+    const restoreBtn = createElement('button', {
+      class: 'btn-secondary btn-sm btn-scope-restore',
+      title: `Restore ${item.simpleName || item.fqn} into scope`
+    });
+    restoreBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Restore';
+    restoreBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await restoreScopeItem(item.fqn);
+    });
+    tdAction.appendChild(restoreBtn);
+    tr.appendChild(tdAction);
+
+    tbody.appendChild(tr);
+  }
+}
+
+async function restoreScopeItem(fqn) {
+  try {
+    showToast(`Restoring ${fqn} to scope…`, 'info', 2000);
+    const res = await api.restoreScope(fqn);
+    GraphDataCache.clear();
+    await updateExcludedScopeBadge();
+    await renderScopeManagerList(qs('#scope-search-input')?.value);
+
+    showToast(`Restored "${fqn}". Re-synchronizing analysis…`, 'success', 3000);
+
+    // Trigger re-indexing
+    try {
+      await api.post('/scan/incremental', {});
+    } catch (_) {}
+
+    await loadPackageTree();
+
+    if (App.activeTab === 'graph') loadCodebaseVisualization();
+    else if (App.activeTab === 'dsm') loadDSM();
+    else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) window.City3D.reload();
+    else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') loadActiveReport();
+  } catch (err) {
+    console.error('Failed to restore scope:', err);
+    showToast(`Failed to restore ${fqn}: ${err.message || err}`, 'error', 5000);
+  }
+}
+
+async function restoreAllScopes() {
+  if (!confirm('Restore all excluded classes and packages back into the analysis?')) return;
+  try {
+    showToast('Restoring all excluded scopes…', 'info', 2000);
+    await api.clearExcludedScopes();
+    GraphDataCache.clear();
+    await updateExcludedScopeBadge();
+    await renderScopeManagerList();
+
+    showToast('All items restored. Re-synchronizing analysis…', 'success', 3000);
+    try {
+      await api.post('/scan/incremental', {});
+    } catch (_) {}
+
+    await loadPackageTree();
+
+    if (App.activeTab === 'graph') loadCodebaseVisualization();
+    else if (App.activeTab === 'dsm') loadDSM();
+    else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) window.City3D.reload();
+    else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') loadActiveReport();
+  } catch (err) {
+    console.error('Failed to clear scopes:', err);
+    showToast(`Failed to restore all: ${err.message || err}`, 'error', 5000);
+  }
+}
+
+let _activeContextMenuTarget = null;
+function showExplorerContextMenu(x, y, target) {
+  _activeContextMenuTarget = target;
+  const menu = qs('#explorer-context-menu');
+  if (!menu) return;
+
+  const removeLabel = menu.querySelector('#ctx-menu-remove-scope span');
+  if (removeLabel) {
+    removeLabel.textContent = `Remove ${target.type === 'PACKAGE' ? 'Package' : 'Class'} from Scope…`;
+  }
+
+  menu.style.display = 'block';
+
+  // Position within window bounds
+  const menuWidth = 200;
+  const menuHeight = 120;
+  const posX = (x + menuWidth > window.innerWidth) ? (window.innerWidth - menuWidth - 8) : x;
+  const posY = (y + menuHeight > window.innerHeight) ? (window.innerHeight - menuHeight - 8) : y;
+
+  menu.style.left = `${posX}px`;
+  menu.style.top = `${posY}px`;
+}
+
+function hideExplorerContextMenu() {
+  const menu = qs('#explorer-context-menu');
+  if (menu) menu.style.display = 'none';
+  _activeContextMenuTarget = null;
+}
+
+function initScopeManagement() {
+  // Toolbar Scope Manager button
+  qs('#btn-manage-scope')?.addEventListener('click', () => openScopeManagerModal());
+
+  // Scope Manager Modal controls
+  qs('#btn-scope-manager-close')?.addEventListener('click', () => hideAccessibleModal(qs('#scope-manager-modal')));
+  qs('#scope-manager-modal')?.addEventListener('click', (e) => {
+    if (e.target === qs('#scope-manager-modal')) hideAccessibleModal(qs('#scope-manager-modal'));
+  });
+  qs('#scope-search-input')?.addEventListener('input', (e) => {
+    renderScopeManagerList(e.target.value);
+  });
+  qs('#btn-scope-restore-all')?.addEventListener('click', () => restoreAllScopes());
+
+  // Scope Confirm Modal controls
+  qs('#btn-scope-confirm-close')?.addEventListener('click', () => hideAccessibleModal(qs('#scope-confirm-modal')));
+  qs('#btn-scope-confirm-cancel')?.addEventListener('click', () => hideAccessibleModal(qs('#scope-confirm-modal')));
+  qs('#scope-confirm-modal')?.addEventListener('click', (e) => {
+    if (e.target === qs('#scope-confirm-modal')) hideAccessibleModal(qs('#scope-confirm-modal'));
+  });
+  qs('#btn-scope-confirm-execute')?.addEventListener('click', () => executeExcludeScope());
+
+  // Context Menu Actions
+  qs('#ctx-menu-remove-scope')?.addEventListener('click', () => {
+    if (_activeContextMenuTarget) {
+      confirmExcludeScope(_activeContextMenuTarget);
+    }
+    hideExplorerContextMenu();
+  });
+
+  qs('#ctx-menu-copy-fqn')?.addEventListener('click', () => {
+    if (_activeContextMenuTarget && _activeContextMenuTarget.fqn) {
+      navigator.clipboard.writeText(_activeContextMenuTarget.fqn).then(() => {
+        showBanner(`Copied: ${_activeContextMenuTarget.fqn}`);
+      }).catch(() => {
+        showBanner(`Copied: ${_activeContextMenuTarget.fqn}`);
+      });
+    }
+    hideExplorerContextMenu();
+  });
+
+  qs('#ctx-menu-focus-graph')?.addEventListener('click', () => {
+    if (_activeContextMenuTarget) {
+      const { fqn } = _activeContextMenuTarget;
+      switchTab('graph');
+      if (window.Graph2D && window.Graph2D.focusNode) {
+        window.Graph2D.focusNode(fqn);
+      }
+    }
+    hideExplorerContextMenu();
+  });
+
+  // Close context menu on outside click or escape or scroll
+  document.addEventListener('click', () => hideExplorerContextMenu());
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('.tree-item')) {
+      hideExplorerContextMenu();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideExplorerContextMenu();
+  });
+  qs('#left-panel')?.addEventListener('scroll', () => hideExplorerContextMenu());
+
+  // Initial badge update
+  updateExcludedScopeBadge();
 }
 
 document.addEventListener('DOMContentLoaded', init);

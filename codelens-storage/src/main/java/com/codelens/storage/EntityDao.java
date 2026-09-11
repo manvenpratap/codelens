@@ -1,5 +1,6 @@
 package com.codelens.storage;
 
+import com.codelens.core.ExcludedScope;
 import com.codelens.core.model.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1367,6 +1368,255 @@ public class EntityDao {
             }
         }
         return list;
+    }
+
+    // =========================================================================
+    // SCOPE MANAGEMENT & EXCLUSIONS
+    // =========================================================================
+
+    public ExcludedScope excludeType(String typeFqn) throws SQLException {
+        if (typeFqn == null || typeFqn.isBlank()) return null;
+        Optional<CodeType> optType = findTypeById(typeFqn);
+        String simpleName = optType.map(CodeType::getSimpleName).orElseGet(() -> {
+            int idx = typeFqn.lastIndexOf('.');
+            return idx >= 0 ? typeFqn.substring(idx + 1) : typeFqn;
+        });
+        String sourceFile = optType.map(CodeType::getSourceFile).orElse(null);
+        long now = System.currentTimeMillis();
+        String id = "CLASS:" + typeFqn;
+
+        ExcludedScope scope = new ExcludedScope(id, "CLASS", typeFqn, simpleName, sourceFile, now);
+
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                // Record in excluded_scopes
+                try (PreparedStatement ps = c.prepareStatement(
+                        "MERGE INTO excluded_scopes (id, entity_type, fqn, simple_name, source_file, excluded_at) " +
+                        "KEY (fqn) VALUES (?, ?, ?, ?, ?, ?)")) {
+                    ps.setString(1, id);
+                    ps.setString(2, "CLASS");
+                    ps.setString(3, typeFqn);
+                    ps.setString(4, simpleName);
+                    ps.setString(5, sourceFile);
+                    ps.setLong(6, now);
+                    ps.executeUpdate();
+                }
+
+                // Cascade delete relationships
+                try (PreparedStatement psRels = c.prepareStatement(
+                        "DELETE FROM relationships WHERE from_entity_fqn = ? " +
+                        "OR to_entity_fqn = ? " +
+                        "OR from_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn = ?) " +
+                        "OR to_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn = ?)")) {
+                    psRels.setString(1, typeFqn);
+                    psRels.setString(2, typeFqn);
+                    psRels.setString(3, typeFqn);
+                    psRels.setString(4, typeFqn);
+                    psRels.executeUpdate();
+                }
+
+                // Cascade delete fields
+                try (PreparedStatement psFields = c.prepareStatement(
+                        "DELETE FROM fields WHERE declaring_type_fqn = ?")) {
+                    psFields.setString(1, typeFqn);
+                    psFields.executeUpdate();
+                }
+
+                // Cascade delete methods
+                try (PreparedStatement psMethods = c.prepareStatement(
+                        "DELETE FROM methods WHERE declaring_type_fqn = ?")) {
+                    psMethods.setString(1, typeFqn);
+                    psMethods.executeUpdate();
+                }
+
+                // Cascade delete git_meta
+                try (PreparedStatement psGit = c.prepareStatement(
+                        "DELETE FROM git_meta WHERE entity_fqn = ? " +
+                        "OR entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn = ?)")) {
+                    psGit.setString(1, typeFqn);
+                    psGit.setString(2, typeFqn);
+                    psGit.executeUpdate();
+                }
+
+                // Delete type itself
+                try (PreparedStatement psType = c.prepareStatement(
+                        "DELETE FROM types WHERE fqn = ?")) {
+                    psType.setString(1, typeFqn);
+                    psType.executeUpdate();
+                }
+
+                c.commit();
+            } catch (Exception e) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                throw e;
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
+        }
+
+        recomputePackageCounts();
+        return scope;
+    }
+
+    public ExcludedScope excludePackage(String packageFqn) throws SQLException {
+        if (packageFqn == null || packageFqn.isBlank()) return null;
+        String simpleName = packageFqn;
+        int idx = packageFqn.lastIndexOf('.');
+        if (idx >= 0) simpleName = packageFqn.substring(idx + 1);
+        long now = System.currentTimeMillis();
+        String id = "PACKAGE:" + packageFqn;
+
+        ExcludedScope scope = new ExcludedScope(id, "PACKAGE", packageFqn, simpleName, null, now);
+
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                // Record in excluded_scopes
+                try (PreparedStatement ps = c.prepareStatement(
+                        "MERGE INTO excluded_scopes (id, entity_type, fqn, simple_name, source_file, excluded_at) " +
+                        "KEY (fqn) VALUES (?, ?, ?, ?, NULL, ?)")) {
+                    ps.setString(1, id);
+                    ps.setString(2, "PACKAGE");
+                    ps.setString(3, packageFqn);
+                    ps.setString(4, simpleName);
+                    ps.setLong(5, now);
+                    ps.executeUpdate();
+                }
+
+                // Cascade delete relationships for all types in this package or subpackages
+                try (PreparedStatement psRels = c.prepareStatement(
+                        "DELETE FROM relationships WHERE from_entity_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?) " +
+                        "OR to_entity_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?) " +
+                        "OR from_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?)) " +
+                        "OR to_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?))")) {
+                    String like = packageFqn + ".%";
+                    for (int i = 1; i <= 8; i += 2) {
+                        psRels.setString(i, packageFqn);
+                        psRels.setString(i + 1, like);
+                    }
+                    psRels.executeUpdate();
+                }
+
+                // Cascade delete fields
+                try (PreparedStatement psFields = c.prepareStatement(
+                        "DELETE FROM fields WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?)")) {
+                    psFields.setString(1, packageFqn);
+                    psFields.setString(2, packageFqn + ".%");
+                    psFields.executeUpdate();
+                }
+
+                // Cascade delete methods
+                try (PreparedStatement psMethods = c.prepareStatement(
+                        "DELETE FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?)")) {
+                    psMethods.setString(1, packageFqn);
+                    psMethods.setString(2, packageFqn + ".%");
+                    psMethods.executeUpdate();
+                }
+
+                // Cascade delete git_meta
+                try (PreparedStatement psGit = c.prepareStatement(
+                        "DELETE FROM git_meta WHERE entity_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?) " +
+                        "OR entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?))")) {
+                    String like = packageFqn + ".%";
+                    psGit.setString(1, packageFqn);
+                    psGit.setString(2, like);
+                    psGit.setString(3, packageFqn);
+                    psGit.setString(4, like);
+                    psGit.executeUpdate();
+                }
+
+                // Delete types
+                try (PreparedStatement psTypes = c.prepareStatement(
+                        "DELETE FROM types WHERE package_fqn = ? OR package_fqn LIKE ?")) {
+                    psTypes.setString(1, packageFqn);
+                    psTypes.setString(2, packageFqn + ".%");
+                    psTypes.executeUpdate();
+                }
+
+                // Delete package record
+                try (PreparedStatement psPkg = c.prepareStatement(
+                        "DELETE FROM packages WHERE fqn = ? OR fqn LIKE ?")) {
+                    psPkg.setString(1, packageFqn);
+                    psPkg.setString(2, packageFqn + ".%");
+                    psPkg.executeUpdate();
+                }
+
+                c.commit();
+            } catch (Exception e) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                throw e;
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
+        }
+
+        recomputePackageCounts();
+        return scope;
+    }
+
+    public List<ExcludedScope> findAllExcludedScopes() throws SQLException {
+        List<ExcludedScope> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT id, entity_type, fqn, simple_name, source_file, excluded_at FROM excluded_scopes ORDER BY excluded_at DESC");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                list.add(new ExcludedScope(
+                    rs.getString("id"),
+                    rs.getString("entity_type"),
+                    rs.getString("fqn"),
+                    rs.getString("simple_name"),
+                    rs.getString("source_file"),
+                    rs.getLong("excluded_at")
+                ));
+            }
+        }
+        return list;
+    }
+
+    public Optional<ExcludedScope> findExcludedScopeByFqn(String fqn) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT id, entity_type, fqn, simple_name, source_file, excluded_at FROM excluded_scopes WHERE fqn = ?")) {
+            ps.setString(1, fqn);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new ExcludedScope(
+                        rs.getString("id"),
+                        rs.getString("entity_type"),
+                        rs.getString("fqn"),
+                        rs.getString("simple_name"),
+                        rs.getString("source_file"),
+                        rs.getLong("excluded_at")
+                    ));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    public boolean restoreScope(String fqn) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM excluded_scopes WHERE fqn = ?")) {
+            ps.setString(1, fqn);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public void clearAllExcludedScopes() throws SQLException {
+        try (Connection c = db.getConnection();
+             Statement stmt = c.createStatement()) {
+            stmt.execute("DELETE FROM file_meta WHERE file_path IN (SELECT source_file FROM excluded_scopes WHERE source_file IS NOT NULL)");
+            stmt.execute("DELETE FROM excluded_scopes");
+        }
+    }
+
+    public void deleteFileMeta(String filePath) throws SQLException {
+        if (filePath == null || filePath.isBlank()) return;
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM file_meta WHERE file_path = ?")) {
+            ps.setString(1, filePath);
+            ps.executeUpdate();
+        }
     }
 }
 

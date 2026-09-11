@@ -232,6 +232,17 @@ public class DatabaseManager {
                 "  type_count    INTEGER DEFAULT 0" +
                 ")");
 
+            // excluded_scopes ───────────────────────────────────────────────
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS excluded_scopes (" +
+                "  id          VARCHAR PRIMARY KEY," +
+                "  entity_type VARCHAR NOT NULL," +
+                "  fqn         VARCHAR NOT NULL UNIQUE," +
+                "  simple_name VARCHAR NOT NULL," +
+                "  source_file VARCHAR," +
+                "  excluded_at BIGINT DEFAULT 0" +
+                ")");
+
             // Indices for fast lookups ───────────────────────────────────────
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg      ON types(package_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_src      ON types(source_file)");
@@ -244,6 +255,7 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_excluded_fqn   ON excluded_scopes(fqn)");
         }
     }
 

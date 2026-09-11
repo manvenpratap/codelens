@@ -205,6 +205,43 @@ public class LuceneService {
             fields != null ? fields.size() : 0);
     }
 
+    /**
+     * Deletes a single type and all its members (methods, fields) from the Lucene index.
+     */
+    public synchronized void deleteTypeFromIndex(String typeFqn) throws IOException {
+        if (typeFqn == null || typeFqn.isBlank() || writer == null) return;
+        BooleanQuery.Builder bq = new BooleanQuery.Builder();
+        bq.add(new TermQuery(new Term(F_ID, typeFqn)), BooleanClause.Occur.SHOULD);
+        bq.add(new TermQuery(new Term(F_FQN, typeFqn)), BooleanClause.Occur.SHOULD);
+        bq.add(new TermQuery(new Term(F_DECLARING, typeFqn)), BooleanClause.Occur.SHOULD);
+        bq.add(new PrefixQuery(new Term(F_FQN, typeFqn + "#")), BooleanClause.Occur.SHOULD);
+        bq.add(new PrefixQuery(new Term(F_FQN, typeFqn + ".")), BooleanClause.Occur.SHOULD);
+        writer.deleteDocuments(bq.build());
+        writer.commit();
+        if (searcherManager != null) {
+            searcherManager.maybeRefresh();
+        }
+        log.info("Deleted type and members from Lucene index: {}", typeFqn);
+    }
+
+    /**
+     * Deletes an entire package and all types/members within it from the Lucene index.
+     */
+    public synchronized void deletePackageFromIndex(String packageFqn) throws IOException {
+        if (packageFqn == null || packageFqn.isBlank() || writer == null) return;
+        BooleanQuery.Builder bq = new BooleanQuery.Builder();
+        bq.add(new PrefixQuery(new Term(F_FQN, packageFqn + ".")), BooleanClause.Occur.SHOULD);
+        bq.add(new TermQuery(new Term(F_FQN, packageFqn)), BooleanClause.Occur.SHOULD);
+        bq.add(new PrefixQuery(new Term(F_DECLARING, packageFqn + ".")), BooleanClause.Occur.SHOULD);
+        bq.add(new TermQuery(new Term(F_DECLARING, packageFqn)), BooleanClause.Occur.SHOULD);
+        writer.deleteDocuments(bq.build());
+        writer.commit();
+        if (searcherManager != null) {
+            searcherManager.maybeRefresh();
+        }
+        log.info("Deleted package and contents from Lucene index: {}", packageFqn);
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Search
