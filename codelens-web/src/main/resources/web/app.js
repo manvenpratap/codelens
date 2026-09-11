@@ -396,7 +396,7 @@ async function startScan(targetPath) {
   if (qs('#scan-pct')) qs('#scan-pct').textContent = '0%';
   if (qs('#scan-card-bar-fill')) qs('#scan-card-bar-fill').style.width = '0%';
   if (qs('#scan-files-ratio')) qs('#scan-files-ratio').textContent = 'Preparing scanner…';
-  if (qs('#scan-remaining-files')) qs('#scan-remaining-files').textContent = '';
+  if (qs('#scan-remaining-files')) qs('#scan-remaining-files').textContent = 'Stage 1 of 4';
   if (qs('#scan-detail-text')) qs('#scan-detail-text').textContent = 'Preparing storage & file list…';
   qs('#scan-status-bar')?.classList.add('visible');
   showBanner(`Rescanning codebase at "${path}"…`);
@@ -572,31 +572,46 @@ function updateScanProgress(s) {
   // Files processed vs remaining ratio
   const filesRatio = qs('#scan-files-ratio');
   if (filesRatio) {
-    if (s.status === 'COMPLETE') {
+    if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files indexed` : 'Scan complete';
-    } else if (s.stageItem && currentStepNum > 1) {
-      filesRatio.textContent = s.stageItem;
-    } else if (stage === 'LAYOUT' || phase.includes('Layout')) {
-      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Precomputing layouts` : 'Precomputing layouts…';
-    } else if (stage === 'GRAPH' || phase.includes('Graph') || phase.includes('Field')) {
-      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing dependencies` : 'Analyzing dependencies…';
-    } else if (stage === 'INDEX' || phase.includes('Index')) {
-      filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Finalizing indexes` : 'Finalizing indexes…';
+    } else if (stage === 'LAYOUT') {
+      filesRatio.textContent = s.stageItem ? `Computing: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Precomputing layouts` : 'Precomputing layouts…');
+    } else if (stage === 'GRAPH') {
+      filesRatio.textContent = s.stageItem ? `Analyzing: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing dependencies` : 'Analyzing dependencies…');
+    } else if (stage === 'INDEX') {
+      filesRatio.textContent = s.stageItem ? `Rebuilding: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Finalizing indexes` : 'Finalizing indexes…');
     } else {
       filesRatio.textContent = s.totalFiles ? `${(s.processedFiles || 0).toLocaleString()} of ${s.totalFiles.toLocaleString()} files processed` : 'Scanning file tree…';
     }
   }
   const remainingFiles = qs('#scan-remaining-files');
   if (remainingFiles) {
-    if (s.status === 'COMPLETE') {
-      remainingFiles.textContent = 'All 4 stages finished';
-    } else if (s.stageTotal > 0 && currentStepNum > 1 && currentStepNum <= 4) {
-      remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} / ${s.stageTotal.toLocaleString()} · Step ${currentStepNum} of 4`;
-    } else if (currentStepNum > 1 && currentStepNum <= 4) {
-      remainingFiles.textContent = `Step ${currentStepNum} of 4`;
+    if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+      remainingFiles.textContent = 'All 4 stages complete';
+    } else if (stage === 'LAYOUT') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Layout ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 4 of 4`;
+      } else {
+        remainingFiles.textContent = 'Stage 4 of 4';
+      }
+    } else if (stage === 'GRAPH') {
+      if (s.stageTotal > 10) {
+        remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} links · Stage 3 of 4`;
+      } else if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Pass ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 3 of 4`;
+      } else {
+        remainingFiles.textContent = 'Stage 3 of 4';
+      }
+    } else if (stage === 'INDEX') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Index ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 2 of 4`;
+      } else {
+        remainingFiles.textContent = 'Stage 2 of 4';
+      }
     } else {
+      // PARSE / PREPARE
       const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
-      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining` : '';
+      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining · Stage 1 of 4` : 'Stage 1 of 4';
     }
   }
 

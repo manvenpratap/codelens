@@ -218,14 +218,12 @@ public class CodeLensServer {
                 new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null, (phase, curr, tot, detail) -> {
                     if (progress != null) {
                         progress.setCurrentDetail(detail);
-                        progress.setSubProgress(curr, tot, "Clustering classes");
                         progress.setDynamicMetrics("Layouts Ready", "4 / 6", "Active Layout", "Sunflower (Classes)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
                     }
                 })),
                 new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true, (phase, curr, tot, detail) -> {
                     if (progress != null) {
                         progress.setCurrentDetail(detail);
-                        progress.setSubProgress(curr, tot, "Clustering full graph");
                         progress.setDynamicMetrics("Layouts Ready", "5 / 6", "Active Layout", "Sunflower (Full)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
                     }
                 }))
@@ -242,8 +240,8 @@ public class CodeLensServer {
                 if (progress != null) {
                     progress.setActiveStage("LAYOUT");
                     progress.setCurrentPhase("Precomputing Layouts");
-                    progress.setMessage(String.format("Precomputing graph layouts (%d/%d)…", step, total));
-                    progress.setCurrentDetail(String.format("[%d/%d] Generating %s layout", step, total, task.name));
+                    progress.setMessage(String.format("Precomputing graph layouts (layout %d of %d)…", step, total));
+                    progress.setCurrentDetail(String.format("Layout %d of %d: Generating %s layout", step, total, task.name));
                     progress.setSubProgress(step, total, task.name);
                     progress.setDynamicMetrics(
                         "Layouts Ready", String.format("%d / %d", i, total),
@@ -765,8 +763,8 @@ public class CodeLensServer {
                 progress.setSubProgress(step, totalSteps, indexName);
                 float fraction = (float) step / totalSteps;
                 progress.setPercentage(72 + (int)(fraction * 2.0)); // 72% -> 74%
-                progress.setMessage(String.format("Rebuilding DB indexes (%d/%d)…", step, totalSteps));
-                progress.setCurrentDetail(String.format("[%d/%d] %s: %s", step, totalSteps, indexName, description));
+                progress.setMessage(String.format("Rebuilding DB indexes (index %d of %d)…", step, totalSteps));
+                progress.setCurrentDetail(String.format("Index %d of %d: %s (%s)", step, totalSteps, indexName, description));
 
                 String rowEstimate = "-";
                 if ("types".equalsIgnoreCase(tableName)) rowEstimate = String.format("%,d rows", result.typesFound);
@@ -794,7 +792,7 @@ public class CodeLensServer {
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Computing call graph & topology…");
             progress.setPercentage(75);
-            progress.setSubProgress(0, 4, "Querying methods from storage");
+            progress.setSubProgress(1, 4, "Querying methods from storage");
             progress.setDynamicMetrics("Graph Vertices", "Querying…", "Call Edges", "Pending", "Field Links", "Pending", "Caller Triggers", "Pending");
 
             List<String> allMethodFqns = dao.findAllMethodFqns();
@@ -1055,7 +1053,7 @@ public class CodeLensServer {
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Refreshing call graph & topology…");
             progress.setPercentage(75);
-            progress.setSubProgress(0, 4, "Querying methods from storage");
+            progress.setSubProgress(1, 4, "Querying methods from storage");
             progress.setDynamicMetrics("Graph Vertices", "Querying…", "Call Edges", "Pending", "Field Links", "Pending", "Caller Triggers", "Pending");
 
             List<String> allMethodFqns = dao.findAllMethodFqns();
