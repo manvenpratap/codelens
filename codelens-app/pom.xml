@@ -47,6 +47,13 @@
                     <exclude>META-INF/*.DSA</exclude>
                     <exclude>META-INF/*.RSA</exclude>
                     <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/**/module-info.class</exclude>
+                    <exclude>javax/servlet/resources/**</exclude>
+                    <exclude>jakarta/servlet/resources/**</exclude>
+                    <exclude>about.html</exclude>
+                    <exclude>about_files/**</exclude>
+                    <exclude>**/*.xsd</exclude>
+                    <exclude>**/*.dtd</exclude>
                   </excludes>
                 </filter>
               </filters>
