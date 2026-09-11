@@ -315,6 +315,11 @@
           <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
           <span class="tab-label">Source</span>
         </button>
+        <!-- Reports & Export tab -->
+        <button class="tab level-pill" role="tab" id="tab-reports" data-tab="reports" draggable="true" aria-selected="false" aria-controls="reports-view" title="Codebase Intelligence Reports &amp; Export Hub (6)">
+          <span class="tab-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+          <span class="tab-label">Reports &amp; Export</span>
+        </button>
       </div>
     </div>
 
@@ -333,9 +338,9 @@
 
       <!-- Top-Right Actions Group (Theme Toggle, Settings) -->
       <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
-        <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Export Codebase Reports" title="Export Reports (open from Settings)" style="display:none;">
-          <span class="action-btn-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></span>
-          <span class="action-btn-text">Export</span>
+        <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Open Reports &amp; Export Hub" title="Open Reports &amp; Export Hub (6)">
+          <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+          <span class="action-btn-text">Reports</span>
         </button>
         <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Toggle Dark / Light Theme" title="Toggle Theme (Dark / Light)">
           <span id="theme-toggle-icon" class="action-btn-icon"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></span>
@@ -1226,6 +1231,184 @@
       </div>
     </section><!-- /#source-view -->
 
+    <!-- ── Tab panel 6: Reports & Export Hub ────────────────────────────────── -->
+    <section
+      class="tab-content"
+      id="reports-view"
+      role="tabpanel"
+      aria-labelledby="tab-reports"
+      tabindex="0"
+    >
+      <div class="reports-hub-layout">
+        <!-- Left Sidebar: Report Catalog -->
+        <aside class="reports-sidebar" aria-label="Reports Catalog">
+          <div class="reports-sidebar-header">
+            <div class="reports-sidebar-title">
+              <svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span>Reports Catalog</span>
+            </div>
+            <span class="reports-catalog-badge">8 Reports</span>
+          </div>
+          <div class="reports-catalog-nav" id="reports-catalog-nav">
+            <!-- Category: Deep Codebase Intelligence (USP) -->
+            <div class="reports-category-label">
+              <span>ARCHITECTURAL INTELLIGENCE</span>
+              <span class="usp-badge">KEY USP</span>
+            </div>
+
+            <div class="report-nav-item active" data-report="change-risk">
+              <div class="report-nav-icon icon-rose-bg"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Change Risk &amp; Blast Radius</div>
+                <div class="report-nav-desc">Composite risk scores, mutation hotspots &amp; ripple</div>
+              </div>
+              <span class="report-nav-tag tag-hot">HIGH RISK</span>
+            </div>
+
+            <div class="report-nav-item" data-report="dead-code">
+              <div class="report-nav-icon icon-amber-bg"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Dead Code &amp; Orphan Entrypoints</div>
+                <div class="report-nav-desc">0-caller methods, unused fields &amp; cleanable LoC</div>
+              </div>
+              <span class="report-nav-tag tag-clean">CLEANUP</span>
+            </div>
+
+            <div class="report-nav-item" data-report="circular-dependencies">
+              <div class="report-nav-icon icon-purple-bg"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Circular Dependencies &amp; Tangling</div>
+                <div class="report-nav-desc">Class cycles, package tangles &amp; decoupling cuts</div>
+              </div>
+              <span class="report-nav-tag tag-arch">MODULAR</span>
+            </div>
+
+            <div class="report-nav-item" data-report="archetype-governance">
+              <div class="report-nav-icon icon-emerald-bg"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Enterprise Archetype Governance</div>
+                <div class="report-nav-desc">BaNCS &amp; DDD pattern audit: un-audited transactions &amp; layers</div>
+              </div>
+              <span class="report-nav-tag tag-gov">COMPLIANCE</span>
+            </div>
+
+            <!-- Category: Core Engineering Reports -->
+            <div class="reports-category-label">
+              <span>CORE ARCHITECTURE &amp; AUDIT</span>
+            </div>
+
+            <div class="report-nav-item" data-report="architecture">
+              <div class="report-nav-icon icon-cyan-bg"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Architecture &amp; Coupling</div>
+                <div class="report-nav-desc">Afferent/efferent coupling ($Ca/Ce$), Instability &amp; health</div>
+              </div>
+            </div>
+
+            <div class="report-nav-item" data-report="review">
+              <div class="report-nav-icon icon-indigo-bg"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Code Quality &amp; Security Audit</div>
+                <div class="report-nav-desc">32 AST &amp; graph analysis rules with CWE remediation</div>
+              </div>
+            </div>
+
+            <div class="report-nav-item" data-report="metrics">
+              <div class="report-nav-icon icon-teal-bg"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Codebase Inventory &amp; Metrics</div>
+                <div class="report-nav-desc">Classes, methods, fields, lines of code &amp; complexity matrix</div>
+              </div>
+            </div>
+
+            <div class="report-nav-item" data-report="html-snapshot">
+              <div class="report-nav-icon icon-blue-bg"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Standalone Offline Snapshot</div>
+                <div class="report-nav-desc">Zero-dependency self-contained HTML visualizer</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main Reports Workspace -->
+        <div class="reports-content-pane">
+          <!-- Top Header Toolbar -->
+          <header class="reports-content-header">
+            <div class="reports-header-title-block">
+              <div class="reports-header-title-row">
+                <h2 class="reports-active-title" id="reports-view-title">Change Risk &amp; Blast Radius Matrix</h2>
+                <span class="reports-status-pill" id="reports-status-pill">Analysis Ready</span>
+              </div>
+              <p class="reports-active-subtitle" id="reports-view-desc">Deep structural risk analysis combining field mutations, fan-out blast radius, and downstream dependency propagation.</p>
+            </div>
+            <div class="reports-header-actions-block">
+              <!-- Format Switcher Pills -->
+              <div class="reports-format-pills" id="reports-format-switcher" role="group" aria-label="Output Format">
+                <button type="button" class="report-format-pill active" data-format="dashboard" title="Interactive visual dashboard view with sortable tables and metric cards">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                  <span>Dashboard</span>
+                </button>
+                <button type="button" class="report-format-pill" data-format="html" title="Executive styled HTML document view with print styling">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                  <span>HTML</span>
+                </button>
+                <button type="button" class="report-format-pill" data-format="markdown" title="Markdown formatted text suitable for PRs and Git docs">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span>Markdown</span>
+                </button>
+                <button type="button" class="report-format-pill" data-format="json" title="Structured JSON data for automated pipelines">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5c0 1.1.9 2 2 2a2 2 0 0 1-2 2v5a2 2 0 0 1-2 2h-1"/></svg>
+                  <span>JSON</span>
+                </button>
+                <button type="button" class="report-format-pill" data-format="csv" title="Tabular CSV format for Excel/BI spreadsheets">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="3" x2="12" y2="21"/><path d="M18 6H7a4 4 0 0 0-4 4v0a4 4 0 0 0 4 4h10a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4H6"/></svg>
+                  <span>CSV</span>
+                </button>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="reports-action-buttons">
+                <button type="button" class="btn-ghost btn-sm" id="btn-reports-copy" title="Copy active report output to clipboard">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span>Copy</span>
+                </button>
+                <button type="button" class="btn-ghost btn-sm" id="btn-reports-open" title="Open report in a new tab or print preview">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  <span>Open / Print</span>
+                </button>
+                <button type="button" class="btn-primary btn-sm" id="btn-reports-download" title="Download report file">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Download</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <!-- Reports Dynamic Viewport Area -->
+          <div class="reports-viewport" id="reports-viewport">
+            <!-- Interactive Dashboard Container -->
+            <div class="reports-dashboard-container" id="reports-dashboard-container">
+              <div class="reports-loading-state">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Analyzing codebase intelligence…</div>
+              </div>
+            </div>
+
+            <!-- HTML IFrame Preview Container -->
+            <div class="reports-html-container" id="reports-html-container" style="display:none;">
+              <iframe id="reports-html-frame" class="reports-html-frame" title="Executive HTML Report Preview"></iframe>
+            </div>
+
+            <!-- Code / Raw Text Container (Markdown, JSON, CSV) -->
+            <div class="reports-code-container" id="reports-code-container" style="display:none;">
+              <pre id="reports-code-output" class="reports-code-output">Loading report data…</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section><!-- /#reports-view -->
+
   </main><!-- /#centre-panel -->
 
   <!-- Right panel resizer handle -->
@@ -1871,39 +2054,24 @@
         <div id="archetype-rules-list" class="archetype-rules-list"></div>
       </section>
 
-      <!-- ── Reports & Export ─────────────────────────────────────────────── -->
+      <!-- ── Reports & Export Pointer ────────────────────────────────────────── -->
       <div class="settings-grid-row">
-        <section class="settings-group settings-export-section">
-          <h3 class="settings-group-title">
-            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><path d="M19 14V9h-5"/></svg>
-            Reports &amp; Export
-          </h3>
-          <p class="settings-help-text">Generate architecture, quality audit &amp; inventory reports in Markdown, HTML, JSON or CSV.</p>
-          <div class="settings-export-actions">
-            <button id="settings-export-open-btn" class="btn-primary" style="font-size:12px; padding:6px 16px;" title="Open Export Hub">
-              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Open Export Hub
+        <section class="settings-group full-width settings-reports-pointer">
+          <div class="settings-reports-banner">
+            <div class="settings-reports-text">
+              <div class="settings-reports-title">
+                <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span>Codebase Intelligence &amp; Reports Hub</span>
+                <span class="usp-badge">PRIMARY VIEW (6)</span>
+              </div>
+              <p class="settings-help-text">Deep structural insights, blast radius &amp; mutation hotspots, dead code elimination, circular cycles, enterprise archetype governance, and data exports have been promoted to a primary standalone workspace.</p>
+            </div>
+            <button type="button" id="settings-open-reports-btn" class="btn-primary" style="white-space:nowrap; padding: 8px 16px;">
+              Open Reports Hub (6) →
             </button>
           </div>
-          <div class="settings-export-cards">
-            <div class="settings-export-card">
-              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-              <span>Architecture &amp; Coupling</span>
-            </div>
-            <div class="settings-export-card">
-              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-              <span>Code Quality Audit</span>
-            </div>
-            <div class="settings-export-card">
-              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-              <span>Inventory &amp; Metrics</span>
-            </div>
-            <div class="settings-export-card">
-              <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              <span>Interactive Snapshot</span>
-            </div>
-          </div>
         </section>
+      </div>
 
         <!-- ── Feature Guide & Shortcuts ──────────────────────────────── -->
         <section class="settings-group settings-guide-section">

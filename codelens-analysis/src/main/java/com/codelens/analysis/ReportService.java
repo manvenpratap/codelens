@@ -741,7 +741,1314 @@ public class ReportService {
     }
 
     // =========================================================================
-    // 4. STANDALONE INTERACTIVE HTML GRAPH SNAPSHOT
+    // 4. CHANGE RISK & BLAST RADIUS IMPACT MATRIX
+    // =========================================================================
+
+    public static class ChangeRiskReportData {
+        public String generatedAt;
+        public int totalClassesAnalyzed;
+        public int criticalRiskCount;
+        public int highRiskCount;
+        public int mediumRiskCount;
+        public int lowRiskCount;
+        public int averageRiskScore;
+        public List<ClassRiskItem> classRiskRankings = new ArrayList<>();
+        public List<FieldMutationHotspot> fieldMutationHotspots = new ArrayList<>();
+        public List<HighRiskMethodItem> highRiskMethods = new ArrayList<>();
+    }
+
+    public static class ClassRiskItem {
+        public String classFqn;
+        public String simpleName;
+        public String packageName;
+        public int afferentCoupling;
+        public int efferentCoupling;
+        public int fieldBlastRadius;
+        public int callInDegree;
+        public int riskScore;
+        public String riskLevel;
+        public List<String> impactedDownstreamClasses = new ArrayList<>();
+    }
+
+    public static class FieldMutationHotspot {
+        public String fieldFqn;
+        public String declaringClass;
+        public String writerMethodFqn;
+        public int readerMethodCount;
+        public int impactedModuleCount;
+        public List<String> impactedReaderMethods = new ArrayList<>();
+    }
+
+    public static class HighRiskMethodItem {
+        public String methodFqn;
+        public String declaringClass;
+        public int callerCount;
+        public int calleeCount;
+        public int fieldMutationsCount;
+        public int totalBlastRadius;
+        public String riskLevel;
+    }
+
+    public ChangeRiskReportData buildChangeRiskData(List<CodeType> types,
+                                                    List<CodeMethod> methods,
+                                                    List<CodeField> fields,
+                                                    List<CodeRelationship> relationships) {
+        ChangeRiskReportData data = new ChangeRiskReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        data.totalClassesAnalyzed = types.size();
+
+        Map<String, String> methodToClass = new HashMap<>(methods.size());
+        for (CodeMethod m : methods) {
+            methodToClass.put(m.getFqn(), m.getDeclaringTypeFqn());
+        }
+
+        Map<String, String> classToPackage = new HashMap<>(types.size());
+        for (CodeType t : types) {
+            classToPackage.put(t.getFqn(), t.getPackageFqn() != null ? t.getPackageFqn() : "(default)");
+        }
+
+        Map<String, Integer> methodCallers = new HashMap<>();
+        Map<String, Integer> methodCallees = new HashMap<>();
+        Map<String, Set<String>> classIncomingClasses = new HashMap<>();
+        Map<String, Set<String>> classOutgoingClasses = new HashMap<>();
+        Map<String, Integer> classInDegree = new HashMap<>();
+
+        for (CodeType t : types) {
+            classIncomingClasses.put(t.getFqn(), new HashSet<>());
+            classOutgoingClasses.put(t.getFqn(), new HashSet<>());
+            classInDegree.put(t.getFqn(), 0);
+        }
+
+        Map<String, Set<String>> fieldReaders = new HashMap<>();
+        Map<String, Set<String>> fieldWriters = new HashMap<>();
+        Map<String, Set<String>> methodFieldsWritten = new HashMap<>();
+
+        for (CodeRelationship r : relationships) {
+            String kind = r.getKind();
+            if ("CALLS".equals(kind)) {
+                String srcMethod = r.getFromEntityFqn();
+                String tgtMethod = r.getToEntityFqn();
+                methodCallees.put(srcMethod, methodCallees.getOrDefault(srcMethod, 0) + 1);
+                methodCallers.put(tgtMethod, methodCallers.getOrDefault(tgtMethod, 0) + 1);
+
+                String srcClass = methodToClass.getOrDefault(srcMethod, extractClassFromFqn(srcMethod));
+                String tgtClass = methodToClass.getOrDefault(tgtMethod, extractClassFromFqn(tgtMethod));
+
+                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)) {
+                    classOutgoingClasses.computeIfAbsent(srcClass, k -> new HashSet<>()).add(tgtClass);
+                    classIncomingClasses.computeIfAbsent(tgtClass, k -> new HashSet<>()).add(srcClass);
+                    classInDegree.put(tgtClass, classInDegree.getOrDefault(tgtClass, 0) + 1);
+                }
+            } else if ("READS_FIELD".equals(kind)) {
+                fieldReaders.computeIfAbsent(r.getToEntityFqn(), k -> new HashSet<>()).add(r.getFromEntityFqn());
+            } else if ("WRITES_FIELD".equals(kind)) {
+                fieldWriters.computeIfAbsent(r.getToEntityFqn(), k -> new HashSet<>()).add(r.getFromEntityFqn());
+                methodFieldsWritten.computeIfAbsent(r.getFromEntityFqn(), k -> new HashSet<>()).add(r.getToEntityFqn());
+            }
+        }
+
+        for (Map.Entry<String, Set<String>> entry : fieldWriters.entrySet()) {
+            String fieldFqn = entry.getKey();
+            Set<String> readers = fieldReaders.getOrDefault(fieldFqn, Collections.emptySet());
+            if (readers.size() >= 2) {
+                for (String writerMethod : entry.getValue()) {
+                    FieldMutationHotspot spot = new FieldMutationHotspot();
+                    spot.fieldFqn = fieldFqn;
+                    spot.declaringClass = extractClassFromFqn(fieldFqn);
+                    spot.writerMethodFqn = writerMethod;
+                    spot.readerMethodCount = readers.size();
+                    spot.impactedReaderMethods = readers.stream().limit(10).collect(Collectors.toList());
+
+                    Set<String> modules = new HashSet<>();
+                    for (String reader : readers) {
+                        String rClass = methodToClass.getOrDefault(reader, extractClassFromFqn(reader));
+                        modules.add(classToPackage.getOrDefault(rClass, "(default)"));
+                    }
+                    spot.impactedModuleCount = modules.size();
+                    data.fieldMutationHotspots.add(spot);
+                }
+            }
+        }
+        data.fieldMutationHotspots.sort(Comparator.comparingInt((FieldMutationHotspot h) -> h.readerMethodCount).reversed());
+        if (data.fieldMutationHotspots.size() > 25) {
+            data.fieldMutationHotspots = new ArrayList<>(data.fieldMutationHotspots.subList(0, 25));
+        }
+
+        int totalScoreSum = 0;
+        for (CodeType t : types) {
+            String cFqn = t.getFqn();
+            int ca = classIncomingClasses.getOrDefault(cFqn, Collections.emptySet()).size();
+            int ce = classOutgoingClasses.getOrDefault(cFqn, Collections.emptySet()).size();
+            int inDeg = classInDegree.getOrDefault(cFqn, 0);
+
+            int fieldBlast = 0;
+            for (CodeField f : fields) {
+                if (cFqn.equals(f.getDeclaringTypeFqn())) {
+                    fieldBlast += fieldReaders.getOrDefault(f.getFqn(), Collections.emptySet()).size();
+                }
+            }
+
+            int rawScore = (int) Math.round(ca * 2.5 + ce * 1.2 + fieldBlast * 1.8 + inDeg * 0.3);
+            int score = Math.max(5, Math.min(100, rawScore));
+
+            ClassRiskItem item = new ClassRiskItem();
+            item.classFqn = cFqn;
+            item.simpleName = t.getSimpleName();
+            item.packageName = t.getPackageFqn() != null ? t.getPackageFqn() : "(default)";
+            item.afferentCoupling = ca;
+            item.efferentCoupling = ce;
+            item.fieldBlastRadius = fieldBlast;
+            item.callInDegree = inDeg;
+            item.riskScore = score;
+            totalScoreSum += score;
+
+            if (score >= 75) {
+                item.riskLevel = "CRITICAL";
+                data.criticalRiskCount++;
+            } else if (score >= 50) {
+                item.riskLevel = "HIGH";
+                data.highRiskCount++;
+            } else if (score >= 25) {
+                item.riskLevel = "MEDIUM";
+                data.mediumRiskCount++;
+            } else {
+                item.riskLevel = "LOW";
+                data.lowRiskCount++;
+            }
+
+            item.impactedDownstreamClasses = classIncomingClasses.getOrDefault(cFqn, Collections.emptySet())
+                .stream().limit(8).collect(Collectors.toList());
+            data.classRiskRankings.add(item);
+        }
+        data.classRiskRankings.sort(Comparator.comparingInt((ClassRiskItem i) -> i.riskScore).reversed());
+        data.averageRiskScore = types.isEmpty() ? 0 : totalScoreSum / types.size();
+
+        for (CodeMethod m : methods) {
+            int callers = methodCallers.getOrDefault(m.getFqn(), 0);
+            int callees = methodCallees.getOrDefault(m.getFqn(), 0);
+            Set<String> writtenFields = methodFieldsWritten.getOrDefault(m.getFqn(), Collections.emptySet());
+            int blast = 0;
+            for (String f : writtenFields) {
+                blast += fieldReaders.getOrDefault(f, Collections.emptySet()).size();
+            }
+
+            if (callers >= 5 || blast >= 3 || (callers + callees) >= 15) {
+                HighRiskMethodItem mItem = new HighRiskMethodItem();
+                mItem.methodFqn = m.getFqn();
+                mItem.declaringClass = m.getDeclaringTypeFqn();
+                mItem.callerCount = callers;
+                mItem.calleeCount = callees;
+                mItem.fieldMutationsCount = writtenFields.size();
+                mItem.totalBlastRadius = blast;
+                int methodScore = callers * 2 + callees + blast * 3;
+                mItem.riskLevel = methodScore >= 50 ? "CRITICAL" : (methodScore >= 25 ? "HIGH" : "MEDIUM");
+                data.highRiskMethods.add(mItem);
+            }
+        }
+        data.highRiskMethods.sort(Comparator.comparingInt((HighRiskMethodItem h) -> h.callerCount * 2 + h.totalBlastRadius * 3).reversed());
+        if (data.highRiskMethods.size() > 25) {
+            data.highRiskMethods = new ArrayList<>(data.highRiskMethods.subList(0, 25));
+        }
+
+        return data;
+    }
+
+    public String renderChangeRiskMarkdown(ChangeRiskReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# ⚡ CodeLens Change Risk & Blast Radius Impact Matrix\n\n");
+        sb.append("> **Generated**: `").append(d.generatedAt).append("` | **Classes Analyzed**: `")
+          .append(d.totalClassesAnalyzed).append("` | **Average Risk Score**: `").append(d.averageRiskScore).append("/100`\n\n");
+
+        sb.append("## 1. Executive Summary\n\n");
+        sb.append("| Risk Level | Classes | Severity Impact |\n");
+        sb.append("| :--- | :---: | :--- |\n");
+        sb.append("| 🔴 **CRITICAL** (Score ≥ 75) | ").append(d.criticalRiskCount).append(" | High cross-module dependencies; modifications require cross-team regression |\n");
+        sb.append("| 🟠 **HIGH** (Score 50–74) | ").append(d.highRiskCount).append(" | Broad fan-out or shared mutable state |\n");
+        sb.append("| 🟡 **MEDIUM** (Score 25–49) | ").append(d.mediumRiskCount).append(" | Moderately coupled domain services |\n");
+        sb.append("| 🟢 **LOW** (Score < 25) | ").append(d.lowRiskCount).append(" | Isolated leaf classes or utility components |\n\n");
+
+        sb.append("## 2. Top Highest-Risk Classes\n\n");
+        sb.append("| Class | Package | Risk Score | Level | Afferent (Ca) | Efferent (Ce) | Field Blast |\n");
+        sb.append("| :--- | :--- | :---: | :---: | :---: | :---: | :---: |\n");
+        for (ClassRiskItem item : d.classRiskRankings.stream().limit(25).collect(Collectors.toList())) {
+            String badge = "CRITICAL".equals(item.riskLevel) ? "🔴 CRITICAL" : ("HIGH".equals(item.riskLevel) ? "🟠 HIGH" : "🟡 MEDIUM");
+            sb.append("| `").append(item.simpleName).append("` | `").append(item.packageName).append("` | **")
+              .append(item.riskScore).append("** | ").append(badge).append(" | ")
+              .append(item.afferentCoupling).append(" | ").append(item.efferentCoupling).append(" | ")
+              .append(item.fieldBlastRadius).append(" readers |\n");
+        }
+        sb.append("\n");
+
+        if (!d.fieldMutationHotspots.isEmpty()) {
+            sb.append("## 3. High-Impact Mutable State Hotspots\n\n");
+            sb.append("Methods modifying state that cascades to multiple reader methods across business modules:\n\n");
+            sb.append("| Modified Field | Modifying Method | Downstream Readers | Modules Impacted |\n");
+            sb.append("| :--- | :--- | :---: | :---: |\n");
+            for (FieldMutationHotspot spot : d.fieldMutationHotspots) {
+                sb.append("| `").append(spot.fieldFqn).append("` | `").append(spot.writerMethodFqn).append("` | **")
+                  .append(spot.readerMethodCount).append(" methods** | ").append(spot.impactedModuleCount).append(" modules |\n");
+            }
+            sb.append("\n");
+        }
+
+        if (!d.highRiskMethods.isEmpty()) {
+            sb.append("## 4. Top High-Risk Methods\n\n");
+            sb.append("| Method | Declaring Class | Direct Callers | Callees | Field Blast | Level |\n");
+            sb.append("| :--- | :--- | :---: | :---: | :---: | :---: |\n");
+            for (HighRiskMethodItem m : d.highRiskMethods) {
+                sb.append("| `").append(m.methodFqn).append("` | `").append(m.declaringClass).append("` | ")
+                  .append(m.callerCount).append(" | ").append(m.calleeCount).append(" | ")
+                  .append(m.totalBlastRadius).append(" | **").append(m.riskLevel).append("** |\n");
+            }
+            sb.append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    public String renderChangeRiskHtml(ChangeRiskReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Change Risk & Blast Radius Report</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #f59e0b; --red: #ef4444; --orange: #f97316; --yellow: #eab308; --green: #10b981; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 28px; font-weight: 700; font-family: monospace; }\n");
+        sb.append(".card-lbl { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }\n");
+        sb.append(".badge-crit { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }\n");
+        sb.append(".badge-high { background: rgba(249,115,22,0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); }\n");
+        sb.append(".badge-med { background: rgba(234,179,8,0.2); color: #facc15; border: 1px solid rgba(234,179,8,0.4); }\n");
+        sb.append(".badge-low { background: rgba(16,185,129,0.2); color: #4ade80; border: 1px solid rgba(16,185,129,0.4); }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>⚡ CodeLens Change Risk & Blast Radius Report</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Analyzed <strong>").append(d.totalClassesAnalyzed)
+          .append(" classes</strong> on ").append(d.generatedAt).append("</p></div>");
+        sb.append("<div><span class=\"badge badge-crit\" style=\"font-size:15px; padding:6px 14px;\">")
+          .append(d.criticalRiskCount).append(" Critical Risk Classes</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--red);\">").append(d.criticalRiskCount).append("</div><div class=\"card-lbl\">Critical Risk (≥75)</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--orange);\">").append(d.highRiskCount).append("</div><div class=\"card-lbl\">High Risk (50-74)</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--yellow);\">").append(d.mediumRiskCount).append("</div><div class=\"card-lbl\">Medium Risk (25-49)</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--green);\">").append(d.lowRiskCount).append("</div><div class=\"card-lbl\">Low Risk (&lt;25)</div></div>");
+        sb.append("</div>\n");
+
+        sb.append("<h2>Top Highest-Risk Classes</h2>\n");
+        sb.append("<table><thead><tr><th>Class</th><th>Package</th><th style=\"text-align:center;\">Risk Score</th><th>Level</th><th style=\"text-align:right;\">Ca</th><th style=\"text-align:right;\">Ce</th><th style=\"text-align:right;\">Field Blast</th></tr></thead><tbody>\n");
+        for (ClassRiskItem item : d.classRiskRankings.stream().limit(25).collect(Collectors.toList())) {
+            String badgeCls = "CRITICAL".equals(item.riskLevel) ? "badge-crit" : ("HIGH".equals(item.riskLevel) ? "badge-high" : "badge-med");
+            sb.append("<tr>");
+            sb.append("<td><code>").append(escapeHtml(item.simpleName)).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(item.packageName)).append("</code></td>");
+            sb.append("<td style=\"text-align:center; font-family:monospace; font-weight:bold;\">").append(item.riskScore).append("</td>");
+            sb.append("<td><span class=\"badge ").append(badgeCls).append("\">").append(item.riskLevel).append("</span></td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(item.afferentCoupling).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(item.efferentCoupling).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(item.fieldBlastRadius).append("</td>");
+            sb.append("</tr>\n");
+        }
+        sb.append("</tbody></table>\n");
+
+        if (!d.fieldMutationHotspots.isEmpty()) {
+            sb.append("<h2>High-Impact Mutable State Hotspots</h2>\n");
+            sb.append("<table><thead><tr><th>Modified Field</th><th>Writer Method</th><th style=\"text-align:right;\">Downstream Readers</th><th style=\"text-align:right;\">Impacted Modules</th></tr></thead><tbody>\n");
+            for (FieldMutationHotspot spot : d.fieldMutationHotspots) {
+                sb.append("<tr>");
+                sb.append("<td><code>").append(escapeHtml(spot.fieldFqn)).append("</code></td>");
+                sb.append("<td><code>").append(escapeHtml(spot.writerMethodFqn)).append("</code></td>");
+                sb.append("<td style=\"text-align:right; font-weight:bold;\">").append(spot.readerMethodCount).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(spot.impactedModuleCount).append("</td>");
+                sb.append("</tr>\n");
+            }
+            sb.append("</tbody></table>\n");
+        }
+
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
+    public String renderChangeRiskCsv(ChangeRiskReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("ClassFqn,SimpleName,Package,AfferentCoupling,EfferentCoupling,FieldBlastRadius,CallInDegree,RiskScore,RiskLevel\n");
+        for (ClassRiskItem item : d.classRiskRankings) {
+            sb.append(escapeCsv(item.classFqn)).append(",")
+              .append(escapeCsv(item.simpleName)).append(",")
+              .append(escapeCsv(item.packageName)).append(",")
+              .append(item.afferentCoupling).append(",")
+              .append(item.efferentCoupling).append(",")
+              .append(item.fieldBlastRadius).append(",")
+              .append(item.callInDegree).append(",")
+              .append(item.riskScore).append(",")
+              .append(escapeCsv(item.riskLevel)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderChangeRiskJson(ChangeRiskReportData d) {
+        try {
+            return jsonMapper.writeValueAsString(d);
+        } catch (Exception e) {
+            log.error("Failed to render change risk JSON: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    // =========================================================================
+    // 5. DEAD CODE & ORPHANED ENTRY POINTS REPORT
+    // =========================================================================
+
+    public static class DeadCodeReportData {
+        public String generatedAt;
+        public int totalMethods;
+        public int orphanedMethodsCount;
+        public int totalClasses;
+        public int orphanedClassesCount;
+        public int unreferencedFieldsCount;
+        public int estimatedDeadLinesOfCode;
+        public double deadCodePercentage;
+        public List<OrphanedMethodItem> orphanedMethods = new ArrayList<>();
+        public List<OrphanedClassItem> orphanedClasses = new ArrayList<>();
+        public List<UnreferencedFieldItem> unreferencedFields = new ArrayList<>();
+    }
+
+    public static class OrphanedMethodItem {
+        public String methodFqn;
+        public String simpleName;
+        public String declaringClass;
+        public String packageName;
+        public String returnType;
+        public int lineCount;
+        public int outDegree;
+        public String reason;
+    }
+
+    public static class OrphanedClassItem {
+        public String classFqn;
+        public String simpleName;
+        public String packageName;
+        public String kind;
+        public int lineCount;
+        public int methodCount;
+        public String reason;
+    }
+
+    public static class UnreferencedFieldItem {
+        public String fieldFqn;
+        public String fieldName;
+        public String declaringClass;
+        public String type;
+    }
+
+    public DeadCodeReportData buildDeadCodeData(List<CodeType> types,
+                                                List<CodeMethod> methods,
+                                                List<CodeField> fields,
+                                                List<CodeRelationship> relationships) {
+        DeadCodeReportData data = new DeadCodeReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        data.totalMethods = methods.size();
+        data.totalClasses = types.size();
+
+        Map<String, Integer> methodCallers = new HashMap<>();
+        Map<String, Integer> methodCallees = new HashMap<>();
+        Map<String, Set<String>> classCallers = new HashMap<>();
+
+        for (CodeType t : types) {
+            classCallers.put(t.getFqn(), new HashSet<>());
+        }
+
+        Set<String> accessedFields = new HashSet<>();
+
+        Map<String, String> methodToClass = new HashMap<>(methods.size());
+        for (CodeMethod m : methods) {
+            methodToClass.put(m.getFqn(), m.getDeclaringTypeFqn());
+        }
+
+        for (CodeRelationship r : relationships) {
+            String kind = r.getKind();
+            if ("CALLS".equals(kind)) {
+                String src = r.getFromEntityFqn();
+                String tgt = r.getToEntityFqn();
+                methodCallees.put(src, methodCallees.getOrDefault(src, 0) + 1);
+                methodCallers.put(tgt, methodCallers.getOrDefault(tgt, 0) + 1);
+
+                String srcClass = methodToClass.getOrDefault(src, extractClassFromFqn(src));
+                String tgtClass = methodToClass.getOrDefault(tgt, extractClassFromFqn(tgt));
+                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)) {
+                    classCallers.computeIfAbsent(tgtClass, k -> new HashSet<>()).add(srcClass);
+                }
+            } else if ("READS_FIELD".equals(kind) || "WRITES_FIELD".equals(kind)) {
+                accessedFields.add(r.getToEntityFqn());
+            }
+        }
+
+        int deadLines = 0;
+        int totalLines = types.stream().mapToInt(CodeType::getLineCount).sum();
+
+        for (CodeMethod m : methods) {
+            int inCalls = methodCallers.getOrDefault(m.getFqn(), 0);
+            if (inCalls == 0) {
+                String name = m.getSimpleName();
+                if (isPotentialEntryPoint(name, m.getDeclaringTypeFqn())) continue;
+
+                OrphanedMethodItem item = new OrphanedMethodItem();
+                item.methodFqn = m.getFqn();
+                item.simpleName = m.getSimpleName();
+                item.declaringClass = m.getDeclaringTypeFqn();
+                item.packageName = extractPackageFromFqn(m.getDeclaringTypeFqn());
+                item.returnType = m.getReturnType() != null ? m.getReturnType() : "void";
+                int mLines = Math.max(1, m.getEndLine() - m.getStartLine());
+                item.lineCount = mLines;
+                item.outDegree = methodCallees.getOrDefault(m.getFqn(), 0);
+                item.reason = "Zero incoming callers across codebase";
+                data.orphanedMethods.add(item);
+                deadLines += mLines;
+            }
+        }
+        data.orphanedMethodsCount = data.orphanedMethods.size();
+        data.orphanedMethods.sort(Comparator.comparingInt((OrphanedMethodItem i) -> i.lineCount).reversed());
+
+        for (CodeType t : types) {
+            Set<String> callers = classCallers.getOrDefault(t.getFqn(), Collections.emptySet());
+            if (callers.isEmpty()) {
+                String simple = t.getSimpleName();
+                if (isMainOrFrameworkClass(simple)) continue;
+
+                OrphanedClassItem cItem = new OrphanedClassItem();
+                cItem.classFqn = t.getFqn();
+                cItem.simpleName = t.getSimpleName();
+                cItem.packageName = t.getPackageFqn() != null ? t.getPackageFqn() : "(default)";
+                cItem.kind = t.getKind() != null ? t.getKind() : "CLASS";
+                cItem.lineCount = t.getLineCount();
+                cItem.methodCount = t.getMethodCount();
+                cItem.reason = "Zero external incoming dependencies";
+                data.orphanedClasses.add(cItem);
+            }
+        }
+        data.orphanedClassesCount = data.orphanedClasses.size();
+        data.orphanedClasses.sort(Comparator.comparingInt((OrphanedClassItem i) -> i.lineCount).reversed());
+
+        for (CodeField f : fields) {
+            if (!accessedFields.contains(f.getFqn())) {
+                UnreferencedFieldItem fItem = new UnreferencedFieldItem();
+                fItem.fieldFqn = f.getFqn();
+                fItem.fieldName = f.getSimpleName();
+                fItem.declaringClass = f.getDeclaringTypeFqn();
+                fItem.type = f.getFieldType() != null ? f.getFieldType() : "Object";
+                data.unreferencedFields.add(fItem);
+            }
+        }
+        data.unreferencedFieldsCount = data.unreferencedFields.size();
+
+        data.estimatedDeadLinesOfCode = deadLines;
+        data.deadCodePercentage = totalLines > 0 ? Math.round(((double) deadLines / totalLines) * 1000.0) / 10.0 : 0.0;
+
+        return data;
+    }
+
+    public String renderDeadCodeMarkdown(DeadCodeReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 🗑️ CodeLens Dead Code & Orphaned Entry Points Report\n\n");
+        sb.append("> **Generated**: `").append(d.generatedAt).append("` | **Estimated Dead Lines**: `")
+          .append(d.estimatedDeadLinesOfCode).append(" LoC (").append(d.deadCodePercentage).append("% of codebase)`\n\n");
+
+        sb.append("## 1. Executive Summary\n\n");
+        sb.append("| Category | Count | Optimization Potential |\n");
+        sb.append("| :--- | :---: | :--- |\n");
+        sb.append("| **Orphaned Methods (0 Callers)** | ").append(d.orphanedMethodsCount).append(" | Unreferenced internal routines safe to retire |\n");
+        sb.append("| **Orphaned Classes (0 Inbound Calls)** | ").append(d.orphanedClassesCount).append(" | Candidate abandoned domain types or isolated stubs |\n");
+        sb.append("| **Unreferenced Fields (0 R/W)** | ").append(d.unreferencedFieldsCount).append(" | Unused state attributes consuming memory |\n");
+        sb.append("| **Estimated LoC Savings** | **").append(d.estimatedDeadLinesOfCode).append(" lines** | ").append(d.deadCodePercentage).append("% codebase reduction potential |\n\n");
+
+        sb.append("## 2. Top Orphaned Methods (Highest LoC Impact)\n\n");
+        sb.append("| Method | Declaring Class | Package | Lines | Out-Degree | Reason |\n");
+        sb.append("| :--- | :--- | :--- | :---: | :---: | :--- |\n");
+        for (OrphanedMethodItem m : d.orphanedMethods.stream().limit(25).collect(Collectors.toList())) {
+            sb.append("| `").append(m.simpleName).append("` | `").append(extractClassSimple(m.declaringClass)).append("` | `")
+              .append(m.packageName).append("` | ").append(m.lineCount).append(" | ").append(m.outDegree)
+              .append(" | ").append(m.reason).append(" |\n");
+        }
+        sb.append("\n");
+
+        if (!d.orphanedClasses.isEmpty()) {
+            sb.append("## 3. Isolated / Orphaned Classes\n\n");
+            sb.append("| Class | Package | Kind | Lines | Method Count |\n");
+            sb.append("| :--- | :--- | :---: | :---: | :---: |\n");
+            for (OrphanedClassItem c : d.orphanedClasses.stream().limit(25).collect(Collectors.toList())) {
+                sb.append("| `").append(c.simpleName).append("` | `").append(c.packageName).append("` | ")
+                  .append(c.kind).append(" | ").append(c.lineCount).append(" | ").append(c.methodCount).append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    public String renderDeadCodeHtml(DeadCodeReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Dead Code & Orphaned Entry Points Report</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #f43f5e; --red: #ef4444; --orange: #f97316; --yellow: #eab308; --green: #10b981; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 28px; font-weight: 700; font-family: monospace; color: var(--accent); }\n");
+        sb.append(".card-lbl { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }\n");
+        sb.append(".badge-orphan { background: rgba(244,63,94,0.18); color: #fb7185; border: 1px solid rgba(244,63,94,0.4); }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>🗑️ CodeLens Dead Code & Orphaned Entry Points</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Evaluated <strong>").append(d.totalMethods)
+          .append(" methods</strong> on ").append(d.generatedAt).append("</p></div>");
+        sb.append("<div><span class=\"badge badge-orphan\" style=\"font-size:15px; padding:6px 14px;\">")
+          .append(d.estimatedDeadLinesOfCode).append(" Dead LoC (").append(d.deadCodePercentage).append("%)</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.orphanedMethodsCount).append("</div><div class=\"card-lbl\">Orphaned Methods</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.orphanedClassesCount).append("</div><div class=\"card-lbl\">Orphaned Classes</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.unreferencedFieldsCount).append("</div><div class=\"card-lbl\">Unused Fields</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:#34d399;\">").append(d.estimatedDeadLinesOfCode).append("</div><div class=\"card-lbl\">Potential LoC Savings</div></div>");
+        sb.append("</div>\n");
+
+        sb.append("<h2>Top Orphaned Methods (0 Callers)</h2>\n");
+        sb.append("<table><thead><tr><th>Method</th><th>Declaring Class</th><th>Package</th><th style=\"text-align:right;\">Lines</th><th style=\"text-align:right;\">Callees</th></tr></thead><tbody>\n");
+        for (OrphanedMethodItem m : d.orphanedMethods.stream().limit(25).collect(Collectors.toList())) {
+            sb.append("<tr>");
+            sb.append("<td><code>").append(escapeHtml(m.simpleName)).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(extractClassSimple(m.declaringClass))).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(m.packageName)).append("</code></td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(m.lineCount).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(m.outDegree).append("</td>");
+            sb.append("</tr>\n");
+        }
+        sb.append("</tbody></table>\n");
+
+        if (!d.orphanedClasses.isEmpty()) {
+            sb.append("<h2>Isolated / Orphaned Classes</h2>\n");
+            sb.append("<table><thead><tr><th>Class</th><th>Package</th><th>Kind</th><th style=\"text-align:right;\">Lines</th><th style=\"text-align:right;\">Methods</th></tr></thead><tbody>\n");
+            for (OrphanedClassItem c : d.orphanedClasses.stream().limit(25).collect(Collectors.toList())) {
+                sb.append("<tr>");
+                sb.append("<td><code>").append(escapeHtml(c.simpleName)).append("</code></td>");
+                sb.append("<td><code>").append(escapeHtml(c.packageName)).append("</code></td>");
+                sb.append("<td>").append(escapeHtml(c.kind)).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(c.lineCount).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(c.methodCount).append("</td>");
+                sb.append("</tr>\n");
+            }
+            sb.append("</tbody></table>\n");
+        }
+
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
+    public String renderDeadCodeCsv(DeadCodeReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Type,FQN,Class,Package,Lines,OutDegree,Reason\n");
+        for (OrphanedMethodItem m : d.orphanedMethods) {
+            sb.append("METHOD,").append(escapeCsv(m.methodFqn)).append(",")
+              .append(escapeCsv(m.declaringClass)).append(",")
+              .append(escapeCsv(m.packageName)).append(",")
+              .append(m.lineCount).append(",")
+              .append(m.outDegree).append(",")
+              .append(escapeCsv(m.reason)).append("\n");
+        }
+        for (OrphanedClassItem c : d.orphanedClasses) {
+            sb.append("CLASS,").append(escapeCsv(c.classFqn)).append(",")
+              .append(escapeCsv(c.simpleName)).append(",")
+              .append(escapeCsv(c.packageName)).append(",")
+              .append(c.lineCount).append(",")
+              .append(c.methodCount).append(",")
+              .append(escapeCsv(c.reason)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderDeadCodeJson(DeadCodeReportData d) {
+        try {
+            return jsonMapper.writeValueAsString(d);
+        } catch (Exception e) {
+            log.error("Failed to render dead code JSON: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    // =========================================================================
+    // 6. CIRCULAR DEPENDENCIES & ARCHITECTURAL TANGLING REPORT
+    // =========================================================================
+
+    public static class CircularDependencyReportData {
+        public String generatedAt;
+        public int totalClassCycles;
+        public int totalPackageTangles;
+        public int acyclicScore; // 0 - 100
+        public String architectureHealthRating;
+        public List<ClassCycleItem> classCycles = new ArrayList<>();
+        public List<PackageTangleItem> packageTangles = new ArrayList<>();
+    }
+
+    public static class ClassCycleItem {
+        public int cycleLength;
+        public List<String> path = new ArrayList<>();
+        public String recommendedCutEdge;
+    }
+
+    public static class PackageTangleItem {
+        public String packageA;
+        public String packageB;
+        public int callsAtoB;
+        public int callsBtoA;
+        public int totalCrossCalls;
+        public String recommendedDecouplingDirection;
+    }
+
+    public CircularDependencyReportData buildCircularDependencyData(List<CodeType> types,
+                                                                    List<CodeMethod> methods,
+                                                                    List<CodeRelationship> relationships) {
+        CircularDependencyReportData data = new CircularDependencyReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Map<String, String> methodToClass = new HashMap<>(methods.size());
+        for (CodeMethod m : methods) {
+            methodToClass.put(m.getFqn(), m.getDeclaringTypeFqn());
+        }
+
+        Map<String, String> classToPackage = new HashMap<>(types.size());
+        for (CodeType t : types) {
+            classToPackage.put(t.getFqn(), t.getPackageFqn() != null ? t.getPackageFqn() : "(default)");
+        }
+
+        Map<String, Set<String>> classGraph = new HashMap<>();
+        for (CodeType t : types) {
+            classGraph.put(t.getFqn(), new HashSet<>());
+        }
+
+        Map<String, Map<String, Integer>> packageCallMatrix = new HashMap<>();
+
+        for (CodeRelationship r : relationships) {
+            if ("CALLS".equals(r.getKind())) {
+                String fromClass = methodToClass.getOrDefault(r.getFromEntityFqn(), extractClassFromFqn(r.getFromEntityFqn()));
+                String toClass = methodToClass.getOrDefault(r.getToEntityFqn(), extractClassFromFqn(r.getToEntityFqn()));
+
+                if (fromClass != null && toClass != null && !fromClass.equals(toClass)) {
+                    classGraph.computeIfAbsent(fromClass, k -> new HashSet<>()).add(toClass);
+
+                    String fromPkg = classToPackage.getOrDefault(fromClass, "(default)");
+                    String toPkg = classToPackage.getOrDefault(toClass, "(default)");
+
+                    if (!fromPkg.equals(toPkg)) {
+                        packageCallMatrix.computeIfAbsent(fromPkg, k -> new HashMap<>())
+                            .put(toPkg, packageCallMatrix.get(fromPkg).getOrDefault(toPkg, 0) + 1);
+                    }
+                }
+            }
+        }
+
+        List<List<String>> cycles = findCycles(classGraph);
+        for (List<String> cycle : cycles) {
+            ClassCycleItem item = new ClassCycleItem();
+            item.cycleLength = cycle.size();
+            item.path = cycle;
+            if (cycle.size() >= 2) {
+                item.recommendedCutEdge = cycle.get(cycle.size() - 1) + " \u2794 " + cycle.get(0);
+            }
+            data.classCycles.add(item);
+        }
+        data.totalClassCycles = cycles.size();
+
+        Set<String> processedPairs = new HashSet<>();
+        for (Map.Entry<String, Map<String, Integer>> entryA : packageCallMatrix.entrySet()) {
+            String pkgA = entryA.getKey();
+            for (Map.Entry<String, Integer> targetEntry : entryA.getValue().entrySet()) {
+                String pkgB = targetEntry.getKey();
+                int callsAtoB = targetEntry.getValue();
+
+                int callsBtoA = packageCallMatrix.getOrDefault(pkgB, Collections.emptyMap()).getOrDefault(pkgA, 0);
+                if (callsBtoA > 0) {
+                    String pairKey = pkgA.compareTo(pkgB) < 0 ? (pkgA + ":::" + pkgB) : (pkgB + ":::" + pkgA);
+                    if (processedPairs.add(pairKey)) {
+                        PackageTangleItem tangle = new PackageTangleItem();
+                        tangle.packageA = pkgA;
+                        tangle.packageB = pkgB;
+                        tangle.callsAtoB = callsAtoB;
+                        tangle.callsBtoA = callsBtoA;
+                        tangle.totalCrossCalls = callsAtoB + callsBtoA;
+
+                        if (callsAtoB <= callsBtoA) {
+                            tangle.recommendedDecouplingDirection = "Decouple " + extractPackageSimple(pkgA) + " \u2794 " + extractPackageSimple(pkgB) + " (" + callsAtoB + " calls vs " + callsBtoA + ")";
+                        } else {
+                            tangle.recommendedDecouplingDirection = "Decouple " + extractPackageSimple(pkgB) + " \u2794 " + extractPackageSimple(pkgA) + " (" + callsBtoA + " calls vs " + callsAtoB + ")";
+                        }
+                        data.packageTangles.add(tangle);
+                    }
+                }
+            }
+        }
+        data.totalPackageTangles = data.packageTangles.size();
+        data.packageTangles.sort(Comparator.comparingInt((PackageTangleItem t) -> t.totalCrossCalls).reversed());
+
+        int score = 100 - (data.totalClassCycles * 8) - (data.totalPackageTangles * 12);
+        data.acyclicScore = Math.max(15, Math.min(100, score));
+
+        if (data.acyclicScore >= 90) data.architectureHealthRating = "A+ (Fully Acyclic)";
+        else if (data.acyclicScore >= 80) data.architectureHealthRating = "A (Low Coupling)";
+        else if (data.acyclicScore >= 70) data.architectureHealthRating = "B (Moderate Tangling)";
+        else if (data.acyclicScore >= 50) data.architectureHealthRating = "C (Significant Cyclic Drift)";
+        else data.architectureHealthRating = "D (Highly Tangled Architecture)";
+
+        return data;
+    }
+
+    public String renderCircularDependencyMarkdown(CircularDependencyReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 🔄 CodeLens Circular Dependencies & Architectural Tangling Report\n\n");
+        sb.append("> **Generated**: `").append(d.generatedAt).append("` | **Acyclic Health Score**: `")
+          .append(d.acyclicScore).append("/100 (").append(d.architectureHealthRating).append(")`\n\n");
+
+        sb.append("## 1. Executive Summary\n\n");
+        sb.append("| Metric | Count | Architectural Status |\n");
+        sb.append("| :--- | :---: | :--- |\n");
+        sb.append("| **Class-Level Cycles** | ").append(d.totalClassCycles)
+          .append(" | ").append(d.totalClassCycles == 0 ? "✅ No recursive class loops" : "⚠️ Direct or indirect cyclic loops between classes").append(" |\n");
+        sb.append("| **Package-Level Tangles** | ").append(d.totalPackageTangles)
+          .append(" | ").append(d.totalPackageTangles == 0 ? "✅ Modular package DAG" : "⚠️ Bidirectional mutual package dependencies").append(" |\n");
+        sb.append("| **Modularity Rating** | **").append(d.acyclicScore).append("/100** | ").append(d.architectureHealthRating).append(" |\n\n");
+
+        if (!d.packageTangles.isEmpty()) {
+            sb.append("## 2. Package-Level Tangling Hotspots\n\n");
+            sb.append("Packages that call each other bidirectionally, creating tight architectural coupling:\n\n");
+            sb.append("| Package A | Package B | A \u2794 B Calls | B \u2794 A Calls | Recommended Decoupling Direction |\n");
+            sb.append("| :--- | :--- | :---: | :---: | :--- |\n");
+            for (PackageTangleItem t : d.packageTangles) {
+                sb.append("| `").append(t.packageA).append("` | `").append(t.packageB).append("` | ")
+                  .append(t.callsAtoB).append(" | ").append(t.callsBtoA).append(" | **")
+                  .append(t.recommendedDecouplingDirection).append("** |\n");
+            }
+            sb.append("\n");
+        }
+
+        if (!d.classCycles.isEmpty()) {
+            sb.append("## 3. Class-Level Dependency Cycles\n\n");
+            for (int i = 0; i < d.classCycles.size(); i++) {
+                ClassCycleItem item = d.classCycles.get(i);
+                sb.append("### Cycle ").append(i + 1).append(" (Length: ").append(item.cycleLength).append(")\n\n");
+                sb.append("- **Path**: `").append(String.join(" \u2794 ", item.path)).append(" \u2794 ").append(item.path.get(0)).append("`\n");
+                sb.append("- **Recommended Cut**: Break dependency `").append(item.recommendedCutEdge).append("` via an abstraction or event.\n\n");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    public String renderCircularDependencyHtml(CircularDependencyReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Circular Dependencies & Tangling Report</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #8b5cf6; --red: #ef4444; --orange: #f97316; --green: #10b981; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 28px; font-weight: 700; font-family: monospace; }\n");
+        sb.append(".card-lbl { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }\n");
+        sb.append(".badge-green { background: rgba(16,185,129,0.2); color: #4ade80; border: 1px solid rgba(16,185,129,0.4); }\n");
+        sb.append(".badge-red { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }\n");
+        sb.append(".badge-purple { background: rgba(139,92,246,0.2); color: #c084fc; border: 1px solid rgba(139,92,246,0.4); }\n");
+        sb.append(".cycle-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>🔄 CodeLens Circular Dependencies & Tangling</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Evaluated on ").append(d.generatedAt).append("</p></div>");
+        sb.append("<div><span class=\"badge ").append(d.acyclicScore >= 75 ? "badge-green" : "badge-red")
+          .append("\" style=\"font-size:15px; padding:6px 14px;\">Acyclic Score: ").append(d.acyclicScore).append("/100</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.totalClassCycles == 0 ? "var(--green)" : "var(--red)").append(";\">")
+          .append(d.totalClassCycles).append("</div><div class=\"card-lbl\">Class Cycles</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.totalPackageTangles == 0 ? "var(--green)" : "var(--orange)").append(";\">")
+          .append(d.totalPackageTangles).append("</div><div class=\"card-lbl\">Package Tangles</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--accent);\">").append(d.acyclicScore).append("/100</div><div class=\"card-lbl\">Acyclicity Score</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:18px; color:#f1f5f9;\">").append(d.architectureHealthRating.split(" ")[0]).append("</div><div class=\"card-lbl\">Rating</div></div>");
+        sb.append("</div>\n");
+
+        if (!d.packageTangles.isEmpty()) {
+            sb.append("<h2>Package-Level Tangling Hotspots</h2>\n");
+            sb.append("<table><thead><tr><th>Package A</th><th>Package B</th><th style=\"text-align:right;\">A \u2794 B</th><th style=\"text-align:right;\">B \u2794 A</th><th>Decoupling Strategy</th></tr></thead><tbody>\n");
+            for (PackageTangleItem t : d.packageTangles) {
+                sb.append("<tr>");
+                sb.append("<td><code>").append(escapeHtml(t.packageA)).append("</code></td>");
+                sb.append("<td><code>").append(escapeHtml(t.packageB)).append("</code></td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(t.callsAtoB).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(t.callsBtoA).append("</td>");
+                sb.append("<td style=\"color:#34d399; font-weight:600;\">").append(escapeHtml(t.recommendedDecouplingDirection)).append("</td>");
+                sb.append("</tr>\n");
+            }
+            sb.append("</tbody></table>\n");
+        }
+
+        if (!d.classCycles.isEmpty()) {
+            sb.append("<h2>Class-Level Dependency Cycles</h2>\n");
+            for (int i = 0; i < d.classCycles.size(); i++) {
+                ClassCycleItem item = d.classCycles.get(i);
+                sb.append("<div class=\"cycle-box\">");
+                sb.append("<div style=\"font-weight:700; margin-bottom:8px;\"><span class=\"badge badge-red\">Cycle ").append(i + 1).append("</span> (Length: ").append(item.cycleLength).append(")</div>");
+                sb.append("<div style=\"margin:8px 0;\"><code>").append(escapeHtml(String.join(" \u2794 ", item.path))).append(" \u2794 ").append(escapeHtml(item.path.get(0))).append("</code></div>");
+                sb.append("<div style=\"font-size:12px; color:#34d399;\">💡 Recommended decoupling point: <code>").append(escapeHtml(item.recommendedCutEdge)).append("</code></div>");
+                sb.append("</div>\n");
+            }
+        }
+
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
+    public String renderCircularDependencyCsv(CircularDependencyReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Type,EntityA,EntityB,CallsAtoB,CallsBtoA,DecouplingRecommendation\n");
+        for (PackageTangleItem t : d.packageTangles) {
+            sb.append("PACKAGE_TANGLE,").append(escapeCsv(t.packageA)).append(",")
+              .append(escapeCsv(t.packageB)).append(",")
+              .append(t.callsAtoB).append(",")
+              .append(t.callsBtoA).append(",")
+              .append(escapeCsv(t.recommendedDecouplingDirection)).append("\n");
+        }
+        for (int i = 0; i < d.classCycles.size(); i++) {
+            ClassCycleItem c = d.classCycles.get(i);
+            sb.append("CLASS_CYCLE,").append(escapeCsv(String.join(" -> ", c.path))).append(",")
+              .append(c.cycleLength).append(",,,")
+              .append(escapeCsv(c.recommendedCutEdge)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderCircularDependencyJson(CircularDependencyReportData d) {
+        try {
+            return jsonMapper.writeValueAsString(d);
+        } catch (Exception e) {
+            log.error("Failed to render circular dependency JSON: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    // =========================================================================
+    // 7. ENTERPRISE ARCHETYPE & LAYERING GOVERNANCE REPORT
+    // =========================================================================
+
+    public static class ArchetypeGovernanceReportData {
+        public String generatedAt;
+        public int totalArchetypesFound;
+        public int governanceScore;
+        public String complianceRating;
+        public int messageObjectsCount;
+        public int dataGrabbersCount;
+        public int businessTransactionsCount;
+        public int domainEntitiesCount;
+        public int servicesCount;
+        public int controllersCount;
+        public int totalViolations;
+        public List<ArchetypeSummary> archetypeBreakdown = new ArrayList<>();
+        public List<GovernanceViolation> violations = new ArrayList<>();
+    }
+
+    public static class ArchetypeSummary {
+        public String archetype;
+        public int count;
+        public int violationCount;
+        public double complianceRate;
+        public String description;
+    }
+
+    public static class GovernanceViolation {
+        public String ruleName;
+        public String severity; // CRITICAL, WARNING
+        public String entityFqn;
+        public String archetypeName;
+        public String violationDetails;
+        public String architecturalRemediation;
+    }
+
+    public ArchetypeGovernanceReportData buildArchetypeGovernanceData(List<CodeType> types,
+                                                                      List<CodeMethod> methods,
+                                                                      List<CodeField> fields,
+                                                                      List<CodeRelationship> relationships) {
+        ArchetypeGovernanceReportData data = new ArchetypeGovernanceReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Map<String, Set<String>> methodCalls = new HashMap<>();
+        for (CodeRelationship r : relationships) {
+            if ("CALLS".equals(r.getKind())) {
+                methodCalls.computeIfAbsent(r.getFromEntityFqn(), k -> new HashSet<>()).add(r.getToEntityFqn());
+            }
+        }
+
+        Map<String, List<CodeMethod>> classMethods = new HashMap<>();
+        for (CodeMethod m : methods) {
+            classMethods.computeIfAbsent(m.getDeclaringTypeFqn(), k -> new ArrayList<>()).add(m);
+        }
+
+        int moViolations = 0;
+        int dgViolations = 0;
+        int btViolations = 0;
+        int entViolations = 0;
+
+        for (CodeType t : types) {
+            String name = t.getSimpleName();
+            String fqn = t.getFqn();
+            List<CodeMethod> typeMethods = classMethods.getOrDefault(fqn, Collections.emptyList());
+
+            if (name.startsWith("MO_")) {
+                data.messageObjectsCount++;
+                int outgoingCalls = 0;
+                for (CodeMethod m : typeMethods) {
+                    outgoingCalls += methodCalls.getOrDefault(m.getFqn(), Collections.emptySet()).size();
+                }
+                if (outgoingCalls > 10) {
+                    moViolations++;
+                    GovernanceViolation v = new GovernanceViolation();
+                    v.ruleName = "MO-01: Stateless Data Carrier";
+                    v.severity = "WARNING";
+                    v.entityFqn = fqn;
+                    v.archetypeName = "Message Object (MO)";
+                    v.violationDetails = "Message Object contains " + outgoingCalls + " outgoing method calls; data objects should be passive DTOs.";
+                    v.architecturalRemediation = "Extract domain behavior or calculations from Message Object into a dedicated Domain Service.";
+                    data.violations.add(v);
+                }
+            } else if (name.endsWith("DG") || name.contains("DataGrabber") || name.contains("Grabber")) {
+                data.dataGrabbersCount++;
+                for (CodeMethod m : typeMethods) {
+                    Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                    for (String callee : callees) {
+                        String calleeMethod = extractSimpleMethodName(callee);
+                        if ("Create".equals(calleeMethod) || "Modify".equals(calleeMethod) || "Delete".equals(calleeMethod)) {
+                            dgViolations++;
+                            GovernanceViolation v = new GovernanceViolation();
+                            v.ruleName = "DG-01: Read-Only Data Grabber";
+                            v.severity = "CRITICAL";
+                            v.entityFqn = m.getFqn();
+                            v.archetypeName = "Data Grabber (DG)";
+                            v.violationDetails = "Data Grabber queries must be strictly idempotent; method calls mutation endpoint: " + callee;
+                            v.architecturalRemediation = "Delegate entity state mutations to a Business Transaction (*BT) instead of a Data Grabber (*DG).";
+                            data.violations.add(v);
+                        }
+                    }
+                }
+            } else if (name.endsWith("Controller")) {
+                data.controllersCount++;
+            } else if (name.endsWith("Service")) {
+                data.servicesCount++;
+            }
+
+            boolean hasGet = typeMethods.stream().anyMatch(m -> "Get".equals(m.getSimpleName()));
+            boolean hasCreate = typeMethods.stream().anyMatch(m -> "Create".equals(m.getSimpleName()));
+            boolean hasModify = typeMethods.stream().anyMatch(m -> "Modify".equals(m.getSimpleName()));
+            if (hasGet && (hasCreate || hasModify)) {
+                data.domainEntitiesCount++;
+                for (CodeMethod m : typeMethods) {
+                    Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                    for (String callee : callees) {
+                        String targetClass = extractClassFromFqn(callee);
+                        if (targetClass.endsWith("Controller") || targetClass.endsWith("GatewayService")) {
+                            entViolations++;
+                            GovernanceViolation v = new GovernanceViolation();
+                            v.ruleName = "EN-01: Inverted Entity Layering";
+                            v.severity = "WARNING";
+                            v.entityFqn = m.getFqn();
+                            v.archetypeName = "Domain Entity";
+                            v.violationDetails = "Domain entity directly calls external presentation/gateway: " + callee;
+                            v.architecturalRemediation = "Decouple domain entity from external communication layers using inversion of control or domain events.";
+                            data.violations.add(v);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (CodeMethod m : methods) {
+            String mName = m.getSimpleName();
+            if (mName.contains("BT") || mName.startsWith("execute") || mName.contains("Transaction")) {
+                data.businessTransactionsCount++;
+                Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                boolean hasAudit = callees.stream().anyMatch(c -> c.contains("AuditTrailService.logAuditEvent") || c.contains("TelemetryRecorder.recordMetric"));
+                if (!hasAudit && !m.getDeclaringTypeFqn().endsWith("Test") && !m.getDeclaringTypeFqn().contains("Grabber")) {
+                    btViolations++;
+                    GovernanceViolation v = new GovernanceViolation();
+                    v.ruleName = "BT-01: Mandatory Audit Trail";
+                    v.severity = "WARNING";
+                    v.entityFqn = m.getFqn();
+                    v.archetypeName = "Business Transaction (BT)";
+                    v.violationDetails = "Financial transaction method lacks verifiable audit trail or telemetry invocation.";
+                    v.architecturalRemediation = "Add AuditTrailService.logAuditEvent(...) call before committing financial transaction state.";
+                    data.violations.add(v);
+                }
+            }
+        }
+
+        data.totalArchetypesFound = data.messageObjectsCount + data.dataGrabbersCount + data.businessTransactionsCount + data.domainEntitiesCount;
+        data.totalViolations = data.violations.size();
+
+        ArchetypeSummary moSum = new ArchetypeSummary();
+        moSum.archetype = "Message Objects (MO_*)";
+        moSum.count = data.messageObjectsCount;
+        moSum.violationCount = moViolations;
+        moSum.complianceRate = data.messageObjectsCount > 0 ? Math.round(((data.messageObjectsCount - moViolations) / (double) data.messageObjectsCount) * 1000.0) / 10.0 : 100.0;
+        moSum.description = "Passive data contracts and payload carriers across services";
+        data.archetypeBreakdown.add(moSum);
+
+        ArchetypeSummary dgSum = new ArchetypeSummary();
+        dgSum.archetype = "Data Grabbers (*DG)";
+        dgSum.count = data.dataGrabbersCount;
+        dgSum.violationCount = dgViolations;
+        dgSum.complianceRate = data.dataGrabbersCount > 0 ? Math.round(((data.dataGrabbersCount - dgViolations) / (double) data.dataGrabbersCount) * 1000.0) / 10.0 : 100.0;
+        dgSum.description = "Idempotent read-only query handlers for domain entities";
+        data.archetypeBreakdown.add(dgSum);
+
+        ArchetypeSummary btSum = new ArchetypeSummary();
+        btSum.archetype = "Business Transactions (*BT*)";
+        btSum.count = data.businessTransactionsCount;
+        btSum.violationCount = btViolations;
+        btSum.complianceRate = data.businessTransactionsCount > 0 ? Math.round(((data.businessTransactionsCount - btViolations) / (double) data.businessTransactionsCount) * 1000.0) / 10.0 : 100.0;
+        btSum.description = "Financial workflows with mandatory auditability and validation";
+        data.archetypeBreakdown.add(btSum);
+
+        ArchetypeSummary entSum = new ArchetypeSummary();
+        entSum.archetype = "Persistent Domain Entities";
+        entSum.count = data.domainEntitiesCount;
+        entSum.violationCount = entViolations;
+        entSum.complianceRate = data.domainEntitiesCount > 0 ? Math.round(((data.domainEntitiesCount - entViolations) / (double) data.domainEntitiesCount) * 1000.0) / 10.0 : 100.0;
+        entSum.description = "Core business state models encapsulating domain rules";
+        data.archetypeBreakdown.add(entSum);
+
+        int criticals = (int) data.violations.stream().filter(v -> "CRITICAL".equals(v.severity)).count();
+        int warnings = (int) data.violations.stream().filter(v -> "WARNING".equals(v.severity)).count();
+
+        int score = 100 - (criticals * 10) - (warnings * 2);
+        data.governanceScore = Math.max(20, Math.min(100, score));
+
+        if (data.governanceScore >= 90) data.complianceRating = "Strictly Compliant (A+)";
+        else if (data.governanceScore >= 80) data.complianceRating = "Standard Compliance (A)";
+        else if (data.governanceScore >= 70) data.complianceRating = "Minor Architectural Drift (B)";
+        else data.complianceRating = "Non-Compliant (Requires Refactoring)";
+
+        return data;
+    }
+
+    public String renderArchetypeGovernanceMarkdown(ArchetypeGovernanceReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 🏛️ CodeLens Enterprise Archetype & Layering Governance Report\n\n");
+        sb.append("> **Generated**: `").append(d.generatedAt).append("` | **Governance Score**: `")
+          .append(d.governanceScore).append("/100 (").append(d.complianceRating).append(")`\n\n");
+
+        sb.append("## 1. Executive Summary\n\n");
+        sb.append("| Archetype Category | Total Count | Violations | Compliance Rate |\n");
+        sb.append("| :--- | :---: | :---: | :---: |\n");
+        for (ArchetypeSummary s : d.archetypeBreakdown) {
+            sb.append("| **").append(s.archetype).append("** | ").append(s.count)
+              .append(" | ").append(s.violationCount).append(" | `").append(s.complianceRate).append("%` |\n");
+        }
+        sb.append("\n");
+
+        sb.append("## 2. Governance Policy Violations\n\n");
+        if (d.violations.isEmpty()) {
+            sb.append("🎉 **Zero governance policy violations detected. Full adherence to enterprise archetype contracts.**\n\n");
+        } else {
+            for (int i = 0; i < d.violations.size(); i++) {
+                GovernanceViolation v = d.violations.get(i);
+                String badge = "CRITICAL".equals(v.severity) ? "🔴 CRITICAL" : "🟡 WARNING";
+                sb.append("### ").append(i + 1).append(". [").append(v.ruleName).append("] ").append(badge).append("\n\n");
+                sb.append("- **Target Entity**: `").append(v.entityFqn).append("` (").append(v.archetypeName).append(")\n");
+                sb.append("- **Violation**: ").append(v.violationDetails).append("\n");
+                sb.append("- **Remediation**: *").append(v.architecturalRemediation).append("*\n\n");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    public String renderArchetypeGovernanceHtml(ArchetypeGovernanceReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Enterprise Archetype & Layering Governance Report</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #06b6d4; --red: #ef4444; --orange: #f97316; --green: #10b981; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 28px; font-weight: 700; font-family: monospace; color: var(--accent); }\n");
+        sb.append(".card-lbl { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }\n");
+        sb.append(".badge-green { background: rgba(16,185,129,0.2); color: #4ade80; border: 1px solid rgba(16,185,129,0.4); }\n");
+        sb.append(".badge-crit { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }\n");
+        sb.append(".badge-warn { background: rgba(249,115,22,0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); }\n");
+        sb.append(".violation-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>🏛️ CodeLens Enterprise Archetype & Layering Governance</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Evaluated on ").append(d.generatedAt).append("</p></div>");
+        sb.append("<div><span class=\"badge ").append(d.governanceScore >= 75 ? "badge-green" : "badge-warn")
+          .append("\" style=\"font-size:15px; padding:6px 14px;\">Governance Score: ").append(d.governanceScore).append("/100</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.totalArchetypesFound).append("</div><div class=\"card-lbl\">Archetype Entities</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.totalViolations == 0 ? "var(--green)" : "var(--orange)").append(";\">")
+          .append(d.totalViolations).append("</div><div class=\"card-lbl\">Policy Violations</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.governanceScore).append("/100</div><div class=\"card-lbl\">Compliance Score</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:16px; color:#f1f5f9;\">").append(d.complianceRating.split(" ")[0]).append("</div><div class=\"card-lbl\">Rating</div></div>");
+        sb.append("</div>\n");
+
+        sb.append("<h2>Archetype Compliance Breakdown</h2>\n");
+        sb.append("<table><thead><tr><th>Archetype Pattern</th><th>Total Count</th><th>Violations</th><th style=\"text-align:right;\">Compliance Rate</th><th>Role Contract</th></tr></thead><tbody>\n");
+        for (ArchetypeSummary s : d.archetypeBreakdown) {
+            sb.append("<tr>");
+            sb.append("<td><strong>").append(escapeHtml(s.archetype)).append("</strong></td>");
+            sb.append("<td>").append(s.count).append("</td>");
+            sb.append("<td style=\"color:").append(s.violationCount > 0 ? "var(--orange)" : "var(--green)").append(";\">").append(s.violationCount).append("</td>");
+            sb.append("<td style=\"text-align:right; font-family:monospace; font-weight:bold;\">").append(s.complianceRate).append("%</td>");
+            sb.append("<td style=\"color:var(--muted); font-size:12px;\">").append(escapeHtml(s.description)).append("</td>");
+            sb.append("</tr>\n");
+        }
+        sb.append("</tbody></table>\n");
+
+        if (!d.violations.isEmpty()) {
+            sb.append("<h2>Governance Policy Violations</h2>\n");
+            for (int i = 0; i < d.violations.size(); i++) {
+                GovernanceViolation v = d.violations.get(i);
+                String badgeCls = "CRITICAL".equals(v.severity) ? "badge-crit" : "badge-warn";
+                sb.append("<div class=\"violation-card\">");
+                sb.append("<div style=\"display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;\">");
+                sb.append("<span class=\"badge ").append(badgeCls).append("\">").append(v.severity).append("</span>");
+                sb.append("<span style=\"font-weight:700;\">").append(escapeHtml(v.ruleName)).append("</span>");
+                sb.append("<span style=\"color:var(--muted); font-size:12px;\">").append(escapeHtml(v.archetypeName)).append("</span>");
+                sb.append("</div>");
+                sb.append("<div style=\"margin:6px 0;\"><code>").append(escapeHtml(v.entityFqn)).append("</code></div>");
+                sb.append("<div style=\"font-size:13px; margin:4px 0;\">").append(escapeHtml(v.violationDetails)).append("</div>");
+                sb.append("<div style=\"font-size:12px; color:#34d399; margin-top:6px;\">💡 <em>").append(escapeHtml(v.architecturalRemediation)).append("</em></div>");
+                sb.append("</div>\n");
+            }
+        }
+
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
+    public String renderArchetypeGovernanceCsv(ArchetypeGovernanceReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("RuleName,Severity,Archetype,EntityFqn,ViolationDetails,Remediation\n");
+        for (GovernanceViolation v : d.violations) {
+            sb.append(escapeCsv(v.ruleName)).append(",")
+              .append(escapeCsv(v.severity)).append(",")
+              .append(escapeCsv(v.archetypeName)).append(",")
+              .append(escapeCsv(v.entityFqn)).append(",")
+              .append(escapeCsv(v.violationDetails)).append(",")
+              .append(escapeCsv(v.architecturalRemediation)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderArchetypeGovernanceJson(ArchetypeGovernanceReportData d) {
+        try {
+            return jsonMapper.writeValueAsString(d);
+        } catch (Exception e) {
+            log.error("Failed to render archetype governance JSON: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal string & archetype helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static String extractClassFromFqn(String entityFqn) {
+        if (entityFqn == null) return "";
+        int paren = entityFqn.indexOf('(');
+        String base = (paren > 0) ? entityFqn.substring(0, paren) : entityFqn;
+        int dot = base.lastIndexOf('.');
+        return (dot >= 0) ? base.substring(0, dot) : base;
+    }
+
+    private static String extractClassSimple(String classFqn) {
+        if (classFqn == null) return "";
+        int dot = classFqn.lastIndexOf('.');
+        return (dot >= 0) ? classFqn.substring(dot + 1) : classFqn;
+    }
+
+    private static String extractPackageFromFqn(String classFqn) {
+        if (classFqn == null) return "(default)";
+        int dot = classFqn.lastIndexOf('.');
+        return (dot >= 0) ? classFqn.substring(0, dot) : "(default)";
+    }
+
+    private static String extractPackageSimple(String pkgFqn) {
+        if (pkgFqn == null) return "(default)";
+        int dot = pkgFqn.lastIndexOf('.');
+        return (dot >= 0) ? pkgFqn.substring(dot + 1) : pkgFqn;
+    }
+
+    private static String extractSimpleMethodName(String methodFqn) {
+        if (methodFqn == null) return "";
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        int dot = base.lastIndexOf('.');
+        return (dot >= 0) ? base.substring(dot + 1) : base;
+    }
+
+    private static boolean isPotentialEntryPoint(String methodName, String declaringClass) {
+        if (methodName == null) return true;
+        if ("main".equals(methodName)) return true;
+        if (methodName.startsWith("test") || (declaringClass != null && declaringClass.endsWith("Test"))) return true;
+        if (methodName.startsWith("<init>") || "clone".equals(methodName)) return true;
+        if ("toString".equals(methodName) || "hashCode".equals(methodName) || "equals".equals(methodName)) return true;
+        if ("values".equals(methodName) || "valueOf".equals(methodName)) return true;
+        if (declaringClass != null && (declaringClass.endsWith("Controller") || declaringClass.endsWith("Endpoint"))) return true;
+        return false;
+    }
+
+    private static boolean isMainOrFrameworkClass(String simpleName) {
+        if (simpleName == null) return true;
+        if (simpleName.endsWith("Application") || simpleName.endsWith("App") || simpleName.equals("Main")) return true;
+        if (simpleName.endsWith("Controller") || simpleName.endsWith("Test")) return true;
+        return false;
+    }
+
+    // =========================================================================
+    // 8. STANDALONE INTERACTIVE HTML GRAPH SNAPSHOT
     // =========================================================================
 
     public String generateInteractiveHtmlSnapshot(String projectName, Object fullGraphData, Object archGraphData, ArchitectureReportData archData) {

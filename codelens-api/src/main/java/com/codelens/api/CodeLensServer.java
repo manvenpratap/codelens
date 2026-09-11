@@ -384,11 +384,15 @@ public class CodeLensServer {
         app.get("/api/git/status",           this::getGitStatus);
 
         // ── Reports & Exports ─────────────────────────────────────────────────
-        app.get("/api/reports/architecture",  this::getArchitectureReport);
-        app.get("/api/reports/review",        this::getReviewReport);
-        app.get("/api/reports/metrics",       this::getMetricsReport);
-        app.get("/api/reports/html-snapshot", this::getHtmlSnapshotReport);
-        app.get("/api/reports/download",      this::downloadReport);
+        app.get("/api/reports/architecture",          this::getArchitectureReport);
+        app.get("/api/reports/change-risk",           this::getChangeRiskReport);
+        app.get("/api/reports/dead-code",             this::getDeadCodeReport);
+        app.get("/api/reports/circular-dependencies", this::getCircularDependenciesReport);
+        app.get("/api/reports/archetype-governance",  this::getArchetypeGovernanceReport);
+        app.get("/api/reports/review",                this::getReviewReport);
+        app.get("/api/reports/metrics",               this::getMetricsReport);
+        app.get("/api/reports/html-snapshot",         this::getHtmlSnapshotReport);
+        app.get("/api/reports/download",              this::downloadReport);
 
         // ── Configuration & Deployment Settings (.conf) ──────────────────────
         app.get("/api/config",          this::getConfig);
@@ -1963,6 +1967,117 @@ public class CodeLensServer {
         }
     }
 
+    private void getChangeRiskReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "json";
+            else format = format.trim().toLowerCase();
+
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderChangeRiskHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderChangeRiskMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderChangeRiskCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate change risk report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate change risk report: " + e.getMessage()));
+        }
+    }
+
+    private void getDeadCodeReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "json";
+            else format = format.trim().toLowerCase();
+
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderDeadCodeHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderDeadCodeMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderDeadCodeCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate dead code report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate dead code report: " + e.getMessage()));
+        }
+    }
+
+    private void getCircularDependenciesReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "json";
+            else format = format.trim().toLowerCase();
+
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.CircularDependencyReportData data = reportService.buildCircularDependencyData(types, methods, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderCircularDependencyHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderCircularDependencyMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderCircularDependencyCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate circular dependencies report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate circular dependencies report: " + e.getMessage()));
+        }
+    }
+
+    private void getArchetypeGovernanceReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format == null || format.isBlank()) format = "json";
+            else format = format.trim().toLowerCase();
+
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+
+            ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderArchetypeGovernanceHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderArchetypeGovernanceMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderArchetypeGovernanceCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate archetype governance report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate archetype governance report: " + e.getMessage()));
+        }
+    }
+
     private void downloadReport(Context ctx) {
         try {
             String type = ctx.queryParam("type");
@@ -1987,6 +2102,14 @@ public class CodeLensServer {
                 getReviewReport(ctx);
             } else if ("metrics".equals(type)) {
                 getMetricsReport(ctx);
+            } else if ("change-risk".equals(type)) {
+                getChangeRiskReport(ctx);
+            } else if ("dead-code".equals(type)) {
+                getDeadCodeReport(ctx);
+            } else if ("circular-dependencies".equals(type) || "cycles".equals(type)) {
+                getCircularDependenciesReport(ctx);
+            } else if ("archetype-governance".equals(type) || "governance".equals(type)) {
+                getArchetypeGovernanceReport(ctx);
             } else {
                 getArchitectureReport(ctx);
             }

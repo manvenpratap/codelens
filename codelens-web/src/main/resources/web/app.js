@@ -1475,6 +1475,11 @@ function switchTab(tabName) {
       loadGitSummary();
     }
   }
+  if (tabName === 'reports') {
+    if (window.ReportsHub && typeof window.ReportsHub.activate === 'function') {
+      window.ReportsHub.activate();
+    }
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1494,6 +1499,9 @@ function restoreTabOrder() {
   } catch (_) {}
 
   if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+    if (!savedOrder.includes('reports')) {
+      savedOrder.push('reports');
+    }
     const tabMap = new Map();
     tabBar.querySelectorAll('.tab').forEach(t => {
       if (t.dataset.tab) tabMap.set(t.dataset.tab, t);
@@ -1536,6 +1544,7 @@ function updateTabTooltipsAndShortcuts() {
     'review': 'Review',
     'git': 'Git',
     'source': 'Source',
+    'reports': 'Reports',
     'codebase': 'Viz'
   };
 
@@ -4903,8 +4912,8 @@ function bindKeyboard() {
     }
     // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
-      if (['1','2','3','4','5'].includes(e.key)) {
-        const tabs = [...qsa('.tab-bar .tab')];
+      if (['1','2','3','4','5','6'].includes(e.key)) {
+        const tabs = [...(qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar'))?.querySelectorAll('.tab') || []];
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx] && tabs[idx].dataset.tab) {
           switchTab(tabs[idx].dataset.tab);
@@ -5520,15 +5529,26 @@ async function init() {
   // Initialize settings & themes
   initSettings();
 
-  // Initialize report export hub
-  initExportHub();
+  // Initialize codebase intelligence reports hub
+  initReportsHub();
   initCriticalPathUI();
 
-  // Wire Settings modal → Export Hub shortcut button
+  // Wire Settings modal → Reports Hub shortcut button
+  qs('#settings-open-reports-btn')?.addEventListener('click', () => {
+    const settingsModal = qs('#settings-modal');
+    if (settingsModal) {
+      settingsModal.setAttribute('aria-hidden', 'true');
+      settingsModal.classList.remove('open');
+    }
+    switchTab('reports');
+  });
   qs('#settings-export-open-btn')?.addEventListener('click', () => {
     const settingsModal = qs('#settings-modal');
-    if (settingsModal) settingsModal.setAttribute('aria-hidden', 'true');
-    ExportHub.open('architecture', 'markdown');
+    if (settingsModal) {
+      settingsModal.setAttribute('aria-hidden', 'true');
+      settingsModal.classList.remove('open');
+    }
+    switchTab('reports');
   });
 
   // Wire Settings modal → Feature Guide full-open button
@@ -8048,245 +8068,1008 @@ async function syncSettingsFromServer() {
   } catch (_) {}
 }
 
-// ── Export Reports Hub ───────────────────────────────────────────────────────
-const ExportHub = {
-  activeType: 'architecture',
-  activeFormat: 'markdown',
-  lastNonSnapshotFormat: 'markdown',
-  cachedContent: '',
+// ── Codebase Intelligence Reports & Export Hub ───────────────────────────────────
+const REPORTS_METADATA = {
+  'change-risk': {
+    title: 'Change Risk & Blast Radius Matrix',
+    subtitle: 'Deep structural risk analysis combining field mutations, fan-out blast radius, and downstream dependency propagation.',
+    badge: 'HIGH RISK',
+    badgeClass: 'tag-hot'
+  },
+  'dead-code': {
+    title: 'Dead Code & Orphaned Entry Points',
+    subtitle: 'Identification of zero-caller methods, unreferenced classes, unused fields, and estimated cleanable lines of code.',
+    badge: 'CLEANUP',
+    badgeClass: 'tag-clean'
+  },
+  'circular-dependencies': {
+    title: 'Circular Dependencies & Architectural Tangling',
+    subtitle: 'Detection of direct/indirect class cycles and bidirectional package tangles with decoupling cut recommendations.',
+    badge: 'MODULAR',
+    badgeClass: 'tag-arch'
+  },
+  'archetype-governance': {
+    title: 'Enterprise Archetype & Layering Governance',
+    subtitle: 'Architecture compliance audit for TCS BaNCS & DDD patterns: un-audited transactions, state-mutating grabbers, and inverted dependencies.',
+    badge: 'COMPLIANCE',
+    badgeClass: 'tag-gov'
+  },
+  'architecture': {
+    title: 'Architecture & Coupling Metrics',
+    subtitle: 'Afferent (Ca) and efferent (Ce) coupling metrics, instability (I), and architectural health scores.',
+    badge: 'STRUCTURAL',
+    badgeClass: 'tag-arch'
+  },
+  'review': {
+    title: 'Code Quality & Security Audit',
+    subtitle: 'Comprehensive audit across 32 AST and call-graph rules with CWE mappings and remediation recommendations.',
+    badge: 'QUALITY',
+    badgeClass: 'tag-clean'
+  },
+  'metrics': {
+    title: 'Codebase Inventory & Metrics',
+    subtitle: 'Comprehensive census of classes, methods, fields, lines of code, and cyclomatic complexity distributions.',
+    badge: 'METRICS',
+    badgeClass: 'tag-arch'
+  },
+  'html-snapshot': {
+    title: 'Standalone Offline Graph Snapshot',
+    subtitle: 'Self-contained zero-dependency HTML visualizer with interactive 2D graph, live physics, search, and embedded data.',
+    badge: 'STANDALONE',
+    badgeClass: 'tag-gov'
+  }
+};
+
+const ReportsHub = {
+  activeReport: 'change-risk',
+  activeFormat: 'dashboard',
+  cache: {},
   loading: false,
+  initialized: false,
 
-  open(defaultType = 'architecture', defaultFormat = 'markdown', triggerEl = null) {
-    const modal = qs('#export-modal');
-    if (!modal) return;
+  init() {
+    if (ReportsHub.initialized) return;
+    ReportsHub.initialized = true;
 
-    ExportHub.activeType = defaultType;
-    ExportHub.activeFormat = (defaultType === 'html-snapshot') ? 'html' : defaultFormat;
-    if (defaultType !== 'html-snapshot') {
-      ExportHub.lastNonSnapshotFormat = defaultFormat;
-    }
-    ExportHub.syncUI();
-    ExportHub.fetchPreview();
+    // Sidebar catalog clicks
+    qsa('#reports-catalog-nav .report-nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const report = item.dataset.report;
+        if (report) {
+          ReportsHub.activate(report);
+        }
+      });
+    });
 
-    showAccessibleModal(modal, triggerEl || qs('#export-btn') || qs('#export-review-report-btn'));
+    // Format pill clicks
+    qsa('#reports-format-switcher .report-format-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const fmt = pill.dataset.format;
+        if (fmt) {
+          ReportsHub.setFormat(fmt);
+        }
+      });
+    });
+
+    // Header actions
+    qs('#btn-reports-copy')?.addEventListener('click', () => ReportsHub.copy());
+    qs('#btn-reports-open')?.addEventListener('click', () => ReportsHub.openTab());
+    qs('#btn-reports-download')?.addEventListener('click', () => ReportsHub.download());
+
+    // Navigation buttons from other views
+    qs('#export-btn')?.addEventListener('click', () => {
+      switchTab('reports');
+    });
+    qs('#export-review-report-btn')?.addEventListener('click', () => {
+      switchTab('reports');
+      ReportsHub.activate('review');
+    });
   },
 
-  close() {
-    const modal = qs('#export-modal');
-    if (!modal) return;
-    hideAccessibleModal(modal);
+  activate(reportKey, format) {
+    if (reportKey && REPORTS_METADATA[reportKey]) {
+      ReportsHub.activeReport = reportKey;
+    }
+    if (format) {
+      ReportsHub.activeFormat = format;
+    } else if (ReportsHub.activeReport === 'html-snapshot' && ReportsHub.activeFormat !== 'html') {
+      ReportsHub.activeFormat = 'html';
+    }
+
+    ReportsHub.syncUI();
+    ReportsHub.loadActiveReport();
+  },
+
+  setFormat(format) {
+    ReportsHub.activeFormat = format;
+    ReportsHub.syncUI();
+    ReportsHub.loadActiveReport();
   },
 
   syncUI() {
-    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
+    const meta = REPORTS_METADATA[ReportsHub.activeReport] || REPORTS_METADATA['change-risk'];
+    const titleEl = qs('#reports-view-title');
+    const descEl = qs('#reports-view-desc');
+    const statusEl = qs('#reports-status-pill');
 
-    // Highlight active report card
-    qsa('.export-type-card').forEach(c => {
-      c.classList.toggle('active', c.dataset.report === ExportHub.activeType);
+    if (titleEl) titleEl.textContent = meta.title;
+    if (descEl) descEl.textContent = meta.subtitle;
+    if (statusEl) statusEl.textContent = meta.badge;
+
+    // Sidebar nav active state
+    qsa('#reports-catalog-nav .report-nav-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.report === ReportsHub.activeReport);
     });
 
-    // Update format pills
-    qsa('.export-format-btn').forEach(btn => {
-      if (isSnapshot) {
-        btn.classList.toggle('disabled', btn.dataset.format !== 'html');
-        btn.classList.toggle('active', btn.dataset.format === 'html');
-      } else {
-        btn.classList.remove('disabled');
-        btn.classList.toggle('active', btn.dataset.format === ExportHub.activeFormat);
-      }
+    // Format pills active state
+    qsa('#reports-format-switcher .report-format-pill').forEach(pill => {
+      pill.classList.toggle('active', pill.dataset.format === ReportsHub.activeFormat);
     });
   },
 
-  async fetchPreview() {
-    const codeEl = qs('#export-preview-code');
-    const frameEl = qs('#export-preview-frame');
-    const statusEl = qs('#export-preview-status');
-    if (!codeEl || !frameEl) return;
+  async loadActiveReport() {
+    const dashContainer = qs('#reports-dashboard-container');
+    const htmlContainer = qs('#reports-html-container');
+    const codeContainer = qs('#reports-code-container');
+    const htmlFrame = qs('#reports-html-frame');
+    const codeOutput = qs('#reports-code-output');
 
-    if (statusEl) statusEl.textContent = 'Generating report…';
+    if (!dashContainer || !htmlContainer || !codeContainer) return;
+
+    // Snapshot only supports HTML/Dashboard preview
+    if (ReportsHub.activeReport === 'html-snapshot') {
+      dashContainer.style.display = 'none';
+      codeContainer.style.display = 'none';
+      htmlContainer.style.display = 'block';
+      if (!htmlFrame.srcdoc) {
+        htmlFrame.src = '/api/reports/html-snapshot';
+      }
+      return;
+    }
+
+    if (ReportsHub.activeFormat === 'dashboard') {
+      dashContainer.style.display = 'flex';
+      htmlContainer.style.display = 'none';
+      codeContainer.style.display = 'none';
+
+      const cacheKey = ReportsHub.activeReport + '_json';
+      if (ReportsHub.cache[cacheKey]) {
+        ReportsHub.renderDashboard(ReportsHub.activeReport, ReportsHub.cache[cacheKey]);
+        return;
+      }
+
+      dashContainer.innerHTML = `
+        <div class="reports-loading-state">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Analyzing ${esc(REPORTS_METADATA[ReportsHub.activeReport].title)}…</div>
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=json`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        ReportsHub.cache[cacheKey] = data;
+        ReportsHub.renderDashboard(ReportsHub.activeReport, data);
+      } catch (err) {
+        dashContainer.innerHTML = `
+          <div class="reports-loading-state" style="color:var(--rose-400, #f43f5e);">
+            <svg class="svg-icon icon-rose icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>Failed to load report data: ${esc(err.message)}</div>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    if (ReportsHub.activeFormat === 'html') {
+      dashContainer.style.display = 'none';
+      codeContainer.style.display = 'none';
+      htmlContainer.style.display = 'block';
+
+      const cacheKey = ReportsHub.activeReport + '_html';
+      if (ReportsHub.cache[cacheKey]) {
+        htmlFrame.srcdoc = ReportsHub.cache[cacheKey];
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=html`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const html = await res.text();
+        ReportsHub.cache[cacheKey] = html;
+        htmlFrame.srcdoc = html;
+      } catch (err) {
+        htmlFrame.srcdoc = `<body style="background:#0a0d12;color:#f43f5e;font-family:sans-serif;padding:24px;">Failed to generate HTML: ${esc(err.message)}</body>`;
+      }
+      return;
+    }
+
+    // Raw text formats: markdown, json, csv
+    dashContainer.style.display = 'none';
+    htmlContainer.style.display = 'none';
+    codeContainer.style.display = 'block';
+
+    const cacheKey = ReportsHub.activeReport + '_' + ReportsHub.activeFormat;
+    if (ReportsHub.cache[cacheKey]) {
+      codeOutput.textContent = ReportsHub.cache[cacheKey];
+      return;
+    }
+
+    codeOutput.textContent = 'Generating ' + ReportsHub.activeFormat.toUpperCase() + ' report…';
 
     try {
-      ExportHub.loading = true;
-      const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
-      const url = isSnapshot
-        ? '/api/reports/html-snapshot'
-        : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
+      const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=${ReportsHub.activeFormat}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       let text = await res.text();
-      // Format JSON string if response is raw JSON
-      if (ExportHub.activeFormat === 'json' && !isSnapshot) {
+      if (ReportsHub.activeFormat === 'json') {
         try {
-          const parsed = JSON.parse(text);
-          text = JSON.stringify(parsed, null, 2);
+          text = JSON.stringify(JSON.parse(text), null, 2);
         } catch (_) {}
       }
-
-      ExportHub.cachedContent = text;
-
-      if (ExportHub.activeFormat === 'html' || isSnapshot) {
-        codeEl.style.display = 'none';
-        frameEl.style.display = 'block';
-        frameEl.srcdoc = text;
-      } else {
-        frameEl.style.display = 'none';
-        codeEl.style.display = 'block';
-        codeEl.textContent = text;
-      }
-
-      if (statusEl) statusEl.textContent = `Generated (${(text.length / 1024).toFixed(1)} KB)`;
+      ReportsHub.cache[cacheKey] = text;
+      codeOutput.textContent = text;
     } catch (err) {
-      ExportHub.cachedContent = '';
-      if (codeEl) {
-        frameEl.style.display = 'none';
-        codeEl.style.display = 'block';
-        codeEl.textContent = 'Error generating report: ' + err.message;
-      }
-      if (statusEl) statusEl.textContent = 'Error';
-    } finally {
-      ExportHub.loading = false;
+      codeOutput.textContent = 'Error generating report: ' + err.message;
     }
   },
 
-  async download() {
-    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
-    const ext = isSnapshot ? 'html' : (ExportHub.activeFormat === 'markdown' ? 'md' : ExportHub.activeFormat);
-    const filename = isSnapshot ? 'codelens-interactive-graph.html' : `codelens-${ExportHub.activeType}-report.${ext}`;
+  renderDashboard(type, data) {
+    const container = qs('#reports-dashboard-container');
+    if (!container) return;
 
-    let content = ExportHub.cachedContent;
-    if (!content) {
+    if (type === 'change-risk') {
+      ReportsHub.renderChangeRiskDashboard(container, data);
+    } else if (type === 'dead-code') {
+      ReportsHub.renderDeadCodeDashboard(container, data);
+    } else if (type === 'circular-dependencies') {
+      ReportsHub.renderCircularDependenciesDashboard(container, data);
+    } else if (type === 'archetype-governance') {
+      ReportsHub.renderArchetypeGovernanceDashboard(container, data);
+    } else if (type === 'architecture') {
+      ReportsHub.renderArchitectureDashboard(container, data);
+    } else if (type === 'review') {
+      ReportsHub.renderReviewDashboard(container, data);
+    } else if (type === 'metrics') {
+      ReportsHub.renderMetricsDashboard(container, data);
+    } else {
+      container.innerHTML = `<pre class="reports-code-output">${esc(JSON.stringify(data, null, 2))}</pre>`;
+    }
+  },
+
+  renderChangeRiskDashboard(container, d) {
+    const highestScore = (d.classRiskRankings && d.classRiskRankings.length > 0) ? d.classRiskRankings[0].riskScore : 0;
+    const riskBadgeClass = (highestScore >= 75) ? 'risk-critical' : (highestScore >= 50) ? 'risk-high' : 'risk-medium';
+    
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Highest Composite Risk</span>
+          <div class="report-kpi-val">
+            <span>${highestScore}</span>
+            <span class="risk-badge ${riskBadgeClass}">SCORE / 100</span>
+          </div>
+          <span class="report-kpi-sub">Average Risk: <strong>${d.averageRiskScore || 0}/100</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">High-Risk Methods</span>
+          <div class="report-kpi-val">${d.highRiskMethods ? d.highRiskMethods.length : 0}</div>
+          <span class="report-kpi-sub">Critical: <strong>${d.criticalRiskCount || 0}</strong> | High: <strong>${d.highRiskCount || 0}</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Mutation Hotspots</span>
+          <div class="report-kpi-val">${d.fieldMutationHotspots ? d.fieldMutationHotspots.length : 0}</div>
+          <span class="report-kpi-sub">Fields mutated &amp; read downstream</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Classes Evaluated</span>
+          <div class="report-kpi-val">${d.totalClassesAnalyzed || 0}</div>
+          <span class="report-kpi-sub">Graph &amp; field matrix nodes</span>
+        </div>
+      </div>
+
+      <!-- Top Risk Classes -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg>
+            <span>Top High-Risk Classes (Blast Radius &amp; Downstream Fragility)</span>
+          </div>
+          <span class="report-section-badge">${(d.classRiskRankings || []).length} Classes</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Class Name</th>
+                <th>Package</th>
+                <th>Risk Score</th>
+                <th>Level</th>
+                <th>Fan-In (Ca)</th>
+                <th>Fan-Out (Ce)</th>
+                <th>Field Blast</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.classRiskRankings || []).slice(0, 20).forEach(c => {
+      const bClass = (c.riskLevel === 'CRITICAL') ? 'risk-critical' : (c.riskLevel === 'HIGH') ? 'risk-high' : 'risk-medium';
+      html += `
+        <tr>
+          <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(c.simpleName)}</strong></td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c.packageName)}">${esc(c.packageName)}</td>
+          <td><span class="risk-badge ${bClass}">${c.riskScore} / 100</span></td>
+          <td><span class="risk-badge ${bClass}">${esc(c.riskLevel)}</span></td>
+          <td style="font-family:var(--font-mono);">${c.afferentCoupling}</td>
+          <td style="font-family:var(--font-mono);">${c.efferentCoupling}</td>
+          <td style="font-family:var(--font-mono);">${c.fieldBlastRadius} readers</td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(c.classFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
+              KB →
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Field Mutation Hotspots -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>
+            <span>Field Mutation Hotspots (High Downstream Reader Ripple)</span>
+          </div>
+          <span class="report-section-badge">${(d.fieldMutationHotspots || []).length} Fields</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Field Name</th>
+                <th>Mutating Method</th>
+                <th>Downstream Readers</th>
+                <th>Modules Impacted</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.fieldMutationHotspots || []).slice(0, 20).forEach(f => {
+      html += `
+        <tr>
+          <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.fieldFqn)}"><strong style="font-family:var(--font-mono); color:#38bdf8;">${esc(f.fieldFqn)}</strong></td>
+          <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.writerMethodFqn)}"><code style="color:var(--text-muted); font-size:11.5px;">${esc(f.writerMethodFqn)}</code></td>
+          <td><span class="risk-badge risk-high">${f.readerMethodCount} methods</span></td>
+          <td style="font-family:var(--font-mono);">${f.impactedModuleCount} modules</td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="switchTab('graph'); loadFieldImpact('${esc(f.fieldFqn)}');" title="Trace Field Propagation on Graph">
+              Trace Graph →
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderDeadCodeDashboard(container, d) {
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Est. Dead Lines of Code</span>
+          <div class="report-kpi-val">
+            <span>${(d.estimatedDeadLinesOfCode || 0).toLocaleString()}</span>
+            <span class="risk-badge risk-high">${d.deadCodePercentage || 0}%</span>
+          </div>
+          <span class="report-kpi-sub">Potential reduction in cognitive load</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Orphaned Methods</span>
+          <div class="report-kpi-val">${d.orphanedMethodsCount || (d.orphanedMethods ? d.orphanedMethods.length : 0)}</div>
+          <span class="report-kpi-sub">0 callers across all indexed code</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">Orphaned Classes</span>
+          <div class="report-kpi-val">${d.orphanedClassesCount || (d.orphanedClasses ? d.orphanedClasses.length : 0)}</div>
+          <span class="report-kpi-sub">0 incoming dependencies</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Unreferenced Fields</span>
+          <div class="report-kpi-val">${d.unreferencedFieldsCount || (d.unreferencedFields ? d.unreferencedFields.length : 0)}</div>
+          <span class="report-kpi-sub">Zero read/write access detected</span>
+        </div>
+      </div>
+
+      <!-- Top Orphaned Methods -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/></svg>
+            <span>Top Orphaned Methods (0 Callers Detected)</span>
+          </div>
+          <span class="report-section-badge">${(d.orphanedMethods || []).length} Methods</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Method Name</th>
+                <th>Declaring Class</th>
+                <th>Package</th>
+                <th>Est. Lines</th>
+                <th>Reason</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.orphanedMethods || []).slice(0, 20).forEach(m => {
+      html += `
+        <tr>
+          <td><strong style="font-family:var(--font-mono); color:#f59e0b;">${esc(m.simpleName)}</strong></td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(m.declaringClass)}</td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(m.packageName)}</td>
+          <td style="font-family:var(--font-mono);">${m.lineCount || 0}</td>
+          <td><span class="risk-badge risk-low">${esc(m.reason || '0 callers')}</span></td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(m.declaringClass)}'); switchTab('knowledge');" title="Inspect declaring class">
+              Inspect →
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Orphaned Classes -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            <span>Orphaned Classes (No Inbound Dependencies)</span>
+          </div>
+          <span class="report-section-badge">${(d.orphanedClasses || []).length} Classes</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Class Name</th>
+                <th>Package</th>
+                <th>Lines of Code</th>
+                <th>Method Count</th>
+                <th>Diagnostic Note</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.orphanedClasses || []).slice(0, 20).forEach(c => {
+      html += `
+        <tr>
+          <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(c.simpleName)}</strong></td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(c.packageName)}</td>
+          <td style="font-family:var(--font-mono);">${c.lineCount || 0}</td>
+          <td style="font-family:var(--font-mono);">${c.methodCount || 0}</td>
+          <td style="color:var(--text-muted);">${esc(c.reason || 'Zero incoming references')}</td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(c.classFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
+              KB →
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderCircularDependenciesDashboard(container, d) {
+    const isClean = (d.totalClassCycles === 0 && d.totalPackageTangles === 0);
+    const cleanBadge = isClean
+      ? '<span class="risk-badge risk-low">CLEAN / ZERO CYCLES</span>'
+      : '<span class="risk-badge risk-critical">CYCLES DETECTED</span>';
+
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Acyclicity Health Score</span>
+          <div class="report-kpi-val">
+            <span>${d.acyclicScore || 100}/100</span>
+            <span class="risk-badge ${d.acyclicScore >= 80 ? 'risk-low' : 'risk-high'}">${d.architectureHealthRating ? d.architectureHealthRating.split(' ')[0] : 'A+'}</span>
+          </div>
+          <span class="report-kpi-sub">${d.architectureHealthRating || 'Fully Acyclic Architecture'}</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">Class-Level Cycles</span>
+          <div class="report-kpi-val">
+            <span>${d.totalClassCycles || 0}</span>
+            ${cleanBadge}
+          </div>
+          <span class="report-kpi-sub">Direct / transitive recursion loops</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Package Tangles</span>
+          <div class="report-kpi-val">${d.totalPackageTangles || 0}</div>
+          <span class="report-kpi-sub">Bidirectional package dependencies</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Decoupling Recommendations</span>
+          <div class="report-kpi-val">${(d.classCycles ? d.classCycles.length : 0) + (d.packageTangles ? d.packageTangles.length : 0)}</div>
+          <span class="report-kpi-sub">Prescribed architectural break points</span>
+        </div>
+      </div>
+
+      <!-- Class Dependency Cycles -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Class-Level Dependency Cycles &amp; Refactoring Cuts</span>
+          </div>
+          <span class="report-section-badge">${(d.classCycles || []).length} Cycles</span>
+        </div>
+        <div style="padding: 16px; display:flex; flex-direction:column; gap:12px;">
+    `;
+
+    if (!d.classCycles || d.classCycles.length === 0) {
+      html += `
+        <div style="padding:24px; text-align:center; color:#34d399;">
+          <svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div style="font-weight:700; margin-top:8px;">No Class Cycles Detected</div>
+          <div style="color:var(--text-muted); font-size:12px;">All class dependencies form a Directed Acyclic Graph (DAG).</div>
+        </div>
+      `;
+    } else {
+      d.classCycles.forEach((c, i) => {
+        html += `
+          <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:12px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <strong style="color:#f43f5e;">Cycle #${i + 1} (${c.cycleLength} classes)</strong>
+              <span class="risk-badge risk-critical">RECURSIVE LOOP</span>
+            </div>
+            <div style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-primary); line-height:1.7;">
+              ${(c.path || []).map(p => `<span style="color:#38bdf8;">${esc(p)}</span>`).join(' <span style="color:#fbbf24;">➔</span> ')}
+              <span style="color:#fbbf24;">➔</span> <span style="color:#38bdf8;">${esc(c.path[0])}</span>
+            </div>
+            <div style="margin-top:8px; font-size:12px; color:#34d399;">
+              💡 <strong>Recommended Decoupling Cut:</strong> Break edge <code>${esc(c.recommendedCutEdge)}</code> via dependency injection or event bus.
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </div>
+
+      <!-- Package Tangles -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+            <span>Bidirectional Package Tangles</span>
+          </div>
+          <span class="report-section-badge">${(d.packageTangles || []).length} Tangles</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Package A</th>
+                <th>Package B</th>
+                <th>A ➔ B Calls</th>
+                <th>B ➔ A Calls</th>
+                <th>Decoupling Cut Direction</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (!d.packageTangles || d.packageTangles.length === 0) {
+      html += `
+        <tr>
+          <td colspan="5" style="text-align:center; padding:24px; color:#34d399;">
+            <svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+            <div style="font-weight:700; margin-top:6px;">No Package Tangles Detected</div>
+            <div style="color:var(--text-muted); font-size:11.5px;">All inter-package invocations follow strict unilateral dependency flow.</div>
+          </td>
+        </tr>
+      `;
+    } else {
+      (d.packageTangles || []).forEach(t => {
+        html += `
+          <tr>
+            <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(t.packageA)}</strong></td>
+            <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(t.packageB)}</strong></td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${t.callsAtoB}</td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${t.callsBtoA}</td>
+            <td style="color:#34d399; font-weight:600; font-size:11.5px;">${esc(t.recommendedDecouplingDirection || 'Decouple weaker direction')}</td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderArchetypeGovernanceDashboard(container, d) {
+    const compBadge = (d.governanceScore >= 90) ? 'risk-low' : (d.governanceScore >= 70) ? 'risk-medium' : 'risk-high';
+
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Governance Compliance</span>
+          <div class="report-kpi-val">
+            <span>${d.governanceScore || 100}%</span>
+            <span class="risk-badge ${compBadge}">${esc(d.complianceRating ? d.complianceRating.split(' ')[0] : 'SCORE')}</span>
+          </div>
+          <span class="report-kpi-sub">${esc(d.complianceRating || 'Adherence to BaNCS & DDD archetypes')}</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Total Violations</span>
+          <div class="report-kpi-val">${d.totalViolations || (d.violations ? d.violations.length : 0)}</div>
+          <span class="report-kpi-sub">Critical: <strong>${(d.violations || []).filter(v => v.severity === 'CRITICAL').length}</strong> | Warnings: <strong>${(d.violations || []).filter(v => v.severity === 'WARNING').length}</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Recognized Archetypes</span>
+          <div class="report-kpi-val">${d.totalArchetypesFound || 0}</div>
+          <span class="report-kpi-sub">MO_*, DG, BT &amp; Domain Entities</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">Governance Rules</span>
+          <div class="report-kpi-val">4 Active</div>
+          <span class="report-kpi-sub">Audit Trail, Grabber Purity, Inverted Layers</span>
+        </div>
+      </div>
+
+      <!-- Governance Violations -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Layering &amp; Architecture Violations</span>
+          </div>
+          <span class="report-section-badge">${(d.violations || []).length} Issues</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Rule Name</th>
+                <th>Target Class / Method</th>
+                <th>Violation Detail</th>
+                <th>Recommended Fix</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (!d.violations || d.violations.length === 0) {
+      html += `
+        <tr>
+          <td colspan="5" style="text-align:center; padding:24px; color:#34d399;">
+            <svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+            <div style="font-weight:700; margin-top:6px;">Zero Governance Violations</div>
+            <div style="color:var(--text-muted); font-size:11.5px;">All transactions, data grabbers, and entity layers conform to governance policies.</div>
+          </td>
+        </tr>
+      `;
+    } else {
+      d.violations.forEach(v => {
+        const sClass = (v.severity === 'CRITICAL') ? 'risk-critical' : (v.severity === 'HIGH') ? 'risk-high' : 'risk-medium';
+        html += `
+          <tr>
+            <td><span class="risk-badge ${sClass}">${esc(v.severity)}</span></td>
+            <td><strong style="color:var(--text-primary); font-size:11.5px; white-space:nowrap;">${esc(v.ruleName)}</strong></td>
+            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.entityFqn)}"><code style="color:#38bdf8; font-size:11px;">${esc(v.entityFqn)}</code></td>
+            <td style="color:var(--text-muted); font-size:11.5px; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.violationDetails)}">${esc(v.violationDetails)}</td>
+            <td style="color:#34d399; font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.architecturalRemediation)}">💡 ${esc(v.architecturalRemediation)}</td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Archetype Breakdown -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/></svg>
+            <span>Detected Enterprise Archetype Distributions</span>
+          </div>
+          <span class="report-section-badge">${(d.archetypeBreakdown || []).length} Archetypes</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Archetype Category</th>
+                <th>Detected Count</th>
+                <th>Violations</th>
+                <th>Compliance Rate</th>
+                <th>Architectural Role</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.archetypeBreakdown || []).forEach(a => {
+      html += `
+        <tr>
+          <td><strong style="color:var(--text-primary); font-size:12px;">${esc(a.archetype)}</strong></td>
+          <td style="font-family:var(--font-mono); font-weight:700;">${a.count}</td>
+          <td style="font-family:var(--font-mono); color:${a.violationCount > 0 ? '#f43f5e' : '#34d399'}; font-weight:700;">${a.violationCount}</td>
+          <td><span class="risk-badge ${a.complianceRate >= 80 ? 'risk-low' : 'risk-medium'}">${a.complianceRate}%</span></td>
+          <td style="color:var(--text-muted); font-size:11.5px;">${esc(a.description || 'Enterprise component')}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderArchitectureDashboard(container, d) {
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Indexed Types</span>
+          <div class="report-kpi-val">${d.totalTypes || 0}</div>
+          <span class="report-kpi-sub">Classes, Interfaces, Enums</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
+          <span class="report-kpi-label">Methods</span>
+          <div class="report-kpi-val">${d.totalMethods || 0}</div>
+          <span class="report-kpi-sub">Callable procedures</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Fields</span>
+          <div class="report-kpi-val">${d.totalFields || 0}</div>
+          <span class="report-kpi-sub">State attributes</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">Coupling Relations</span>
+          <div class="report-kpi-val">${d.totalRelationships || 0}</div>
+          <span class="report-kpi-sub">Calls, reads, writes, inheritance</span>
+        </div>
+      </div>
+
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">Package Coupling Matrix (Ca / Ce / Instability)</div>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Package Name</th>
+                <th>Afferent In (Ca)</th>
+                <th>Efferent Out (Ce)</th>
+                <th>Instability (I = Ce / (Ca + Ce))</th>
+                <th>Stability Classification</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.packages || []).slice(0, 15).forEach(p => {
+      const iVal = p.instability != null ? p.instability : (p.efferent + p.afferent > 0 ? (p.efferent / (p.efferent + p.afferent)).toFixed(2) : 0);
+      const isStable = iVal < 0.3;
+      html += `
+        <tr>
+          <td><strong style="font-family:var(--font-mono);">${esc(p.name || p.packageFqn)}</strong></td>
+          <td style="font-family:var(--font-mono);">${p.afferent || p.ca || 0}</td>
+          <td style="font-family:var(--font-mono);">${p.efferent || p.ce || 0}</td>
+          <td><span class="risk-badge ${isStable ? 'risk-low' : 'risk-medium'}">${iVal}</span></td>
+          <td style="color:var(--text-muted);">${isStable ? 'Stable Core' : 'Flexible / Dependent'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderReviewDashboard(container, d) {
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Total Findings</span>
+          <div class="report-kpi-val">${d.totalFindings || 0}</div>
+          <span class="report-kpi-sub">Across 32 AST/Graph rules</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Critical / High</span>
+          <div class="report-kpi-val">${d.criticalCount || 0}</div>
+          <span class="report-kpi-sub">Priority remediation</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Audited Classes</span>
+          <div class="report-kpi-val">${d.auditedClassesCount || (d.types ? d.types.length : 0)}</div>
+          <span class="report-kpi-sub">Index coverage</span>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Health Grade</span>
+          <div class="report-kpi-val"><span class="risk-badge risk-low">${d.healthGrade || 'A-'}</span></div>
+          <span class="report-kpi-sub">Composite quality score</span>
+        </div>
+      </div>
+      <div class="report-section-card" style="padding:20px; text-align:center;">
+        <p style="color:var(--text-muted); margin-bottom:12px;">Detailed code review findings with inline code snippets and remediation instructions are available in the dedicated Code Review workspace.</p>
+        <button class="btn-primary" onclick="switchTab('review');">Open Code Review Workspace →</button>
+      </div>
+    `;
+    container.innerHTML = html;
+  },
+
+  renderMetricsDashboard(container, d) {
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Total Classes</span>
+          <div class="report-kpi-val">${d.totalTypes || 0}</div>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
+          <span class="report-kpi-label">Total Methods</span>
+          <div class="report-kpi-val">${d.totalMethods || 0}</div>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Total Fields</span>
+          <div class="report-kpi-val">${d.totalFields || 0}</div>
+        </div>
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">Total Lines of Code</span>
+          <div class="report-kpi-val">${(d.totalLinesOfCode || 0).toLocaleString()}</div>
+        </div>
+      </div>
+    `;
+    container.innerHTML = html;
+  },
+
+  async download() {
+    const isSnapshot = (ReportsHub.activeReport === 'html-snapshot');
+    const ext = isSnapshot ? 'html' : (ReportsHub.activeFormat === 'markdown' ? 'md' : (ReportsHub.activeFormat === 'dashboard' ? 'html' : ReportsHub.activeFormat));
+    const filename = isSnapshot ? 'codelens-interactive-graph.html' : `codelens-${ReportsHub.activeReport}-report.${ext}`;
+
+    const url = isSnapshot
+      ? '/api/reports/download?type=html-snapshot'
+      : `/api/reports/download?type=${ReportsHub.activeReport}&format=${ext}`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (a.parentNode) document.body.removeChild(a);
+    }, 300);
+    showBanner(`Downloading ${filename}…`);
+  },
+
+  async copy() {
+    let content = '';
+    const cacheKey = ReportsHub.activeReport + '_' + ReportsHub.activeFormat;
+    if (ReportsHub.cache[cacheKey]) {
+      content = (typeof ReportsHub.cache[cacheKey] === 'object')
+        ? JSON.stringify(ReportsHub.cache[cacheKey], null, 2)
+        : ReportsHub.cache[cacheKey];
+    } else {
       try {
-        const url = isSnapshot
-          ? '/api/reports/html-snapshot'
-          : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
-        const res = await fetch(url);
+        const fmt = ReportsHub.activeFormat === 'dashboard' ? 'json' : ReportsHub.activeFormat;
+        const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=${fmt}`);
         content = await res.text();
-        ExportHub.cachedContent = content;
       } catch (e) {
-        showError('Failed to fetch report content: ' + e.message);
+        showError('Failed to fetch report content for copy: ' + e.message);
         return;
       }
     }
 
-    const mimeTypes = {
-      html: 'text/html;charset=utf-8',
-      markdown: 'text/markdown;charset=utf-8',
-      json: 'application/json;charset=utf-8',
-      csv: 'text/csv;charset=utf-8',
-    };
-    const mime = isSnapshot ? 'text/html;charset=utf-8' : (mimeTypes[ExportHub.activeFormat] || 'text/plain;charset=utf-8');
-
-    try {
-      const blob = new Blob([content], { type: mime });
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        if (a.parentNode) document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-      }, 300);
-      showBanner(`Downloaded ${filename}`);
-    } catch (err) {
-      const url = isSnapshot ? '/api/reports/download?type=html-snapshot' : `/api/reports/download?type=${ExportHub.activeType}&format=${ExportHub.activeFormat}`;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        if (a.parentNode) document.body.removeChild(a);
-      }, 300);
-      showBanner(`Downloading ${filename}…`);
-    }
-  },
-
-  copy() {
-    if (!ExportHub.cachedContent) return;
-    navigator.clipboard.writeText(ExportHub.cachedContent).then(() => {
-      const copyBtn = qs('#btn-export-copy');
+    if (!content) return;
+    navigator.clipboard.writeText(content).then(() => {
+      const copyBtn = qs('#btn-reports-copy');
       if (copyBtn) {
         const orig = copyBtn.innerHTML;
-        copyBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+        copyBtn.innerHTML = '<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> <span>Copied!</span>';
         setTimeout(() => { copyBtn.innerHTML = orig; }, 2000);
       }
       showBanner('Report copied to clipboard!');
     }).catch(err => {
-      showBanner('Failed to copy: ' + err.message);
+      showError('Failed to copy: ' + err.message);
     });
   },
 
   openTab() {
-    const isSnapshot = (ExportHub.activeType === 'html-snapshot' || ExportHub.activeType === 'graph-snapshot');
-    if ((ExportHub.activeFormat === 'html' || isSnapshot) && ExportHub.cachedContent) {
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.open();
-        win.document.write(ExportHub.cachedContent);
-        win.document.close();
-        return;
-      }
+    const isSnapshot = (ReportsHub.activeReport === 'html-snapshot');
+    if (isSnapshot) {
+      window.open('/api/reports/html-snapshot', '_blank');
+      return;
     }
-    const url = isSnapshot ? '/api/reports/html-snapshot' : `/api/reports/${ExportHub.activeType}?format=${ExportHub.activeFormat}`;
-    window.open(url, '_blank');
+    const fmt = (ReportsHub.activeFormat === 'dashboard') ? 'html' : ReportsHub.activeFormat;
+    window.open(`/api/reports/${ReportsHub.activeReport}?format=${fmt}`, '_blank');
   }
 };
 
-function initExportHub() {
-  const exportBtn = qs('#export-btn');
-  if (exportBtn) exportBtn.addEventListener('click', (e) => ExportHub.open('architecture', 'markdown', e.currentTarget));
+window.ReportsHub = ReportsHub;
+window.ExportHub = {
+  open(type = 'architecture', format = 'markdown') {
+    switchTab('reports');
+    ReportsHub.activate(type, format);
+  },
+  close() {}
+};
 
-  const exportReviewBtn = qs('#export-review-report-btn');
-  if (exportReviewBtn) exportReviewBtn.addEventListener('click', (e) => ExportHub.open('review', 'markdown', e.currentTarget));
-
-  const closeBtn = qs('#export-modal-close');
-  if (closeBtn) closeBtn.addEventListener('click', () => ExportHub.close());
-
-  const modal = qs('#export-modal');
-  if (modal) {
-    modal.addEventListener('click', e => { if (e.target === modal) ExportHub.close(); });
-  }
-
-  qsa('.export-type-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const prevType = ExportHub.activeType;
-      ExportHub.activeType = card.dataset.report;
-      if (ExportHub.activeType === 'html-snapshot') {
-        if (prevType !== 'html-snapshot') {
-          ExportHub.lastNonSnapshotFormat = ExportHub.activeFormat;
-        }
-        ExportHub.activeFormat = 'html';
-      } else if (prevType === 'html-snapshot') {
-        ExportHub.activeFormat = ExportHub.lastNonSnapshotFormat || 'markdown';
-      }
-      ExportHub.syncUI();
-      ExportHub.fetchPreview();
-    });
-  });
-
-  qsa('.export-format-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (ExportHub.activeType === 'html-snapshot') return;
-      ExportHub.activeFormat = btn.dataset.format;
-      ExportHub.lastNonSnapshotFormat = btn.dataset.format;
-      ExportHub.syncUI();
-      ExportHub.fetchPreview();
-    });
-  });
-
-  const downloadBtn = qs('#btn-export-download');
-  if (downloadBtn) downloadBtn.addEventListener('click', () => ExportHub.download());
-
-  const copyBtn = qs('#btn-export-copy');
-  if (copyBtn) copyBtn.addEventListener('click', () => ExportHub.copy());
-
-  const openBtn = qs('#btn-export-open');
-  if (openBtn) openBtn.addEventListener('click', () => ExportHub.openTab());
+function initReportsHub() {
+  ReportsHub.init();
 }
 
 
