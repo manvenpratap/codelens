@@ -1578,22 +1578,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         }
         ctx.stroke();
 
-        // Glowing cyan crosshairs at intersections
-        ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
-        ctx.lineWidth = 1.2;
-        const arm = 3;
-        ctx.beginPath();
-        for (let x = offX; x < W; x += step * this._sc) {
-          for (let y = offY; y < H; y += step * this._sc) {
-            ctx.moveTo(x - arm, y);
-            ctx.lineTo(x + arm, y);
-            ctx.moveTo(x, y - arm);
-            ctx.lineTo(x, y + arm);
-          }
-        }
-        ctx.stroke();
-      }
-
       // Subtle CRT scanline overlay
       ctx.fillStyle = 'rgba(224, 64, 251, 0.015)';
       for (let y = 0; y < H; y += 4) {
@@ -1637,7 +1621,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
 
     } else if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
-      // LIGHT / ARCTIC: Light architectural drafting paper, crisp daylight grid, blueprint ticks
+      // LIGHT / ARCTIC: Light architectural drafting paper, crisp daylight grid
       ctx.fillStyle = '#f8fafc';
       ctx.fillRect(0, 0, W, H);
 
@@ -1649,12 +1633,12 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       ctx.fillRect(0, 0, W, H);
 
       if (this._showGrid) {
-        const step = 28;
+        const step = 32;
         const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
-        // Fine drafting grid lines
-        ctx.strokeStyle = 'rgba(15, 23, 42, 0.05)';
+        // Fine drafting grid lines - subtle and clean
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.035)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         for (let x = offX; x < W; x += step * this._sc) {
@@ -1664,23 +1648,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         for (let y = offY; y < H; y += step * this._sc) {
           ctx.moveTo(0, y);
           ctx.lineTo(W, y);
-        }
-        ctx.stroke();
-
-        // Major blueprint grid intersections (every 4th step)
-        ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
-        ctx.lineWidth = 1.2;
-        const tick = 4;
-        ctx.beginPath();
-        let mX = 0;
-        for (let x = offX; x < W; x += step * this._sc, mX++) {
-          let mY = 0;
-          for (let y = offY; y < H; y += step * this._sc, mY++) {
-            if (mX % 4 === 0 && mY % 4 === 0) {
-              ctx.moveTo(x - tick, y); ctx.lineTo(x + tick, y);
-              ctx.moveTo(x, y - tick); ctx.lineTo(x, y + tick);
-            }
-          }
         }
         ctx.stroke();
       }
@@ -1736,47 +1703,31 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
 
     } else {
-      // MIDNIGHT: Industrial neutral dark charcoal, blueprint dot matrix, precision telemetry crosshairs
-      ctx.fillStyle = '#0d1117';
+      // MIDNIGHT: Refined, subtle dark obsidian background with soft micro-dots (zero plus signs)
+      ctx.fillStyle = '#0b0f15';
       ctx.fillRect(0, 0, W, H);
 
-      // Neutral ambient gradient
-      const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.75);
-      grad.addColorStop(0, 'rgba(22, 27, 34, 0.40)');
-      grad.addColorStop(1, 'rgba(13, 17, 23, 0.95)');
+      // Deep vignette with subtle center elevation
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, Math.max(W, H) * 0.8);
+      grad.addColorStop(0, 'rgba(22, 27, 34, 0.35)');
+      grad.addColorStop(1, 'rgba(11, 15, 21, 0.98)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
       if (this._showGrid) {
-        const step = 32;
+        const step = 38;
         const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        // Ultra-subtle micro-dots (radius 0.75px, soft opacity, no plus signs)
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.07)';
         for (let x = offX; x < W; x += step * this._sc) {
           for (let y = offY; y < H; y += step * this._sc) {
             ctx.beginPath();
-            ctx.arc(x, y, 1.1, 0, Math.PI * 2);
+            ctx.arc(x, y, 0.75, 0, Math.PI * 2);
             ctx.fill();
           }
         }
-
-        // Precision crosshair markers every 4th step
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.22)';
-        ctx.lineWidth = 1;
-        const ch = 3;
-        ctx.beginPath();
-        let kX = 0;
-        for (let x = offX; x < W; x += step * this._sc, kX++) {
-          let kY = 0;
-          for (let y = offY; y < H; y += step * this._sc, kY++) {
-            if (kX % 4 === 0 && kY % 4 === 0) {
-              ctx.moveTo(x - ch, y); ctx.lineTo(x + ch, y);
-              ctx.moveTo(x, y - ch); ctx.lineTo(x, y + ch);
-            }
-          }
-        }
-        ctx.stroke();
       }
     }
   }

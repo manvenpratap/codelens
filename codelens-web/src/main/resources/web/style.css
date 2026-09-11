@@ -592,24 +592,73 @@ body.resizing .panel-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 0 18px;
+  gap: 10px;
+  padding: 0 14px;
   height: 52px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   z-index: 100;
   position: relative;
   min-width: 0;
+  overflow: hidden;
 }
 
 .header-right-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
-  max-width: calc(50vw - 250px);
-  flex-shrink: 0;
+  flex: 0 0 auto;
   z-index: 20;
+}
+
+/* Responsive header scaling to guarantee zero overlaps across viewports */
+@media (max-width: 1320px) {
+  .header-action-btn .action-btn-text {
+    display: none;
+  }
+  .header-action-btn {
+    padding: 4px 7px;
+  }
+  .tab-studio-launch-btn .studio-btn-shortcut {
+    display: none;
+  }
+}
+
+@media (max-width: 1120px) {
+  #header {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  .header-left-group {
+    gap: 6px;
+  }
+  .logo-text {
+    display: none;
+  }
+  .tab.level-pill {
+    padding: 3px 7px;
+    font-size: 10.5px;
+    gap: 3px;
+  }
+  .tab-studio-launch-btn .studio-btn-text {
+    display: none;
+  }
+  .tab-studio-launch-btn {
+    padding: 4px 7px;
+  }
+  .project-pill-name {
+    max-width: 100px;
+  }
+}
+
+@media (max-width: 900px) {
+  .tab.level-pill:not(.active) .tab-label {
+    display: none;
+  }
+  .tab.level-pill {
+    padding: 3px 6px;
+  }
 }
 
 .logo {
@@ -651,9 +700,8 @@ body.resizing .panel-resizer {
 .header-left-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  max-width: calc(50vw - 250px);
   flex: 0 0 auto;
   z-index: 20;
 }
@@ -1926,11 +1974,12 @@ body.theme-light .archetype-breakup-group-title {
 .header-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 5px 10px;
+  padding: 4px 8px;
+  height: 28px;
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-display);
@@ -2315,15 +2364,14 @@ body.theme-light .tab-bar {
 }
 
 .main-views-switcher {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
   z-index: 10;
   pointer-events: auto;
 }
-
 
 .tab-nav-segment.graph-level-pills {
   display: inline-flex;
@@ -2332,7 +2380,8 @@ body.theme-light .tab-bar {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-full, 9999px);
-  padding: 2px 3px;
+  padding: 2px;
+  max-width: 100%;
 }
 body.theme-light .tab-nav-segment.graph-level-pills {
   background: #f1f5f9;
@@ -2342,7 +2391,7 @@ body.theme-light .tab-nav-segment.graph-level-pills {
 .tab.level-pill {
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 11px;
+  padding: 3px 9px;
   height: 26px;
   background: transparent;
   border: 1px solid transparent;
@@ -2351,11 +2400,12 @@ body.theme-light .tab-nav-segment.graph-level-pills {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   transition: all var(--dur-fast) var(--ease);
   white-space: nowrap;
   user-select: none;
   position: relative;
+  flex-shrink: 0;
 }
 .tab.level-pill:hover {
   color: var(--text-primary);
@@ -2478,19 +2528,21 @@ body.theme-light .tab-shortcut {
 .tab-studio-launch-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(59, 130, 246, 0.14));
   border: 1px solid rgba(16, 185, 129, 0.4);
   border-radius: var(--radius-full, 9999px);
   color: #34d399;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 5px 14px;
+  padding: 4px 10px;
+  height: 28px;
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
   user-select: none;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab-studio-launch-btn:hover {
@@ -2502,12 +2554,12 @@ body.theme-light .tab-shortcut {
 }
 
 .tab-studio-launch-btn .studio-btn-shortcut {
-  font-size: 10px;
+  font-size: 9.5px;
   font-family: var(--font-mono);
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 1px 4px;
   color: var(--text-muted);
   margin-left: 2px;
 }

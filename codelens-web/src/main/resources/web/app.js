@@ -1568,6 +1568,11 @@ function restoreTabOrder() {
   const navSegment = tabBar.classList.contains('tab-nav-segment') ? tabBar : (tabBar.querySelector('.tab-nav-segment') || tabBar);
   const spacer = tabBar.querySelector('.tab-bar-spacer') || qs('.header-flex-spacer');
   
+  // Clean up any stray divider elements that could cause visual artifacts
+  if (navSegment) {
+    navSegment.querySelectorAll('.level-pill-divider').forEach(d => d.remove());
+  }
+  
   let savedOrder = null;
   try {
     const raw = localStorage.getItem('codelens_tab_order');
