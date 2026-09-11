@@ -1417,6 +1417,13 @@ function switchTab(tabName) {
   const previousTab = App.activeTab;
   App.activeTab = tabName;
 
+  if (tabName !== 'reports' && tabName !== 'codebase') {
+    App.lastWorkspaceTab = tabName;
+  }
+
+  // Reflect active state on global Reports header action button
+  qs('#export-btn')?.classList.toggle('active', tabName === 'reports');
+
   if (tabName === 'codebase') {
     document.body.classList.add('macro-studio-mode');
   } else {
@@ -1514,9 +1521,7 @@ function restoreTabOrder() {
   } catch (_) {}
 
   if (Array.isArray(savedOrder) && savedOrder.length > 0) {
-    if (!savedOrder.includes('reports')) {
-      savedOrder.push('reports');
-    }
+    savedOrder = savedOrder.filter(t => t !== 'reports');
     const tabMap = new Map();
     tabBar.querySelectorAll('.tab').forEach(t => {
       if (t.dataset.tab) tabMap.set(t.dataset.tab, t);
@@ -1559,7 +1564,6 @@ function updateTabTooltipsAndShortcuts() {
     'review': 'Review',
     'git': 'Git',
     'source': 'Source',
-    'reports': 'Reports',
     'codebase': 'Viz'
   };
 
@@ -4894,10 +4898,14 @@ function closeHelpModal() {
 
 function bindKeyboard() {
   document.addEventListener('keydown', e => {
-    // Escape → close modal or exit studio mode or clear search
+    // Escape → close modal or exit studio mode or close reports or clear search
     if (e.key === 'Escape') {
       if (document.body.classList.contains('macro-studio-mode')) {
         closeMacroStudio();
+        return;
+      }
+      if (App.activeTab === 'reports') {
+        switchTab(App.lastWorkspaceTab || 'graph');
         return;
       }
       const exportModal = qs('#export-modal');
@@ -4927,11 +4935,19 @@ function bindKeyboard() {
     }
     // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
-      if (['1','2','3','4','5','6'].includes(e.key)) {
+      if (['1','2','3','4','5'].includes(e.key)) {
         const tabs = [...(qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar'))?.querySelectorAll('.tab') || []];
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx] && tabs[idx].dataset.tab) {
           switchTab(tabs[idx].dataset.tab);
+        }
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+        if (App.activeTab === 'reports') {
+          switchTab(App.lastWorkspaceTab || 'graph');
+        } else {
+          App.lastWorkspaceTab = (App.activeTab && App.activeTab !== 'reports' && App.activeTab !== 'codebase') ? App.activeTab : (App.lastWorkspaceTab || 'graph');
+          switchTab('reports');
         }
       }
       if (e.key === 'm' || e.key === 'M') {
@@ -5407,6 +5423,9 @@ async function init() {
   });
   qs('#btn-graph-back-kb')?.addEventListener('click', () => {
     switchTab('knowledge');
+  });
+  qs('#btn-reports-back-workspace')?.addEventListener('click', () => {
+    switchTab(App.lastWorkspaceTab || 'graph');
   });
 
 
@@ -8173,9 +8192,18 @@ const ReportsHub = {
 
     // Navigation buttons from other views
     qs('#export-btn')?.addEventListener('click', () => {
-      switchTab('reports');
+      if (App.activeTab === 'reports') {
+        switchTab(App.lastWorkspaceTab || 'graph');
+      } else {
+        App.lastWorkspaceTab = (App.activeTab && App.activeTab !== 'reports' && App.activeTab !== 'codebase') ? App.activeTab : (App.lastWorkspaceTab || 'graph');
+        switchTab('reports');
+      }
+    });
+    qs('#btn-reports-back-workspace')?.addEventListener('click', () => {
+      switchTab(App.lastWorkspaceTab || 'graph');
     });
     qs('#export-review-report-btn')?.addEventListener('click', () => {
+      App.lastWorkspaceTab = 'review';
       switchTab('reports');
       ReportsHub.activate('review');
     });

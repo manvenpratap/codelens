@@ -1955,6 +1955,15 @@ body.theme-light .archetype-breakup-group-title {
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
+.header-action-btn.export-action-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+.header-action-btn.export-action-btn.active .svg-icon {
+  stroke: #ffffff;
+}
 .header-action-btn .action-btn-icon {
   font-size: 12px;
   display: flex;
@@ -2513,9 +2522,10 @@ body.macro-studio-mode .tab-bar {
   display: none !important;
 }
 
-/* Studio Back Button */
+/* Studio, Graph & Reports Back Buttons */
 .studio-back-btn,
-.graph-back-btn {
+.graph-back-btn,
+.reports-back-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2548,6 +2558,13 @@ body.macro-studio-mode .tab-bar {
   transform: translateX(-1px);
 }
 
+.reports-back-btn:hover {
+  background: rgba(14, 165, 233, 0.2);
+  border-color: rgba(14, 165, 233, 0.45);
+  color: #38bdf8;
+  transform: translateX(-1px);
+}
+
 .studio-back-btn .back-arrow {
   color: #34d399;
   font-weight: 700;
@@ -2562,8 +2579,16 @@ body.macro-studio-mode .tab-bar {
   align-items: center;
 }
 
+.reports-back-btn .back-arrow {
+  color: #38bdf8;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
 body.theme-light .studio-back-btn,
-body.theme-light .graph-back-btn {
+body.theme-light .graph-back-btn,
+body.theme-light .reports-back-btn {
   background: #f1f5f9;
   border-color: #cbd5e1;
   color: #0f172a;
@@ -2577,7 +2602,8 @@ body.theme-light .studio-back-btn:hover {
   transform: translateX(-1px);
 }
 
-body.theme-light .graph-back-btn:hover {
+body.theme-light .graph-back-btn:hover,
+body.theme-light .reports-back-btn:hover {
   background: #e0f2fe;
   border-color: #38bdf8;
   color: #0284c7;
@@ -2588,7 +2614,8 @@ body.theme-light .studio-back-btn .back-arrow {
   color: #059669;
 }
 
-body.theme-light .graph-back-btn .back-arrow {
+body.theme-light .graph-back-btn .back-arrow,
+body.theme-light .reports-back-btn .back-arrow {
   color: #0284c7;
 }
 
@@ -7786,6 +7813,15 @@ body.theme-light .header-action-btn.export-action-btn {
 body.theme-light .header-action-btn.export-action-btn:hover {
   background: #2563eb;
   color: #ffffff;
+}
+body.theme-light .header-action-btn.export-action-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.35);
+}
+body.theme-light .header-action-btn.export-action-btn.active .svg-icon {
+  stroke: #ffffff;
 }
 
 body.theme-light #scan-path-input,
