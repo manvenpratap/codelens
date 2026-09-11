@@ -1577,6 +1577,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           ctx.lineTo(W, y);
         }
         ctx.stroke();
+      }
 
       // Subtle CRT scanline overlay
       ctx.fillStyle = 'rgba(224, 64, 251, 0.015)';
