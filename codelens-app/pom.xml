@@ -21,10 +21,80 @@
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.2</version>
         <executions>
+          <!-- Execution 1: Distributable application JAR (com.codelens.* code + web UI, ~1.1MB) -->
           <execution>
+            <id>shade-app</id>
             <phase>package</phase>
             <goals><goal>shade</goal></goals>
             <configuration>
+              <outputFile>${project.build.directory}/codelens-app.jar</outputFile>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <artifactSet>
+                <includes>
+                  <include>com.codelens:*</include>
+                </includes>
+              </artifactSet>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>com.codelens.app.Application</mainClass>
+                  <manifestEntries>
+                    <Class-Path>codelens-deps.jar lib/codelens-deps.jar</Class-Path>
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+
+          <!-- Execution 2: External dependencies JAR (JGit, H2, Lucene, Jetty, Jackson, etc. - export once and forget) -->
+          <execution>
+            <id>shade-deps</id>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <outputFile>${project.build.directory}/codelens-deps.jar</outputFile>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <artifactSet>
+                <excludes>
+                  <exclude>com.codelens:*</exclude>
+                </excludes>
+              </artifactSet>
+              <transformers>
+                <!-- Merge SPI service files (SLF4J, Jetty, Lucene codecs) -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <!-- Merge Jetty noticefiles -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/**/module-info.class</exclude>
+                    <exclude>javax/servlet/resources/**</exclude>
+                    <exclude>jakarta/servlet/resources/**</exclude>
+                    <exclude>about.html</exclude>
+                    <exclude>about_files/**</exclude>
+                    <exclude>**/*.xsd</exclude>
+                    <exclude>**/*.dtd</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+
+          <!-- Execution 3: All-in-one standalone fat JAR (convenient single file fallback) -->
+          <execution>
+            <id>shade-all</id>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <outputFile>${project.build.directory}/codelens-app-all.jar</outputFile>
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <shadedArtifactAttached>false</shadedArtifactAttached>
               <transformers>
