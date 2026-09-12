@@ -559,18 +559,31 @@ public class CodeLensServer {
             return;
         }
 
+        boolean resume = false;
+        if (body.get("resume") != null) {
+            resume = Boolean.parseBoolean(body.get("resume").toString());
+        }
+
         // Initialise progress object
         ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
         progress.setSourcePath(sourcePath);
         progress.setStartTime(System.currentTimeMillis());
-        progress.setMessage("Initialising scanner…");
+        progress.setMessage(resume ? "Resuming scan…" : "Initialising scanner…");
         scanState.set(progress);
 
         // Launch background scan task
         final List<String> finalExcludes = excludePatterns;
-        scanExecutor.submit(() -> runScan(sourcePath, finalExcludes, progress));
+        final String finalPath = sourcePath;
+        final boolean isResume = resume;
+        if (isResume) {
+            progress.setCurrentPhase("Delta Change Detection");
+            progress.setMessage("Resuming scan — detecting modified & remaining source files…");
+            scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
+        } else {
+            scanExecutor.submit(() -> runScan(finalPath, finalExcludes, progress));
+        }
 
-        ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
+        ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath, "resumed", isResume));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2231,6 +2244,9 @@ public class CodeLensServer {
     public void setConfig(CodeLensConfig config, File configFile) {
         this.activeConfig = config;
         this.activeConfigFile = configFile;
+        if (config != null) {
+            CallGraphAnalyzer.setCustomPojoPatterns(config.getPojoCustomPatterns());
+        }
     }
 
     public CodeLensConfig getActiveConfig() {
@@ -2248,6 +2264,10 @@ public class CodeLensServer {
         try {
             CodeLensConfig updated = ctx.bodyAsClass(CodeLensConfig.class);
             this.activeConfig = updated;
+            if (updated != null) {
+                CallGraphAnalyzer.setCustomPojoPatterns(updated.getPojoCustomPatterns());
+                invalidateGraphCache();
+            }
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);
             log.info("Persisted configuration to {}", targetFile.getAbsolutePath());
@@ -2282,6 +2302,10 @@ public class CodeLensServer {
 
             CodeLensConfig imported = CodeLensConfig.fromConfString(confContent);
             this.activeConfig = imported;
+            if (imported != null) {
+                CallGraphAnalyzer.setCustomPojoPatterns(imported.getPojoCustomPatterns());
+                invalidateGraphCache();
+            }
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);
             log.info("Successfully imported and saved configuration from .conf to {}", targetFile.getAbsolutePath());
@@ -2295,6 +2319,8 @@ public class CodeLensServer {
     private void resetConfig(Context ctx) {
         this.activeConfig = new CodeLensConfig();
         try {
+            CallGraphAnalyzer.setCustomPojoPatterns(activeConfig.getPojoCustomPatterns());
+            invalidateGraphCache();
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);
             ctx.json(Map.of("status", "ok", "message", "Configuration reset to factory defaults", "config", activeConfig));
