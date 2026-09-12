@@ -596,6 +596,35 @@ public class EntityDao {
     }
 
     /**
+     * Counts the total number of CALLS relationships using an indexed query.
+     */
+    public int countCallRelationships() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM relationships WHERE kind = 'CALLS'";
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    /**
+     * Streams call relationships directly from an H2 forward cursor, completely avoiding
+     * allocating millions of temporary String[] objects in heap.
+     */
+    public void streamCallRelationshipsDirect(java.util.function.BiConsumer<String, String> consumer) throws SQLException {
+        String sql = "SELECT from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS'";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setFetchSize(10000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    consumer.accept(rs.getString(1), rs.getString(2));
+                }
+            }
+        }
+    }
+
+    /**
      * Streams call relationships (kind='CALLS') after fetching from DB, guaranteeing
      * that no database connection is held while the consumer processes the edges.
      */

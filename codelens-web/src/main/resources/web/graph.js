@@ -1204,13 +1204,15 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       const nd = nodes[i];
       if (this._isNodeHidden(nd)) continue;
       const cid = nd.community !== undefined ? nd.community : 0;
-      if (!commCentroids.has(cid)) {
-        commCentroids.set(cid, { x: 0, y: 0, count: 0, coreNode: null });
+      let c = commCentroids.get(cid);
+      if (!c) {
+        c = { x: 0, y: 0, count: 0, coreNode: null, members: [] };
+        commCentroids.set(cid, c);
       }
-      const c = commCentroids.get(cid);
       c.x += nd.x;
       c.y += nd.y;
       c.count++;
+      c.members.push(nd);
       if (nd.isBranchCore || !c.coreNode || (nd.hotScore || 0) > (c.coreNode.hotScore || 0)) {
         c.coreNode = nd;
       }
@@ -1225,9 +1227,11 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     // 2. Inter-cluster bouquet repulsion (pushes entire communities apart into distinct blooms)
     const cids = Array.from(commCentroids.keys());
     for (let i = 0; i < cids.length; i++) {
+      const ca = commCentroids.get(cids[i]);
+      if (!ca || !ca.members.length) continue;
       for (let j = i + 1; j < cids.length; j++) {
-        const ca = commCentroids.get(cids[i]);
         const cb = commCentroids.get(cids[j]);
+        if (!cb || !cb.members.length) continue;
         const dx = cb.x - ca.x;
         const dy = cb.y - ca.y;
         const distSq = dx * dx + dy * dy || 1;
@@ -1237,10 +1241,17 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           const clusterRep = ((PHYSICS.repulsion * 3.0) / (distSq + 120)) * alpha;
           const fx = (dx / dist) * clusterRep;
           const fy = (dy / dist) * clusterRep;
-          for (let k = 0; k < n; k++) {
-            const nd = nodes[k];
-            if (nd.community === cids[i]) { nd._fx -= fx / Math.max(ca.count, 1); nd._fy -= fy / Math.max(ca.count, 1); }
-            if (nd.community === cids[j]) { nd._fx += fx / Math.max(cb.count, 1); nd._fy += fy / Math.max(cb.count, 1); }
+          const repA = fx / Math.max(ca.count, 1);
+          const repAY = fy / Math.max(ca.count, 1);
+          for (let k = 0; k < ca.members.length; k++) {
+            ca.members[k]._fx -= repA;
+            ca.members[k]._fy -= repAY;
+          }
+          const repB = fx / Math.max(cb.count, 1);
+          const repBY = fy / Math.max(cb.count, 1);
+          for (let k = 0; k < cb.members.length; k++) {
+            cb.members[k]._fx += repB;
+            cb.members[k]._fy += repBY;
           }
         }
       }

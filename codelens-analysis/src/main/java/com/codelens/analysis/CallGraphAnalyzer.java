@@ -38,6 +38,16 @@ public class CallGraphAnalyzer {
         return callGraph;
     }
 
+    /** Returns the number of vertices in the call graph. */
+    public synchronized int vertexCount() {
+        return callGraph != null ? callGraph.vertexSet().size() : 0;
+    }
+
+    /** Returns the number of edges in the call graph. */
+    public synchronized int edgeCount() {
+        return callGraph != null ? callGraph.edgeSet().size() : 0;
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -96,7 +106,8 @@ public class CallGraphAnalyzer {
                 byClassFqnAndMethod.computeIfAbsent(fqnMethodKey, k -> new ArrayList<>(2)).add(interned);
 
                 mCount++;
-                if (listener != null && (mCount % 250 == 0 || mCount == totalMethods)) {
+                int mStride = Math.max(1000, totalMethods / 100);
+                if (listener != null && (mCount % mStride == 0 || mCount == totalMethods)) {
                     listener.onProgress("Call Graph: Indexing Methods", mCount, totalMethods,
                         String.format("Indexed %,d / %,d method vertices (%s)", mCount, totalMethods, simpleName));
                 }
@@ -106,6 +117,7 @@ public class CallGraphAnalyzer {
         // Stream edges, resolving "~" prefixed targets
         if (edgeStreamer != null) {
             final int[] edgeCount = new int[]{0};
+            final int eStride = 5000;
             edgeStreamer.stream((rawFrom, rawTo) -> {
                 if (rawFrom == null || rawTo == null) return;
                 String from = dedup(dedupPool, rawFrom);
@@ -124,7 +136,7 @@ public class CallGraphAnalyzer {
                 catch (Exception ignored) { /* duplicate edge */ }
 
                 edgeCount[0]++;
-                if (listener != null && edgeCount[0] % 250 == 0) {
+                if (listener != null && edgeCount[0] % eStride == 0) {
                     listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], -1,
                         String.format("Mapped %,d call edges (%s → %s)", edgeCount[0], simpleMethodName(from), simpleMethodName(to)));
                 }
@@ -134,6 +146,12 @@ public class CallGraphAnalyzer {
                     String.format("Mapped %,d call edges total", edgeCount[0]));
             }
         }
+
+        // Immediately release large temporary indexing maps to reduce heap footprint
+        byName.clear();
+        byClassAndMethod.clear();
+        byClassFqnAndMethod.clear();
+        dedupPool.clear();
 
         this.callGraph = g;
         log.info("Call graph rebuilt: {} vertices, {} edges",
@@ -152,10 +170,11 @@ public class CallGraphAnalyzer {
         rebuild(allMethodFqns, consumer -> {
             if (callPairs != null) {
                 int pCount = 0;
+                int pStride = Math.max(2500, totalPairs / 100);
                 for (String[] pair : callPairs) {
                     consumer.accept(pair[0], pair[1]);
                     pCount++;
-                    if (listener != null && (pCount % 250 == 0 || pCount == totalPairs)) {
+                    if (listener != null && (pCount % pStride == 0 || pCount == totalPairs)) {
                         listener.onProgress("Call Graph: Mapping Edges", pCount, totalPairs,
                             String.format("Mapped %,d / %,d call edges (%s → %s)",
                                 pCount, totalPairs, simpleMethodName(pair[0]), simpleMethodName(pair[1])));
@@ -1007,7 +1026,8 @@ public class CallGraphAnalyzer {
             }
             placedNodes += groupNodes.size();
 
-            if (listener != null) {
+            int gStride = Math.max(10, totalGroups / 80);
+            if (listener != null && ((gIdx + 1) % gStride == 0 || gIdx + 1 == totalGroups)) {
                 listener.onProgress("Layout: Positioning Clusters", gIdx + 1, totalGroups,
                     String.format("Cluster [%d/%d] %s (%d nodes) placed · %,d/%,d nodes",
                         gIdx + 1, totalGroups, grp, groupNodes.size(), placedNodes, view.nodes.size()));

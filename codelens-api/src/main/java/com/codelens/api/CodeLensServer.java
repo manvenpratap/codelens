@@ -211,24 +211,33 @@ public class CodeLensServer {
                 }
             }
 
-            List<LayoutTask> tasks = List.of(
-                new LayoutTask("arch-raw:classes:none", "Architecture Classes", () -> callGraph.architectureGraphView("classes", null)),
-                new LayoutTask("arch-raw:methods:none", "Architecture Methods", () -> callGraph.architectureGraphView("methods", null)),
-                new LayoutTask("full-raw:true", "Full Codebase Graph", () -> callGraph.fullGraphView(true)),
-                new LayoutTask("full-raw:false", "Method Call Graph", () -> callGraph.fullGraphView(false)),
-                new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null, (phase, curr, tot, detail) -> {
-                    if (progress != null) {
-                        progress.setCurrentDetail(detail);
-                        progress.setDynamicMetrics("Layouts Ready", "4 / 6", "Active Layout", "Sunflower (Classes)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
-                    }
-                })),
-                new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true, (phase, curr, tot, detail) -> {
+            int methodCount = callGraph.vertexCount();
+            boolean isHugeCodebase = methodCount > 25_000;
+
+            List<LayoutTask> tasks = new ArrayList<>();
+            // Always warm up macro architecture views
+            tasks.add(new LayoutTask("arch-raw:classes:none", "Architecture Classes", () -> callGraph.architectureGraphView("classes", null)));
+            tasks.add(new LayoutTask("arch:classes:none", "Sunflower Clustered (Classes)", () -> callGraph.precomputedArchitectureGraphView("classes", null, (phase, curr, tot, detail) -> {
+                if (progress != null) {
+                    progress.setCurrentDetail(detail);
+                    progress.setDynamicMetrics("Layouts Ready", "1 / " + (isHugeCodebase ? 2 : 6), "Active Layout", "Sunflower (Classes)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
+                }
+            })));
+
+            if (!isHugeCodebase) {
+                tasks.add(new LayoutTask("arch-raw:methods:none", "Architecture Methods", () -> callGraph.architectureGraphView("methods", null)));
+                tasks.add(new LayoutTask("full-raw:true", "Full Codebase Graph", () -> callGraph.fullGraphView(true)));
+                tasks.add(new LayoutTask("full-raw:false", "Method Call Graph", () -> callGraph.fullGraphView(false)));
+                tasks.add(new LayoutTask("full:true", "Sunflower Clustered (Full)", () -> callGraph.precomputedFullGraphView(true, (phase, curr, tot, detail) -> {
                     if (progress != null) {
                         progress.setCurrentDetail(detail);
                         progress.setDynamicMetrics("Layouts Ready", "5 / 6", "Active Layout", "Sunflower (Full)", "Clusters", String.format("%d / %d", curr, tot), "Placed Nodes", detail.contains("·") ? detail.substring(detail.lastIndexOf('·') + 1).trim() : "Calculating");
                     }
-                }))
-            );
+                })));
+            } else {
+                log.info("Codebase has {} method vertices (exceeds large-scale threshold of 25,000). Skipping monolithic full method-level graph warmup to conserve memory and avoid thread starvation.",
+                    methodCount);
+            }
 
             int total = tasks.size();
             for (int i = 0; i < total; i++) {
@@ -823,12 +832,11 @@ public class CodeLensServer {
             progress.setSubProgress(1, 4, "Querying call pairs from storage");
             progress.setDynamicMetrics("Graph Vertices", String.format("%,d loaded", totalMethods), "Call Edges", "Querying…", "Field Links", "Pending", "Caller Triggers", "Pending");
 
-            List<String[]> callPairs = dao.findCallRelationshipPairs();
-            int totalCallEdges = callPairs.size();
-            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", totalCallEdges));
+            int totalCallEdges = dao.countCallRelationships();
+            progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationshipsDirect(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6)); // 75% -> 81%
@@ -840,12 +848,12 @@ public class CodeLensServer {
                         "Caller Triggers", "Pending"
                     );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
-                    float f = total > 0 ? (float) curr / total : 1f;
+                    float f = totalCallEdges > 0 ? (float) curr / totalCallEdges : 1f;
                     progress.setPercentage(81 + (int)(f * 6)); // 81% -> 87%
-                    progress.setSubProgress(curr, total, "Mapping edges");
+                    progress.setSubProgress(curr, totalCallEdges, "Mapping edges");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d", totalMethods),
-                        "Call Edges", String.format("%,d / %,d", curr, total),
+                        "Call Edges", String.format("%,d / %,d", curr, totalCallEdges),
                         "Field Links", "Pending",
                         "Caller Triggers", "Pending"
                     );
@@ -1099,12 +1107,11 @@ public class CodeLensServer {
             progress.setSubProgress(1, 4, "Querying call pairs from storage");
             progress.setDynamicMetrics("Graph Vertices", String.format("%,d loaded", totalMethods), "Call Edges", "Querying…", "Field Links", "Pending", "Caller Triggers", "Pending");
 
-            List<String[]> callPairs = dao.findCallRelationshipPairs();
-            int totalCallEdges = callPairs.size();
-            progress.setCurrentDetail(String.format("Loaded %,d call relationships; building graph vertices…", totalCallEdges));
+            int totalCallEdges = dao.countCallRelationships();
+            progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuildWithPairs(allMethodFqns, callPairs, (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationshipsDirect(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6));
@@ -1116,12 +1123,12 @@ public class CodeLensServer {
                         "Caller Triggers", "Pending"
                     );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
-                    float f = total > 0 ? (float) curr / total : 1f;
+                    float f = totalCallEdges > 0 ? (float) curr / totalCallEdges : 1f;
                     progress.setPercentage(81 + (int)(f * 6));
-                    progress.setSubProgress(curr, total, "Mapping edges");
+                    progress.setSubProgress(curr, totalCallEdges, "Mapping edges");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d", totalMethods),
-                        "Call Edges", String.format("%,d / %,d", curr, total),
+                        "Call Edges", String.format("%,d / %,d", curr, totalCallEdges),
                         "Field Links", "Pending",
                         "Caller Triggers", "Pending"
                     );
