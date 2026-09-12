@@ -314,8 +314,29 @@ public class EntityDao {
     }
 
     public List<CodeType> findTypesByPackage(String packageFqn) throws SQLException {
-        return queryTypesParam("SELECT * FROM types WHERE package_fqn=? ORDER BY simple_name",
+        List<CodeType> list = queryTypesParam("SELECT * FROM types WHERE package_fqn=? ORDER BY simple_name",
                                packageFqn);
+        if (!list.isEmpty()) {
+            try (Connection c = db.getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                     "SELECT declaring_type_fqn, simple_name FROM methods WHERE declaring_type_fqn IN (" +
+                     String.join(",", Collections.nCopies(list.size(), "?")) + ")")) {
+                for (int i = 0; i < list.size(); i++) {
+                    ps.setString(i + 1, list.get(i).getFqn());
+                }
+                Map<String, List<String>> typeMethods = new HashMap<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        typeMethods.computeIfAbsent(rs.getString(1), k -> new ArrayList<>()).add(rs.getString(2));
+                    }
+                }
+                for (CodeType t : list) {
+                    List<String> ms = typeMethods.get(t.getFqn());
+                    if (ms != null) t.setMethods(ms);
+                }
+            }
+        }
+        return list;
     }
 
     public Optional<CodeType> findTypeById(String id) throws SQLException {
@@ -956,6 +977,25 @@ public class EntityDao {
             }
         }
         return list;
+    }
+
+    public Set<String> findPersistentClassFqns() throws SQLException {
+        Set<String> set = new HashSet<>();
+        String sql = "SELECT declaring_type_fqn FROM methods " +
+                     "WHERE LOWER(TRIM(REPLACE(simple_name, '()', ''))) IN ('get', 'create', 'modify') " +
+                     "GROUP BY declaring_type_fqn " +
+                     "HAVING COUNT(DISTINCT LOWER(TRIM(REPLACE(simple_name, '()', '')))) = 3";
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            while (rs.next()) {
+                String fqn = rs.getString(1);
+                if (fqn != null && !fqn.isBlank()) {
+                    set.add(fqn);
+                }
+            }
+        }
+        return set;
     }
 
     private int singleInt(Statement s, String sql) throws SQLException {

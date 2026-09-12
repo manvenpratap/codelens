@@ -453,4 +453,91 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testPersistentClassDetectionAndPackageTypeMethods() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-persistent-test-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            List<CodePackage> pkgs = new ArrayList<>();
+            pkgs.add(new CodePackage("com.bank.domain"));
+            dao.batchInsertPackagesFast(pkgs);
+
+            List<CodeType> types = new ArrayList<>();
+            CodeType accountType = new CodeType();
+            accountType.setId("com.bank.domain.Account");
+            accountType.setFqn("com.bank.domain.Account");
+            accountType.setSimpleName("Account");
+            accountType.setPackageFqn("com.bank.domain");
+            accountType.setKind("CLASS");
+            types.add(accountType);
+
+            CodeType helperType = new CodeType();
+            helperType.setId("com.bank.domain.AccountHelper");
+            helperType.setFqn("com.bank.domain.AccountHelper");
+            helperType.setSimpleName("AccountHelper");
+            helperType.setPackageFqn("com.bank.domain");
+            helperType.setKind("CLASS");
+            types.add(helperType);
+            dao.batchInsertTypesFast(types);
+
+            List<CodeMethod> methods = new ArrayList<>();
+            // Account has Get, Create, Modify
+            CodeMethod m1 = new CodeMethod();
+            m1.setId("com.bank.domain.Account.Get()");
+            m1.setFqn("com.bank.domain.Account.Get()");
+            m1.setSimpleName("Get");
+            m1.setDeclaringTypeFqn("com.bank.domain.Account");
+            methods.add(m1);
+
+            CodeMethod m2 = new CodeMethod();
+            m2.setId("com.bank.domain.Account.Create()");
+            m2.setFqn("com.bank.domain.Account.Create()");
+            m2.setSimpleName("Create");
+            m2.setDeclaringTypeFqn("com.bank.domain.Account");
+            methods.add(m2);
+
+            CodeMethod m3 = new CodeMethod();
+            m3.setId("com.bank.domain.Account.Modify(String)");
+            m3.setFqn("com.bank.domain.Account.Modify(String)");
+            m3.setSimpleName("Modify");
+            m3.setDeclaringTypeFqn("com.bank.domain.Account");
+            methods.add(m3);
+
+            // AccountHelper only has helperMethod
+            CodeMethod m4 = new CodeMethod();
+            m4.setId("com.bank.domain.AccountHelper.help()");
+            m4.setFqn("com.bank.domain.AccountHelper.help()");
+            m4.setSimpleName("help");
+            m4.setDeclaringTypeFqn("com.bank.domain.AccountHelper");
+            methods.add(m4);
+
+            dao.batchInsertMethodsFast(methods);
+
+            // 1. Verify findPersistentClassFqns correctly detects Account
+            Set<String> persistentFqns = dao.findPersistentClassFqns();
+            assertEquals(1, persistentFqns.size(), "Should detect exactly 1 persistent class");
+            assertTrue(persistentFqns.contains("com.bank.domain.Account"), "Account must be persistent class");
+            assertTrue(!persistentFqns.contains("com.bank.domain.AccountHelper"), "AccountHelper must not be persistent class");
+
+            // 2. Verify findTypesByPackage returns methods attached to types
+            List<CodeType> pkgTypes = dao.findTypesByPackage("com.bank.domain");
+            assertEquals(2, pkgTypes.size(), "Package should have 2 types");
+            CodeType account = pkgTypes.stream().filter(t -> t.getFqn().equals("com.bank.domain.Account")).findFirst().orElseThrow();
+            CodeType helper = pkgTypes.stream().filter(t -> t.getFqn().equals("com.bank.domain.AccountHelper")).findFirst().orElseThrow();
+
+            assertEquals(3, account.getMethods().size(), "Account should have 3 methods attached");
+            assertTrue(account.getMethods().contains("Get"), "Account methods must contain Get");
+            assertTrue(account.getMethods().contains("Create"), "Account methods must contain Create");
+            assertTrue(account.getMethods().contains("Modify"), "Account methods must contain Modify");
+
+            assertEquals(1, helper.getMethods().size(), "Helper should have 1 method attached");
+            assertTrue(helper.getMethods().contains("help"), "Helper methods must contain help");
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

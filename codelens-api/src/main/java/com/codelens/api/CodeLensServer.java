@@ -1251,6 +1251,7 @@ public class CodeLensServer {
         Map<String, Object> stats = dao.getStats();
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());
+        stats.put("persistentClasses", dao.findPersistentClassFqns());
         ctx.json(stats);
     }
 

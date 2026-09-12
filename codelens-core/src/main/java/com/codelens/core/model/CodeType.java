@@ -22,6 +22,7 @@ public class CodeType {
     private int lineCount;
     private int fieldCount;
     private int methodCount;
+    private List<String> methods = new ArrayList<>();
 
     // ── Getters & Setters ────────────────────────────────────────────────────
     public String getId()                           { return id; }
@@ -52,4 +53,6 @@ public class CodeType {
     public void setFieldCount(int n)               { this.fieldCount = n; }
     public int getMethodCount()                     { return methodCount; }
     public void setMethodCount(int n)              { this.methodCount = n; }
+    public List<String> getMethods()                { return methods; }
+    public void setMethods(List<String> m)          { this.methods = m != null ? m : new ArrayList<>(); }
 }

@@ -2278,6 +2278,13 @@ async function loadKnowledgeBase(pkgFqn) {
 
   try {
     const types = await api.typesByPackage(pkgFqn);
+    if (window.CodeLensClassifier && Array.isArray(types)) {
+      for (const t of types) {
+        if (Array.isArray(t.methods) && t.methods.length > 0 && typeof window.CodeLensClassifier.registerTypeMethods === 'function') {
+          window.CodeLensClassifier.registerTypeMethods(t.fqn || t.id, t.methods);
+        }
+      }
+    }
     let activeKind = (App.activeFilter || 'all').toUpperCase();
 
     // ── Package Hero Card ─────────────────────────────────────────────────────
@@ -4440,9 +4447,14 @@ async function loadStats() {
     // Also support fallback elements if any
     animateCounter(qs('#stat-types'),   s.types   || 0);
 
-    // Update methods map in classifier
-    if (window.CodeLensClassifier && Array.isArray(s.methodsList) && typeof window.CodeLensClassifier.setMethodsData === 'function') {
-      window.CodeLensClassifier.setMethodsData(s.methodsList);
+    // Update methods and persistent classes in classifier
+    if (window.CodeLensClassifier) {
+      if ((Array.isArray(s.persistentClasses) || s.persistentClasses instanceof Set) && typeof window.CodeLensClassifier.setPersistentClasses === 'function') {
+        window.CodeLensClassifier.setPersistentClasses(s.persistentClasses);
+      }
+      if (Array.isArray(s.methodsList) && typeof window.CodeLensClassifier.setMethodsData === 'function') {
+        window.CodeLensClassifier.setMethodsData(s.methodsList);
+      }
     }
 
     // Compute & update archetypes breakup for both classes and methods

@@ -250,6 +250,7 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_pkg_kind ON types(package_fqn, kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type    ON fields(declaring_type_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_name   ON methods(simple_name)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
@@ -336,6 +337,8 @@ public class DatabaseManager {
                           "idx_fields_type", "fields", "Declaring class index on fields(declaring_type_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_methods_type   ON methods(declaring_type_fqn)",
                           "idx_methods_type", "methods", "Declaring class index on methods(declaring_type_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_methods_name   ON methods(simple_name)",
+                          "idx_methods_name", "methods", "Method simple name index on methods(simple_name)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)",
                           "idx_rels_from", "relationships", "Source caller/reader index on relationships(from_entity_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)",

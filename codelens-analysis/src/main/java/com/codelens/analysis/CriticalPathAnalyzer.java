@@ -171,7 +171,8 @@ public class CriticalPathAnalyzer {
             Set<String> methodNames = new HashSet<>();
             for (CodeMethod m : methods) {
                 if (m.getSimpleName() != null) {
-                    methodNames.add(m.getSimpleName().trim().toLowerCase());
+                    String clean = m.getSimpleName().replaceAll("\\(.*\\)", "").trim().toLowerCase();
+                    methodNames.add(clean);
                 }
             }
 

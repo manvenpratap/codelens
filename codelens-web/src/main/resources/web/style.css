@@ -8296,6 +8296,42 @@ body.theme-light .archetype-pattern-code {
   border-color: rgba(2, 132, 199, 0.25);
 }
 
+/* ── Light Theme Archetype Rule Form ── */
+body.theme-light .archetype-rule-form-wrap {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+body.theme-light .rule-form-header {
+  border-bottom-color: #e2e8f0;
+}
+body.theme-light .rule-form-title {
+  color: #0f172a;
+}
+body.theme-light .rule-form-field label {
+  color: #334155;
+}
+body.theme-light .field-hint {
+  color: #64748b;
+}
+body.theme-light .field-hint code {
+  color: #059669;
+}
+body.theme-light .color-swatch-input {
+  border-color: #cbd5e1;
+}
+body.theme-light .rule-form-actions {
+  border-top-color: #e2e8f0;
+}
+body.theme-light #btn-cancel-archetype-rule {
+  color: #475569;
+  border-color: #cbd5e1;
+}
+body.theme-light #btn-cancel-archetype-rule:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
 body.theme-light #app-footer {
   background: #ffffff;
   border-top-color: #cbd5e1;

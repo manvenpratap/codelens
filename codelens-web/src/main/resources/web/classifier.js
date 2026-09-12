@@ -507,7 +507,7 @@
           if (Array.isArray(parsed) && parsed.length > 0) {
             let changed = false;
             const pcIdx = parsed.findIndex(r => r.id === 'rule-bancs-pc');
-            if (pcIdx >= 0 && (parsed[pcIdx].pattern === 'PC_*' || parsed[pcIdx].matchType === 'GLOB')) {
+            if (pcIdx >= 0 && (parsed[pcIdx].pattern === 'PC_*' || parsed[pcIdx].matchType !== 'STRUCTURAL')) {
               parsed[pcIdx].pattern = '* (Get,Create,Modify)';
               parsed[pcIdx].matchType = 'STRUCTURAL';
               parsed[pcIdx].description = 'Persistent classes with Get(), Create(), and Modify() methods (non-MO entities)';
@@ -532,6 +532,102 @@
         }
       } catch (_) {}
       return JSON.parse(JSON.stringify(DEFAULT_ARCHETYPE_RULES));
+    }
+
+    /**
+     * Stores set of verified persistent class FQNs identified by DB / server: Set<typeFqn>
+     * @param {Array<string>|Set<string>} persistentClasses
+     */
+    setPersistentClasses(persistentClasses) {
+      if (!this._persistentClasses) {
+        this._persistentClasses = new Set();
+      }
+      if (persistentClasses) {
+        if (persistentClasses instanceof Set) {
+          this._persistentClasses = new Set(persistentClasses);
+        } else if (Array.isArray(persistentClasses)) {
+          this._persistentClasses = new Set(persistentClasses);
+        }
+      }
+    }
+
+    /**
+     * Returns true if the methods contain the persistent contract triplet: Get(), Create(), Modify()
+     * @param {Iterable<string|object>} methods
+     */
+    hasPersistentMethods(methods) {
+      if (!methods) return false;
+      let hasGet = false;
+      let hasCreate = false;
+      let hasModify = false;
+      for (const m of methods) {
+        if (!m) continue;
+        const raw = typeof m === 'string' ? m : (m.simpleName || m.name || '');
+        const clean = String(raw).replace(/\(.*?\)/g, '').trim().toLowerCase();
+        if (clean === 'get') hasGet = true;
+        if (clean === 'create') hasCreate = true;
+        if (clean === 'modify') hasModify = true;
+      }
+      return hasGet && hasCreate && hasModify;
+    }
+
+    /**
+     * Identifies if a class is a persistent class based on:
+     * 1. Possessing Get(), Create(), and Modify() methods
+     * 2. Being registered in _persistentClasses set (from DB query)
+     * 3. Excludes Message Objects (MO_INP_*, MO_OUT_*, MO_*)
+     */
+    isPersistentClass(nameOrNode, fqn, pkg) {
+      const name = typeof nameOrNode === 'string'
+        ? nameOrNode
+        : (nameOrNode?.simpleName || nameOrNode?.name || nameOrNode?.label || '');
+      const fullFqn = fqn || (typeof nameOrNode === 'object' ? (nameOrNode?.fqn || nameOrNode?.id || '') : '');
+      const packageFqn = pkg || (typeof nameOrNode === 'object' ? (nameOrNode?.packageFqn || nameOrNode?.pkg || '') : '');
+
+      if (!name) return false;
+
+      // 1. Message Objects are strictly DTOs, not persistent entities
+      if (this._isMessageObjectName(name)) return false;
+
+      // 2. Check if verified persistent class from server DB
+      if (this._persistentClasses && this._persistentClasses.size > 0) {
+        if (fullFqn && this._persistentClasses.has(fullFqn)) return true;
+        if (name && this._persistentClasses.has(name)) return true;
+        if (packageFqn && name && this._persistentClasses.has(packageFqn + '.' + name)) return true;
+      }
+
+      // 3. Extract and check method names
+      let methodNames = new Set();
+      if (typeof nameOrNode === 'object' && nameOrNode !== null) {
+        const rawMethods = Array.isArray(nameOrNode.methods)
+          ? nameOrNode.methods
+          : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
+        for (const m of rawMethods) {
+          const mName = (typeof m === 'string' ? m : (m.simpleName || m.name || '')).replace(/\(.*?\)/g, '').trim();
+          if (mName) methodNames.add(mName);
+        }
+      }
+
+      // Fallback to _typeMethodsMap if methods not embedded in node
+      if (methodNames.size === 0 && this._typeMethodsMap) {
+        const fromMap = (fullFqn ? this._typeMethodsMap.get(fullFqn) : null) ||
+                        (name ? this._typeMethodsMap.get(name) : null) ||
+                        (packageFqn && name ? this._typeMethodsMap.get(packageFqn + '.' + name) : null);
+        if (fromMap) {
+          fromMap.forEach(m => methodNames.add(m));
+        }
+      }
+
+      if (this.hasPersistentMethods(methodNames)) {
+        return true;
+      }
+
+      // 4. Fallback convention if method data is not loaded yet and starts with PC_
+      if (methodNames.size === 0 && (name.startsWith('PC_') || name.startsWith('pc_'))) {
+        return true;
+      }
+
+      return false;
     }
 
     /**
@@ -767,69 +863,18 @@
 
         // 2. Persistent Class Check: name can be anything other than MO_INP_, MO_OUT_, MO_
         // Persistent classes will always have the Get(), Create() and Modify() methods
-        if (!isMsgObject) {
-          let methodNames = new Set();
-
-          // Extract methods from object if provided
-          if (typeof nameOrNode === 'object' && nameOrNode !== null) {
-            const rawMethods = Array.isArray(nameOrNode.methods)
-              ? nameOrNode.methods
-              : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
-            for (const m of rawMethods) {
-              const mName = (m.simpleName || m.name || '').replace(/\(.*\)$/, '').trim();
-              if (mName) methodNames.add(mName);
-            }
-          }
-
-          // Fallback to _typeMethodsMap if methods not embedded in node
-          if (methodNames.size === 0 && this._typeMethodsMap) {
-            const fromMap = this._typeMethodsMap.get(fullFqn) ||
-                            this._typeMethodsMap.get(name) ||
-                            (packageFqn ? this._typeMethodsMap.get(packageFqn + '.' + name) : null);
-            if (fromMap) {
-              fromMap.forEach(m => methodNames.add(m));
-            }
-          }
-
-          let hasGet = false;
-          let hasCreate = false;
-          let hasModify = false;
-          for (const mName of methodNames) {
-            const clean = mName.toLowerCase();
-            if (clean === 'get') hasGet = true;
-            if (clean === 'create') hasCreate = true;
-            if (clean === 'modify') hasModify = true;
-          }
-
-          const hasAllPersistentMethods = hasGet && hasCreate && hasModify;
-
-          if (hasAllPersistentMethods) {
-            const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
-            if (pcRule) {
-              return {
-                ruleId: pcRule.id,
-                label: pcRule.label,
-                badge: pcRule.badge || 'PERSISTENT',
-                category: pcRule.category || 'PERSISTENCE',
-                color: pcRule.color || '#6366f1',
-                icon: pcRule.icon || 'database',
-                description: pcRule.description || 'Persistent Class with Get(), Create(), and Modify() methods'
-              };
-            }
-          } else if (methodNames.size === 0 && (name.startsWith('PC_') || name.startsWith('pc_'))) {
-            // Heuristic fallback if method data is not loaded yet and class explicitly starts with PC_
-            const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || (r.badge === 'PERSISTENT' && r.enabled));
-            if (pcRule) {
-              return {
-                ruleId: pcRule.id,
-                label: pcRule.label,
-                badge: pcRule.badge || 'PERSISTENT',
-                category: pcRule.category || 'PERSISTENCE',
-                color: pcRule.color || '#6366f1',
-                icon: pcRule.icon || 'database',
-                description: pcRule.description || 'Persistent Class with Get(), Create(), and Modify() methods'
-              };
-            }
+        if (!isMsgObject && this.isPersistentClass(nameOrNode, fullFqn, packageFqn)) {
+          const pcRule = activeRules.find(r => r.id === 'rule-bancs-pc' || r.matchType === 'STRUCTURAL' || (r.badge === 'PERSISTENT' && r.enabled));
+          if (pcRule) {
+            return {
+              ruleId: pcRule.id,
+              label: pcRule.label,
+              badge: pcRule.badge || 'PERSISTENT',
+              category: pcRule.category || 'PERSISTENCE',
+              color: pcRule.color || '#6366f1',
+              icon: pcRule.icon || 'database',
+              description: pcRule.description || 'Persistent Class with Get(), Create(), and Modify() methods'
+            };
           }
         }
       }
@@ -839,7 +884,7 @@
         if (rule.id === 'rule-bancs-pc' || rule.id === 'rule-bancs-mo' || rule.badge === 'PERSISTENT' || rule.badge === 'MSG-OBJECT') {
           continue; // Handled specially above
         }
-        if (this._matchesRule(name, rule, fullFqn, packageFqn)) {
+        if (this._matchesRule(name, rule, fullFqn, packageFqn, nameOrNode)) {
           return {
             ruleId: rule.id,
             label: rule.label,
@@ -855,15 +900,22 @@
       return null;
     }
 
-    _matchesRule(name, rule, fqn, pkg) {
-      if (!rule || !rule.pattern) return false;
-      const pattern = rule.pattern.trim();
+    _matchesRule(name, rule, fqn, pkg, nameOrNode) {
+      if (!rule) return false;
       const matchType = rule.matchType || 'PREFIX';
+      if (matchType === 'STRUCTURAL') {
+        return this.isPersistentClass(nameOrNode || name, fqn, pkg);
+      }
+      if (!rule.pattern) return false;
+      const pattern = rule.pattern.trim();
 
-      return this._matchesPattern(name, pattern, fqn, pkg, matchType);
+      return this._matchesPattern(name, pattern, fqn, pkg, matchType, nameOrNode);
     }
 
-    _matchesPattern(name, pattern, fqn, pkg, matchType = 'AUTO') {
+    _matchesPattern(name, pattern, fqn, pkg, matchType = 'AUTO', nameOrNode) {
+      if (matchType === 'STRUCTURAL') {
+        return this.isPersistentClass(nameOrNode || name, fqn, pkg);
+      }
       if (!name || !pattern) return false;
 
       // Extract module name from package or fqn (e.g. com.tcs.bancs.AM -> "AM")
