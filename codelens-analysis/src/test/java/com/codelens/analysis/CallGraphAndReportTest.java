@@ -174,4 +174,38 @@ public class CallGraphAndReportTest {
             assertFalse(Double.isNaN(node.y), "hierarchy node y should not be NaN: " + node.id);
         }
     }
+
+    public void testAnyMethodThisAndDirectInvocationResolution() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+
+        // Target methods in a domain service with parameters
+        String caller1 = "com.example.banking.LoanService.processApplication(String)";
+        String caller2 = "com.example.banking.LoanService.reviewApplication(String)";
+        String calleeA = "com.example.banking.LoanService.calculateCreditScore(String,int)";
+        String calleeB = "com.example.banking.LoanService.notifyUnderwriter(String,String)";
+
+        List<String> methodFqns = List.of(caller1, caller2, calleeA, calleeB);
+
+        // Caller1 invokes this.calculateCreditScore(...) -> AstVisitor emits "com.example.banking.LoanService.calculateCreditScore"
+        // Caller2 invokes notifyUnderwriter(...) directly -> AstVisitor emits "com.example.banking.LoanService.notifyUnderwriter"
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn(caller1);
+        r1.setToEntityFqn("com.example.banking.LoanService.calculateCreditScore");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn(caller2);
+        r2.setToEntityFqn("com.example.banking.LoanService.notifyUnderwriter");
+        r2.setKind("CALLS");
+        rels.add(r2);
+
+        analyzer.rebuild(methodFqns, rels);
+
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = analyzer.getCallGraph();
+        assertNotNull(g, "Graph should not be null");
+        assertTrue(g.containsEdge(caller1, calleeA), "this.calculateCreditScore() should resolve to calculateCreditScore(String,int)");
+        assertTrue(g.containsEdge(caller2, calleeB), "notifyUnderwriter() should resolve to notifyUnderwriter(String,String)");
+    }
 }
