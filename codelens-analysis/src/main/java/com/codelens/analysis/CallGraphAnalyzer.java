@@ -141,6 +141,23 @@ public class CallGraphAnalyzer {
                         to = resolve(from, to, byName, byClassAndMethod, byClassFqnAndMethod, byPackageAndMethod);
                         resolveCache.put(cacheKey, to != null ? to : "");
                     }
+                } else if (!to.contains("(") && !g.containsVertex(to)) {
+                    // Same-class or direct call without parameter signature (e.g. this.Get(), Get())
+                    int dot = to.lastIndexOf('.');
+                    if (dot > 0) {
+                        String classFqn = to.substring(0, dot);
+                        String methodName = to.substring(dot + 1);
+                        String fqnKey = (classFqn + "." + methodName).toLowerCase();
+                        List<String> fqnMatches = byClassFqnAndMethod.get(fqnKey);
+                        if (fqnMatches != null && !fqnMatches.isEmpty()) {
+                            if (fqnMatches.size() == 1) {
+                                to = fqnMatches.get(0);
+                            } else {
+                                String best = disambiguateByCaller(from, fqnMatches);
+                                to = (best != null) ? best : fqnMatches.get(0);
+                            }
+                        }
+                    }
                 }
                 if (to == null || to.startsWith("~")) return;
                 to = dedup(dedupPool, to);
@@ -291,7 +308,8 @@ public class CallGraphAnalyzer {
         if (name.isEmpty()) return false;
 
         // Never filter core persistent lifecycle methods
-        if ("Get".equals(name) || "Create".equals(name) || "Modify".equals(name)) {
+        if ("Get".equals(name) || "Create".equals(name) || "Modify".equals(name)
+                || "SModify".equals(name) || "MModify".equals(name) || "MModidy".equals(name)) {
             return false;
         }
 

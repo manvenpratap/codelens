@@ -133,6 +133,20 @@
       enabled: true
     },
     {
+      id: 'rule-bancs-crud',
+      target: 'METHOD',
+      scope: 'METHOD',
+      matchType: 'REGEX',
+      pattern: '^(Get|Create|Modify|SModify|MModify|MModidy|Save|Update|Delete|Remove)$',
+      label: 'CRUD Operation',
+      badge: 'CRUD',
+      category: 'PERSISTENCE',
+      color: '#d946ef',
+      icon: 'database',
+      description: 'Persistent CRUD lifecycle operations (Get, Create, Modify, SModify, MModify) interacting with Hibernate/DB',
+      enabled: true
+    },
+    {
       id: 'rule-bancs-pc',
       target: 'CLASS',
       scope: 'CLASS',
@@ -143,7 +157,7 @@
       category: 'PERSISTENCE',
       color: '#6366f1',
       icon: 'database',
-      description: 'Persistent classes with Get(), Create(), and Modify() methods (non-MO entities)',
+      description: 'Persistent classes with Get(), Create(), and Modify()/SModify()/MModify() methods (non-MO entities)',
       enabled: true
     },
     {
@@ -510,12 +524,20 @@
             if (pcIdx >= 0 && (parsed[pcIdx].pattern === 'PC_*' || parsed[pcIdx].matchType !== 'STRUCTURAL')) {
               parsed[pcIdx].pattern = '* (Get,Create,Modify)';
               parsed[pcIdx].matchType = 'STRUCTURAL';
-              parsed[pcIdx].description = 'Persistent classes with Get(), Create(), and Modify() methods (non-MO entities)';
+              parsed[pcIdx].description = 'Persistent classes with Get(), Create(), and Modify()/SModify()/MModify() methods (non-MO entities)';
               changed = true;
             }
             const moIdx = parsed.findIndex(r => r.id === 'rule-bancs-mo');
             if (moIdx >= 0 && parsed[moIdx].description && parsed[moIdx].description.includes('without Get()')) {
               parsed[moIdx].description = 'Message objects for input/output payloads (MO_INP_*, MO_OUT_*, MO_*)';
+              changed = true;
+            }
+            const crudIdx = parsed.findIndex(r => r.id === 'rule-bancs-crud');
+            if (crudIdx >= 0 && (!parsed[crudIdx].pattern.includes('SModify') || !parsed[crudIdx].pattern.includes('MModify'))) {
+              parsed[crudIdx].pattern = '^(Get|Create|Modify|SModify|MModify|MModidy|Save|Update|Delete|Remove)$';
+              parsed[crudIdx].matchType = 'REGEX';
+              parsed[crudIdx].badge = 'CRUD';
+              parsed[crudIdx].label = 'CRUD Operation';
               changed = true;
             }
             const existingIds = new Set(parsed.map(r => r.id));
@@ -566,7 +588,7 @@
         const clean = String(raw).replace(/\(.*?\)/g, '').trim().toLowerCase();
         if (clean === 'get') hasGet = true;
         if (clean === 'create') hasCreate = true;
-        if (clean === 'modify') hasModify = true;
+        if (clean === 'modify' || clean === 'smodify' || clean === 'mmodify' || clean === 'mmodidy') hasModify = true;
       }
       return hasGet && hasCreate && hasModify;
     }

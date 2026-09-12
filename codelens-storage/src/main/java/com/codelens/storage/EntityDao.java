@@ -982,9 +982,13 @@ public class EntityDao {
     public Set<String> findPersistentClassFqns() throws SQLException {
         Set<String> set = new HashSet<>();
         String sql = "SELECT declaring_type_fqn FROM methods " +
-                     "WHERE LOWER(TRIM(REPLACE(simple_name, '()', ''))) IN ('get', 'create', 'modify') " +
+                     "WHERE LOWER(TRIM(REPLACE(simple_name, '()', ''))) IN ('get', 'create', 'modify', 'smodify', 'mmodify', 'mmodidy') " +
                      "GROUP BY declaring_type_fqn " +
-                     "HAVING COUNT(DISTINCT LOWER(TRIM(REPLACE(simple_name, '()', '')))) = 3";
+                     "HAVING COUNT(DISTINCT CASE " +
+                     "    WHEN LOWER(TRIM(REPLACE(simple_name, '()', ''))) = 'get' THEN 1 " +
+                     "    WHEN LOWER(TRIM(REPLACE(simple_name, '()', ''))) = 'create' THEN 2 " +
+                     "    WHEN LOWER(TRIM(REPLACE(simple_name, '()', ''))) IN ('modify', 'smodify', 'mmodify', 'mmodidy') THEN 3 " +
+                     "END) = 3";
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(sql)) {

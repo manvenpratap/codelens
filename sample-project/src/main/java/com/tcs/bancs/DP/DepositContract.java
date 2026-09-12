@@ -79,6 +79,26 @@ public class DepositContract {
         return true;
     }
 
+    /**
+     * Single record modify operation using Hibernate persistence.
+     */
+    public synchronized boolean SModify(String newStatus) {
+        this.depositStatus = newStatus;
+        this.entityVersion = "1.2";
+        this.logStateChange("SModify");
+        return true;
+    }
+
+    /**
+     * Multiple record modify / bulk update operation using Hibernate persistence.
+     */
+    public synchronized boolean MModify(String newStatus) {
+        this.depositStatus = newStatus;
+        this.entityVersion = "1.3";
+        this.logStateChange("MModify");
+        return true;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Business Methods (read, write, and propagate entity fields)
     // ─────────────────────────────────────────────────────────────────────────

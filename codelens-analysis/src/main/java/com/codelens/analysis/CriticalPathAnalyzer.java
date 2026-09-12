@@ -178,7 +178,8 @@ public class CriticalPathAnalyzer {
 
             boolean hasGet = methodNames.contains("get");
             boolean hasCreate = methodNames.contains("create");
-            boolean hasModify = methodNames.contains("modify");
+            boolean hasModify = methodNames.contains("modify") || methodNames.contains("smodify")
+                    || methodNames.contains("mmodify") || methodNames.contains("mmodidy");
             boolean hasContract = hasGet && hasCreate && hasModify;
 
             String simple = type.getSimpleName() != null ? type.getSimpleName() : "";
@@ -204,7 +205,10 @@ public class CriticalPathAnalyzer {
 
             if (hasGet) summary.persistentMethods.add("Get");
             if (hasCreate) summary.persistentMethods.add("Create");
-            if (hasModify) summary.persistentMethods.add("Modify");
+            if (methodNames.contains("modify")) summary.persistentMethods.add("Modify");
+            if (methodNames.contains("smodify")) summary.persistentMethods.add("SModify");
+            if (methodNames.contains("mmodify")) summary.persistentMethods.add("MModify");
+            if (methodNames.contains("mmodidy")) summary.persistentMethods.add("MModidy");
 
             // Quick trace of primary critical path metrics
             CriticalPathReport report = analyzeCriticalPaths(type.getFqn(), graph, methodByFqn, typeByFqn, false);
@@ -492,7 +496,8 @@ public class CriticalPathAnalyzer {
     private static boolean isPersistentMethod(String name) {
         if (name == null) return false;
         String s = name.trim().toLowerCase();
-        return s.equals("get") || s.equals("create") || s.equals("modify") || s.equals("save")
+        return s.equals("get") || s.equals("create") || s.equals("modify") || s.equals("smodify")
+            || s.equals("mmodify") || s.equals("mmodidy") || s.equals("save")
             || s.equals("delete") || s.equals("update") || s.equals("findbyid") || s.equals("persist");
     }
 

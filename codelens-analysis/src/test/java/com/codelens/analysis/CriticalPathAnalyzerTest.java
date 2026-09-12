@@ -194,6 +194,53 @@ public class CriticalPathAnalyzerTest {
         assertEquals(20, path.metrics.cumulativeComplexity, "Cumulative complexity: 8 + 6 + 4 + 2 = 20");
     }
 
+    public void testPersistentClassWithSModifyAndMModify() {
+        CallGraphAnalyzer callGraph = new CallGraphAnalyzer();
+        CriticalPathAnalyzer analyzer = new CriticalPathAnalyzer(callGraph);
+
+        List<CodeType> types = new ArrayList<>();
+        CodeType t1 = new CodeType();
+        t1.setFqn("com.tcs.bancs.DP.DepositContract");
+        t1.setSimpleName("DepositContract");
+        t1.setPackageFqn("com.tcs.bancs.DP");
+        t1.setKind("CLASS");
+        types.add(t1);
+
+        List<CodeMethod> methods = new ArrayList<>();
+        methods.add(createMethod("com.tcs.bancs.DP.DepositContract.Get(String)", "Get", "com.tcs.bancs.DP.DepositContract", 2));
+        methods.add(createMethod("com.tcs.bancs.DP.DepositContract.Create()", "Create", "com.tcs.bancs.DP.DepositContract", 3));
+        methods.add(createMethod("com.tcs.bancs.DP.DepositContract.SModify(String)", "SModify", "com.tcs.bancs.DP.DepositContract", 4));
+        methods.add(createMethod("com.tcs.bancs.DP.DepositContract.MModify(String)", "MModify", "com.tcs.bancs.DP.DepositContract", 4));
+
+        List<CriticalPathAnalyzer.PersistentClassSummary> persistentClasses = analyzer.findPersistentClasses(types, methods);
+        assertNotNull(persistentClasses, "Persistent classes list should not be null");
+        assertEquals(1, persistentClasses.size(), "Should identify DepositContract as persistent class with SModify/MModify");
+        assertEquals("com.tcs.bancs.DP.DepositContract", persistentClasses.get(0).fqn, "Detected class should be DepositContract");
+        assertTrue(persistentClasses.get(0).persistentMethods.contains("Get"), "Should have Get");
+        assertTrue(persistentClasses.get(0).persistentMethods.contains("Create"), "Should have Create");
+        assertTrue(persistentClasses.get(0).persistentMethods.contains("SModify"), "Should have SModify");
+        assertTrue(persistentClasses.get(0).persistentMethods.contains("MModify"), "Should have MModify");
+    }
+
+    public void testSameClassThisGetResolution() throws Exception {
+        CallGraphAnalyzer callGraph = new CallGraphAnalyzer();
+
+        String callerMethod = "com.tcs.bancs.AM.Account.refresh()";
+        String targetMethod = "com.tcs.bancs.AM.Account.Get(String)";
+
+        List<String> methodFqns = List.of(callerMethod, targetMethod);
+
+        // When this.Get(...) or Get(...) is invoked, AstVisitor creates target as "com.tcs.bancs.AM.Account.Get" (without param types)
+        List<CodeRelationship> rels = new ArrayList<>();
+        rels.add(createRel(callerMethod, "com.tcs.bancs.AM.Account.Get"));
+
+        callGraph.rebuild(methodFqns, rels);
+
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = callGraph.getCallGraph();
+        assertNotNull(g, "Graph should not be null");
+        assertTrue(g.containsEdge(callerMethod, targetMethod), "Edge should be resolved from refresh() to Get(String)");
+    }
+
     private static CodeMethod createMethod(String fqn, String simple, String typeFqn, int complexity) {
         CodeMethod m = new CodeMethod();
         m.setId(fqn);

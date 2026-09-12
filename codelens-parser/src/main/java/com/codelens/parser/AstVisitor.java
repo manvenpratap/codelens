@@ -480,9 +480,27 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         if (n.getScope().isPresent()) {
             String scopeStr = n.getScope().get().toString().trim();
-            if ("this".equals(scopeStr) || "super".equals(scopeStr)) {
-                // Same-class call — we can build the exact FQN target
-                calleeTarget = ctx.currentTypeFqn + "." + calleeName;
+            if ("this".equals(scopeStr) || "super".equals(scopeStr) || scopeStr.endsWith(".this")) {
+                // Same-class call or outer class 'this' (e.g. this.Get(), super.Get(), Account.this.Get())
+                if (scopeStr.endsWith(".this")) {
+                    String qualifier = scopeStr.substring(0, scopeStr.length() - 5).trim();
+                    int lastDot = ctx.currentTypeFqn.lastIndexOf('.');
+                    String currentSimple = (lastDot >= 0) ? ctx.currentTypeFqn.substring(lastDot + 1) : ctx.currentTypeFqn;
+                    if (qualifier.equals(currentSimple)) {
+                        calleeTarget = ctx.currentTypeFqn + "." + calleeName;
+                    } else if (ctx.currentTypeFqn.contains("." + qualifier)) {
+                        int idx = ctx.currentTypeFqn.indexOf("." + qualifier);
+                        calleeTarget = ctx.currentTypeFqn.substring(0, idx + qualifier.length() + 1) + "." + calleeName;
+                    } else {
+                        String enclosingFqn = ctx.imports.get(qualifier);
+                        if (enclosingFqn == null && !ctx.packageName.isEmpty()) {
+                            enclosingFqn = ctx.packageName + "." + qualifier;
+                        }
+                        calleeTarget = (enclosingFqn != null ? enclosingFqn : qualifier) + "." + calleeName;
+                    }
+                } else {
+                    calleeTarget = ctx.currentTypeFqn + "." + calleeName;
+                }
             } else {
                 String targetType = null;
                 if (scopeStr.startsWith("this.")) {

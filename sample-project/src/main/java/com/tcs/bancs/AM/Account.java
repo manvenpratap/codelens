@@ -75,6 +75,34 @@ public class Account {
         return true;
     }
 
+    /**
+     * Single record modify operation using Hibernate persistence.
+     */
+    public synchronized boolean SModify(String newStatus) {
+        return this.Modify(newStatus);
+    }
+
+    /**
+     * Multi record modify operation using Hibernate persistence.
+     */
+    public synchronized boolean MModify(String newStatus) {
+        return this.Modify(newStatus);
+    }
+
+    /**
+     * Refreshes persistent state by invoking this.Get().
+     */
+    public synchronized boolean refreshFromDb() {
+        return this.Get(this.accountNumber);
+    }
+
+    /**
+     * Reloads persistent entity state by direct unqualified Get() call.
+     */
+    public synchronized boolean reloadEntity() {
+        return Get(this.accountNumber);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Business Methods (read, write, and propagate entity fields)
     // ─────────────────────────────────────────────────────────────────────────
