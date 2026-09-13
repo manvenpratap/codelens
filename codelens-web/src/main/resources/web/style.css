@@ -1718,6 +1718,107 @@ body.theme-light .hero-recent-item:hover {
 .btn-ghost:active { background: var(--bg-surface); }
 .btn-ghost:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* Secondary button */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-display);
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn-secondary:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.btn-secondary:active {
+  background: var(--bg-surface);
+  transform: translateY(1px);
+}
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Danger action button */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #e11d48;
+  border: 1px solid #f43f5e;
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--dur-fast) var(--ease);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.btn-danger:hover {
+  background: #be123c;
+  border-color: #fb7185;
+  box-shadow: 0 2px 10px rgba(225, 29, 72, 0.4);
+}
+.btn-danger:active {
+  background: #9f1239;
+  transform: translateY(1px);
+}
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Generic button sizing modifiers */
+.btn-sm {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  border-radius: var(--radius-sm);
+  gap: 5px;
+}
+.btn-lg {
+  padding: 8px 18px !important;
+  font-size: 13px !important;
+  border-radius: var(--radius-md);
+  gap: 8px;
+}
+
+/* Base .btn utility */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition: all var(--dur-fast) var(--ease);
+}
+
 /* Unified Live Stats Indicators */
 .stats-row {
   display: flex;
@@ -11258,6 +11359,107 @@ body.theme-light .report-format-pill.active {
   max-width: 440px;
   margin: 0;
   line-height: 1.5;
+}
+
+/* Scope Manager Specific Buttons & Overrides */
+#btn-scope-restore-all {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  color: #34d399;
+  font-weight: 600;
+  transition: all var(--dur-fast) var(--ease);
+}
+#btn-scope-restore-all:hover {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #a7f3d0;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.25);
+}
+#btn-scope-restore-all:active {
+  transform: translateY(1px);
+}
+#btn-scope-restore-all:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-scope-restore {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: #34d399;
+  font-weight: 600;
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn-scope-restore:hover {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+}
+.btn-scope-restore:active {
+  transform: translateY(1px);
+}
+
+/* Light theme support for Scope Manager and Secondary Buttons */
+body.theme-light .btn-secondary {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+body.theme-light .btn-secondary:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+body.theme-light .btn-secondary:active {
+  background: #f1f5f9;
+}
+
+body.theme-light #btn-scope-restore-all,
+body.theme-light .btn-scope-restore {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #059669;
+}
+body.theme-light #btn-scope-restore-all:hover,
+body.theme-light .btn-scope-restore:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #047857;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.15);
+}
+
+body.theme-light .scope-search-wrap {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+body.theme-light .scope-items-table-wrap {
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+body.theme-light .scope-items-table th {
+  background: #f8fafc;
+  border-bottom-color: #e2e8f0;
+  color: #475569;
+}
+body.theme-light .scope-items-table td {
+  border-bottom-color: #f1f5f9;
+  color: #0f172a;
+}
+body.theme-light .scope-items-table tr:hover td {
+  background: #f8fafc;
+}
+body.theme-light .btn-danger {
+  background: #e11d48;
+  border-color: #be123c;
+  color: #ffffff;
+}
+body.theme-light .btn-danger:hover {
+  background: #be123c;
+  border-color: #9f1239;
 }
 
 
