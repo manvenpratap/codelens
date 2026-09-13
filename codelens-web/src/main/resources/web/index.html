@@ -2312,9 +2312,9 @@
   <div class="modal-dialog scope-confirm-dialog">
     <div class="modal-header">
       <div class="modal-title-row">
-        <span class="modal-icon">
-          <svg class="svg-icon icon-rose icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-        </span>
+        <div class="scope-confirm-icon-badge">
+          <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        </div>
         <div>
           <h2 id="scope-confirm-title">Remove from Scope?</h2>
           <div class="modal-subtitle" id="scope-confirm-subtitle">Exclude entity from the entire analysis and all app features</div>
@@ -2333,20 +2333,21 @@
         Removing this will immediately remove it from:
       </p>
       <ul class="scope-confirm-list">
-        <li><strong>Package Explorer</strong> sidebar tree and search results</li>
-        <li><strong>Dependency Structure Matrix (DSM)</strong> rows, columns, and cycles</li>
-        <li><strong>2D Sunflower &amp; 3D City/Galaxy Graphs</strong> call hierarchy and nodes</li>
-        <li><strong>Field Impact Engine &amp; Code Quality Reports</strong> (Hotspots, Dead Code, etc.)</li>
+        <li><span><strong>Package Explorer</strong> sidebar tree and search results</span></li>
+        <li><span><strong>Dependency Structure Matrix (DSM)</strong> rows, columns, and cycles</span></li>
+        <li><span><strong>2D Sunflower &amp; 3D City/Galaxy Graphs</strong> call hierarchy and nodes</span></li>
+        <li><span><strong>Field Impact Engine &amp; Code Quality Reports</strong> (Hotspots, Dead Code, etc.)</span></li>
       </ul>
-      <p class="scope-confirm-note">
-        You can review and restore excluded items anytime using the <strong>Scope Manager</strong> in the Explorer toolbar.
-      </p>
+      <div class="scope-confirm-note">
+        <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>You can review and restore excluded items anytime using the <strong>Scope Manager</strong> in the Explorer toolbar.</span>
+      </div>
     </div>
     <div class="modal-footer scope-confirm-footer">
-      <button id="btn-scope-confirm-cancel" class="btn-secondary">Cancel</button>
-      <button id="btn-scope-confirm-execute" class="btn-danger">
+      <button id="btn-scope-confirm-cancel" class="btn btn-secondary">Cancel</button>
+      <button id="btn-scope-confirm-execute" class="btn btn-danger">
         <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-        Remove from Scope
+        <span>Remove from Scope</span>
       </button>
     </div>
   </div>

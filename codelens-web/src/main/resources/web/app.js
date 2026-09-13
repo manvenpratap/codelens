@@ -6602,6 +6602,14 @@ function confirmExcludeScope(target) {
   if (titleEl) titleEl.textContent = `Remove ${target.type === 'PACKAGE' ? 'Package' : 'Class'} from Scope?`;
 
   showAccessibleModal(modal);
+
+  // Focus Cancel button for safety in destructive dialog
+  const cancelBtn = qs('#btn-scope-confirm-cancel');
+  if (cancelBtn) {
+    setTimeout(() => {
+      try { cancelBtn.focus(); } catch (_) {}
+    }, 60);
+  }
 }
 
 async function executeExcludeScope() {
