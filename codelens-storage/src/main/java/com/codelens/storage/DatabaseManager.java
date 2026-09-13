@@ -69,11 +69,18 @@ public class DatabaseManager {
     /** Self-healing check: verify secondary indexes exist; rebuild if dropped by a previous crash during bulk load. */
     private void ensureSecondaryIndexes() {
         try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'METHODS' AND INDEX_NAME = 'IDX_METHODS_TYPE'")) {
-            if (rs.next() && rs.getInt(1) == 0) {
-                log.warn("Secondary index idx_methods_type missing (prior crash during bulk load). Self-healing indexes now...");
-                finishBulkLoad();
+             Statement stmt = conn.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'METHODS' AND INDEX_NAME = 'IDX_METHODS_TYPE'")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    log.warn("Secondary index idx_methods_type missing (prior crash during bulk load). Self-healing indexes now...");
+                    finishBulkLoad();
+                    return;
+                }
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'RELATIONSHIPS' AND INDEX_NAME = 'IDX_RELS_CALLS_COVERING'")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
+                }
             }
         } catch (Exception e) {
             log.warn("Could not verify secondary indexes: {}", e.getMessage());
@@ -254,6 +261,7 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_from      ON relationships(from_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_excluded_fqn   ON excluded_scopes(fqn)");
@@ -294,6 +302,7 @@ public class DatabaseManager {
             stmt.execute("DROP INDEX IF EXISTS idx_rels_from");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_to");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_kind");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_calls_covering");
             stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
             log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped, write delay 2000ms)");
         }
@@ -345,6 +354,8 @@ public class DatabaseManager {
                           "idx_rels_to", "relationships", "Target callee/field index on relationships(to_entity_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)",
                           "idx_rels_kind", "relationships", "Relationship kind filter on relationships(kind)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)",
+                          "idx_rels_calls_covering", "relationships", "Covering index for call graph extraction on relationships(kind, id, from_entity_fqn, to_entity_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
                           "idx_pkgs_parent", "packages", "Package hierarchy tree index on packages(parent_fqn)"),
             new IndexTask("ANALYZE",

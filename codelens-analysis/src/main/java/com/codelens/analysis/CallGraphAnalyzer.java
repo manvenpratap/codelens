@@ -227,6 +227,20 @@ public class CallGraphAnalyzer {
     }
 
     /**
+     * Returns the set of all calling method FQNs (vertices with out-degree > 0)
+     * directly from the in-memory call graph without requiring a database query.
+     */
+    public synchronized Set<String> getCallingMethodFqns() {
+        Set<String> callers = new HashSet<>();
+        if (callGraph != null) {
+            for (DefaultEdge e : callGraph.edgeSet()) {
+                callers.add(callGraph.getEdgeSource(e));
+            }
+        }
+        return callers;
+    }
+
+    /**
      * Rebuilds the call graph from scratch (in-memory list overload for tests / backwards compatibility).
      *
      * @param allMethodFqns    every method FQN discovered during the scan

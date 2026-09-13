@@ -5649,6 +5649,23 @@ body.theme-light .action-btn-badge.is-zero {
   color: var(--text-secondary, #cbd5e1);
 }
 
+body.theme-light .scan-timer-pill strong {
+  color: var(--text-primary, #0f172a);
+}
+
+.scan-timer-separator {
+  color: var(--text-muted, #64748b);
+  opacity: 0.6;
+  font-weight: 600;
+  user-select: none;
+}
+
+#scan-remaining-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .btn-cancel-scan {
   background: rgba(244, 63, 94, 0.12);
   border: 1px solid rgba(244, 63, 94, 0.35);

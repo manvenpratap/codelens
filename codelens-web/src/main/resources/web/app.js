@@ -674,10 +674,10 @@ function updateScanProgress(s) {
   if (live4Val) live4Val.textContent = m4Val !== undefined && m4Val !== null ? m4Val : '0';
   if (live4Lbl) live4Lbl.textContent = m4Lbl || 'Relationships';
 
-  // Elapsed timer
+  // Elapsed timer & Estimated Remaining Time
   const elapsedEl = qs('#scan-elapsed-time');
+  const durMs = s.durationMs || (s.startTime > 0 ? Date.now() - s.startTime : 0);
   if (elapsedEl) {
-    const durMs = s.durationMs || (s.startTime > 0 ? Date.now() - s.startTime : 0);
     const totalSec = durMs / 1000;
     if (totalSec >= 60) {
       const mins = Math.floor(totalSec / 60);
@@ -685,6 +685,44 @@ function updateScanProgress(s) {
       elapsedEl.textContent = `${totalSec.toFixed(1)}s (${mins}m ${remSec}s)`;
     } else {
       elapsedEl.textContent = totalSec.toFixed(1) + 's';
+    }
+  }
+
+  const remainingEl = qs('#scan-remaining-time');
+  const remainingWrapper = qs('#scan-remaining-wrapper');
+  const timerSeparator = qs('#scan-timer-separator');
+  if (remainingEl) {
+    if (s.status === 'COMPLETE' || s.status === 'ERROR') {
+      if (remainingWrapper) remainingWrapper.style.display = 'none';
+      if (timerSeparator) timerSeparator.style.display = 'none';
+    } else {
+      if (remainingWrapper) remainingWrapper.style.display = 'inline-flex';
+      if (timerSeparator) timerSeparator.style.display = 'inline';
+
+      let remMs = s.estimatedRemainingMs;
+      if (!remMs && pct > 2 && pct < 100 && durMs >= 1000) {
+        const estTotalMs = (durMs / (pct / 100));
+        remMs = Math.max(0, estTotalMs - durMs);
+      }
+
+      if (remMs && remMs > 0 && pct > 2 && pct < 100) {
+        const remSec = Math.round(remMs / 1000);
+        if (remSec >= 3600) {
+          const hrs = Math.floor(remSec / 3600);
+          const mins = Math.floor((remSec % 3600) / 60);
+          remainingEl.textContent = `~${hrs}h ${mins}m`;
+        } else if (remSec >= 60) {
+          const mins = Math.floor(remSec / 60);
+          const secs = remSec % 60;
+          remainingEl.textContent = `~${mins}m ${secs}s`;
+        } else {
+          remainingEl.textContent = `~${Math.max(1, remSec)}s`;
+        }
+      } else if (pct >= 100) {
+        remainingEl.textContent = '0s';
+      } else {
+        remainingEl.textContent = 'Estimating…';
+      }
     }
   }
 

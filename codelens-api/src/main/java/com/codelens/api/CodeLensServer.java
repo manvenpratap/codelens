@@ -467,7 +467,7 @@ public class CodeLensServer {
                 startupProgress.setCurrentPhase("Field Impact Analysis");
                 startupProgress.setMessage("Indexing field impact relationships…");
                 startupProgress.setPercentage(wasComplete ? 100 : 30);
-                fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+                fieldImpact.rebuild(dao.findFieldRelationships(), callGraph.getCallingMethodFqns());
                 log.info("Initialized in-memory call graph from database with {} methods",
                     allMethodFqns.size());
 
@@ -849,7 +849,7 @@ public class CodeLensServer {
             progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationshipsDirect(consumer::accept), (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6)); // 75% -> 81%
@@ -894,7 +894,7 @@ public class CodeLensServer {
             );
 
             List<CodeRelationship> fieldRels = dao.findFieldRelationships();
-            Set<String> callingMethods = dao.findCallingMethodFqns();
+            Set<String> callingMethods = callGraph.getCallingMethodFqns();
             int totalFieldRels = fieldRels.size();
             int totalCallers = callingMethods.size();
 
@@ -1124,7 +1124,7 @@ public class CodeLensServer {
             progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationshipsDirect(consumer::accept), (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(75 + (int)(f * 6));
@@ -1165,7 +1165,7 @@ public class CodeLensServer {
             );
 
             List<CodeRelationship> fieldRels = dao.findFieldRelationships();
-            Set<String> callingMethods = dao.findCallingMethodFqns();
+            Set<String> callingMethods = callGraph.getCallingMethodFqns();
             int totalFieldRels = fieldRels.size();
             int totalCallers = callingMethods.size();
 
@@ -2385,7 +2385,7 @@ public class CodeLensServer {
             invalidateGraphCache();
             List<String> allMethodFqns = dao.findAllMethodFqns();
             callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
-            fieldImpact.rebuild(dao.findFieldRelationships(), dao.findCallingMethodFqns());
+            fieldImpact.rebuild(dao.findFieldRelationships(), callGraph.getCallingMethodFqns());
 
             ctx.json(Map.of(
                 "success", true,

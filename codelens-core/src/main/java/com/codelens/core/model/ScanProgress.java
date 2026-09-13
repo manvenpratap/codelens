@@ -72,6 +72,17 @@ public class ScanProgress {
         return Math.max(0, end - startTime);
     }
 
+    /** Estimated remaining time in milliseconds based on current percentage and elapsed time. */
+    public long getEstimatedRemainingMs() {
+        if (status != Status.SCANNING || startTime <= 0) return 0;
+        int pct = getPercentage();
+        if (pct <= 2 || pct >= 100) return 0;
+        long elapsed = getDurationMs();
+        if (elapsed < 1000) return 0;
+        long totalEstimate = (long) ((elapsed * 100.0) / pct);
+        return Math.max(0, totalEstimate - elapsed);
+    }
+
     // ── Getters & Setters ────────────────────────────────────────────────────
     public Status getStatus()                   { return status; }
     public void setStatus(Status s)            { this.status = s; }

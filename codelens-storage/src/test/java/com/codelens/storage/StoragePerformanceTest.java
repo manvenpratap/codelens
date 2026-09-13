@@ -540,4 +540,57 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testChunkedCallRelationshipsStreamingWithoutLeaks() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-test-chunk-stream-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            // 1. Empty table test
+            List<String> emptyResults = new ArrayList<>();
+            dao.streamCallRelationships((from, to) -> emptyResults.add(from));
+            assertEquals(0, emptyResults.size(), "Streaming empty table must return 0 results");
+
+            // 2. Generate 26,000 call relationships to cross the 25,000 chunk boundary
+            int totalRels = 26_000;
+            List<CodeRelationship> rels = new ArrayList<>(totalRels);
+            for (int i = 0; i < totalRels; i++) {
+                CodeRelationship r = new CodeRelationship();
+                // Format id with zero padding to test strict deterministic ordering: rel-00000 to rel-25999
+                r.setId(String.format("rel-%05d", i));
+                r.setFromEntityFqn("com.example.Caller.m" + (i % 100) + "()");
+                r.setToEntityFqn("com.example.Callee.target" + i + "()");
+                r.setKind("CALLS");
+                r.setSourceLine(1 + i);
+                rels.add(r);
+            }
+            dao.batchInsertRelationshipsFast(rels);
+
+            // 3. Verify total count query
+            assertEquals(totalRels, dao.countCallRelationships(), "Total count of call relationships");
+
+            // 4. Stream across the 25,000 chunk boundary
+            List<String[]> streamed = new ArrayList<>();
+            dao.streamCallRelationships((from, to) -> streamed.add(new String[]{ from, to }));
+            assertEquals(totalRels, streamed.size(), "Should stream exactly 26,000 rows across chunks");
+            assertEquals("com.example.Caller.m0()", streamed.get(0)[0], "First streamed caller");
+            assertEquals("com.example.Callee.target0()", streamed.get(0)[1], "First streamed callee");
+            assertEquals("com.example.Caller.m99()", streamed.get(totalRels - 1)[0], "Last streamed caller");
+            assertEquals("com.example.Callee.target25999()", streamed.get(totalRels - 1)[1], "Last streamed callee");
+
+            // 5. Verify findCallRelationshipPairs also fetches all across chunks
+            List<String[]> pairs = dao.findCallRelationshipPairs();
+            assertEquals(totalRels, pairs.size(), "findCallRelationshipPairs should also fetch all 26,000 pairs");
+
+            // 6. Verify connection pool is healthy (getConnection succeeds immediately without exhaustion)
+            try (java.sql.Connection conn = db.getConnection()) {
+                assertTrue(conn.isValid(1), "Connection pool must have healthy, non-exhausted connections");
+            }
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }
