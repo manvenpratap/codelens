@@ -666,7 +666,7 @@ body.resizing .panel-resizer {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
 }
 .logo-image {

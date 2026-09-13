@@ -218,6 +218,8 @@ function showHeroPage() {
   if (hero) hero.style.display = 'flex';
   if (app) app.style.display = 'none';
   if (footer) footer.style.display = 'none';
+  const projectBar = qs('#header-project-bar');
+  if (projectBar) projectBar.style.display = 'none';
   // Populate recent projects list
   renderHeroRecentProjects();
 }
@@ -230,6 +232,8 @@ function hideHeroPage() {
   if (hero) hero.style.display = 'none';
   if (app) app.style.display = '';
   if (footer) footer.style.display = '';
+  const projectBar = qs('#header-project-bar');
+  if (projectBar && App.currentPath) projectBar.style.display = 'flex';
 }
 
 
@@ -5179,6 +5183,9 @@ async function init() {
     startScan();
   });
   qs('#btn-open-project')?.addEventListener('click', showHeaderScanBar);
+  qs('.logo')?.addEventListener('click', () => {
+    showHeroPage();
+  });
   
   // Wire up scan summary popover toggling
   qs('#scan-status-badge')?.addEventListener('click', (e) => {
@@ -5616,9 +5623,15 @@ async function init() {
   } catch (_) { /* first run */ }
 
   const lastPath = localStorage.getItem('codelens_last_path');
-  if (!serverHasData && !lastPath) {
-    // Fresh start — show hero page, hide workspace panels
+  if (!serverHasData) {
+    // Fresh start or wiped database — show hero page, hide workspace panels
     showHeroPage();
+    if (lastPath) {
+      const heroInput = qs('#hero-scan-path-input');
+      if (heroInput && (!heroInput.value || heroInput.value.trim() === '')) {
+        heroInput.value = lastPath;
+      }
+    }
   } else {
     // Codebase already loaded/scanned — show workspace
     hideHeroPage();
