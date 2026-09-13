@@ -987,6 +987,7 @@ async function loadPackageTree() {
   try {
     App.packages = await api.packages();
     App.commonPackagePrefix = detectCommonPackagePrefix(App.packages.map(p => p.fqn));
+    updateModulesList();
 
     syncExplorerToolbar();
 
@@ -4623,16 +4624,133 @@ function updateArchetypesBreakup(stats) {
     const methodRules = items.filter(it => it.scope === 'METHOD');
     methodsList.innerHTML = renderBreakupRows(methodRules, methodsCount, classifiedMethodsCount);
   }
+
+  // 3. Update Modules Popover
+  updateModulesList();
 }
 
-/** Initialize interactive click and keyboard triggers for both archetype breakup popovers */
+/** Update the list of indexed modules inside the explorer footer modules popover */
+async function updateModulesList(filterText = '') {
+  let packages = App.packages;
+  if (!packages || packages.length === 0) {
+    try {
+      packages = await api.packages();
+      App.packages = packages;
+    } catch (_) {
+      packages = [];
+    }
+  }
+
+  const modulesList = qs('#popover-modules-list');
+  const modulesTotal = qs('#popover-modules-total');
+  if (!modulesList) return;
+
+  const totalCount = (packages && packages.length) ? packages.length : 0;
+  if (modulesTotal) {
+    modulesTotal.textContent = `${totalCount.toLocaleString()} ${totalCount === 1 ? 'module' : 'modules'}`;
+  }
+
+  const filter = (filterText || '').trim().toLowerCase();
+  const filtered = filter
+    ? packages.filter(p => (p.name || '').toLowerCase().includes(filter) || (p.fqn || '').toLowerCase().includes(filter))
+    : packages;
+
+  if (!filtered || filtered.length === 0) {
+    modulesList.innerHTML = `<div class="list-empty" style="padding:14px 8px; text-align:center; font-size:11px; color:var(--text-muted);">${filter ? 'No matching modules found' : 'No modules indexed yet'}</div>`;
+    return;
+  }
+
+  // Sort modules alphabetically by display name
+  const sorted = [...filtered].sort((a, b) => {
+    const nameA = a.name || a.fqn || '';
+    const nameB = b.name || b.fqn || '';
+    return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+  });
+
+  modulesList.innerHTML = sorted.map(pkg => {
+    const pkgColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+      ? window.CodeLensPalette.getColor(pkg.fqn, 0)
+      : '#10b981';
+    const cleanName = pkg.name || (pkg.fqn ? pkg.fqn.split('.').pop() : 'default');
+    const fqn = pkg.fqn || cleanName;
+    const typeCount = pkg.typeCount || 0;
+    const fileCount = pkg.fileCount || 0;
+
+    return `
+      <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files (Click to navigate in Explorer)">
+        <div class="archetype-breakup-left" style="overflow:hidden; max-width:62%;">
+          <span class="archetype-breakup-badge" style="background:${pkgColor}22; color:${pkgColor}; border:1px solid ${pkgColor}55;">[MOD]</span>
+          <div style="display:flex; flex-direction:column; min-width:0; overflow:hidden;">
+            <span class="archetype-breakup-name" style="font-weight:600; color:var(--text-primary); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(cleanName)}</span>
+            ${cleanName !== fqn ? `<span class="module-item-fqn" style="font-size:9.5px; font-family:var(--font-mono); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(fqn)}">${esc(fqn)}</span>` : ''}
+          </div>
+        </div>
+        <div class="archetype-breakup-right">
+          <span class="archetype-breakup-count">${typeCount} ${typeCount === 1 ? 'class' : 'classes'}</span>
+          <span class="archetype-breakup-pct" style="width:auto; font-size:9.5px; text-align:right;">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach click & keyboard listeners to rows
+  modulesList.querySelectorAll('.module-breakup-row').forEach(row => {
+    const handler = (e) => {
+      e.stopPropagation();
+      const fqn = row.dataset.fqn;
+      const targetPkg = packages.find(p => p.fqn === fqn) || { fqn, name: fqn };
+      selectModuleItem(targetPkg);
+    };
+    row.addEventListener('click', handler);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handler(e);
+      }
+    });
+  });
+}
+
+/** Navigate to a module/package from the modules popover */
+async function selectModuleItem(pkg) {
+  const popover = qs('#modules-list-popover');
+  const pill = qs('#stat-pill-modules');
+  if (popover) popover.style.display = 'none';
+  if (pill) {
+    pill.classList.remove('popover-open');
+    pill.setAttribute('aria-expanded', 'false');
+  }
+
+  if (pkg && pkg.fqn) {
+    // Open all ancestor package chains in tree
+    const parts = pkg.fqn.split('.');
+    let cur = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur = i === 0 ? parts[0] : cur + '.' + parts[i];
+      App.openPackages.add(cur);
+    }
+    App.openPackages.add(pkg.fqn);
+    await loadPackageTree();
+
+    const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(pkg.fqn)}"]`);
+    selectPackage(pkg, itemEl);
+    if (itemEl) {
+      itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  showToast(`Selected module: ${pkg.name || pkg.fqn}`, 'info', 2200);
+}
+
+/** Initialize interactive click and keyboard triggers for stats popovers */
 function initArchetypePopover() {
   const popoverPairs = [
-    { pill: qs('#stat-pill-classes'), popover: qs('#classes-archetypes-popover') },
-    { pill: qs('#stat-pill-methods'), popover: qs('#methods-archetypes-popover') }
+    { pill: qs('#stat-pill-modules'), popover: qs('#modules-list-popover'), onOpen: () => updateModulesList() },
+    { pill: qs('#stat-pill-classes'), popover: qs('#classes-archetypes-popover'), onOpen: () => updateArchetypesBreakup(App.stats || {}) },
+    { pill: qs('#stat-pill-methods'), popover: qs('#methods-archetypes-popover'), onOpen: () => updateArchetypesBreakup(App.stats || {}) }
   ];
 
-  popoverPairs.forEach(({ pill, popover }) => {
+  popoverPairs.forEach(({ pill, popover, onOpen }) => {
     if (!pill || !popover) return;
 
     const toggle = (e) => {
@@ -4649,10 +4767,18 @@ function initArchetypePopover() {
       });
 
       if (!isVisible) {
-        updateArchetypesBreakup(App.stats || {});
+        if (typeof onOpen === 'function') onOpen();
         popover.style.display = 'flex';
         pill.classList.add('popover-open');
         pill.setAttribute('aria-expanded', 'true');
+
+        if (popover.id === 'modules-list-popover') {
+          const filterInput = qs('#modules-popover-filter');
+          if (filterInput) {
+            filterInput.value = '';
+            setTimeout(() => filterInput.focus(), 60);
+          }
+        }
       }
     };
 
@@ -4669,7 +4795,45 @@ function initArchetypePopover() {
     });
   });
 
+  // Clicking on the explorer-stats-footer outside classes/methods toggles modules popover
+  const footer = qs('#explorer-stats-footer');
+  if (footer) {
+    footer.addEventListener('click', (e) => {
+      if (e.target.closest('#stat-pill-classes') ||
+          e.target.closest('#stat-pill-methods') ||
+          e.target.closest('.methods-archetypes-popover')) {
+        return;
+      }
+      e.stopPropagation();
+      const modulesPill = qs('#stat-pill-modules');
+      if (modulesPill) {
+        modulesPill.click();
+      }
+    });
+  }
+
+  // Filter input inside modules popover
+  const filterInput = qs('#modules-popover-filter');
+  if (filterInput) {
+    filterInput.addEventListener('input', (e) => {
+      updateModulesList(e.target.value);
+    });
+    filterInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const popover = qs('#modules-list-popover');
+        const pill = qs('#stat-pill-modules');
+        if (popover) popover.style.display = 'none';
+        if (pill) {
+          pill.classList.remove('popover-open');
+          pill.setAttribute('aria-expanded', 'false');
+        }
+      }
+    });
+  }
+
   document.addEventListener('click', (e) => {
+    if (footer && footer.contains(e.target)) return;
+
     popoverPairs.forEach(({ pill, popover }) => {
       if (popover && pill && !popover.contains(e.target) && !pill.contains(e.target)) {
         popover.style.display = 'none';
