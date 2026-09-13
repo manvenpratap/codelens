@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="cl-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f1726"/>
+      <stop offset="100%" stop-color="#03060a"/>
+    </linearGradient>
+    <linearGradient id="cl-left-bracket" x1="24" y1="24" x2="70" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="cl-right-bracket" x1="104" y1="24" x2="58" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="cl-ring" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.35"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="3" y="3" width="122" height="122" rx="30" fill="url(#cl-bg)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Optical Outer Reticle -->
+  <circle cx="64" cy="64" r="46" stroke="url(#cl-ring)" stroke-width="2" stroke-dasharray="9 7" opacity="0.65"/>
+  <circle cx="64" cy="64" r="37" stroke="#1e293b" stroke-width="1.5" opacity="0.9"/>
+
+  <!-- Viewfinder Crosshair Ticks -->
+  <line x1="64" y1="18" x2="64" y2="25" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="64" y1="103" x2="64" y2="110" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="18" y1="64" x2="25" y2="64" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="103" y1="64" x2="110" y2="64" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Code Bracket < (Left: Emerald) -->
+  <path d="M52 41 L34 64 L52 87" stroke="url(#cl-left-bracket)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Code Bracket > (Right: Cyan) -->
+  <path d="M76 41 L94 64 L76 87" stroke="url(#cl-right-bracket)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Architecture Call Graph Tree (Inside Lens) -->
+  <line x1="64" y1="48" x2="55" y2="78" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
+  <line x1="64" y1="48" x2="73" y2="78" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
+  <line x1="55" y1="78" x2="73" y2="78" stroke="#06b6d4" stroke-width="1.8" stroke-dasharray="3 3" opacity="0.7"/>
+
+  <!-- Graph Nodes -->
+  <circle cx="64" cy="48" r="9.5" fill="#10b981" opacity="0.25"/>
+  <circle cx="64" cy="48" r="7.5" fill="#10b981" opacity="0.45"/>
+  <circle cx="64" cy="48" r="5.5" fill="#10b981"/>
+  <circle cx="64" cy="48" r="2.2" fill="#ffffff"/>
+  <circle cx="55" cy="78" r="4" fill="#059669"/>
+  <circle cx="73" cy="78" r="4" fill="#0284c7"/>
+</svg>
