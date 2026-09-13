@@ -91,6 +91,7 @@ public class CodeLensServer {
     private final AtomicReference<GitAnalysisProgress> gitProgress =
         new AtomicReference<>(new GitAnalysisProgress(GitAnalysisProgress.Status.IDLE));
     private volatile boolean cancelRequested = false;
+    private volatile List<String> lastExcludePatterns = Collections.emptyList();
     private final ExecutorService scanExecutor =
         Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "codelens-scanner");
@@ -442,6 +443,15 @@ public class CodeLensServer {
             log.warn("Failed to load last scan metadata: {}", e.getMessage());
         }
 
+        try {
+            int cleaned = dao.cleanupOrphanFileMeta();
+            if (cleaned > 0) {
+                log.info("Cleaned up {} orphan file_meta records on startup", cleaned);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to clean up orphan file_meta on startup: {}", e.getMessage());
+        }
+
         app.start(port);
         log.info("CodeLens server started on http://localhost:{}", port);
 
@@ -573,6 +583,7 @@ public class CodeLensServer {
 
         // Launch background scan task
         final List<String> finalExcludes = excludePatterns;
+        this.lastExcludePatterns = excludePatterns != null ? excludePatterns : Collections.emptyList();
         final String finalPath = sourcePath;
         final boolean isResume = resume;
         if (isResume) {
@@ -638,6 +649,9 @@ public class CodeLensServer {
             }
         }
         if (sourcePath == null || sourcePath.isBlank()) {
+            sourcePath = resolveCurrentSourcePath();
+        }
+        if (sourcePath == null || sourcePath.isBlank()) {
             ctx.status(400).json(Map.of("error", "sourcePath is required"));
             return;
         }
@@ -652,11 +666,20 @@ public class CodeLensServer {
                 .filter(s -> !s.isEmpty())
                 .toList();
         }
+        if (excludePatterns == null || excludePatterns.isEmpty()) {
+            excludePatterns = resolveCurrentExcludePatterns();
+        }
 
         ScanProgress current = scanState.get();
         if (current.getStatus() == ScanProgress.Status.SCANNING) {
             ctx.status(409).json(Map.of("error", "Scan already in progress"));
             return;
+        }
+
+        try {
+            dao.cleanupOrphanFileMeta();
+        } catch (Exception e) {
+            log.warn("Failed to cleanup orphan file_meta before incremental scan: {}", e.getMessage());
         }
 
         ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
@@ -666,12 +689,60 @@ public class CodeLensServer {
         progress.setStartTime(System.currentTimeMillis());
         scanState.set(progress);
 
-
         final List<String> finalExcludes = excludePatterns;
+        this.lastExcludePatterns = excludePatterns != null ? excludePatterns : Collections.emptyList();
         final String finalPath = sourcePath;
         scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
+    }
+
+    private String resolveCurrentSourcePath() {
+        ScanProgress sp = scanState.get();
+        if (sp != null && sp.getSourcePath() != null && !sp.getSourcePath().isBlank()) {
+            return sp.getSourcePath();
+        }
+        try {
+            ScanProgress dbSp = dao.getLatestScanMeta();
+            if (dbSp != null && dbSp.getSourcePath() != null && !dbSp.getSourcePath().isBlank()) {
+                return dbSp.getSourcePath();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private List<String> resolveCurrentExcludePatterns() {
+        List<String> list = lastExcludePatterns;
+        return list != null ? list : Collections.emptyList();
+    }
+
+    private List<FileMeta> filterFileMetas(List<FileMeta> metas, Set<String> excludedPkgFqns, Set<String> excludedSourceFiles) {
+        if (metas == null || metas.isEmpty()) return Collections.emptyList();
+        if ((excludedPkgFqns == null || excludedPkgFqns.isEmpty()) && (excludedSourceFiles == null || excludedSourceFiles.isEmpty())) {
+            return metas;
+        }
+        List<FileMeta> kept = new ArrayList<>(metas.size());
+        for (FileMeta fm : metas) {
+            if (fm == null || fm.getFilePath() == null) continue;
+            if (excludedSourceFiles != null && excludedSourceFiles.contains(fm.getFilePath())) {
+                continue;
+            }
+            String norm = fm.getFilePath().replace('\\', '/');
+            boolean isExcluded = false;
+            if (excludedPkgFqns != null) {
+                for (String pkg : excludedPkgFqns) {
+                    String pkgSlash = "/" + pkg.replace('.', '/') + "/";
+                    if (norm.contains(pkgSlash) || norm.endsWith("/" + pkg.replace('.', '/') + ".java")) {
+                        isExcluded = true;
+                        break;
+                    }
+                }
+            }
+            if (!isExcluded) {
+                kept.add(fm);
+            }
+        }
+        return kept;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -701,11 +772,15 @@ public class CodeLensServer {
             } catch (Exception ignored) {}
             final Set<String> excludedTypeFqns = new HashSet<>();
             final Set<String> excludedPkgFqns = new HashSet<>();
+            final Set<String> excludedSourceFiles = new HashSet<>();
             for (ExcludedScope s : excludedScopes) {
                 if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
                     excludedPkgFqns.add(s.fqn());
                 } else {
                     excludedTypeFqns.add(s.fqn());
+                    if (s.sourceFile() != null && !s.sourceFile().isBlank()) {
+                        excludedSourceFiles.add(s.sourceFile());
+                    }
                 }
             }
 
@@ -724,8 +799,8 @@ public class CodeLensServer {
                     public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
                                         List<CodeMethod> methods, List<CodeRelationship> rels,
                                         List<FileMeta> fileMetas) throws Exception {
-                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, excludedTypeFqns, excludedPkgFqns);
-                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fileMetas);
+                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
+                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fb.fileMetas);
                         lucene.addBatch(fb.types, fb.methods, fb.fields);
                     }
                 },
@@ -782,7 +857,10 @@ public class CodeLensServer {
 
             // Save file metadata for delta change detection if any non-chunk items remain
             if (!result.fileMetas.isEmpty()) {
-                dao.saveFileMetaBatch(result.fileMetas);
+                List<FileMeta> filteredFinal = filterFileMetas(result.fileMetas, excludedPkgFqns, excludedSourceFiles);
+                if (!filteredFinal.isEmpty()) {
+                    dao.saveFileMetaBatch(filteredFinal);
+                }
             }
 
             // Phase 3: finish Lucene commit & rebuild secondary database indexes
@@ -1011,11 +1089,15 @@ public class CodeLensServer {
             } catch (Exception ignored) {}
             final Set<String> excludedTypeFqns = new HashSet<>();
             final Set<String> excludedPkgFqns = new HashSet<>();
+            final Set<String> excludedSourceFiles = new HashSet<>();
             for (ExcludedScope s : excludedScopes) {
                 if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
                     excludedPkgFqns.add(s.fqn());
                 } else {
                     excludedTypeFqns.add(s.fqn());
+                    if (s.sourceFile() != null && !s.sourceFile().isBlank()) {
+                        excludedSourceFiles.add(s.sourceFile());
+                    }
                 }
             }
 
@@ -1033,8 +1115,8 @@ public class CodeLensServer {
                     public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
                                         List<CodeMethod> methods, List<CodeRelationship> rels,
                                         List<FileMeta> fileMetas) throws Exception {
-                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, excludedTypeFqns, excludedPkgFqns);
-                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fileMetas);
+                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
+                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fb.fileMetas);
                         lucene.indexBatch(fb.types, fb.methods, fb.fields);
                     }
                 },
@@ -1091,7 +1173,10 @@ public class CodeLensServer {
 
             // Phase 3: Save file metadata & recompute package totals
             if (!result.fileMetas.isEmpty()) {
-                dao.saveFileMetaBatch(result.fileMetas);
+                List<FileMeta> filteredFinal = filterFileMetas(result.fileMetas, excludedPkgFqns, excludedSourceFiles);
+                if (!filteredFinal.isEmpty()) {
+                    dao.saveFileMetaBatch(filteredFinal);
+                }
             }
             dao.recomputePackageCounts();
 
@@ -2371,6 +2456,12 @@ public class CodeLensServer {
             }
             fqn = fqn.trim();
 
+            ScanProgress current = scanState.get();
+            if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
+                ctx.status(409).json(Map.of("error", "Cannot exclude scope while a scan is in progress"));
+                return;
+            }
+
             if ("PACKAGE".equalsIgnoreCase(type)) {
                 dao.excludePackage(fqn);
                 lucene.deletePackageFromIndex(fqn);
@@ -2418,17 +2509,51 @@ public class CodeLensServer {
                 return;
             }
             fqn = fqn.trim();
+
+            ScanProgress current = scanState.get();
+            if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
+                ctx.status(409).json(Map.of("error", "Cannot restore scope while a scan is in progress"));
+                return;
+            }
+
             Optional<ExcludedScope> scopeOpt = dao.findExcludedScopeByFqn(fqn);
             boolean removed = dao.restoreScope(fqn);
 
             String sourceFile = "";
             if (scopeOpt.isPresent()) {
-                sourceFile = scopeOpt.get().sourceFile();
-                if (sourceFile != null && !sourceFile.isBlank()) {
+                ExcludedScope s = scopeOpt.get();
+                sourceFile = s.sourceFile();
+                if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
+                    try {
+                        dao.deleteFileMetaForPackage(fqn);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete file_meta for package {}: {}", fqn, e.getMessage());
+                    }
+                } else if (sourceFile != null && !sourceFile.isBlank()) {
                     try {
                         dao.deleteFileMeta(sourceFile);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.warn("Failed to delete file_meta for file {}: {}", sourceFile, e.getMessage());
+                    }
                 }
+            }
+
+            try {
+                dao.cleanupOrphanFileMeta();
+            } catch (Exception e) {
+                log.warn("Failed to cleanup orphan file_meta during restore: {}", e.getMessage());
+            }
+
+            String sourcePath = resolveCurrentSourcePath();
+            List<String> excludePatterns = resolveCurrentExcludePatterns();
+            if (sourcePath != null && !sourcePath.isBlank()) {
+                ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
+                progress.setSourcePath(sourcePath);
+                progress.setCurrentPhase("Delta Change Detection");
+                progress.setMessage("Restoring " + fqn + " and re-indexing…");
+                progress.setStartTime(System.currentTimeMillis());
+                scanState.set(progress);
+                runIncrementalScan(sourcePath, excludePatterns, progress);
             }
 
             ctx.json(Map.of(
@@ -2445,8 +2570,32 @@ public class CodeLensServer {
 
     private void clearExcludedScopes(Context ctx) {
         try {
+            ScanProgress current = scanState.get();
+            if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
+                ctx.status(409).json(Map.of("error", "Cannot clear excluded scopes while a scan is in progress"));
+                return;
+            }
+
             dao.clearAllExcludedScopes();
-            ctx.json(Map.of("success", true, "message", "All excluded scopes cleared"));
+            try {
+                dao.cleanupOrphanFileMeta();
+            } catch (Exception e) {
+                log.warn("Failed to cleanup orphan file_meta during clear all scopes: {}", e.getMessage());
+            }
+
+            String sourcePath = resolveCurrentSourcePath();
+            List<String> excludePatterns = resolveCurrentExcludePatterns();
+            if (sourcePath != null && !sourcePath.isBlank()) {
+                ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
+                progress.setSourcePath(sourcePath);
+                progress.setCurrentPhase("Delta Change Detection");
+                progress.setMessage("Restoring all scopes and re-indexing…");
+                progress.setStartTime(System.currentTimeMillis());
+                scanState.set(progress);
+                runIncrementalScan(sourcePath, excludePatterns, progress);
+            }
+
+            ctx.json(Map.of("success", true, "message", "All excluded scopes cleared and analysis updated"));
         } catch (Exception e) {
             log.error("Failed to clear excluded scopes: {}", e.getMessage(), e);
             ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
@@ -2459,23 +2608,26 @@ public class CodeLensServer {
         final List<CodeField> fields;
         final List<CodeMethod> methods;
         final List<CodeRelationship> rels;
+        final List<FileMeta> fileMetas;
 
         FilteredBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                      List<CodeMethod> methods, List<CodeRelationship> rels) {
+                      List<CodeMethod> methods, List<CodeRelationship> rels, List<FileMeta> fileMetas) {
             this.pkgs = pkgs;
             this.types = types;
             this.fields = fields;
             this.methods = methods;
             this.rels = rels;
+            this.fileMetas = fileMetas;
         }
     }
 
     private FilteredBatch filterExcludedScopeBatch(List<CodePackage> pkgs, List<CodeType> types,
                                                   List<CodeField> fields, List<CodeMethod> methods,
-                                                  List<CodeRelationship> rels,
-                                                  Set<String> excludedTypeFqns, Set<String> excludedPkgFqns) {
-        if (excludedTypeFqns.isEmpty() && excludedPkgFqns.isEmpty()) {
-            return new FilteredBatch(pkgs, types, fields, methods, rels);
+                                                  List<CodeRelationship> rels, List<FileMeta> fileMetas,
+                                                  Set<String> excludedTypeFqns, Set<String> excludedPkgFqns,
+                                                  Set<String> excludedSourceFiles) {
+        if (excludedTypeFqns.isEmpty() && excludedPkgFqns.isEmpty() && (excludedSourceFiles == null || excludedSourceFiles.isEmpty())) {
+            return new FilteredBatch(pkgs, types, fields, methods, rels, fileMetas);
         }
 
         Set<String> droppedTypeFqns = new HashSet<>(excludedTypeFqns);
@@ -2532,7 +2684,49 @@ public class CodeLensServer {
             }
         }
 
-        return new FilteredBatch(filteredPkgs, filteredTypes, filteredFields, filteredMethods, filteredRels);
+        List<FileMeta> filteredFileMetas = new ArrayList<>();
+        if (fileMetas != null) {
+            Map<String, Integer> totalTypesPerFile = new HashMap<>();
+            Map<String, Integer> keptTypesPerFile = new HashMap<>();
+            if (types != null) {
+                for (CodeType t : types) {
+                    if (t.getSourceFile() != null) {
+                        totalTypesPerFile.merge(t.getSourceFile(), 1, Integer::sum);
+                    }
+                }
+            }
+            for (CodeType t : filteredTypes) {
+                if (t.getSourceFile() != null) {
+                    keptTypesPerFile.merge(t.getSourceFile(), 1, Integer::sum);
+                }
+            }
+
+            for (FileMeta fm : fileMetas) {
+                if (fm == null || fm.getFilePath() == null) continue;
+                String path = fm.getFilePath();
+                if (excludedSourceFiles != null && excludedSourceFiles.contains(path)) {
+                    continue;
+                }
+                String norm = path.replace('\\', '/');
+                boolean isExcludedPkg = false;
+                for (String pkg : excludedPkgFqns) {
+                    String pkgSlash = "/" + pkg.replace('.', '/') + "/";
+                    if (norm.contains(pkgSlash) || norm.endsWith("/" + pkg.replace('.', '/') + ".java")) {
+                        isExcludedPkg = true;
+                        break;
+                    }
+                }
+                if (isExcludedPkg) {
+                    continue;
+                }
+                if (totalTypesPerFile.containsKey(path) && keptTypesPerFile.getOrDefault(path, 0) == 0) {
+                    continue;
+                }
+                filteredFileMetas.add(fm);
+            }
+        }
+
+        return new FilteredBatch(filteredPkgs, filteredTypes, filteredFields, filteredMethods, filteredRels, filteredFileMetas);
     }
 
     private static boolean isExcludedEntity(String fqn, String pkgFqn, Set<String> excludedTypeFqns, Set<String> excludedPkgFqns) {

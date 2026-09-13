@@ -6565,7 +6565,9 @@ window.selectClass = function(fqn) {
 window.jumpToGraphHeat = async function(fqn) {
   App.codebaseLevel = 'graph2d';
   switchTab('graph');
-  await loadCodebaseVisualization();
+  if (typeof loadWholeCodebaseGraph === 'function') {
+    await loadWholeCodebaseGraph('arch');
+  }
   if (App.graph && !App.graph._heatMode) {
     App.graph.toggleHeat();
   }
@@ -6576,6 +6578,64 @@ window.jumpToGraphHeat = async function(fqn) {
     }
   }
 };
+
+function clearDetailsPanel() {
+  App.selected = null;
+  const header = qs('#entity-header');
+  if (header) {
+    header.innerHTML = '';
+    header.style.display = 'none';
+  }
+  const body = qs('#right-body');
+  if (body) {
+    body.innerHTML = '';
+  }
+  const empty = qs('#detail-empty-state');
+  if (empty) {
+    empty.style.display = 'flex';
+  }
+}
+
+async function refreshActiveViewsAfterScopeChange(affectedFqn) {
+  GraphDataCache.clear();
+  await updateExcludedScopeBadge();
+  await loadStats();
+  await loadPackageTree();
+
+  try {
+    const isAffected = (id) => {
+      if (!id || !affectedFqn) return false;
+      return id === affectedFqn || id.startsWith(affectedFqn + '.') || id.startsWith(affectedFqn + '#');
+    };
+
+    if (App.selected && isAffected(App.selected.id)) {
+      clearDetailsPanel();
+      if (App.graph && typeof App.graph.clear === 'function') {
+        App.graph.clear();
+      }
+      showGraphEmpty('Select a method or field to visualize its call hierarchy');
+    } else if (App.activeTab === 'graph') {
+      if (typeof reloadActiveGraph === 'function') {
+        await reloadActiveGraph();
+      }
+    }
+
+    if (App.activeTab === 'codebase') {
+      if (typeof loadWholeCodebaseGraph === 'function') {
+        await loadWholeCodebaseGraph(App.codebaseMacroLevel || 'city3d', App.codebaseGranularity || 'arch');
+      }
+    } else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') {
+      loadActiveReport();
+    } else if (App.activeTab === 'knowledge') {
+      const kbContainer = qs('#kb-detail-container');
+      if (App.selected && isAffected(App.selected.id)) {
+        if (kbContainer) kbContainer.innerHTML = '<div class="kb-placeholder">Selected entity has been removed from scope.</div>';
+      }
+    }
+  } catch (refreshErr) {
+    console.warn('Non-fatal error refreshing view after scope change:', refreshErr);
+  }
+}
 
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -6633,44 +6693,8 @@ async function executeExcludeScope() {
       }, 200);
     }
 
-    // 2. If it was a class, decrement parent package type count badge
-    if (type === 'CLASS' && pkgFqn) {
-      const pkgEl = qs(`.tree-item[data-fqn="${CSS.escape(pkgFqn)}"]`);
-      if (pkgEl) {
-        const countBadge = pkgEl.querySelector('.tree-count');
-        if (countBadge) {
-          const currentCount = parseInt(countBadge.textContent, 10) || 0;
-          if (currentCount > 1) {
-            countBadge.textContent = currentCount - 1;
-          } else {
-            countBadge.remove();
-          }
-        }
-      }
-    }
-
-    // 3. Clear graph caches
-    GraphDataCache.clear();
-
-    // 4. Update the Scope Manager badge
-    await updateExcludedScopeBadge();
-
-    // 5. Invalidate and refresh current view
-    if (App.activeTab === 'graph') {
-      loadCodebaseVisualization();
-    } else if (App.activeTab === 'dsm') {
-      loadDSM();
-    } else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) {
-      window.City3D.reload();
-    } else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') {
-      loadActiveReport();
-    } else if (App.activeTab === 'knowledge') {
-      if (App.selected && App.selected.id === fqn) {
-        App.selected = { kind: null, id: null, data: null };
-        const kbContainer = qs('#kb-detail-container');
-        if (kbContainer) kbContainer.innerHTML = '<div class="kb-placeholder">Selected entity has been removed from scope.</div>';
-      }
-    }
+    // 2. Invalidate caches, sync explorer & refresh active view
+    await refreshActiveViewsAfterScopeChange(fqn);
 
     showToast(`Removed "${name || fqn}" from analysis scope.`, 'success', 4000);
   } catch (err) {
@@ -6787,23 +6811,10 @@ async function restoreScopeItem(fqn) {
   try {
     showToast(`Restoring ${fqn} to scope…`, 'info', 2000);
     const res = await api.restoreScope(fqn);
-    GraphDataCache.clear();
-    await updateExcludedScopeBadge();
     await renderScopeManagerList(qs('#scope-search-input')?.value);
+    await refreshActiveViewsAfterScopeChange(fqn);
 
-    showToast(`Restored "${fqn}". Re-synchronizing analysis…`, 'success', 3000);
-
-    // Trigger re-indexing
-    try {
-      await api.post('/scan/incremental', {});
-    } catch (_) {}
-
-    await loadPackageTree();
-
-    if (App.activeTab === 'graph') loadCodebaseVisualization();
-    else if (App.activeTab === 'dsm') loadDSM();
-    else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) window.City3D.reload();
-    else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') loadActiveReport();
+    showToast(`Restored "${fqn}". Analysis re-synchronized.`, 'success', 3000);
   } catch (err) {
     console.error('Failed to restore scope:', err);
     showToast(`Failed to restore ${fqn}: ${err.message || err}`, 'error', 5000);
@@ -6815,21 +6826,10 @@ async function restoreAllScopes() {
   try {
     showToast('Restoring all excluded scopes…', 'info', 2000);
     await api.clearExcludedScopes();
-    GraphDataCache.clear();
-    await updateExcludedScopeBadge();
     await renderScopeManagerList();
+    await refreshActiveViewsAfterScopeChange(null);
 
-    showToast('All items restored. Re-synchronizing analysis…', 'success', 3000);
-    try {
-      await api.post('/scan/incremental', {});
-    } catch (_) {}
-
-    await loadPackageTree();
-
-    if (App.activeTab === 'graph') loadCodebaseVisualization();
-    else if (App.activeTab === 'dsm') loadDSM();
-    else if (App.activeTab === 'city3d' && window.City3D && window.City3D.reload) window.City3D.reload();
-    else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') loadActiveReport();
+    showToast('All items restored. Analysis re-synchronized.', 'success', 3000);
   } catch (err) {
     console.error('Failed to clear scopes:', err);
     showToast(`Failed to restore all: ${err.message || err}`, 'error', 5000);

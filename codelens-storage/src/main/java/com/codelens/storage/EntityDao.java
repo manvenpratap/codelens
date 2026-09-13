@@ -1498,6 +1498,14 @@ public class EntityDao {
                     ps.executeUpdate();
                 }
 
+                // Delete source file from file_meta so future incremental scans detect it if restored
+                if (sourceFile != null && !sourceFile.isBlank()) {
+                    try (PreparedStatement psMeta = c.prepareStatement("DELETE FROM file_meta WHERE file_path = ?")) {
+                        psMeta.setString(1, sourceFile);
+                        psMeta.executeUpdate();
+                    }
+                }
+
                 // Cascade delete relationships
                 try (PreparedStatement psRels = c.prepareStatement(
                         "DELETE FROM relationships WHERE from_entity_fqn = ? " +
@@ -1577,6 +1585,25 @@ public class EntityDao {
                     ps.setString(4, simpleName);
                     ps.setLong(5, now);
                     ps.executeUpdate();
+                }
+
+                // Delete source files from file_meta before deleting types so that subsequent scans re-detect them on restore
+                try (PreparedStatement psMeta = c.prepareStatement(
+                        "DELETE FROM file_meta WHERE file_path IN (" +
+                        "  SELECT DISTINCT source_file FROM types WHERE (package_fqn = ? OR package_fqn LIKE ?) AND source_file IS NOT NULL" +
+                        ")")) {
+                    psMeta.setString(1, packageFqn);
+                    psMeta.setString(2, packageFqn + ".%");
+                    psMeta.executeUpdate();
+                }
+
+                String unixPattern = "%/" + packageFqn.replace('.', '/') + "/%";
+                String winPattern = "%\\" + packageFqn.replace('.', '\\') + "\\%";
+                try (PreparedStatement psMetaPath = c.prepareStatement(
+                        "DELETE FROM file_meta WHERE file_path LIKE ? OR file_path LIKE ?")) {
+                    psMetaPath.setString(1, unixPattern);
+                    psMetaPath.setString(2, winPattern);
+                    psMetaPath.executeUpdate();
                 }
 
                 // Cascade delete relationships for all types in this package or subpackages
@@ -1698,11 +1725,18 @@ public class EntityDao {
     }
 
     public void clearAllExcludedScopes() throws SQLException {
+        List<ExcludedScope> list = findAllExcludedScopes();
         try (Connection c = db.getConnection();
              Statement stmt = c.createStatement()) {
             stmt.execute("DELETE FROM file_meta WHERE file_path IN (SELECT source_file FROM excluded_scopes WHERE source_file IS NOT NULL)");
             stmt.execute("DELETE FROM excluded_scopes");
         }
+        for (ExcludedScope s : list) {
+            if ("PACKAGE".equalsIgnoreCase(s.entityType())) {
+                deleteFileMetaForPackage(s.fqn());
+            }
+        }
+        cleanupOrphanFileMeta();
     }
 
     public void deleteFileMeta(String filePath) throws SQLException {
@@ -1712,6 +1746,75 @@ public class EntityDao {
             ps.setString(1, filePath);
             ps.executeUpdate();
         }
+    }
+
+    public int deleteFileMetaForPackage(String packageFqn) throws SQLException {
+        if (packageFqn == null || packageFqn.isBlank()) return 0;
+        String unixPattern = "%/" + packageFqn.replace('.', '/') + "/%";
+        String winPattern = "%\\" + packageFqn.replace('.', '\\') + "\\%";
+        String sql = "DELETE FROM file_meta WHERE file_path LIKE ? OR file_path LIKE ?";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, unixPattern);
+            ps.setString(2, winPattern);
+            return ps.executeUpdate();
+        }
+    }
+
+    public int cleanupOrphanFileMeta() throws SQLException {
+        List<ExcludedScope> excludedScopes = findAllExcludedScopes();
+        List<String> excludedPkgs = excludedScopes.stream()
+            .filter(s -> "PACKAGE".equalsIgnoreCase(s.entityType()))
+            .map(ExcludedScope::fqn)
+            .toList();
+
+        List<String> candidatePaths = new ArrayList<>();
+        String sql = "SELECT file_path FROM file_meta WHERE type_count > 0 " +
+                     "AND file_path NOT IN (SELECT DISTINCT source_file FROM types WHERE source_file IS NOT NULL) " +
+                     "AND file_path NOT IN (SELECT DISTINCT source_file FROM excluded_scopes WHERE source_file IS NOT NULL)";
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            while (rs.next()) {
+                candidatePaths.add(rs.getString("file_path"));
+            }
+        }
+
+        List<String> toDelete = new ArrayList<>();
+        for (String path : candidatePaths) {
+            String norm = path.replace('\\', '/');
+            boolean isExcluded = false;
+            for (String pkg : excludedPkgs) {
+                String pkgSlash = "/" + pkg.replace('.', '/') + "/";
+                if (norm.contains(pkgSlash) || norm.endsWith("/" + pkg.replace('.', '/') + ".java")) {
+                    isExcluded = true;
+                    break;
+                }
+            }
+            if (!isExcluded) {
+                toDelete.add(path);
+            }
+        }
+
+        if (!toDelete.isEmpty()) {
+            try (Connection c = db.getConnection()) {
+                c.setAutoCommit(false);
+                try (PreparedStatement ps = c.prepareStatement("DELETE FROM file_meta WHERE file_path = ?")) {
+                    for (String path : toDelete) {
+                        ps.setString(1, path);
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                    c.commit();
+                } catch (Exception e) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    throw e;
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+                }
+            }
+        }
+        return toDelete.size();
     }
 }
 
