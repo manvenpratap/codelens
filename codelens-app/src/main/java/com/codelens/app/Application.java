@@ -17,9 +17,9 @@ import java.net.URI;
  *   -Dcodelens.port=7878              HTTP server port
  *
  * Usage:
- *   java -jar codelens-app-1.0.0.jar
- *   java -Dcodelens.port=9090 -jar codelens-app-1.0.0.jar
- *   java -Dcodelens.config=/path/to/codelens.conf -jar codelens-app-1.0.0.jar
+ *   java -jar codelens-app.jar
+ *   java -Dcodelens.port=9090 -jar codelens-app.jar
+ *   java -Dcodelens.config=/path/to/codelens.conf -jar codelens-app.jar
  */
 public class Application {
 

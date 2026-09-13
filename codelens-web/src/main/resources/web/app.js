@@ -8112,7 +8112,7 @@ function initSettings() {
               <h2 style="color:#ffffff; font-size:20px; font-weight:700; margin:0 0 8px 0;">CodeLens Server Stopped</h2>
               <p style="max-width:480px; font-size:14px; line-height:1.6; color:#94a3b8; margin:0 0 20px 0;">The server has been shut down cleanly. All databases, indexes, and caches were safely committed.</p>
               <div style="padding:10px 16px; background:#0f172a; border:1px solid #1e293b; border-radius:6px; font-family:monospace; font-size:12px; color:#38bdf8;">
-                java -jar codelens-app-1.0.0.jar
+                java -jar codelens-app.jar
               </div>
             </div>
           `;
