@@ -1204,12 +1204,12 @@ body.theme-light .scan-summary-footer {
 .hero-page {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 500;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  background: var(--bg-void);
+  background: var(--bg-base, #000000);
   overflow-y: auto;
   overflow-x: hidden;
   padding: 40px 24px 60px 24px;
@@ -1219,7 +1219,7 @@ body.theme-light .scan-summary-footer {
 body:not(.theme-light) .hero-page {
   background:
     radial-gradient(ellipse 60% 50% at 50% 0%, rgba(16,185,129,0.08) 0%, transparent 70%),
-    var(--bg-void);
+    var(--bg-base, #000000);
 }
 
 /* Top-right icon buttons (theme toggle + settings) */
@@ -5156,7 +5156,7 @@ body.theme-light .action-btn-badge.is-zero {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
   animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   padding: 20px;
 }
@@ -6384,9 +6384,13 @@ body.theme-light .action-btn-badge.is-zero {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
   opacity: 0;
   transition: opacity var(--dur-std) var(--ease);
+}
+
+body.theme-light .modal-backdrop {
+  background: rgba(15, 23, 42, 0.45);
 }
 
 .modal-backdrop.open {
@@ -6395,7 +6399,7 @@ body.theme-light .action-btn-badge.is-zero {
 }
 
 #help-modal {
-  z-index: 1100;
+  z-index: 10000;
 }
 
 .modal-dialog {

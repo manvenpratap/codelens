@@ -5169,9 +5169,8 @@ async function init() {
   });
 
   // Hero settings button
-  qs('#hero-settings-btn')?.addEventListener('click', () => {
-    const modal = qs('#settings-modal');
-    if (modal) showAccessibleModal(modal, qs('#hero-settings-btn'));
+  qs('#hero-settings-btn')?.addEventListener('click', (e) => {
+    openSettings(e);
   });
 
   // Wire up scan button and Enter key (legacy hidden scan input)
