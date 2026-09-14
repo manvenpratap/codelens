@@ -348,4 +348,89 @@ public class ModuleDependencyAnalyzerTest {
         assertEquals(0, outCore.functionCallCount);
         assertEquals(2, outCore.classUsageCount);
     }
+
+    public void testUnresolvedWildcardImportTouchPoints() {
+        ModuleDependencyAnalyzer analyzer = new ModuleDependencyAnalyzer();
+        List<CodePackage> packages = new ArrayList<>();
+        List<CodeType> types = new ArrayList<>();
+        List<CodeMethod> methods = new ArrayList<>();
+        List<CodeField> fields = new ArrayList<>();
+        List<CodeRelationship> relationships = new ArrayList<>();
+
+        // Module RK
+        CodePackage pkgRK = new CodePackage("com.tcs.bancs.RK");
+        pkgRK.setName("RK");
+        packages.add(pkgRK);
+
+        CodeType typeController = new CodeType();
+        typeController.setFqn("com.tcs.bancs.RK.RiskAssessmentController");
+        typeController.setSimpleName("RiskAssessmentController");
+        typeController.setPackageFqn("com.tcs.bancs.RK");
+        types.add(typeController);
+
+        CodeMethod mCalcVaR = new CodeMethod();
+        mCalcVaR.setFqn("com.tcs.bancs.RK.RiskAssessmentController.RKETCalculateVaR(java.lang.String)");
+        mCalcVaR.setSimpleName("RKETCalculateVaR");
+        mCalcVaR.setDeclaringTypeFqn("com.tcs.bancs.RK.RiskAssessmentController");
+        methods.add(mCalcVaR);
+
+        // Module common
+        CodePackage pkgCommon = new CodePackage("com.tcs.bancs.common");
+        pkgCommon.setName("common");
+        packages.add(pkgCommon);
+
+        CodeType typeAudit = new CodeType();
+        typeAudit.setFqn("com.tcs.bancs.common.AuditTrailService");
+        typeAudit.setSimpleName("AuditTrailService");
+        typeAudit.setPackageFqn("com.tcs.bancs.common");
+        types.add(typeAudit);
+
+        CodeMethod mLogAudit = new CodeMethod();
+        mLogAudit.setFqn("com.tcs.bancs.common.AuditTrailService.logAuditEvent(java.lang.String,java.lang.String,java.lang.String,java.lang.String)");
+        mLogAudit.setSimpleName("logAuditEvent");
+        mLogAudit.setDeclaringTypeFqn("com.tcs.bancs.common.AuditTrailService");
+        methods.add(mLogAudit);
+
+        // Unresolved target 1: AstVisitor prefixed with caller package because of wildcard import
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn("com.tcs.bancs.RK.RiskAssessmentController.RKETCalculateVaR(java.lang.String)");
+        r1.setToEntityFqn("~com.tcs.bancs.RK.AuditTrailService.logAuditEvent");
+        r1.setKind("CALLS");
+        relationships.add(r1);
+
+        // Unresolved target 2: AstVisitor scoped with variable/field name
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn("com.tcs.bancs.RK.RiskAssessmentController.RKETCalculateVaR(java.lang.String)");
+        r2.setToEntityFqn("~auditTrailService.logAuditEvent");
+        r2.setKind("CALLS");
+        relationships.add(r2);
+
+        ModuleDependencyAnalyzer.ModuleDependencyInsights rkInsights = analyzer.analyzeModule(
+            "RK", packages, types, methods, fields, relationships
+        );
+
+        assertNotNull(rkInsights, "rkInsights should not be null");
+        assertEquals("RK", rkInsights.moduleName);
+        assertEquals(2, rkInsights.totalOutboundTouchPoints, "Should have 2 outbound touch points to common");
+        assertEquals(2, rkInsights.totalTouchPoints, "Total touch points should be 2");
+        assertEquals(1, rkInsights.outgoingModules.size(), "Should connect to 1 outgoing module");
+        assertEquals("common", rkInsights.outgoingModules.get(0).moduleName, "Outgoing module should be common");
+        assertEquals(2, rkInsights.outgoingModules.get(0).totalTouchPoints, "2 touch points to common");
+
+        // Module common overview
+        ModuleDependencyAnalyzer.ModuleDependencyInsights commonInsights = analyzer.analyzeModule(
+            "common", packages, types, methods, fields, relationships
+        );
+        assertNotNull(commonInsights, "commonInsights should not be null");
+        assertEquals(2, commonInsights.totalInboundTouchPoints, "common should have 2 inbound touch points from RK");
+        assertEquals(1, commonInsights.incomingModules.size(), "common should have 1 incoming module");
+        assertEquals("RK", commonInsights.incomingModules.get(0).moduleName);
+
+        // Overview across all modules
+        ModuleDependencyAnalyzer.ModuleOverviewPayload overview = analyzer.analyzeAll(
+            packages, types, methods, fields, relationships
+        );
+        assertNotNull(overview, "overview should not be null");
+        assertEquals(2, overview.totalInterModuleTouchPoints, "2 inter-module touch points total");
+    }
 }

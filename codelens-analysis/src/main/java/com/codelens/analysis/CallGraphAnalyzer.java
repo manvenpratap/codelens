@@ -836,7 +836,15 @@ public class CallGraphAnalyzer {
                 if (parts.length >= 5) {
                     return parts[3]; // e.g. com.tcs.bancs.BS.AccountService -> BS
                 } else if (parts.length == 4) {
-                    return (parts[3].matches("^[A-Z0-9_]+$") && !parts[2].matches("^[A-Z0-9_]+$")) ? parts[3] : parts[2];
+                    // e.g. com.tcs.bancs.common -> common
+                    // e.g. com.tcs.bancs.AM -> AM
+                    // e.g. com.example.trading.Trade -> trading (Trade is a Class, not a module)
+                    // If parts[3] is a Class Name (starts with uppercase, and has lowercase like "Trade"), module is parts[2].
+                    // Otherwise if parts[3] is an all-caps module code ("AM") or lowercase package name ("common", "accounting"), module is parts[3].
+                    if (Character.isUpperCase(parts[3].charAt(0)) && !parts[3].matches("^[A-Z0-9_]+$")) {
+                        return parts[2];
+                    }
+                    return parts[3];
                 }
                 return parts[2];
             }

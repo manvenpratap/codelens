@@ -1391,7 +1391,7 @@ public class CodeLensServer {
         List<CodeRelationship> relationships = dao.findAllRelationships();
 
         ModuleDependencyAnalyzer.ModuleDependencyInsights insights = moduleDependencyAnalyzer.analyzeModule(
-            query, packages, types, methods, fields, relationships
+            query, packages, types, methods, fields, relationships, callGraph
         );
 
         if (insights == null) {
@@ -1423,7 +1423,7 @@ public class CodeLensServer {
         List<CodeField> fields = dao.findAllFields();
         List<CodeRelationship> relationships = dao.findAllRelationships();
 
-        overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships);
+        overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
         cachedModuleOverview = overview;
         ctx.json(overview);
     }

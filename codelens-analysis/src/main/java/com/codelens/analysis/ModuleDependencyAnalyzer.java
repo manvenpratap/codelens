@@ -146,6 +146,20 @@ public class ModuleDependencyAnalyzer {
         return s;
     }
 
+    private static class RawEdge {
+        final String fromEntity;
+        final String toEntity;
+        final String kind;
+        final int sourceLine;
+
+        RawEdge(String fromEntity, String toEntity, String kind, int sourceLine) {
+            this.fromEntity = fromEntity;
+            this.toEntity   = toEntity;
+            this.kind       = kind;
+            this.sourceLine = sourceLine;
+        }
+    }
+
     /**
      * Analyze module dependencies and touch points for a specific module or package.
      */
@@ -155,6 +169,16 @@ public class ModuleDependencyAnalyzer {
                                                   List<CodeMethod> methods,
                                                   List<CodeField> fields,
                                                   List<CodeRelationship> relationships) {
+        return analyzeModule(targetModuleOrPkg, packages, types, methods, fields, relationships, null);
+    }
+
+    public ModuleDependencyInsights analyzeModule(String targetModuleOrPkg,
+                                                  List<CodePackage> packages,
+                                                  List<CodeType> types,
+                                                  List<CodeMethod> methods,
+                                                  List<CodeField> fields,
+                                                  List<CodeRelationship> relationships,
+                                                  CallGraphAnalyzer callGraph) {
         if (targetModuleOrPkg == null || targetModuleOrPkg.isBlank()) {
             return null;
         }
@@ -179,6 +203,8 @@ public class ModuleDependencyAnalyzer {
                 .count();
         }
 
+        List<RawEdge> allEdges = collectRawEdges(relationships, callGraph);
+
         // Aggregate touch points
         Map<String, ConnectedModule> outgoingMap = new LinkedHashMap<>();
         Map<String, ConnectedModule> incomingMap = new LinkedHashMap<>();
@@ -186,11 +212,11 @@ public class ModuleDependencyAnalyzer {
         Map<String, Map<String, ClassUsageSummary>> outgoingClassUsage = new LinkedHashMap<>();
         Map<String, Map<String, ClassUsageSummary>> incomingClassUsage = new LinkedHashMap<>();
 
-        for (CodeRelationship rel : relationships) {
-            String srcFqn = cleanFqn(rel.getFromEntityFqn());
-            String tgtFqn = cleanFqn(rel.getToEntityFqn());
-            String kind = rel.getKind();
-            int line = rel.getSourceLine();
+        for (RawEdge rel : allEdges) {
+            String srcFqn = cleanFqn(rel.fromEntity);
+            String tgtFqn = cleanFqn(rel.toEntity);
+            String kind = rel.kind;
+            int line = rel.sourceLine;
 
             String srcType = ctx.getTypeForEntity(srcFqn);
             String tgtType = ctx.getTypeForEntity(tgtFqn);
@@ -346,6 +372,31 @@ public class ModuleDependencyAnalyzer {
         return insights;
     }
 
+    private List<RawEdge> collectRawEdges(List<CodeRelationship> relationships, CallGraphAnalyzer callGraph) {
+        List<RawEdge> edges = new ArrayList<>();
+        if (callGraph != null && callGraph.getCallGraph() != null) {
+            org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = callGraph.getCallGraph();
+            for (org.jgrapht.graph.DefaultEdge e : g.edgeSet()) {
+                String src = g.getEdgeSource(e);
+                String tgt = g.getEdgeTarget(e);
+                if (src != null && tgt != null) {
+                    edges.add(new RawEdge(src, tgt, "CALLS", 0));
+                }
+            }
+            if (relationships != null) {
+                for (CodeRelationship rel : relationships) {
+                    if ("CALLS".equalsIgnoreCase(rel.getKind())) continue;
+                    edges.add(new RawEdge(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine()));
+                }
+            }
+        } else if (relationships != null) {
+            for (CodeRelationship rel : relationships) {
+                edges.add(new RawEdge(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine()));
+            }
+        }
+        return edges;
+    }
+
     /**
      * Compute overview metrics and inter-module touch point matrix across all modules in the codebase.
      */
@@ -354,6 +405,15 @@ public class ModuleDependencyAnalyzer {
                                             List<CodeMethod> methods,
                                             List<CodeField> fields,
                                             List<CodeRelationship> relationships) {
+        return analyzeAll(packages, types, methods, fields, relationships, null);
+    }
+
+    public ModuleOverviewPayload analyzeAll(List<CodePackage> packages,
+                                            List<CodeType> types,
+                                            List<CodeMethod> methods,
+                                            List<CodeField> fields,
+                                            List<CodeRelationship> relationships,
+                                            CallGraphAnalyzer callGraph) {
         AnalysisContext ctx = buildContext(packages, types, methods, fields);
         ModuleOverviewPayload payload = new ModuleOverviewPayload();
 
@@ -372,11 +432,12 @@ public class ModuleDependencyAnalyzer {
 
         Map<String, Map<String, Integer>> outMap = new HashMap<>();
         Map<String, Map<String, Integer>> inMap = new HashMap<>();
+        List<RawEdge> allEdges = collectRawEdges(relationships, callGraph);
 
-        for (CodeRelationship rel : relationships) {
-            String srcFqn = cleanFqn(rel.getFromEntityFqn());
-            String tgtFqn = cleanFqn(rel.getToEntityFqn());
-            String kind = rel.getKind();
+        for (RawEdge rel : allEdges) {
+            String srcFqn = cleanFqn(rel.fromEntity);
+            String tgtFqn = cleanFqn(rel.toEntity);
+            String kind = rel.kind;
 
             String srcMod = ctx.getModuleForEntity(srcFqn);
             String tgtMod = ctx.getModuleForEntity(tgtFqn);
@@ -463,37 +524,67 @@ public class ModuleDependencyAnalyzer {
                                          List<CodeField> fields) {
         AnalysisContext ctx = new AnalysisContext();
 
-        for (CodePackage p : packages) {
-            ctx.packageByFqn.put(p.getFqn(), p);
-            String mod = (p.getName() != null && !p.getName().isBlank()) ? p.getName() : CallGraphAnalyzer.extractModuleName(p.getFqn());
-            ctx.packageToModule.put(p.getFqn(), mod);
-            ctx.moduleToPrimaryPackage.putIfAbsent(mod, p.getFqn());
-            ctx.allModules.add(mod);
-        }
-
-        for (CodeType t : types) {
-            ctx.typeMap.put(t.getFqn(), t);
-            String pkg = t.getPackageFqn() != null ? t.getPackageFqn() : CallGraphAnalyzer.extractPackageFqn(t.getFqn());
-            ctx.typeToPkg.put(t.getFqn(), pkg);
-            if (t.getSimpleName() != null && !t.getSimpleName().isBlank()) {
-                ctx.simpleNameToType.putIfAbsent(t.getSimpleName(), t.getFqn());
-            }
-
-            String mod = ctx.packageToModule.get(pkg);
-            if (mod == null) {
-                mod = CallGraphAnalyzer.extractModuleName(t.getFqn());
-                ctx.packageToModule.put(pkg, mod);
-                ctx.moduleToPrimaryPackage.putIfAbsent(mod, pkg);
+        if (packages != null) {
+            for (CodePackage p : packages) {
+                ctx.packageByFqn.put(p.getFqn(), p);
+                String mod = (p.getName() != null && !p.getName().isBlank()) ? p.getName() : CallGraphAnalyzer.extractModuleName(p.getFqn());
+                ctx.packageToModule.put(p.getFqn(), mod);
+                ctx.moduleToPrimaryPackage.putIfAbsent(mod, p.getFqn());
                 ctx.allModules.add(mod);
             }
         }
 
-        for (CodeMethod m : methods) {
-            ctx.methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
+        if (types != null) {
+            for (CodeType t : types) {
+                ctx.typeMap.put(t.getFqn(), t);
+                String pkg = t.getPackageFqn() != null ? t.getPackageFqn() : CallGraphAnalyzer.extractPackageFqn(t.getFqn());
+                ctx.typeToPkg.put(t.getFqn(), pkg);
+                if (t.getSimpleName() != null && !t.getSimpleName().isBlank()) {
+                    ctx.simpleNameToType.putIfAbsent(t.getSimpleName(), t.getFqn());
+                    ctx.simpleNameToType.putIfAbsent(t.getSimpleName().toLowerCase(), t.getFqn());
+                }
+
+                String mod = ctx.packageToModule.get(pkg);
+                if (mod == null) {
+                    mod = ctx.findModuleByPackagePrefix(pkg);
+                    if (mod == null) {
+                        mod = CallGraphAnalyzer.extractModuleName(t.getFqn());
+                    }
+                    ctx.packageToModule.put(pkg, mod);
+                    ctx.moduleToPrimaryPackage.putIfAbsent(mod, pkg);
+                    ctx.allModules.add(mod);
+                }
+            }
         }
 
-        for (CodeField f : fields) {
-            ctx.fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
+        if (methods != null) {
+            for (CodeMethod m : methods) {
+                ctx.methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
+                ctx.methodToType.put(m.getFqn().toLowerCase(), m.getDeclaringTypeFqn());
+                int paren = m.getFqn().indexOf('(');
+                if (paren > 0) {
+                    String noParams = m.getFqn().substring(0, paren);
+                    ctx.methodToType.put(noParams, m.getDeclaringTypeFqn());
+                    ctx.methodToType.put(noParams.toLowerCase(), m.getDeclaringTypeFqn());
+                }
+                if (m.getSimpleName() != null && !m.getSimpleName().isBlank() && m.getDeclaringTypeFqn() != null) {
+                    String simpleClass = extractSimple(m.getDeclaringTypeFqn());
+                    ctx.methodToType.put(simpleClass + "." + m.getSimpleName(), m.getDeclaringTypeFqn());
+                    ctx.methodToType.put((simpleClass + "." + m.getSimpleName()).toLowerCase(), m.getDeclaringTypeFqn());
+                }
+            }
+        }
+
+        if (fields != null) {
+            for (CodeField f : fields) {
+                ctx.fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
+                ctx.fieldToType.put(f.getFqn().toLowerCase(), f.getDeclaringTypeFqn());
+                if (f.getSimpleName() != null && !f.getSimpleName().isBlank() && f.getDeclaringTypeFqn() != null) {
+                    String simpleClass = extractSimple(f.getDeclaringTypeFqn());
+                    ctx.fieldToType.put(simpleClass + "." + f.getSimpleName(), f.getDeclaringTypeFqn());
+                    ctx.fieldToType.put((simpleClass + "." + f.getSimpleName()).toLowerCase(), f.getDeclaringTypeFqn());
+                }
+            }
         }
 
         return ctx;
@@ -541,6 +632,19 @@ public class ModuleDependencyAnalyzer {
             return mod;
         }
 
+        String findModuleByPackagePrefix(String target) {
+            if (target == null || target.isBlank()) return null;
+            String bestPkg = null;
+            for (String p : packageToModule.keySet()) {
+                if (target.startsWith(p + ".") || target.equals(p)) {
+                    if (bestPkg == null || p.length() > bestPkg.length()) {
+                        bestPkg = p;
+                    }
+                }
+            }
+            return (bestPkg != null) ? packageToModule.get(bestPkg) : null;
+        }
+
         String resolveTargetModule(String query) {
             if (query == null || query.isBlank()) return null;
             String trimmed = query.trim();
@@ -555,7 +659,11 @@ public class ModuleDependencyAnalyzer {
                 return packageToModule.get(trimmed);
             }
 
-            // 3. Leaf package segment match
+            // 3. Prefix match against packageToModule
+            String prefixMod = findModuleByPackagePrefix(trimmed);
+            if (prefixMod != null) return prefixMod;
+
+            // 4. Leaf package segment match
             for (Map.Entry<String, String> entry : packageToModule.entrySet()) {
                 String pkg = entry.getKey();
                 if (pkg.equalsIgnoreCase(trimmed) || pkg.endsWith("." + trimmed)) {
@@ -563,7 +671,7 @@ public class ModuleDependencyAnalyzer {
                 }
             }
 
-            // 4. Fallback: extractModuleName
+            // 5. Fallback: extractModuleName
             String mod = CallGraphAnalyzer.extractModuleName(trimmed);
             for (String m : allModules) {
                 if (m.equalsIgnoreCase(mod)) return m;
@@ -573,24 +681,64 @@ public class ModuleDependencyAnalyzer {
 
         String getTypeForEntity(String entityFqn) {
             if (entityFqn == null || entityFqn.isBlank()) return null;
-            if (typeMap.containsKey(entityFqn)) return entityFqn;
-            if (methodToType.containsKey(entityFqn)) return methodToType.get(entityFqn);
-            if (fieldToType.containsKey(entityFqn)) return fieldToType.get(entityFqn);
-            if (simpleNameToType.containsKey(entityFqn)) return simpleNameToType.get(entityFqn);
+            String cleaned = cleanFqn(entityFqn);
 
-            int paren = entityFqn.indexOf('(');
-            String base = (paren > 0) ? entityFqn.substring(0, paren) : entityFqn;
+            if (typeMap.containsKey(cleaned)) return cleaned;
+            if (methodToType.containsKey(cleaned)) return methodToType.get(cleaned);
+            if (fieldToType.containsKey(cleaned)) return fieldToType.get(cleaned);
+            if (simpleNameToType.containsKey(cleaned)) return simpleNameToType.get(cleaned);
+
+            String lower = cleaned.toLowerCase();
+            if (methodToType.containsKey(lower)) return methodToType.get(lower);
+            if (fieldToType.containsKey(lower)) return fieldToType.get(lower);
+            if (simpleNameToType.containsKey(lower)) return simpleNameToType.get(lower);
+
+            int paren = cleaned.indexOf('(');
+            String base = (paren > 0) ? cleaned.substring(0, paren) : cleaned;
             if (methodToType.containsKey(base)) return methodToType.get(base);
             if (typeMap.containsKey(base)) return base;
             if (simpleNameToType.containsKey(base)) return simpleNameToType.get(base);
+
+            String baseLower = base.toLowerCase();
+            if (methodToType.containsKey(baseLower)) return methodToType.get(baseLower);
+            if (simpleNameToType.containsKey(baseLower)) return simpleNameToType.get(baseLower);
 
             int dot = base.lastIndexOf('.');
             if (dot > 0) {
                 String potentialType = base.substring(0, dot);
                 if (typeMap.containsKey(potentialType)) return potentialType;
                 if (simpleNameToType.containsKey(potentialType)) return simpleNameToType.get(potentialType);
+                if (simpleNameToType.containsKey(potentialType.toLowerCase())) return simpleNameToType.get(potentialType.toLowerCase());
+
+                // Check simple class name of potentialType (e.g. "com.tcs.bancs.RK.AuditTrailService" -> "AuditTrailService")
+                int typeDot = potentialType.lastIndexOf('.');
+                String simpleType = (typeDot >= 0) ? potentialType.substring(typeDot + 1) : potentialType;
+                if (typeMap.containsKey(simpleType)) return simpleType;
+                if (simpleNameToType.containsKey(simpleType)) return simpleNameToType.get(simpleType);
+                if (simpleNameToType.containsKey(simpleType.toLowerCase())) return simpleNameToType.get(simpleType.toLowerCase());
+
+                // Variable name resolution (e.g. "auditTrailService" -> "AuditTrailService")
+                if (!simpleType.isEmpty() && Character.isLowerCase(simpleType.charAt(0))) {
+                    String cap = Character.toUpperCase(simpleType.charAt(0)) + simpleType.substring(1);
+                    if (simpleNameToType.containsKey(cap)) return simpleNameToType.get(cap);
+                }
+
+                // Check if base matches method or field
+                if (methodToType.containsKey(base)) return methodToType.get(base);
+                if (methodToType.containsKey(baseLower)) return methodToType.get(baseLower);
+                if (fieldToType.containsKey(base)) return fieldToType.get(base);
+                if (fieldToType.containsKey(baseLower)) return fieldToType.get(baseLower);
+
                 return potentialType;
             }
+
+            // Simple name without dot (e.g. "AuditTrailService" or "Worker")
+            if (simpleNameToType.containsKey(base)) return simpleNameToType.get(base);
+            if (!base.isEmpty() && Character.isLowerCase(base.charAt(0))) {
+                String cap = Character.toUpperCase(base.charAt(0)) + base.substring(1);
+                if (simpleNameToType.containsKey(cap)) return simpleNameToType.get(cap);
+            }
+
             return base;
         }
 
@@ -600,17 +748,29 @@ public class ModuleDependencyAnalyzer {
             if (pkg != null && packageToModule.containsKey(pkg)) {
                 return packageToModule.get(pkg);
             }
+            // Longest prefix match against packageToModule
+            String bestMod = findModuleByPackagePrefix(typeFqn);
+            if (bestMod != null) {
+                return bestMod;
+            }
             return CallGraphAnalyzer.extractModuleName(typeFqn);
         }
 
         String getModuleForEntity(String entityFqn) {
             if (entityFqn == null || entityFqn.isBlank()) return null;
-            String type = getTypeForEntity(entityFqn);
+            String cleaned = cleanFqn(entityFqn);
+
+            String type = getTypeForEntity(cleaned);
             if (type != null) {
                 String mod = getModuleForType(type);
                 if (mod != null && isProjectModule(mod)) return canonicalModule(mod);
             }
-            String mod = CallGraphAnalyzer.extractModuleName(entityFqn);
+
+            // Prefix match against packageToModule directly
+            String prefixMod = findModuleByPackagePrefix(cleaned);
+            if (prefixMod != null && isProjectModule(prefixMod)) return canonicalModule(prefixMod);
+
+            String mod = CallGraphAnalyzer.extractModuleName(cleaned);
             if (isProjectModule(mod)) return canonicalModule(mod);
             return mod;
         }
