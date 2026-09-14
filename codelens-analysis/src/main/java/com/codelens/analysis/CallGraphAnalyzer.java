@@ -847,7 +847,7 @@ public class CallGraphAnalyzer {
         return "default";
     }
 
-    private static String extractPackageFqn(String fqn) {
+    public static String extractPackageFqn(String fqn) {
         if (fqn == null || fqn.isEmpty()) return "(default)";
         int paren = fqn.indexOf('(');
         String base = (paren > 0) ? fqn.substring(0, paren) : fqn;

@@ -103,6 +103,9 @@ public class CodeLensServer {
 
     // ── Graph Layout Cache & Disk Persistence ────────────────────────────────
     private final Map<String, CallGraphAnalyzer.GraphView> layoutCache = new ConcurrentHashMap<>();
+    private final ModuleDependencyAnalyzer moduleDependencyAnalyzer;
+    private final Map<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> moduleDependencyCache = new ConcurrentHashMap<>();
+    private volatile ModuleDependencyAnalyzer.ModuleOverviewPayload cachedModuleOverview = null;
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
@@ -181,6 +184,8 @@ public class CodeLensServer {
 
     public void invalidateGraphCache() {
         layoutCache.clear();
+        moduleDependencyCache.clear();
+        cachedModuleOverview = null;
         scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
@@ -299,6 +304,7 @@ public class CodeLensServer {
         this.callGraph             = new CallGraphAnalyzer();
         this.fieldImpact           = new FieldImpactAnalyzer();
         this.codeReviewEngine      = new CodeReviewEngine();
+        this.moduleDependencyAnalyzer = new ModuleDependencyAnalyzer();
         this.reportService         = new ReportService(this.callGraph, this.fieldImpact, this.codeReviewEngine);
         this.criticalPathAnalyzer  = new CriticalPathAnalyzer(this.callGraph);
         this.gitBlameService       = new GitBlameService();
@@ -342,9 +348,12 @@ public class CodeLensServer {
         app.get("/api/stats",        this::getStats);
 
 
-        // ── Packages ──────────────────────────────────────────────────────────
-        app.get("/api/packages",              this::listPackages);
-        app.get("/api/packages/{fqn}/types",  this::typesByPackage);
+        // ── Packages & Modules ────────────────────────────────────────────────
+        app.get("/api/packages",                        this::listPackages);
+        app.get("/api/packages/{fqn}/types",            this::typesByPackage);
+        app.get("/api/packages/{fqn}/dependencies",     this::getPackageDependencies);
+        app.get("/api/modules/dependencies",            this::getAllModuleDependencies);
+        app.get("/api/modules/{name}/dependencies",     this::getModuleDependencies);
 
         // ── Types ─────────────────────────────────────────────────────────────
         app.get("/api/types",     this::listTypes);
@@ -1350,6 +1359,73 @@ public class CodeLensServer {
     private void typesByPackage(Context ctx) throws Exception {
         String fqn = ctx.pathParam("fqn");
         ctx.json(dao.findTypesByPackage(fqn));
+    }
+
+    private void getModuleDependencies(Context ctx) throws Exception {
+        String name = decode(ctx.pathParam("name"));
+        serveModuleDependencies(ctx, name);
+    }
+
+    private void getPackageDependencies(Context ctx) throws Exception {
+        String fqn = decode(ctx.pathParam("fqn"));
+        serveModuleDependencies(ctx, fqn);
+    }
+
+    private void serveModuleDependencies(Context ctx, String query) throws Exception {
+        if (query == null || query.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Module or package parameter is required"));
+            return;
+        }
+
+        String cacheKey = query.trim().toLowerCase();
+        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = moduleDependencyCache.get(cacheKey);
+        if (cached != null) {
+            ctx.json(cached);
+            return;
+        }
+
+        List<CodePackage> packages = dao.findAllPackages();
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        List<CodeField> fields = dao.findAllFields();
+        List<CodeRelationship> relationships = dao.findAllRelationships();
+
+        ModuleDependencyAnalyzer.ModuleDependencyInsights insights = moduleDependencyAnalyzer.analyzeModule(
+            query, packages, types, methods, fields, relationships
+        );
+
+        if (insights == null) {
+            ctx.status(404).json(Map.of("error", "Module or package not found: " + query));
+            return;
+        }
+
+        moduleDependencyCache.put(cacheKey, insights);
+        if (insights.moduleName != null) {
+            moduleDependencyCache.put(insights.moduleName.toLowerCase(), insights);
+        }
+        if (insights.packageFqn != null) {
+            moduleDependencyCache.put(insights.packageFqn.toLowerCase(), insights);
+        }
+
+        ctx.json(insights);
+    }
+
+    private void getAllModuleDependencies(Context ctx) throws Exception {
+        ModuleDependencyAnalyzer.ModuleOverviewPayload overview = cachedModuleOverview;
+        if (overview != null) {
+            ctx.json(overview);
+            return;
+        }
+
+        List<CodePackage> packages = dao.findAllPackages();
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        List<CodeField> fields = dao.findAllFields();
+        List<CodeRelationship> relationships = dao.findAllRelationships();
+
+        overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships);
+        cachedModuleOverview = overview;
+        ctx.json(overview);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

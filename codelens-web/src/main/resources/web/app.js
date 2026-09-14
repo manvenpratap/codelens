@@ -199,6 +199,9 @@ const api = {
   excludedScopes:     ()          => api.get('/scope/excluded'),
   restoreScope:       (fqn)       => api.post('/scope/restore', { fqn }),
   clearExcludedScopes:()          => api.post('/scope/clear', {}),
+  moduleDependencies: (nameOrFqn) => api.get(`/modules/${enc(nameOrFqn)}/dependencies`),
+  packageDependencies:(fqn)       => api.get(`/packages/${enc(fqn)}/dependencies`),
+  allModuleDependencies:()        => api.get('/modules/dependencies'),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -1279,13 +1282,13 @@ async function loadTypesInTree(pkgFqn, container, depth) {
 }
 
 /** Select a package: show its types in the knowledge-base tab. */
-function selectPackage(pkg, itemEl) {
+function selectPackage(pkg, itemEl, initialTab = null) {
   setActiveTreeItem(itemEl);
   App.selected = { kind: 'package', id: pkg.fqn, data: pkg };
 
   // Show the knowledge-base tab with type list
   switchTab('knowledge');
-  loadKnowledgeBase(pkg.fqn);
+  loadKnowledgeBase(pkg.fqn, initialTab);
 
   // Show package info in right panel
   renderPackageDetail(pkg);
@@ -2313,7 +2316,7 @@ function renderMethodRow(m, type) {
 }
 
 /** Load and render all types for a given package in the KB tab. */
-async function loadKnowledgeBase(pkgFqn) {
+async function loadKnowledgeBase(pkgFqn, initialTab = null) {
   const view = qs('#knowledge-view');
   if (!view) return;
   view.innerHTML = '';
@@ -2328,7 +2331,7 @@ async function loadKnowledgeBase(pkgFqn) {
         }
       }
     }
-    let activeKind = (App.activeFilter || 'all').toUpperCase();
+    let activeKind = (initialTab || App.activeFilter || 'all').toUpperCase();
 
     // ── Package Hero Card ─────────────────────────────────────────────────────
     const hero = createElement('div', { class: 'kb-hero-card fade-in' });
@@ -2390,6 +2393,11 @@ async function loadKnowledgeBase(pkgFqn) {
           <span>Enums</span>
           <span class="kb-tab-badge">${counts.ENUM}</span>
         </button>
+        <button class="kb-tab-pill ${activeKind === 'DEPENDENCIES' ? 'active' : ''}" data-filter="DEPENDENCIES" id="kb-tab-dependencies">
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <span>Dependencies & Touch Points</span>
+          <span class="kb-tab-badge" id="kb-dep-badge">…</span>
+        </button>
       </div>
     `;
     view.appendChild(pkgTabsBar);
@@ -2398,9 +2406,48 @@ async function loadKnowledgeBase(pkgFqn) {
     const contentContainer = createElement('div', { id: 'kb-pkg-content-container' });
     view.appendChild(contentContainer);
 
+    let moduleDepData = null;
+    api.packageDependencies(pkgFqn).then(depData => {
+      moduleDepData = depData;
+      const badge = qs('#kb-dep-badge');
+      if (badge && depData) {
+        badge.textContent = `${depData.totalTouchPoints} touch pts`;
+      }
+      if (activeKind === 'DEPENDENCIES') {
+        renderFilteredTypes('DEPENDENCIES');
+      }
+    }).catch(() => {
+      const badge = qs('#kb-dep-badge');
+      if (badge) badge.textContent = '0';
+    });
+
     function renderFilteredTypes(filterKind) {
       activeKind = filterKind;
       contentContainer.innerHTML = '';
+
+      // Update tabs active state
+      pkgTabsBar.querySelectorAll('.kb-tab-pill').forEach(pill => {
+        pill.classList.toggle('active', pill.dataset.filter === activeKind);
+      });
+
+      if (activeKind === 'DEPENDENCIES') {
+        const showingEl = qs('#kb-pkg-showing-count');
+        const filterEl = qs('#kb-pkg-filter-label');
+        if (filterEl) filterEl.textContent = 'DEPENDENCIES';
+        if (moduleDepData) {
+          if (showingEl) showingEl.textContent = (moduleDepData.outgoingModules.length + moduleDepData.incomingModules.length) + ' modules';
+          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, moduleDepData);
+        } else {
+          if (showingEl) showingEl.textContent = '…';
+          contentContainer.innerHTML = `
+            <div class="kb-empty-container fade-in">
+              <div class="kb-empty-icon"><div class="spinner" style="width:28px;height:28px;border-width:2.5px;"></div></div>
+              <div class="kb-empty-title">Analyzing Module Dependencies…</div>
+              <div class="kb-empty-desc">Mapping intermodular touch points, function calls, and class usage.</div>
+            </div>`;
+        }
+        return;
+      }
 
       const filteredTypes = types.filter(t => {
         if (activeKind === 'ALL') return true;
@@ -2412,11 +2459,6 @@ async function loadKnowledgeBase(pkgFqn) {
       const filterEl = qs('#kb-pkg-filter-label');
       if (showingEl) showingEl.textContent = filteredTypes.length;
       if (filterEl) filterEl.textContent = activeKind;
-
-      // Update tabs active state
-      pkgTabsBar.querySelectorAll('.kb-tab-pill').forEach(pill => {
-        pill.classList.toggle('active', pill.dataset.filter === activeKind);
-      });
 
       if (filteredTypes.length === 0) {
         const msg = activeKind === 'ALL'
@@ -2500,6 +2542,611 @@ async function loadKnowledgeBase(pkgFqn) {
     `;
     view.appendChild(errorCard);
   }
+}
+
+/** Render comprehensive Module Dependencies, Touch Points, Class Usages, and Function Calls in Knowledge Base */
+function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
+  if (!depData) {
+    container.innerHTML = `
+      <div class="kb-empty-container fade-in">
+        <div class="kb-empty-title">No Dependency Data Available</div>
+        <div class="kb-empty-desc">Could not calculate dependency insights for this package/module.</div>
+      </div>`;
+    return;
+  }
+
+  // Pre-process and collect all class usages and function calls
+  const allOutgoingClassUsages = [];
+  const allIncomingClassUsages = [];
+  const allOutgoingFunctionCalls = [];
+  const allIncomingFunctionCalls = [];
+
+  for (const mod of (depData.outgoingModules || [])) {
+    for (const cu of (mod.classUsages || [])) {
+      allOutgoingClassUsages.push({ ...cu, targetModule: mod.moduleName, targetPackage: mod.packageFqn, direction: 'OUTBOUND' });
+    }
+    for (const tp of (mod.touchPoints || [])) {
+      if ((tp.kind || '').toUpperCase() === 'CALLS') {
+        allOutgoingFunctionCalls.push({ ...tp, targetModule: mod.moduleName, targetPackage: mod.packageFqn, direction: 'OUTBOUND' });
+      }
+    }
+  }
+
+  for (const mod of (depData.incomingModules || [])) {
+    for (const cu of (mod.classUsages || [])) {
+      allIncomingClassUsages.push({ ...cu, sourceModule: mod.moduleName, sourcePackage: mod.packageFqn, direction: 'INBOUND' });
+    }
+    for (const tp of (mod.touchPoints || [])) {
+      if ((tp.kind || '').toUpperCase() === 'CALLS') {
+        allIncomingFunctionCalls.push({ ...tp, sourceModule: mod.moduleName, sourcePackage: mod.packageFqn, direction: 'INBOUND' });
+      }
+    }
+  }
+
+  const allClassUsages = [...allOutgoingClassUsages, ...allIncomingClassUsages];
+  const allFunctionCalls = [...allOutgoingFunctionCalls, ...allIncomingFunctionCalls];
+
+  const stabilityClass = depData.instability < 0.3
+    ? 'is-stable'
+    : depData.instability > 0.7
+    ? 'is-flexible'
+    : 'is-balanced';
+
+  // Total touch points for kind distribution
+  const kinds = depData.totalByKind || {};
+  const totalKindsCount = Object.values(kinds).reduce((a, b) => a + b, 0) || 1;
+
+  const viewEl = createElement('div', { class: 'module-dependencies-view fade-in' });
+
+  // 1. KPI Architecture & Instability Banner
+  const kpiBanner = createElement('div', { class: 'mod-dep-kpi-banner' });
+  kpiBanner.innerHTML = `
+    <div class="mod-dep-kpi-card">
+      <div class="mod-dep-kpi-header">
+        <span class="mod-dep-kpi-title">Total Touch Points</span>
+        <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </div>
+      <div class="mod-dep-kpi-value">${depData.totalTouchPoints}</div>
+      <div class="mod-dep-kpi-sub">
+        <span class="sub-pill out" title="Outbound touch points to other modules">${depData.totalOutboundTouchPoints} Outbound</span>
+        <span class="sub-pill in" title="Inbound touch points from dependent modules">${depData.totalInboundTouchPoints} Inbound</span>
+        ${depData.internalTouchPoints > 0 ? `<span class="sub-pill intra" title="Internal intra-module touch points">${depData.internalTouchPoints} Intra</span>` : ''}
+      </div>
+    </div>
+
+    <div class="mod-dep-kpi-card">
+      <div class="mod-dep-kpi-header">
+        <span class="mod-dep-kpi-title">Afferent Coupling (Ca)</span>
+        <span class="mod-dep-kpi-badge ca-badge">INBOUND</span>
+      </div>
+      <div class="mod-dep-kpi-value">${depData.afferentCoupling} <span class="kpi-unit">modules</span></div>
+      <div class="mod-dep-kpi-sub">Dependent modules calling into this module</div>
+    </div>
+
+    <div class="mod-dep-kpi-card">
+      <div class="mod-dep-kpi-header">
+        <span class="mod-dep-kpi-title">Efferent Coupling (Ce)</span>
+        <span class="mod-dep-kpi-badge ce-badge">OUTBOUND</span>
+      </div>
+      <div class="mod-dep-kpi-value">${depData.efferentCoupling} <span class="kpi-unit">modules</span></div>
+      <div class="mod-dep-kpi-sub">External modules required by this module</div>
+    </div>
+
+    <div class="mod-dep-kpi-card">
+      <div class="mod-dep-kpi-header">
+        <span class="mod-dep-kpi-title">Instability Index (I)</span>
+        <span class="stability-rating-pill ${stabilityClass}">${esc(depData.stabilityRating || 'Balanced')}</span>
+      </div>
+      <div class="mod-dep-kpi-value">${(depData.instability || 0).toFixed(2)}</div>
+      <div class="instability-bar-track" title="Instability = Ce / (Ca + Ce) = ${depData.efferentCoupling} / (${depData.afferentCoupling} + ${depData.efferentCoupling})">
+        <div class="instability-bar-fill ${stabilityClass}" style="width:${Math.min(100, Math.round((depData.instability || 0) * 100))}%;"></div>
+      </div>
+      <div class="instability-scale-labels">
+        <span>0.0 (Stable)</span>
+        <span>0.5 (Balanced)</span>
+        <span>1.0 (Flexible)</span>
+      </div>
+    </div>
+  `;
+  viewEl.appendChild(kpiBanner);
+
+  // 2. Touch Point Kinds Distribution Section
+  const kindsSec = createElement('div', { class: 'mod-dep-kinds-section' });
+  const kindEntries = Object.entries(kinds).sort((a, b) => b[1] - a[1]);
+
+  let segsHtml = '';
+  for (const [k, count] of kindEntries) {
+    const pct = Math.max(2, Math.round((count / totalKindsCount) * 100));
+    segsHtml += `<div class="kinds-bar-seg ${k}" style="width:${pct}%;" title="${k}: ${count} touch points (${pct}%)"></div>`;
+  }
+
+  let chipsHtml = `
+    <button class="mod-dep-kind-chip active" data-kind="ALL">
+      <span class="chip-dot" style="background:var(--text-muted);"></span>
+      <span>All Kinds</span>
+      <span style="font-weight:700;">(${depData.totalTouchPoints})</span>
+    </button>
+  `;
+  for (const [k, count] of kindEntries) {
+    chipsHtml += `
+      <button class="mod-dep-kind-chip ${k}" data-kind="${k}">
+        <span class="chip-dot"></span>
+        <span>${k}</span>
+        <span style="font-weight:700;">(${count})</span>
+      </button>
+    `;
+  }
+
+  kindsSec.innerHTML = `
+    <div class="mod-dep-kinds-header">
+      <span class="kinds-sec-title">Touch Point Kinds Distribution</span>
+      <span class="kinds-sec-count">${depData.totalTouchPoints} Total Touch Points</span>
+    </div>
+    <div class="kinds-distribution-bar">
+      ${segsHtml || '<div class="kinds-bar-seg CALLS" style="width:100%;"></div>'}
+    </div>
+    <div class="kinds-chips-row">
+      ${chipsHtml}
+    </div>
+  `;
+  viewEl.appendChild(kindsSec);
+
+  // 3. Sub-View Navigation Tabs & Filter Box
+  let currentSubView = 'modules'; // 'modules' | 'class-usage' | 'function-calls' | 'external'
+  let currentKindFilter = 'ALL';
+  let currentSearchQuery = '';
+
+  const controlsBar = createElement('div', { class: 'mod-dep-controls-bar' });
+  controlsBar.innerHTML = `
+    <div class="mod-dep-subtabs" role="tablist">
+      <button class="mod-dep-subtab active" data-subview="modules">Connected Modules (${depData.outgoingModules.length + depData.incomingModules.length})</button>
+      <button class="mod-dep-subtab" data-subview="class-usage">Intermodular Class Usage (${allClassUsages.length})</button>
+      <button class="mod-dep-subtab" data-subview="function-calls">Intermodular Function Calls (${allFunctionCalls.length})</button>
+      ${depData.externalDependencies && depData.externalDependencies.length > 0 ? `<button class="mod-dep-subtab" data-subview="external">External (${depData.externalDependencies.length})</button>` : ''}
+    </div>
+    <div class="mod-dep-search-box">
+      <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="mod-dep-search-input" placeholder="Filter classes, methods, or modules…" />
+    </div>
+  `;
+  viewEl.appendChild(controlsBar);
+
+  // 4. Sub-View Container
+  const subviewContainer = createElement('div', { class: 'mod-dep-subview-container', id: 'mod-dep-subview-container' });
+  viewEl.appendChild(subviewContainer);
+
+  function updateSubView() {
+    subviewContainer.innerHTML = '';
+    kindsSec.querySelectorAll('.mod-dep-kind-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.kind === currentKindFilter);
+    });
+
+    if (currentSubView === 'modules') {
+      renderConnectedModulesSubView();
+    } else if (currentSubView === 'class-usage') {
+      renderClassUsageSubView();
+    } else if (currentSubView === 'function-calls') {
+      renderFunctionCallsSubView();
+    } else if (currentSubView === 'external') {
+      renderExternalSubView();
+    }
+  }
+
+  // --- SUBVIEW 1: CONNECTED MODULES ---
+  function renderConnectedModulesSubView() {
+    const q = currentSearchQuery.toLowerCase();
+    const modules = [];
+
+    for (const m of (depData.outgoingModules || [])) {
+      modules.push({ ...m, direction: 'OUTBOUND' });
+    }
+    for (const m of (depData.incomingModules || [])) {
+      modules.push({ ...m, direction: 'INBOUND' });
+    }
+
+    const filtered = modules.filter(m => {
+      if (q) {
+        const matchesName = (m.moduleName || '').toLowerCase().includes(q) || (m.packageFqn || '').toLowerCase().includes(q);
+        const matchesClass = (m.classUsages || []).some(cu =>
+          (cu.sourceClassSimpleName || '').toLowerCase().includes(q) ||
+          (cu.targetClassSimpleName || '').toLowerCase().includes(q)
+        );
+        const matchesCall = (m.touchPoints || []).some(tp =>
+          (tp.fromEntity || '').toLowerCase().includes(q) ||
+          (tp.toEntity || '').toLowerCase().includes(q)
+        );
+        if (!matchesName && !matchesClass && !matchesCall) return false;
+      }
+      if (currentKindFilter !== 'ALL') {
+        if (!m.kinds || !m.kinds[currentKindFilter]) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      subviewContainer.innerHTML = `
+        <div class="kb-empty-container fade-in" style="padding:24px;">
+          <div class="kb-empty-title">No Matching Modules</div>
+          <div class="kb-empty-desc">No connected modules matched your filter criteria.</div>
+        </div>`;
+      return;
+    }
+
+    for (const m of filtered) {
+      const card = createElement('div', { class: 'mod-dep-module-card fade-in' });
+      const dirCls = m.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
+      const dirText = m.direction === 'OUTBOUND' ? 'OUTBOUND DEPENDENCY (Used by this)' : 'INBOUND DEPENDENT (Calls this)';
+
+      card.innerHTML = `
+        <div class="mod-dep-card-header">
+          <div class="mod-dep-card-title-group">
+            <span class="mod-dep-direction-tag ${dirCls}">${dirText}</span>
+            <span class="mod-dep-card-modname">${esc(m.moduleName)}</span>
+            <span class="mod-dep-card-pkgname">${esc(m.packageFqn)}</span>
+          </div>
+          <div class="mod-dep-card-stats">
+            <span class="mod-dep-stat-badge">${m.totalTouchPoints} touch points</span>
+            <span class="mod-dep-stat-badge">${m.classUsages ? m.classUsages.length : 0} class pairs</span>
+            <span class="mod-dep-stat-badge">${m.functionCallCount || 0} calls</span>
+            <button class="btn-secondary btn-xs btn-inspect-mod" title="Open ${esc(m.moduleName)} in Knowledge Base">Inspect Module</button>
+          </div>
+        </div>
+        <div class="mod-dep-card-body">
+          <div class="mod-dep-class-sec">
+            <div class="mod-dep-class-sec-title">
+              <span>Intermodular Class Usage (${m.classUsages ? m.classUsages.length : 0} pairs)</span>
+            </div>
+            <div class="mod-dep-class-grid"></div>
+          </div>
+
+          <div class="mod-dep-calls-sec">
+            <div class="mod-dep-calls-accordion">
+              <div class="mod-dep-calls-acc-header" role="button" tabindex="0">
+                <span>View Intermodular Function Calls & Touch Points (${m.touchPoints ? m.touchPoints.length : 0})</span>
+                <span class="acc-chevron">▼</span>
+              </div>
+              <div class="mod-dep-calls-acc-body" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.btn-inspect-mod')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectModuleItem({ fqn: m.packageFqn, name: m.moduleName }, 'DEPENDENCIES');
+      });
+
+      const classGrid = card.querySelector('.mod-dep-class-grid');
+      const classUsages = m.classUsages || [];
+      if (classUsages.length === 0) {
+        classGrid.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No direct class usages recorded.</div>';
+      } else {
+        for (const cu of classUsages) {
+          const pairCard = createElement('div', { class: 'mod-dep-class-pair-card' });
+          let cuKindsHtml = '';
+          if (cu.kinds) {
+            for (const [k, count] of Object.entries(cu.kinds)) {
+              cuKindsHtml += `<span class="class-kind-pill ${k}">${k}: ${count}</span>`;
+            }
+          }
+          pairCard.innerHTML = `
+            <div class="class-pair-row-top">
+              <div class="class-pair-flow">
+                <a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a>
+                <span class="class-arrow-icon">➔</span>
+                <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
+              </div>
+              <span class="class-pair-pts-badge">${cu.touchPointCount} ${cu.touchPointCount === 1 ? 'pt' : 'pts'}</span>
+            </div>
+            <div class="class-pair-kinds">
+              ${cuKindsHtml}
+            </div>
+          `;
+
+          pairCard.querySelector('.src-link')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectType(cu.sourceClassFqn);
+          });
+          pairCard.querySelector('.tgt-link')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectType(cu.targetClassFqn);
+          });
+
+          classGrid.appendChild(pairCard);
+        }
+      }
+
+      const accHeader = card.querySelector('.mod-dep-calls-acc-header');
+      const accBody = card.querySelector('.mod-dep-calls-acc-body');
+      let hydratedCalls = false;
+
+      const toggleAcc = () => {
+        const isHidden = accBody.style.display === 'none';
+        accBody.style.display = isHidden ? 'flex' : 'none';
+        card.querySelector('.acc-chevron').textContent = isHidden ? '▲' : '▼';
+        if (isHidden && !hydratedCalls) {
+          const tps = m.touchPoints || [];
+          if (tps.length === 0) {
+            accBody.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text-muted);">No specific function calls recorded.</div>';
+          } else {
+            for (const tp of tps) {
+              const row = createElement('div', { class: 'mod-dep-call-row' });
+              row.innerHTML = `
+                <div class="mod-dep-call-chain">
+                  <span class="rel-dot ${tp.kind}"></span>
+                  <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
+                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${esc(cleanEntityDisplay(tp.fromEntity))}</span>
+                  <span class="mod-dep-call-arrow">➔</span>
+                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${esc(cleanEntityDisplay(tp.toEntity))}</span>
+                </div>
+                <div class="mod-dep-call-meta">
+                  ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line">Line ${tp.sourceLine}</span>` : ''}
+                </div>
+              `;
+              row.querySelector('.mod-dep-call-caller')?.addEventListener('click', () => {
+                if (tp.fromType) selectType(tp.fromType);
+              });
+              row.querySelector('.mod-dep-call-callee')?.addEventListener('click', () => {
+                if (tp.toType) selectType(tp.toType);
+              });
+              accBody.appendChild(row);
+            }
+          }
+          hydratedCalls = true;
+        }
+      };
+
+      accHeader.addEventListener('click', toggleAcc);
+      accHeader.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleAcc();
+        }
+      });
+
+      subviewContainer.appendChild(card);
+    }
+  }
+
+  // --- SUBVIEW 2: CLASS USAGE MATRIX ---
+  function renderClassUsageSubView() {
+    const q = currentSearchQuery.toLowerCase();
+    const filtered = allClassUsages.filter(cu => {
+      if (q) {
+        const matches = (cu.sourceClassFqn || '').toLowerCase().includes(q) ||
+                        (cu.targetClassFqn || '').toLowerCase().includes(q) ||
+                        (cu.targetModule || '').toLowerCase().includes(q) ||
+                        (cu.sourceModule || '').toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      if (currentKindFilter !== 'ALL') {
+        if (!cu.kinds || !cu.kinds[currentKindFilter]) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      subviewContainer.innerHTML = `
+        <div class="kb-empty-container fade-in" style="padding:24px;">
+          <div class="kb-empty-title">No Matching Class Usages</div>
+          <div class="kb-empty-desc">No intermodular class usage pairs match your filter.</div>
+        </div>`;
+      return;
+    }
+
+    const tableWrap = createElement('div', { class: 'mod-dep-table-wrap fade-in' });
+    const table = createElement('table', { class: 'mod-dep-table' });
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Source Class</th>
+          <th>Target Class</th>
+          <th>Connected Module</th>
+          <th>Kinds</th>
+          <th style="text-align:right;">Touch Points</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    for (const cu of filtered) {
+      const tr = createElement('tr');
+      const dirCls = cu.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
+      const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUTBOUND' : '⬅ INBOUND';
+      const modName = cu.targetModule || cu.sourceModule || '-';
+
+      let kindsHtml = '';
+      if (cu.kinds) {
+        for (const [k, count] of Object.entries(cu.kinds)) {
+          kindsHtml += `<span class="class-kind-pill ${k}">${k}: ${count}</span> `;
+        }
+      }
+
+      tr.innerHTML = `
+        <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
+        <td><a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a></td>
+        <td><a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a></td>
+        <td><strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong></td>
+        <td>${kindsHtml}</td>
+        <td style="text-align:right;font-weight:700;color:var(--cyan);">${cu.touchPointCount}</td>
+      `;
+
+      tr.querySelector('.src-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        selectType(cu.sourceClassFqn);
+      });
+      tr.querySelector('.tgt-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        selectType(cu.targetClassFqn);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    tableWrap.appendChild(table);
+    subviewContainer.appendChild(tableWrap);
+  }
+
+  // --- SUBVIEW 3: INTERMODULAR FUNCTION CALLS ---
+  function renderFunctionCallsSubView() {
+    const q = currentSearchQuery.toLowerCase();
+    const filtered = allFunctionCalls.filter(fc => {
+      if (q) {
+        const matches = (fc.fromEntity || '').toLowerCase().includes(q) ||
+                        (fc.toEntity || '').toLowerCase().includes(q) ||
+                        (fc.targetModule || '').toLowerCase().includes(q) ||
+                        (fc.sourceModule || '').toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      if (currentKindFilter !== 'ALL' && fc.kind !== currentKindFilter) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      subviewContainer.innerHTML = `
+        <div class="kb-empty-container fade-in" style="padding:24px;">
+          <div class="kb-empty-title">No Matching Function Calls</div>
+          <div class="kb-empty-desc">No intermodular function calls match your search filter.</div>
+        </div>`;
+      return;
+    }
+
+    const tableWrap = createElement('div', { class: 'mod-dep-table-wrap fade-in' });
+    const table = createElement('table', { class: 'mod-dep-table' });
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Caller Function</th>
+          <th>Callee Function</th>
+          <th>Target Module</th>
+          <th>Kind</th>
+          <th>Source Line</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    for (const fc of filtered) {
+      const tr = createElement('tr');
+      const dirCls = fc.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
+      const dirLabel = fc.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
+      const modName = fc.targetModule || fc.sourceModule || '-';
+
+      tr.innerHTML = `
+        <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
+        <td><span class="mod-dep-call-caller" title="${esc(fc.fromEntity)}">${esc(cleanEntityDisplay(fc.fromEntity))}</span></td>
+        <td><span class="mod-dep-call-callee" title="${esc(fc.toEntity)}">${esc(cleanEntityDisplay(fc.toEntity))}</span></td>
+        <td><strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong></td>
+        <td><span class="class-kind-pill ${fc.kind}">${fc.kind}</span></td>
+        <td style="color:var(--text-muted);">${fc.sourceLine > 0 ? 'L: ' + fc.sourceLine : '-'}</td>
+      `;
+
+      tr.querySelector('.mod-dep-call-caller')?.addEventListener('click', () => {
+        if (fc.fromType) selectType(fc.fromType);
+      });
+      tr.querySelector('.mod-dep-call-callee')?.addEventListener('click', () => {
+        if (fc.toType) selectType(fc.toType);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    tableWrap.appendChild(table);
+    subviewContainer.appendChild(tableWrap);
+  }
+
+  // --- SUBVIEW 4: EXTERNAL / THIRD-PARTY ---
+  function renderExternalSubView() {
+    const externals = depData.externalDependencies || [];
+    if (externals.length === 0) {
+      subviewContainer.innerHTML = `
+        <div class="kb-empty-container fade-in" style="padding:24px;">
+          <div class="kb-empty-title">No External Dependencies</div>
+          <div class="kb-empty-desc">No external or JDK dependencies detected for this module.</div>
+        </div>`;
+      return;
+    }
+
+    for (const m of externals) {
+      const card = createElement('div', { class: 'mod-dep-module-card fade-in' });
+      card.innerHTML = `
+        <div class="mod-dep-card-header">
+          <div class="mod-dep-card-title-group">
+            <span class="mod-dep-direction-tag external">EXTERNAL / JDK</span>
+            <span class="mod-dep-card-modname">${esc(m.moduleName)}</span>
+          </div>
+          <div class="mod-dep-card-stats">
+            <span class="mod-dep-stat-badge">${m.totalTouchPoints} touch points</span>
+          </div>
+        </div>
+        <div class="mod-dep-card-body">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">External references and calls to third-party or standard library types.</div>
+          <div class="mod-dep-calls-acc-body">
+            ${(m.touchPoints || []).slice(0, 50).map(tp => `
+              <div class="mod-dep-call-row">
+                <div class="mod-dep-call-chain">
+                  <span class="rel-dot ${tp.kind}"></span>
+                  <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
+                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${esc(cleanEntityDisplay(tp.fromEntity))}</span>
+                  <span class="mod-dep-call-arrow">➔</span>
+                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${esc(cleanEntityDisplay(tp.toEntity))}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      subviewContainer.appendChild(card);
+    }
+  }
+
+  // Event Listeners for controls
+  controlsBar.querySelectorAll('.mod-dep-subtab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      controlsBar.querySelectorAll('.mod-dep-subtab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentSubView = tab.dataset.subview;
+      updateSubView();
+    });
+  });
+
+  kindsSec.querySelectorAll('.mod-dep-kind-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      currentKindFilter = chip.dataset.kind;
+      updateSubView();
+    });
+  });
+
+  const searchInput = controlsBar.querySelector('.mod-dep-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      currentSearchQuery = e.target.value.trim();
+      updateSubView();
+    });
+  }
+
+  // Initial render of default subview
+  updateSubView();
+
+  container.appendChild(viewEl);
+}
+
+function cleanEntityDisplay(entityFqn) {
+  if (!entityFqn) return '';
+  let s = entityFqn;
+  if (s.startsWith('~')) s = s.substring(1);
+  const paren = s.indexOf('(');
+  const params = paren > 0 ? s.substring(paren) : '';
+  const base = paren > 0 ? s.substring(0, paren) : s;
+  const parts = base.split('.');
+  if (parts.length >= 2) {
+    return parts.slice(-2).join('.') + params;
+  }
+  return base + params;
 }
 
 /* ── Inconsistency view ────────────────────────────────────────────────────── */
@@ -4401,6 +5048,114 @@ function renderPackageDetail(pkg) {
     ['Files',     pkg.fileCount],
     ['Parent',    pkg.parentFqn || '(root)'],
   ]));
+
+  body.appendChild(actionRow([
+    {
+      label: 'Open in Knowledge Base',
+      title: 'Open this package in Knowledge Base',
+      action: () => {
+        switchTab('knowledge');
+        loadKnowledgeBase(pkg.fqn);
+      }
+    },
+    {
+      label: 'View Dependencies',
+      title: 'Open Module Dependencies & Touch Points in Knowledge Base',
+      action: () => {
+        switchTab('knowledge');
+        loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES');
+      }
+    }
+  ]));
+
+  // Module Dependency & Touch Points Section in Right Panel
+  const depSec = createElement('div', { class: 'module-dep-inspector-sec' });
+  depSec.innerHTML = `
+    <div class="module-dep-inspector-title">
+      <span>Module Touch Points</span>
+      <span class="stability-rating-pill is-balanced">Analyzing…</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+      <div class="spinner" style="width:12px;height:12px;border-width:2px;"></div> Loading touch points…
+    </div>
+  `;
+  body.appendChild(depSec);
+
+  api.packageDependencies(pkg.fqn).then(deps => {
+    if (!deps) {
+      depSec.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No dependency data found.</div>';
+      return;
+    }
+    const stabilityCls = deps.instability < 0.3 ? 'is-stable' : deps.instability > 0.7 ? 'is-flexible' : 'is-balanced';
+
+    let kindsBadges = '';
+    if (deps.totalByKind) {
+      for (const [k, count] of Object.entries(deps.totalByKind)) {
+        kindsBadges += `<span class="class-kind-pill ${k}">${k}: ${count}</span>`;
+      }
+    }
+
+    const topMods = [...(deps.outgoingModules || []), ...(deps.incomingModules || [])].slice(0, 4);
+    let topModsHtml = '';
+    if (topMods.length > 0) {
+      topModsHtml = `
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-top:4px;">Connected Modules</div>
+        <div class="module-dep-rp-modules-list">
+          ${topMods.map(m => `
+            <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" title="Inspect ${esc(m.moduleName)}">
+              <span style="font-weight:600;color:var(--text-primary);">${esc(m.moduleName)}</span>
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--cyan);font-weight:600;">${m.totalTouchPoints} pts</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    depSec.innerHTML = `
+      <div class="module-dep-inspector-title">
+        <span>Module Touch Points</span>
+        <span class="stability-rating-pill ${stabilityCls}">${esc(deps.stabilityRating || 'Balanced')}</span>
+      </div>
+      <div class="module-dep-rp-grid">
+        <div class="module-dep-rp-kpi">
+          <span class="module-dep-rp-kpi-label">Touch Points</span>
+          <span class="module-dep-rp-kpi-val">${deps.totalTouchPoints}</span>
+        </div>
+        <div class="module-dep-rp-kpi">
+          <span class="module-dep-rp-kpi-label">Instability (I)</span>
+          <span class="module-dep-rp-kpi-val">${(deps.instability || 0).toFixed(2)}</span>
+        </div>
+        <div class="module-dep-rp-kpi">
+          <span class="module-dep-rp-kpi-label">Inbound (Ca)</span>
+          <span class="module-dep-rp-kpi-val">${deps.afferentCoupling} <span style="font-size:10px;font-weight:normal;color:var(--text-muted);">mods</span></span>
+        </div>
+        <div class="module-dep-rp-kpi">
+          <span class="module-dep-rp-kpi-label">Outbound (Ce)</span>
+          <span class="module-dep-rp-kpi-val">${deps.efferentCoupling} <span style="font-size:10px;font-weight:normal;color:var(--text-muted);">mods</span></span>
+        </div>
+      </div>
+      ${kindsBadges ? `<div class="module-dep-rp-kinds">${kindsBadges}</div>` : ''}
+      ${topModsHtml}
+      <button class="btn-primary btn-sm btn-open-deps" style="width:100%;margin-top:6px;font-size:11px;padding:6px 10px;">
+        Inspect All Touch Points & Calls
+      </button>
+    `;
+
+    depSec.querySelectorAll('.module-dep-rp-module-item').forEach(el => {
+      el.addEventListener('click', () => {
+        selectModuleItem({ fqn: el.dataset.fqn }, 'DEPENDENCIES');
+      });
+    });
+
+    depSec.querySelector('.btn-open-deps')?.addEventListener('click', () => {
+      switchTab('knowledge');
+      loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES');
+    });
+  }).catch(() => {
+    depSec.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No dependency insights found.</div>';
+  });
+
+  api.notes(pkg.fqn).then(notes => renderNotes(pkg.fqn, notes)).catch(() => renderNotes(pkg.fqn, []));
 }
 
 /* ── Notes rendering ────────────────────────────────────────────────────────── */
@@ -4678,7 +5433,7 @@ async function updateModulesList(filterText = '') {
 
     return `
       <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files (Click to navigate in Explorer)">
-        <div class="archetype-breakup-left" style="overflow:hidden; max-width:62%;">
+        <div class="archetype-breakup-left" style="overflow:hidden; max-width:58%;">
           <span class="archetype-breakup-badge" style="background:${pkgColor}22; color:${pkgColor}; border:1px solid ${pkgColor}55;">[MOD]</span>
           <div style="display:flex; flex-direction:column; min-width:0; overflow:hidden;">
             <span class="archetype-breakup-name" style="font-weight:600; color:var(--text-primary); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(cleanName)}</span>
@@ -4688,6 +5443,10 @@ async function updateModulesList(filterText = '') {
         <div class="archetype-breakup-right">
           <span class="archetype-breakup-count">${typeCount} ${typeCount === 1 ? 'class' : 'classes'}</span>
           <span class="archetype-breakup-pct" style="width:auto; font-size:9.5px; text-align:right;">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
+          <button class="module-dep-quick-btn" data-fqn="${esc(fqn)}" title="View dependencies & touch points for ${esc(cleanName)}">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <span>Deps</span>
+          </button>
         </div>
       </div>
     `;
@@ -4708,11 +5467,17 @@ async function updateModulesList(filterText = '') {
         handler(e);
       }
     });
+    row.querySelector('.module-dep-quick-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fqn = row.dataset.fqn;
+      const targetPkg = packages.find(p => p.fqn === fqn) || { fqn, name: fqn };
+      selectModuleItem(targetPkg, 'DEPENDENCIES');
+    });
   });
 }
 
 /** Navigate to a module/package from the modules popover */
-async function selectModuleItem(pkg) {
+async function selectModuleItem(pkg, initialTab = null) {
   const popover = qs('#modules-list-popover');
   const pill = qs('#stat-pill-modules');
   if (popover) popover.style.display = 'none';
@@ -4733,7 +5498,7 @@ async function selectModuleItem(pkg) {
     await loadPackageTree();
 
     const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(pkg.fqn)}"]`);
-    selectPackage(pkg, itemEl);
+    selectPackage(pkg, itemEl, initialTab);
     if (itemEl) {
       itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
