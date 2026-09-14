@@ -2394,7 +2394,7 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
           <span class="kb-tab-badge">${counts.ENUM}</span>
         </button>
         <button class="kb-tab-pill ${activeKind === 'DEPENDENCIES' ? 'active' : ''}" data-filter="DEPENDENCIES" id="kb-tab-dependencies">
-          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           <span>Dependencies & Touch Points</span>
           <span class="kb-tab-badge" id="kb-dep-badge">…</span>
         </button>
@@ -2604,7 +2604,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     <div class="mod-dep-kpi-card">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Total Touch Points</span>
-        <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
       </div>
       <div class="mod-dep-kpi-value">${depData.totalTouchPoints}</div>
       <div class="mod-dep-kpi-sub">
@@ -2802,7 +2802,10 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
           <div class="mod-dep-calls-sec">
             <div class="mod-dep-calls-accordion">
               <div class="mod-dep-calls-acc-header" role="button" tabindex="0">
-                <span>View Intermodular Function Calls & Touch Points (${m.touchPoints ? m.touchPoints.length : 0})</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                  <span>View Intermodular Function Calls & Touch Points (${m.touchPoints ? m.touchPoints.length : 0})</span>
+                </div>
                 <span class="acc-chevron">▼</span>
               </div>
               <div class="mod-dep-calls-acc-body" style="display:none;"></div>
@@ -5072,7 +5075,10 @@ function renderPackageDetail(pkg) {
   const depSec = createElement('div', { class: 'module-dep-inspector-sec' });
   depSec.innerHTML = `
     <div class="module-dep-inspector-title">
-      <span>Module Touch Points</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Module Touch Points</span>
+      </div>
       <span class="stability-rating-pill is-balanced">Analyzing…</span>
     </div>
     <div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
@@ -5113,7 +5119,10 @@ function renderPackageDetail(pkg) {
 
     depSec.innerHTML = `
       <div class="module-dep-inspector-title">
-        <span>Module Touch Points</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <span>Module Touch Points</span>
+        </div>
         <span class="stability-rating-pill ${stabilityCls}">${esc(deps.stabilityRating || 'Balanced')}</span>
       </div>
       <div class="module-dep-rp-grid">
@@ -5136,8 +5145,9 @@ function renderPackageDetail(pkg) {
       </div>
       ${kindsBadges ? `<div class="module-dep-rp-kinds">${kindsBadges}</div>` : ''}
       ${topModsHtml}
-      <button class="btn-primary btn-sm btn-open-deps" style="width:100%;margin-top:6px;font-size:11px;padding:6px 10px;">
-        Inspect All Touch Points & Calls
+      <button class="btn-primary btn-sm btn-open-deps" style="width:100%;margin-top:6px;font-size:11px;padding:6px 10px;display:flex;align-items:center;justify-content:center;gap:6px;">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Inspect All Touch Points & Calls</span>
       </button>
     `;
 
@@ -5444,7 +5454,7 @@ async function updateModulesList(filterText = '') {
           <span class="archetype-breakup-count">${typeCount} ${typeCount === 1 ? 'class' : 'classes'}</span>
           <span class="archetype-breakup-pct" style="width:auto; font-size:9.5px; text-align:right;">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
           <button class="module-dep-quick-btn" data-fqn="${esc(fqn)}" title="View dependencies & touch points for ${esc(cleanName)}">
-            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
             <span>Deps</span>
           </button>
         </div>
