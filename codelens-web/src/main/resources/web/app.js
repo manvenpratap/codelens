@@ -2686,24 +2686,44 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   if (inMods.length === 0) {
     inNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No incoming modules (Root / Independent)</div>';
   } else {
-    inNodesHtml = inMods.map(m => `
-      <div class="flow-node-card flow-in-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" title="Inspect ${esc(m.moduleName)}">
-        <span class="flow-node-name">${esc(m.moduleName)}</span>
-        <span class="flow-node-pts">${m.totalTouchPoints} pts</span>
-      </div>
-    `).join('');
+    inNodesHtml = inMods.map(m => {
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
+        : '#10b981';
+      const pts = m.totalTouchPoints || 0;
+      const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
+      return `
+        <div class="flow-node-card flow-in-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" style="border-left-color:${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
+          <div class="flow-node-info">
+            <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
+            <span class="flow-node-name">${esc(m.moduleName)}</span>
+          </div>
+          <span class="flow-node-pts ${tierCls}">${pts} pts</span>
+        </div>
+      `;
+    }).join('');
   }
 
   let outNodesHtml = '';
   if (outMods.length === 0) {
     outNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No outgoing dependencies (Leaf / Self-contained)</div>';
   } else {
-    outNodesHtml = outMods.map(m => `
-      <div class="flow-node-card flow-out-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" title="Inspect ${esc(m.moduleName)}">
-        <span class="flow-node-name">${esc(m.moduleName)}</span>
-        <span class="flow-node-pts">${m.totalTouchPoints} pts</span>
-      </div>
-    `).join('');
+    outNodesHtml = outMods.map(m => {
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
+        : '#38bdf8';
+      const pts = m.totalTouchPoints || 0;
+      const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
+      return `
+        <div class="flow-node-card flow-out-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" style="border-left-color:${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
+          <div class="flow-node-info">
+            <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
+            <span class="flow-node-name">${esc(m.moduleName)}</span>
+          </div>
+          <span class="flow-node-pts ${tierCls}">${pts} pts</span>
+        </div>
+      `;
+    }).join('');
   }
 
   flowMap.innerHTML = `
@@ -2781,11 +2801,16 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const modObj = inMods.find(m => m.packageFqn === fqn) || {};
       const pts = modObj.totalTouchPoints || 1;
       const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
+        : '#10b981';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
       path.setAttribute('class', 'flow-conduit in-conduit');
       path.setAttribute('stroke-width', strokeW);
+      path.style.stroke = modColor;
+      path.style.filter = `drop-shadow(0 0 3px ${modColor}66)`;
       path.dataset.nodeFqn = fqn;
       flowSvg.appendChild(path);
     });
@@ -2804,11 +2829,16 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const modObj = outMods.find(m => m.packageFqn === fqn) || {};
       const pts = modObj.totalTouchPoints || 1;
       const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
+        : '#38bdf8';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
       path.setAttribute('class', 'flow-conduit out-conduit');
       path.setAttribute('stroke-width', strokeW);
+      path.style.stroke = modColor;
+      path.style.filter = `drop-shadow(0 0 3px ${modColor}66)`;
       path.dataset.nodeFqn = fqn;
       flowSvg.appendChild(path);
     });
@@ -2867,7 +2897,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
   const kpiBanner = createElement('div', { class: 'mod-dep-kpi-banner' });
   kpiBanner.innerHTML = `
-    <div class="mod-dep-kpi-card is-clickable active-filter all-active" data-dir="ALL" title="Click to view all touch points & connections">
+    <div class="mod-dep-kpi-card is-clickable active-filter all-active kpi-total" data-dir="ALL" title="Click to view all touch points & connections">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Total Touch Points</span>
         <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -2881,7 +2911,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <div class="kpi-filter-hint">Active Filter: All Connections</div>
     </div>
 
-    <div class="mod-dep-kpi-card is-clickable" data-dir="INBOUND" title="Click to filter by Inbound (Ca) dependent modules">
+    <div class="mod-dep-kpi-card is-clickable kpi-ca" data-dir="INBOUND" title="Click to filter by Inbound (Ca) dependent modules">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Afferent Coupling (Ca)</span>
         <span class="mod-dep-kpi-badge ca-badge">INBOUND</span>
@@ -2891,7 +2921,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <div class="kpi-filter-hint">Click to filter Inbound</div>
     </div>
 
-    <div class="mod-dep-kpi-card is-clickable" data-dir="OUTBOUND" title="Click to filter by Outbound (Ce) dependencies">
+    <div class="mod-dep-kpi-card is-clickable kpi-ce" data-dir="OUTBOUND" title="Click to filter by Outbound (Ce) dependencies">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Efferent Coupling (Ce)</span>
         <span class="mod-dep-kpi-badge ce-badge">OUTBOUND</span>
@@ -2901,7 +2931,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <div class="kpi-filter-hint">Click to filter Outbound</div>
     </div>
 
-    <div class="mod-dep-kpi-card">
+    <div class="mod-dep-kpi-card kpi-instability">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Instability Index (I)</span>
         <span class="stability-rating-pill ${stabilityClass}">${esc(depData.stabilityRating || 'Balanced')}</span>
@@ -3134,6 +3164,10 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
     for (const m of filtered) {
       const card = createElement('div', { class: 'mod-dep-module-card fade-in' });
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
+        : '#38bdf8';
+      card.style.borderLeft = `3px solid ${modColor}`;
       const dirCls = m.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirText = m.direction === 'OUTBOUND' ? 'OUTBOUND DEPENDENCY (Used by this)' : 'INBOUND DEPENDENT (Calls this)';
 
@@ -3141,6 +3175,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         <div class="mod-dep-card-header">
           <div class="mod-dep-card-title-group">
             <span class="mod-dep-direction-tag ${dirCls}">${dirText}</span>
+            <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
             <span class="mod-dep-card-modname">${esc(m.moduleName)}</span>
             <span class="mod-dep-card-pkgname">${esc(m.packageFqn)}</span>
           </div>
@@ -3186,6 +3221,8 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       } else {
         for (const cu of classUsages) {
           const pairCard = createElement('div', { class: 'mod-dep-class-pair-card' });
+          const cuPts = cu.touchPointCount || 0;
+          const tierCls = cuPts >= 50 ? 'tier-hot' : (cuPts >= 15 ? 'tier-warm' : (cuPts >= 5 ? 'tier-mid' : 'tier-low'));
           let cuKindsHtml = '';
           if (cu.kinds) {
             for (const [k, count] of Object.entries(cu.kinds)) {
@@ -3200,7 +3237,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                 <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
               </div>
               <div class="class-pair-actions">
-                <span class="class-pair-pts-badge">${cu.touchPointCount} ${cu.touchPointCount === 1 ? 'pt' : 'pts'}</span>
+                <span class="class-pair-pts-badge ${tierCls}">${cuPts} ${cuPts === 1 ? 'pt' : 'pts'}</span>
                 <button class="btn-peek-calls" title="Peek function calls between these two classes">
                   <span class="peek-txt">Peek Calls</span>
                   <span class="peek-chevron">▼</span>
@@ -3401,6 +3438,11 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const dirCls = cu.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUTBOUND' : '⬅ INBOUND';
       const modName = cu.targetModule || cu.sourceModule || '-';
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(modName, 0)
+        : '#38bdf8';
+      const cuPts = cu.touchPointCount || 0;
+      const tierCls = cuPts >= 50 ? 'tier-hot' : (cuPts >= 15 ? 'tier-warm' : (cuPts >= 5 ? 'tier-mid' : 'tier-low'));
 
       let kindsHtml = '';
       if (cu.kinds) {
@@ -3413,9 +3455,12 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
         <td><a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a></td>
         <td><a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a></td>
-        <td><strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong></td>
+        <td>
+          <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55; margin-right:4px;">[MOD]</span>
+          <strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong>
+        </td>
         <td>${kindsHtml}</td>
-        <td style="text-align:right;font-weight:700;color:var(--cyan);">${cu.touchPointCount}</td>
+        <td style="text-align:right;"><span class="class-pair-pts-badge ${tierCls}">${cuPts}</span></td>
       `;
 
       tr.querySelector('.src-link')?.addEventListener('click', (e) => {
@@ -3495,14 +3540,20 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const dirCls = fc.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = fc.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
       const modName = fc.targetModule || fc.sourceModule || '-';
+      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+        ? window.CodeLensPalette.getColor(modName, 0)
+        : '#38bdf8';
 
       tr.innerHTML = `
         <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
         <td><span class="mod-dep-call-caller" title="${esc(fc.fromEntity)}">${formatSignatureHtml(fc.fromEntity)}</span></td>
         <td><span class="mod-dep-call-callee" title="${esc(fc.toEntity)}">${formatSignatureHtml(fc.toEntity)}</span></td>
-        <td><strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong></td>
+        <td>
+          <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55; margin-right:4px;">[MOD]</span>
+          <strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong>
+        </td>
         <td><span class="class-kind-pill ${fc.kind}">${fc.kind}</span></td>
-        <td style="color:var(--text-muted);">${fc.sourceLine > 0 ? 'L: ' + fc.sourceLine : '-'}</td>
+        <td>${fc.sourceLine > 0 ? `<span class="mod-dep-call-line">L: ${fc.sourceLine}</span>` : '<span style="color:var(--text-muted);">-</span>'}</td>
       `;
 
       tr.querySelector('.mod-dep-call-caller')?.addEventListener('click', () => {
@@ -5625,17 +5676,29 @@ function renderPackageDetail(pkg) {
           <span style="font-size:9px;color:var(--text-muted);font-weight:normal;">Volume</span>
         </div>
         <div class="module-dep-rp-modules-list">
-          ${topMods.map(m => `
-            <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" title="Inspect ${esc(m.moduleName)} (${m.totalTouchPoints} touch points)">
-              <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-                <span style="font-weight:600;color:var(--text-primary);font-size:11px;">${esc(m.moduleName)}</span>
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--cyan);font-weight:600;">${m.totalTouchPoints} pts</span>
+          ${topMods.map(m => {
+            const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+              ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
+              : '#38bdf8';
+            const pts = m.totalTouchPoints || 0;
+            const pct = Math.max(4, Math.round((pts / maxPts) * 100));
+            const meterTier = pct >= 80 ? 'meter-hot' : (pct >= 50 ? 'meter-warm' : (pct >= 25 ? 'meter-mid' : 'meter-low'));
+            const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
+            return `
+              <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" style="border-left:3px solid ${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                  <div style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;">
+                    <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
+                    <span style="font-weight:600;color:var(--text-primary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(m.moduleName)}</span>
+                  </div>
+                  <span class="class-pair-pts-badge ${tierCls}" style="font-size:9px;">${pts} pts</span>
+                </div>
+                <div class="mod-rp-meter-wrap">
+                  <div class="mod-rp-meter-fill ${meterTier}" style="width:${pct}%;"></div>
+                </div>
               </div>
-              <div class="mod-rp-meter-wrap">
-                <div class="mod-rp-meter-fill" style="width:${Math.max(4, Math.round((m.totalTouchPoints / maxPts) * 100))}%;"></div>
-              </div>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       `;
     }
@@ -6028,11 +6091,11 @@ async function updateModulesList(filterText = '') {
 
     const couplingInfo = couplingMap ? (couplingMap.get(fqn.toLowerCase()) || couplingMap.get(cleanName.toLowerCase())) : null;
     const touchPoints = couplingInfo ? (couplingInfo.totalTouchPoints || 0) : 0;
-    const isHotspot = touchPoints >= 10;
+    const tierCls = touchPoints >= 50 ? 'tier-hot' : (touchPoints >= 15 ? 'tier-warm' : (touchPoints >= 5 ? 'tier-mid' : 'tier-low'));
 
     return `
-      <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files, ${touchPoints} touch points (Click to navigate in Explorer)">
-        <div class="archetype-breakup-left" style="overflow:hidden; max-width:54%;">
+      <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" style="border-left: 3px solid ${pkgColor}aa;" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files, ${touchPoints} touch points (Click to navigate in Explorer)">
+        <div class="archetype-breakup-left" style="overflow:hidden; flex:1; min-width:0;">
           <span class="archetype-breakup-badge" style="background:${pkgColor}22; color:${pkgColor}; border:1px solid ${pkgColor}55;">[MOD]</span>
           <div style="display:flex; flex-direction:column; min-width:0; overflow:hidden;">
             <span class="archetype-breakup-name" style="font-weight:600; color:var(--text-primary); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(cleanName)}</span>
@@ -6040,7 +6103,7 @@ async function updateModulesList(filterText = '') {
           </div>
         </div>
         <div class="archetype-breakup-right">
-          ${touchPoints > 0 ? `<span class="module-touchpoints-pill ${isHotspot ? 'hotspot' : ''}" title="${touchPoints} touch points across connected modules">${touchPoints} pts</span>` : ''}
+          ${touchPoints > 0 ? `<span class="module-touchpoints-pill ${tierCls}" title="${touchPoints} touch points across connected modules">${touchPoints} pts</span>` : ''}
           <span class="archetype-breakup-count">${typeCount} ${typeCount === 1 ? 'class' : 'classes'}</span>
           <span class="archetype-breakup-pct" style="width:auto; font-size:9.5px; text-align:right;">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
           <button class="module-dep-quick-btn" data-fqn="${esc(fqn)}" title="View dependencies & touch points for ${esc(cleanName)}">
