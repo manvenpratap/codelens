@@ -2545,6 +2545,7 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
 }
 
 /** Render comprehensive Module Dependencies, Touch Points, Class Usages, and Function Calls in Knowledge Base */
+/** Render comprehensive Module Dependencies, Touch Points, Class Usages, and Function Calls in Knowledge Base */
 function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   if (!depData) {
     container.innerHTML = `
@@ -2592,44 +2593,312 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     ? 'is-flexible'
     : 'is-balanced';
 
+  const roleBadge = depData.instability < 0.3
+    ? '<span class="mod-dep-role-pill core">Stable Core</span>'
+    : depData.instability > 0.7
+    ? '<span class="mod-dep-role-pill client">Client Layer</span>'
+    : '<span class="mod-dep-role-pill bridge">Coupling Bridge</span>';
+
   // Total touch points for kind distribution
   const kinds = depData.totalByKind || {};
   const totalKindsCount = Object.values(kinds).reduce((a, b) => a + b, 0) || 1;
 
   const viewEl = createElement('div', { class: 'module-dependencies-view fade-in' });
 
-  // 1. KPI Architecture & Instability Banner
+  // 0. Module Header Bar & Switcher
+  const headerBar = createElement('div', { class: 'mod-dep-header-bar' });
+  const packagesList = App.packages || [];
+  let moduleSelectOptions = `<option value="${esc(pkgFqn)}">${esc(depData.moduleName || pkgFqn)} (Current)</option>`;
+  if (packagesList.length > 0) {
+    moduleSelectOptions = packagesList.map(p => {
+      const isCur = p.fqn === pkgFqn;
+      const cleanName = p.name || (p.fqn ? p.fqn.split('.').pop() : 'default');
+      return `<option value="${esc(p.fqn)}" ${isCur ? 'selected' : ''}>${esc(cleanName)} (${esc(p.fqn)})</option>`;
+    }).join('');
+  }
+
+  headerBar.innerHTML = `
+    <div class="mod-dep-header-left">
+      <div class="mod-dep-header-title">
+        <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <h2>${esc(depData.moduleName || pkgFqn)}</h2>
+        <div class="mod-dep-header-badges">
+          ${roleBadge}
+          <span class="mod-dep-instability-badge">I = ${(depData.instability || 0).toFixed(2)}</span>
+        </div>
+      </div>
+      <div class="mod-dep-header-pkg">${esc(pkgFqn)}</div>
+    </div>
+    <div class="mod-dep-header-right">
+      <div class="mod-dep-switcher-wrap">
+        <span class="mod-dep-switcher-label">Switch Module:</span>
+        <select class="mod-dep-module-select" aria-label="Select module to inspect">
+          ${moduleSelectOptions}
+        </select>
+      </div>
+      <button class="btn-secondary btn-export-deps-json" title="Export this module's coupling insights to JSON">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Export JSON</span>
+      </button>
+    </div>
+  `;
+
+  const modSelect = headerBar.querySelector('.mod-dep-module-select');
+  if (modSelect) {
+    modSelect.addEventListener('change', (e) => {
+      const chosenFqn = e.target.value;
+      const targetPkg = (App.packages || []).find(p => p.fqn === chosenFqn) || { fqn: chosenFqn, name: chosenFqn };
+      selectModuleItem(targetPkg, 'DEPENDENCIES');
+    });
+  }
+
+  const exportBtn = headerBar.querySelector('.btn-export-deps-json');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      try {
+        const jsonStr = JSON.stringify(depData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(depData.moduleName || 'module').toLowerCase()}-dependencies.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (typeof showToast === 'function') {
+          showToast(`Exported ${depData.moduleName || 'module'} dependencies JSON`);
+        }
+      } catch (err) {
+        console.error('Failed to export dependencies JSON', err);
+      }
+    });
+  }
+
+  viewEl.appendChild(headerBar);
+
+  // 1. Visual Coupling Topology Flow Map
+  const flowMap = createElement('div', { class: 'mod-dep-flow-map' });
+  const inMods = depData.incomingModules || [];
+  const outMods = depData.outgoingModules || [];
+
+  let inNodesHtml = '';
+  if (inMods.length === 0) {
+    inNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No incoming modules (Root / Independent)</div>';
+  } else {
+    inNodesHtml = inMods.map(m => `
+      <div class="flow-node-card flow-in-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" title="Inspect ${esc(m.moduleName)}">
+        <span class="flow-node-name">${esc(m.moduleName)}</span>
+        <span class="flow-node-pts">${m.totalTouchPoints} pts</span>
+      </div>
+    `).join('');
+  }
+
+  let outNodesHtml = '';
+  if (outMods.length === 0) {
+    outNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No outgoing dependencies (Leaf / Self-contained)</div>';
+  } else {
+    outNodesHtml = outMods.map(m => `
+      <div class="flow-node-card flow-out-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" title="Inspect ${esc(m.moduleName)}">
+        <span class="flow-node-name">${esc(m.moduleName)}</span>
+        <span class="flow-node-pts">${m.totalTouchPoints} pts</span>
+      </div>
+    `).join('');
+  }
+
+  flowMap.innerHTML = `
+    <div class="flow-map-header">
+      <div class="flow-map-title-group">
+        <span class="flow-map-title">Coupling Topology Flow Map</span>
+        <span class="flow-map-subtitle">Inbound Callers (${inMods.length}) ➔ Current Module ➔ Outbound Dependencies (${outMods.length})</span>
+      </div>
+      <button class="btn-flow-toggle" id="btn-flow-toggle" title="Toggle flow map visibility">
+        <span>▲ Hide Flow Map</span>
+      </button>
+    </div>
+    <div class="flow-map-content" id="flow-map-content">
+      <svg class="flow-conduits-svg" id="flow-conduits-svg"></svg>
+      <div class="flow-col flow-col-inbound">
+        <div class="flow-col-header">
+          <span class="flow-col-badge in">INBOUND CALLERS</span>
+          <span class="flow-col-count">(${inMods.length})</span>
+        </div>
+        <div class="flow-nodes-list">${inNodesHtml}</div>
+      </div>
+      <div class="flow-col flow-col-center">
+        <div class="flow-center-hub" id="flow-center-hub">
+          <span class="hub-kind-badge">TARGET MODULE</span>
+          <div class="hub-title" title="${esc(depData.moduleName || pkgFqn)}">${esc(depData.moduleName || pkgFqn)}</div>
+          <div class="hub-kpis">
+            <span class="hub-pts">${depData.totalTouchPoints} Touch Points</span>
+            <span class="stability-rating-pill ${stabilityClass}">${esc(depData.stabilityRating || 'Balanced')}</span>
+          </div>
+        </div>
+      </div>
+      <div class="flow-col flow-col-outbound">
+        <div class="flow-col-header">
+          <span class="flow-col-badge out">OUTBOUND DEPENDENCIES</span>
+          <span class="flow-col-count">(${outMods.length})</span>
+        </div>
+        <div class="flow-nodes-list">${outNodesHtml}</div>
+      </div>
+    </div>
+  `;
+  viewEl.appendChild(flowMap);
+
+  // SVG Flow Conduits Drawing
+  const flowContent = flowMap.querySelector('#flow-map-content');
+  const flowSvg = flowMap.querySelector('#flow-conduits-svg');
+  const centerHub = flowMap.querySelector('#flow-center-hub');
+
+  function drawFlowConduits() {
+    if (!flowSvg || !flowContent || !centerHub || flowContent.style.display === 'none' || flowContent.offsetHeight === 0) {
+      return;
+    }
+    const contRect = flowContent.getBoundingClientRect();
+    const hubRect = centerHub.getBoundingClientRect();
+
+    if (contRect.width <= 0 || contRect.height <= 0) return;
+
+    flowSvg.setAttribute('viewBox', `0 0 ${contRect.width} ${contRect.height}`);
+    flowSvg.innerHTML = '';
+
+    const hubLeftX = hubRect.left - contRect.left;
+    const hubRightX = hubRect.right - contRect.left;
+    const hubCenterY = hubRect.top - contRect.top + hubRect.height / 2;
+
+    // Draw Inbound conduits
+    const inCards = flowContent.querySelectorAll('.flow-in-node');
+    inCards.forEach(card => {
+      const cRect = card.getBoundingClientRect();
+      const x1 = cRect.right - contRect.left;
+      const y1 = cRect.top - contRect.top + cRect.height / 2;
+      const x2 = hubLeftX;
+      const y2 = hubCenterY;
+      const dx = Math.max(20, (x2 - x1) * 0.45);
+
+      const fqn = card.dataset.fqn;
+      const modObj = inMods.find(m => m.packageFqn === fqn) || {};
+      const pts = modObj.totalTouchPoints || 1;
+      const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+      path.setAttribute('class', 'flow-conduit in-conduit');
+      path.setAttribute('stroke-width', strokeW);
+      path.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(path);
+    });
+
+    // Draw Outbound conduits
+    const outCards = flowContent.querySelectorAll('.flow-out-node');
+    outCards.forEach(card => {
+      const cRect = card.getBoundingClientRect();
+      const x1 = hubRightX;
+      const y1 = hubCenterY;
+      const x2 = cRect.left - contRect.left;
+      const y2 = cRect.top - contRect.top + cRect.height / 2;
+      const dx = Math.max(20, (x2 - x1) * 0.45);
+
+      const fqn = card.dataset.fqn;
+      const modObj = outMods.find(m => m.packageFqn === fqn) || {};
+      const pts = modObj.totalTouchPoints || 1;
+      const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+      path.setAttribute('class', 'flow-conduit out-conduit');
+      path.setAttribute('stroke-width', strokeW);
+      path.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(path);
+    });
+  }
+
+  // Bind flow node interactions
+  flowMap.querySelectorAll('.flow-node-card').forEach(card => {
+    const fqn = card.dataset.fqn;
+    card.addEventListener('mouseenter', () => {
+      card.classList.add('active-flow');
+      flowSvg.querySelectorAll('.flow-conduit').forEach(p => {
+        if (p.dataset.nodeFqn === fqn) {
+          p.classList.add('highlighted');
+        } else {
+          p.classList.add('dimmed');
+        }
+      });
+    });
+    card.addEventListener('mouseleave', () => {
+      card.classList.remove('active-flow');
+      flowSvg.querySelectorAll('.flow-conduit').forEach(p => {
+        p.classList.remove('highlighted', 'dimmed');
+      });
+    });
+    card.addEventListener('click', () => {
+      selectModuleItem({ fqn, name: card.dataset.modname }, 'DEPENDENCIES');
+    });
+  });
+
+  // Toggle Flow Map
+  const toggleBtn = flowMap.querySelector('#btn-flow-toggle');
+  if (toggleBtn && flowContent) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = flowContent.style.display === 'none';
+      flowContent.style.display = isHidden ? 'grid' : 'none';
+      toggleBtn.innerHTML = isHidden ? '<span>▲ Hide Flow Map</span>' : '<span>▼ Show Flow Map</span>';
+      if (isHidden) {
+        requestAnimationFrame(() => drawFlowConduits());
+      }
+    });
+  }
+
+  // Draw conduits on next frame and on resize
+  setTimeout(drawFlowConduits, 50);
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => drawFlowConduits());
+    ro.observe(flowContent);
+  }
+
+  // 2. KPI Architecture & Instability Banner with Direction Filters
+  let currentDirectionFilter = 'ALL'; // 'ALL' | 'INBOUND' | 'OUTBOUND'
+  let currentSubView = 'modules'; // 'modules' | 'class-usage' | 'function-calls' | 'external'
+  let currentKindFilter = 'ALL';
+  let currentSearchQuery = '';
+  let currentSortMode = 'pts-desc';
+
   const kpiBanner = createElement('div', { class: 'mod-dep-kpi-banner' });
   kpiBanner.innerHTML = `
-    <div class="mod-dep-kpi-card">
+    <div class="mod-dep-kpi-card is-clickable active-filter all-active" data-dir="ALL" title="Click to view all touch points & connections">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Total Touch Points</span>
         <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
       </div>
       <div class="mod-dep-kpi-value">${depData.totalTouchPoints}</div>
       <div class="mod-dep-kpi-sub">
-        <span class="sub-pill out" title="Outbound touch points to other modules">${depData.totalOutboundTouchPoints} Outbound</span>
-        <span class="sub-pill in" title="Inbound touch points from dependent modules">${depData.totalInboundTouchPoints} Inbound</span>
-        ${depData.internalTouchPoints > 0 ? `<span class="sub-pill intra" title="Internal intra-module touch points">${depData.internalTouchPoints} Intra</span>` : ''}
+        <span class="sub-pill out" title="Outbound touch points">${depData.totalOutboundTouchPoints} Outbound</span>
+        <span class="sub-pill in" title="Inbound touch points">${depData.totalInboundTouchPoints} Inbound</span>
+        ${depData.internalTouchPoints > 0 ? `<span class="sub-pill intra" title="Internal touch points">${depData.internalTouchPoints} Intra</span>` : ''}
       </div>
+      <div class="kpi-filter-hint">Active Filter: All Connections</div>
     </div>
 
-    <div class="mod-dep-kpi-card">
+    <div class="mod-dep-kpi-card is-clickable" data-dir="INBOUND" title="Click to filter by Inbound (Ca) dependent modules">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Afferent Coupling (Ca)</span>
         <span class="mod-dep-kpi-badge ca-badge">INBOUND</span>
       </div>
       <div class="mod-dep-kpi-value">${depData.afferentCoupling} <span class="kpi-unit">modules</span></div>
       <div class="mod-dep-kpi-sub">Dependent modules calling into this module</div>
+      <div class="kpi-filter-hint">Click to filter Inbound</div>
     </div>
 
-    <div class="mod-dep-kpi-card">
+    <div class="mod-dep-kpi-card is-clickable" data-dir="OUTBOUND" title="Click to filter by Outbound (Ce) dependencies">
       <div class="mod-dep-kpi-header">
         <span class="mod-dep-kpi-title">Efferent Coupling (Ce)</span>
         <span class="mod-dep-kpi-badge ce-badge">OUTBOUND</span>
       </div>
       <div class="mod-dep-kpi-value">${depData.efferentCoupling} <span class="kpi-unit">modules</span></div>
       <div class="mod-dep-kpi-sub">External modules required by this module</div>
+      <div class="kpi-filter-hint">Click to filter Outbound</div>
     </div>
 
     <div class="mod-dep-kpi-card">
@@ -2650,7 +2919,31 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   `;
   viewEl.appendChild(kpiBanner);
 
-  // 2. Touch Point Kinds Distribution Section
+  // Bind clickable KPI filters
+  kpiBanner.querySelectorAll('.mod-dep-kpi-card.is-clickable').forEach(card => {
+    card.addEventListener('click', () => {
+      const dir = card.dataset.dir;
+      currentDirectionFilter = dir;
+
+      kpiBanner.querySelectorAll('.mod-dep-kpi-card.is-clickable').forEach(c => {
+        c.classList.remove('active-filter', 'all-active', 'ca-active', 'ce-active');
+        const hint = c.querySelector('.kpi-filter-hint');
+        if (hint) hint.textContent = c.dataset.dir === 'ALL' ? 'Click to show all' : `Click to filter ${c.dataset.dir.toLowerCase()}`;
+      });
+
+      card.classList.add('active-filter');
+      if (dir === 'ALL') card.classList.add('all-active');
+      if (dir === 'INBOUND') card.classList.add('ca-active');
+      if (dir === 'OUTBOUND') card.classList.add('ce-active');
+
+      const curHint = card.querySelector('.kpi-filter-hint');
+      if (curHint) curHint.textContent = `Active Filter: ${dir}`;
+
+      updateSubView();
+    });
+  });
+
+  // 3. Touch Point Kinds Distribution Section
   const kindsSec = createElement('div', { class: 'mod-dep-kinds-section' });
   const kindEntries = Object.entries(kinds).sort((a, b) => b[1] - a[1]);
 
@@ -2691,11 +2984,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   `;
   viewEl.appendChild(kindsSec);
 
-  // 3. Sub-View Navigation Tabs & Filter Box
-  let currentSubView = 'modules'; // 'modules' | 'class-usage' | 'function-calls' | 'external'
-  let currentKindFilter = 'ALL';
-  let currentSearchQuery = '';
-
+  // 4. Sub-View Navigation Tabs, Sort & Filter Box
   const controlsBar = createElement('div', { class: 'mod-dep-controls-bar' });
   controlsBar.innerHTML = `
     <div class="mod-dep-subtabs" role="tablist">
@@ -2704,22 +2993,73 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <button class="mod-dep-subtab" data-subview="function-calls">Intermodular Function Calls (${allFunctionCalls.length})</button>
       ${depData.externalDependencies && depData.externalDependencies.length > 0 ? `<button class="mod-dep-subtab" data-subview="external">External (${depData.externalDependencies.length})</button>` : ''}
     </div>
-    <div class="mod-dep-search-box">
-      <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="mod-dep-search-input" placeholder="Filter classes, methods, or modules…" />
+    <div class="mod-dep-controls-right">
+      <div class="mod-dep-sort-group">
+        <span class="mod-dep-sort-label">Sort:</span>
+        <select class="mod-dep-sort-select" id="mod-dep-sort-select" aria-label="Sort subview items">
+          <option value="pts-desc">Touch Points (High ➔ Low)</option>
+          <option value="name-asc">Name (A ➔ Z)</option>
+          <option value="pairs-desc">Class Pairs (High ➔ Low)</option>
+        </select>
+      </div>
+      <div class="mod-dep-search-box">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="mod-dep-search-input" placeholder="Filter classes, methods, or modules…" aria-label="Filter dependencies view" />
+        <button class="mod-dep-search-clear" title="Clear filter" style="display:none;">✕</button>
+        <span class="mod-dep-match-badge" id="mod-dep-match-badge"></span>
+      </div>
     </div>
   `;
   viewEl.appendChild(controlsBar);
 
-  // 4. Sub-View Container
+  // 5. Sub-View Container
   const subviewContainer = createElement('div', { class: 'mod-dep-subview-container', id: 'mod-dep-subview-container' });
   viewEl.appendChild(subviewContainer);
+
+  const sortSelect = controlsBar.querySelector('#mod-dep-sort-select');
+  const matchBadge = controlsBar.querySelector('#mod-dep-match-badge');
+  const searchInput = controlsBar.querySelector('.mod-dep-search-input');
+  const searchClear = controlsBar.querySelector('.mod-dep-search-clear');
+
+  function updateSortOptions() {
+    if (!sortSelect) return;
+    if (currentSubView === 'modules') {
+      sortSelect.innerHTML = `
+        <option value="pts-desc" ${currentSortMode === 'pts-desc' ? 'selected' : ''}>Touch Points (High ➔ Low)</option>
+        <option value="pts-asc" ${currentSortMode === 'pts-asc' ? 'selected' : ''}>Touch Points (Low ➔ High)</option>
+        <option value="name-asc" ${currentSortMode === 'name-asc' ? 'selected' : ''}>Name (A ➔ Z)</option>
+        <option value="pairs-desc" ${currentSortMode === 'pairs-desc' ? 'selected' : ''}>Class Pairs (High ➔ Low)</option>
+      `;
+    } else if (currentSubView === 'class-usage') {
+      sortSelect.innerHTML = `
+        <option value="pts-desc" ${currentSortMode === 'pts-desc' ? 'selected' : ''}>Touch Points (High ➔ Low)</option>
+        <option value="src-asc" ${currentSortMode === 'src-asc' ? 'selected' : ''}>Source Class (A ➔ Z)</option>
+        <option value="tgt-asc" ${currentSortMode === 'tgt-asc' ? 'selected' : ''}>Target Class (A ➔ Z)</option>
+        <option value="mod-asc" ${currentSortMode === 'mod-asc' ? 'selected' : ''}>Connected Module (A ➔ Z)</option>
+      `;
+    } else if (currentSubView === 'function-calls') {
+      sortSelect.innerHTML = `
+        <option value="caller-asc" ${currentSortMode === 'caller-asc' ? 'selected' : ''}>Caller (A ➔ Z)</option>
+        <option value="callee-asc" ${currentSortMode === 'callee-asc' ? 'selected' : ''}>Callee (A ➔ Z)</option>
+        <option value="line-asc" ${currentSortMode === 'line-asc' ? 'selected' : ''}>Source Line</option>
+      `;
+    } else if (currentSubView === 'external') {
+      sortSelect.innerHTML = `
+        <option value="pts-desc" ${currentSortMode === 'pts-desc' ? 'selected' : ''}>Touch Points (High ➔ Low)</option>
+        <option value="name-asc" ${currentSortMode === 'name-asc' ? 'selected' : ''}>Module Name (A ➔ Z)</option>
+      `;
+    }
+  }
 
   function updateSubView() {
     subviewContainer.innerHTML = '';
     kindsSec.querySelectorAll('.mod-dep-kind-chip').forEach(c => {
       c.classList.toggle('active', c.dataset.kind === currentKindFilter);
     });
+
+    if (searchClear && searchInput) {
+      searchClear.style.display = searchInput.value ? 'inline-block' : 'none';
+    }
 
     if (currentSubView === 'modules') {
       renderConnectedModulesSubView();
@@ -2745,11 +3085,22 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     }
 
     const filtered = modules.filter(m => {
+      // Direction filter
+      if (currentDirectionFilter !== 'ALL' && m.direction !== currentDirectionFilter) {
+        return false;
+      }
+      // Kind filter
+      if (currentKindFilter !== 'ALL') {
+        if (!m.kinds || !m.kinds[currentKindFilter]) return false;
+      }
+      // Search filter
       if (q) {
         const matchesName = (m.moduleName || '').toLowerCase().includes(q) || (m.packageFqn || '').toLowerCase().includes(q);
         const matchesClass = (m.classUsages || []).some(cu =>
           (cu.sourceClassSimpleName || '').toLowerCase().includes(q) ||
-          (cu.targetClassSimpleName || '').toLowerCase().includes(q)
+          (cu.targetClassSimpleName || '').toLowerCase().includes(q) ||
+          (cu.sourceClassFqn || '').toLowerCase().includes(q) ||
+          (cu.targetClassFqn || '').toLowerCase().includes(q)
         );
         const matchesCall = (m.touchPoints || []).some(tp =>
           (tp.fromEntity || '').toLowerCase().includes(q) ||
@@ -2757,17 +3108,26 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         );
         if (!matchesName && !matchesClass && !matchesCall) return false;
       }
-      if (currentKindFilter !== 'ALL') {
-        if (!m.kinds || !m.kinds[currentKindFilter]) return false;
-      }
       return true;
     });
+
+    // Sorting
+    filtered.sort((a, b) => {
+      if (currentSortMode === 'pts-asc') return (a.totalTouchPoints || 0) - (b.totalTouchPoints || 0);
+      if (currentSortMode === 'name-asc') return (a.moduleName || '').localeCompare(b.moduleName || '');
+      if (currentSortMode === 'pairs-desc') return ((b.classUsages || []).length) - ((a.classUsages || []).length);
+      return (b.totalTouchPoints || 0) - (a.totalTouchPoints || 0);
+    });
+
+    if (matchBadge) {
+      matchBadge.textContent = `${filtered.length} of ${modules.length} modules`;
+    }
 
     if (filtered.length === 0) {
       subviewContainer.innerHTML = `
         <div class="kb-empty-container fade-in" style="padding:24px;">
           <div class="kb-empty-title">No Matching Modules</div>
-          <div class="kb-empty-desc">No connected modules matched your filter criteria.</div>
+          <div class="kb-empty-desc">No connected modules matched your filter criteria (${currentDirectionFilter !== 'ALL' ? currentDirectionFilter : ''} ${currentKindFilter !== 'ALL' ? currentKindFilter : ''}).</div>
         </div>`;
       return;
     }
@@ -2839,11 +3199,21 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                 <span class="class-arrow-icon">➔</span>
                 <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
               </div>
-              <span class="class-pair-pts-badge">${cu.touchPointCount} ${cu.touchPointCount === 1 ? 'pt' : 'pts'}</span>
+              <div class="class-pair-actions">
+                <span class="class-pair-pts-badge">${cu.touchPointCount} ${cu.touchPointCount === 1 ? 'pt' : 'pts'}</span>
+                <button class="btn-peek-calls" title="Peek function calls between these two classes">
+                  <span class="peek-txt">Peek Calls</span>
+                  <span class="peek-chevron">▼</span>
+                </button>
+                <button class="btn-copy-pair" title="Copy class pair to clipboard">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                </button>
+              </div>
             </div>
             <div class="class-pair-kinds">
               ${cuKindsHtml}
             </div>
+            <div class="class-pair-drawer" style="display:none;"></div>
           `;
 
           pairCard.querySelector('.src-link')?.addEventListener('click', (e) => {
@@ -2855,10 +3225,63 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
             selectType(cu.targetClassFqn);
           });
 
+          // Copy Pair button
+          pairCard.querySelector('.btn-copy-pair')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const textToCopy = `${cu.sourceClassFqn} ➔ ${cu.targetClassFqn}`;
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(textToCopy).then(() => {
+                if (typeof showToast === 'function') showToast('Copied class pair to clipboard');
+              });
+            }
+          });
+
+          // Peek Drawer toggle
+          const peekBtn = pairCard.querySelector('.btn-peek-calls');
+          const drawer = pairCard.querySelector('.class-pair-drawer');
+          let drawerLoaded = false;
+
+          peekBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = drawer.style.display !== 'none';
+            drawer.style.display = isOpen ? 'none' : 'flex';
+            peekBtn.classList.toggle('open', !isOpen);
+            const chevron = peekBtn.querySelector('.peek-chevron');
+            if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+
+            if (!isOpen && !drawerLoaded) {
+              const matchingCalls = (m.touchPoints || []).filter(tp => {
+                const srcMatch = (tp.fromType === cu.sourceClassFqn) || (tp.fromEntity && tp.fromEntity.includes(cu.sourceClassSimpleName));
+                const tgtMatch = (tp.toType === cu.targetClassFqn) || (tp.toEntity && tp.toEntity.includes(cu.targetClassSimpleName));
+                return srcMatch && tgtMatch;
+              });
+
+              if (matchingCalls.length === 0) {
+                drawer.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>';
+              } else {
+                drawer.innerHTML = matchingCalls.map(tp => `
+                  <div class="class-pair-call-item">
+                    <div style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;">
+                      <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
+                      <div class="class-pair-call-chain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${formatSignatureHtml(tp.fromEntity)}
+                        <span style="color:var(--text-muted);margin:0 4px;">➔</span>
+                        ${formatSignatureHtml(tp.toEntity)}
+                      </div>
+                    </div>
+                    ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
+                  </div>
+                `).join('');
+              }
+              drawerLoaded = true;
+            }
+          });
+
           classGrid.appendChild(pairCard);
         }
       }
 
+      // Intermodular function calls accordion
       const accHeader = card.querySelector('.mod-dep-calls-acc-header');
       const accBody = card.querySelector('.mod-dep-calls-acc-body');
       let hydratedCalls = false;
@@ -2878,9 +3301,9 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                 <div class="mod-dep-call-chain">
                   <span class="rel-dot ${tp.kind}"></span>
                   <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${esc(cleanEntityDisplay(tp.fromEntity))}</span>
+                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</span>
                   <span class="mod-dep-call-arrow">➔</span>
-                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${esc(cleanEntityDisplay(tp.toEntity))}</span>
+                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</span>
                 </div>
                 <div class="mod-dep-call-meta">
                   ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line">Line ${tp.sourceLine}</span>` : ''}
@@ -2915,6 +3338,12 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   function renderClassUsageSubView() {
     const q = currentSearchQuery.toLowerCase();
     const filtered = allClassUsages.filter(cu => {
+      if (currentDirectionFilter !== 'ALL' && cu.direction !== currentDirectionFilter) {
+        return false;
+      }
+      if (currentKindFilter !== 'ALL') {
+        if (!cu.kinds || !cu.kinds[currentKindFilter]) return false;
+      }
       if (q) {
         const matches = (cu.sourceClassFqn || '').toLowerCase().includes(q) ||
                         (cu.targetClassFqn || '').toLowerCase().includes(q) ||
@@ -2922,11 +3351,24 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                         (cu.sourceModule || '').toLowerCase().includes(q);
         if (!matches) return false;
       }
-      if (currentKindFilter !== 'ALL') {
-        if (!cu.kinds || !cu.kinds[currentKindFilter]) return false;
-      }
       return true;
     });
+
+    // Sort class usages
+    filtered.sort((a, b) => {
+      if (currentSortMode === 'src-asc') return (a.sourceClassFqn || '').localeCompare(b.sourceClassFqn || '');
+      if (currentSortMode === 'tgt-asc') return (a.targetClassFqn || '').localeCompare(b.targetClassFqn || '');
+      if (currentSortMode === 'mod-asc') {
+        const modA = a.targetModule || a.sourceModule || '';
+        const modB = b.targetModule || b.sourceModule || '';
+        return modA.localeCompare(modB);
+      }
+      return (b.touchPointCount || 0) - (a.touchPointCount || 0);
+    });
+
+    if (matchBadge) {
+      matchBadge.textContent = `${filtered.length} of ${allClassUsages.length} pairs`;
+    }
 
     if (filtered.length === 0) {
       subviewContainer.innerHTML = `
@@ -2996,6 +3438,10 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   function renderFunctionCallsSubView() {
     const q = currentSearchQuery.toLowerCase();
     const filtered = allFunctionCalls.filter(fc => {
+      if (currentDirectionFilter !== 'ALL' && fc.direction !== currentDirectionFilter) {
+        return false;
+      }
+      if (currentKindFilter !== 'ALL' && fc.kind !== currentKindFilter) return false;
       if (q) {
         const matches = (fc.fromEntity || '').toLowerCase().includes(q) ||
                         (fc.toEntity || '').toLowerCase().includes(q) ||
@@ -3003,9 +3449,20 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                         (fc.sourceModule || '').toLowerCase().includes(q);
         if (!matches) return false;
       }
-      if (currentKindFilter !== 'ALL' && fc.kind !== currentKindFilter) return false;
       return true;
     });
+
+    // Sort function calls
+    filtered.sort((a, b) => {
+      if (currentSortMode === 'caller-asc') return (a.fromEntity || '').localeCompare(b.fromEntity || '');
+      if (currentSortMode === 'callee-asc') return (a.toEntity || '').localeCompare(b.toEntity || '');
+      if (currentSortMode === 'line-asc') return (a.sourceLine || 0) - (b.sourceLine || 0);
+      return (a.fromEntity || '').localeCompare(b.fromEntity || '');
+    });
+
+    if (matchBadge) {
+      matchBadge.textContent = `${filtered.length} of ${allFunctionCalls.length} calls`;
+    }
 
     if (filtered.length === 0) {
       subviewContainer.innerHTML = `
@@ -3024,7 +3481,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
           <th>Direction</th>
           <th>Caller Function</th>
           <th>Callee Function</th>
-          <th>Target Module</th>
+          <th>Connected Module</th>
           <th>Kind</th>
           <th>Source Line</th>
         </tr>
@@ -3041,8 +3498,8 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
       tr.innerHTML = `
         <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
-        <td><span class="mod-dep-call-caller" title="${esc(fc.fromEntity)}">${esc(cleanEntityDisplay(fc.fromEntity))}</span></td>
-        <td><span class="mod-dep-call-callee" title="${esc(fc.toEntity)}">${esc(cleanEntityDisplay(fc.toEntity))}</span></td>
+        <td><span class="mod-dep-call-caller" title="${esc(fc.fromEntity)}">${formatSignatureHtml(fc.fromEntity)}</span></td>
+        <td><span class="mod-dep-call-callee" title="${esc(fc.toEntity)}">${formatSignatureHtml(fc.toEntity)}</span></td>
         <td><strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong></td>
         <td><span class="class-kind-pill ${fc.kind}">${fc.kind}</span></td>
         <td style="color:var(--text-muted);">${fc.sourceLine > 0 ? 'L: ' + fc.sourceLine : '-'}</td>
@@ -3065,7 +3522,24 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   // --- SUBVIEW 4: EXTERNAL / THIRD-PARTY ---
   function renderExternalSubView() {
     const externals = depData.externalDependencies || [];
-    if (externals.length === 0) {
+    const q = currentSearchQuery.toLowerCase();
+    const filtered = externals.filter(m => {
+      if (q) {
+        const matchesName = (m.moduleName || '').toLowerCase().includes(q);
+        const matchesCall = (m.touchPoints || []).some(tp =>
+          (tp.fromEntity || '').toLowerCase().includes(q) ||
+          (tp.toEntity || '').toLowerCase().includes(q)
+        );
+        if (!matchesName && !matchesCall) return false;
+      }
+      return true;
+    });
+
+    if (matchBadge) {
+      matchBadge.textContent = `${filtered.length} of ${externals.length} external`;
+    }
+
+    if (filtered.length === 0) {
       subviewContainer.innerHTML = `
         <div class="kb-empty-container fade-in" style="padding:24px;">
           <div class="kb-empty-title">No External Dependencies</div>
@@ -3074,7 +3548,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       return;
     }
 
-    for (const m of externals) {
+    for (const m of filtered) {
       const card = createElement('div', { class: 'mod-dep-module-card fade-in' });
       card.innerHTML = `
         <div class="mod-dep-card-header">
@@ -3094,9 +3568,9 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                 <div class="mod-dep-call-chain">
                   <span class="rel-dot ${tp.kind}"></span>
                   <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${esc(cleanEntityDisplay(tp.fromEntity))}</span>
+                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</span>
                   <span class="mod-dep-call-arrow">➔</span>
-                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${esc(cleanEntityDisplay(tp.toEntity))}</span>
+                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</span>
                 </div>
               </div>
             `).join('')}
@@ -3113,9 +3587,17 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       controlsBar.querySelectorAll('.mod-dep-subtab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentSubView = tab.dataset.subview;
+      updateSortOptions();
       updateSubView();
     });
   });
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      currentSortMode = e.target.value;
+      updateSubView();
+    });
+  }
 
   kindsSec.querySelectorAll('.mod-dep-kind-chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -3124,7 +3606,6 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     });
   });
 
-  const searchInput = controlsBar.querySelector('.mod-dep-search-input');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       currentSearchQuery = e.target.value.trim();
@@ -3132,7 +3613,17 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     });
   }
 
-  // Initial render of default subview
+  if (searchClear && searchInput) {
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      currentSearchQuery = '';
+      updateSubView();
+      searchInput.focus();
+    });
+  }
+
+  // Initial render of default subview & sort options
+  updateSortOptions();
   updateSubView();
 
   container.appendChild(viewEl);
@@ -3150,6 +3641,24 @@ function cleanEntityDisplay(entityFqn) {
     return parts.slice(-2).join('.') + params;
   }
   return base + params;
+}
+
+/** Formats an entity signature (class + method + params) into syntax-highlighted HTML spans */
+function formatSignatureHtml(entityFqn) {
+  if (!entityFqn) return '';
+  let s = entityFqn;
+  if (s.startsWith('~')) s = s.substring(1);
+  const paren = s.indexOf('(');
+  const params = paren > 0 ? s.substring(paren) : '';
+  const base = paren > 0 ? s.substring(0, paren) : s;
+  const parts = base.split('.');
+
+  if (parts.length >= 2) {
+    const cls = parts[parts.length - 2];
+    const method = parts[parts.length - 1];
+    return `<span class="sig-class">${esc(cls)}.</span><span class="sig-method">${esc(method)}</span><span class="sig-params">${esc(params)}</span>`;
+  }
+  return `<span class="sig-method">${esc(base)}</span><span class="sig-params">${esc(params)}</span>`;
 }
 
 /* ── Inconsistency view ────────────────────────────────────────────────────── */
@@ -5093,6 +5602,11 @@ function renderPackageDetail(pkg) {
       return;
     }
     const stabilityCls = deps.instability < 0.3 ? 'is-stable' : deps.instability > 0.7 ? 'is-flexible' : 'is-balanced';
+    const rolePill = deps.instability < 0.3
+      ? '<span class="mod-dep-role-pill core">Stable Core</span>'
+      : deps.instability > 0.7
+      ? '<span class="mod-dep-role-pill client">Client Layer</span>'
+      : '<span class="mod-dep-role-pill bridge">Coupling Bridge</span>';
 
     let kindsBadges = '';
     if (deps.totalByKind) {
@@ -5101,16 +5615,25 @@ function renderPackageDetail(pkg) {
       }
     }
 
-    const topMods = [...(deps.outgoingModules || []), ...(deps.incomingModules || [])].slice(0, 4);
+    const topMods = [...(deps.outgoingModules || []), ...(deps.incomingModules || [])].slice(0, 5);
+    const maxPts = Math.max(...topMods.map(m => m.totalTouchPoints || 0), 1);
     let topModsHtml = '';
     if (topMods.length > 0) {
       topModsHtml = `
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-top:4px;">Connected Modules</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+          <span>Connected Modules</span>
+          <span style="font-size:9px;color:var(--text-muted);font-weight:normal;">Volume</span>
+        </div>
         <div class="module-dep-rp-modules-list">
           ${topMods.map(m => `
-            <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" title="Inspect ${esc(m.moduleName)}">
-              <span style="font-weight:600;color:var(--text-primary);">${esc(m.moduleName)}</span>
-              <span style="font-family:var(--font-mono);font-size:10px;color:var(--cyan);font-weight:600;">${m.totalTouchPoints} pts</span>
+            <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" title="Inspect ${esc(m.moduleName)} (${m.totalTouchPoints} touch points)">
+              <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                <span style="font-weight:600;color:var(--text-primary);font-size:11px;">${esc(m.moduleName)}</span>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--cyan);font-weight:600;">${m.totalTouchPoints} pts</span>
+              </div>
+              <div class="mod-rp-meter-wrap">
+                <div class="mod-rp-meter-fill" style="width:${Math.max(4, Math.round((m.totalTouchPoints / maxPts) * 100))}%;"></div>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -5123,7 +5646,10 @@ function renderPackageDetail(pkg) {
           <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           <span>Module Touch Points</span>
         </div>
-        <span class="stability-rating-pill ${stabilityCls}">${esc(deps.stabilityRating || 'Balanced')}</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${rolePill}
+          <span class="stability-rating-pill ${stabilityCls}">${esc(deps.stabilityRating || 'Balanced')}</span>
+        </div>
       </div>
       <div class="module-dep-rp-grid">
         <div class="module-dep-rp-kpi">
@@ -5394,6 +5920,28 @@ function updateArchetypesBreakup(stats) {
   updateModulesList();
 }
 
+let modulePopoverSortMode = 'name';
+let cachedModuleCouplingMap = null;
+let moduleSortBarInitialized = false;
+
+async function loadModuleCouplingMap() {
+  if (cachedModuleCouplingMap) return cachedModuleCouplingMap;
+  try {
+    const overview = await api.allModuleDependencies();
+    const map = new Map();
+    if (overview && overview.modules) {
+      for (const m of overview.modules) {
+        if (m.packageFqn) map.set(m.packageFqn.toLowerCase(), m);
+        if (m.moduleName) map.set(m.moduleName.toLowerCase(), m);
+      }
+    }
+    cachedModuleCouplingMap = map;
+    return cachedModuleCouplingMap;
+  } catch (_) {
+    return new Map();
+  }
+}
+
 /** Update the list of indexed modules inside the explorer footer modules popover */
 async function updateModulesList(filterText = '') {
   let packages = App.packages;
@@ -5410,6 +5958,23 @@ async function updateModulesList(filterText = '') {
   const modulesTotal = qs('#popover-modules-total');
   if (!modulesList) return;
 
+  // Initialize sort bar buttons if not already initialized
+  const sortBar = qs('#modules-popover-sort-bar');
+  if (sortBar && !moduleSortBarInitialized) {
+    sortBar.querySelectorAll('.popover-sort-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sort = btn.dataset.sort;
+        if (sort === modulePopoverSortMode) return;
+        modulePopoverSortMode = sort;
+        sortBar.querySelectorAll('.popover-sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === sort));
+        const filterInput = qs('#modules-popover-filter');
+        updateModulesList(filterInput ? filterInput.value : '');
+      });
+    });
+    moduleSortBarInitialized = true;
+  }
+
   const totalCount = (packages && packages.length) ? packages.length : 0;
   if (modulesTotal) {
     modulesTotal.textContent = `${totalCount.toLocaleString()} ${totalCount === 1 ? 'module' : 'modules'}`;
@@ -5425,10 +5990,30 @@ async function updateModulesList(filterText = '') {
     return;
   }
 
-  // Sort modules alphabetically by display name
+  // Load coupling map asynchronously if not cached
+  let couplingMap = cachedModuleCouplingMap;
+  if (!couplingMap) {
+    couplingMap = await loadModuleCouplingMap();
+  }
+
+  // Sort modules
   const sorted = [...filtered].sort((a, b) => {
+    const fqnA = (a.fqn || '').toLowerCase();
+    const fqnB = (b.fqn || '').toLowerCase();
     const nameA = a.name || a.fqn || '';
     const nameB = b.name || b.fqn || '';
+
+    if (modulePopoverSortMode === 'classes') {
+      const diff = (b.typeCount || 0) - (a.typeCount || 0);
+      if (diff !== 0) return diff;
+    } else if (modulePopoverSortMode === 'coupling') {
+      const cA = couplingMap.get(fqnA) || couplingMap.get(nameA.toLowerCase()) || {};
+      const cB = couplingMap.get(fqnB) || couplingMap.get(nameB.toLowerCase()) || {};
+      const ptsA = cA.totalTouchPoints || 0;
+      const ptsB = cB.totalTouchPoints || 0;
+      const diff = ptsB - ptsA;
+      if (diff !== 0) return diff;
+    }
     return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
   });
 
@@ -5441,9 +6026,13 @@ async function updateModulesList(filterText = '') {
     const typeCount = pkg.typeCount || 0;
     const fileCount = pkg.fileCount || 0;
 
+    const couplingInfo = couplingMap ? (couplingMap.get(fqn.toLowerCase()) || couplingMap.get(cleanName.toLowerCase())) : null;
+    const touchPoints = couplingInfo ? (couplingInfo.totalTouchPoints || 0) : 0;
+    const isHotspot = touchPoints >= 10;
+
     return `
-      <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files (Click to navigate in Explorer)">
-        <div class="archetype-breakup-left" style="overflow:hidden; max-width:58%;">
+      <div class="archetype-breakup-row module-breakup-row" data-fqn="${esc(fqn)}" tabindex="0" role="button" title="${esc(fqn)} · ${typeCount} classes, ${fileCount} files, ${touchPoints} touch points (Click to navigate in Explorer)">
+        <div class="archetype-breakup-left" style="overflow:hidden; max-width:54%;">
           <span class="archetype-breakup-badge" style="background:${pkgColor}22; color:${pkgColor}; border:1px solid ${pkgColor}55;">[MOD]</span>
           <div style="display:flex; flex-direction:column; min-width:0; overflow:hidden;">
             <span class="archetype-breakup-name" style="font-weight:600; color:var(--text-primary); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(cleanName)}</span>
@@ -5451,6 +6040,7 @@ async function updateModulesList(filterText = '') {
           </div>
         </div>
         <div class="archetype-breakup-right">
+          ${touchPoints > 0 ? `<span class="module-touchpoints-pill ${isHotspot ? 'hotspot' : ''}" title="${touchPoints} touch points across connected modules">${touchPoints} pts</span>` : ''}
           <span class="archetype-breakup-count">${typeCount} ${typeCount === 1 ? 'class' : 'classes'}</span>
           <span class="archetype-breakup-pct" style="width:auto; font-size:9.5px; text-align:right;">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
           <button class="module-dep-quick-btn" data-fqn="${esc(fqn)}" title="View dependencies & touch points for ${esc(cleanName)}">
