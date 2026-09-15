@@ -1006,18 +1006,18 @@
     }
   }
 
-  // 50 maximally distinguishable equidistant hues across the full 360° color wheel
+  // 50 maximally distinguishable, calm, non-fluorescent hues for professional telemetry
   const PALETTE = [
-    '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
-    '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
-    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-    '#ec4899', '#f43f5e', '#dc2626', '#ea580c', '#d97706',
-    '#ca8a04', '#65a30d', '#16a34a', '#059669', '#0d9488',
-    '#0891b2', '#0284c7', '#2563eb', '#4f46e5', '#7c3aed',
-    '#9333ea', '#c026d3', '#db2777', '#e11d48', '#ff3366',
-    '#ff6600', '#ffaa00', '#ffcc00', '#99ee00', '#00dd77',
-    '#00ddcc', '#0099ff', '#3355ff', '#8833ff', '#dd00ff',
-    '#ff00aa', '#ff1a75', '#ff5722', '#ff9800', '#e91e63'
+    '#3b82f6', '#0f766e', '#d97706', '#6366f1', '#16a34a',
+    '#dc2626', '#0284c7', '#7c3aed', '#b45309', '#0d9488',
+    '#2563eb', '#059669', '#c05621', '#4f46e5', '#be123c',
+    '#0891b2', '#4d7c0f', '#d95d39', '#5b5ea6', '#15803d',
+    '#c2410c', '#3b6ea5', '#8b5cf6', '#a16207', '#2a9d8f',
+    '#9f1239', '#4361ee', '#2e7d32', '#c85a32', '#6d28d9',
+    '#0e7490', '#65a30d', '#b87333', '#7058a3', '#14b8a6',
+    '#b91c1c', '#2f6eb5', '#3a8657', '#c07a3e', '#8957e5',
+    '#047857', '#ca8a04', '#a84b66', '#4a7bb0', '#5c7c38',
+    '#c53030', '#1d4ed8', '#15808e', '#8e3b52', '#475569'
   ];
 
   function getEntityColor(nameOrFqn, fallbackIndex = 0) {

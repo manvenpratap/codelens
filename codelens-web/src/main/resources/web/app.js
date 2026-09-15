@@ -2803,14 +2803,14 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
-        : '#10b981';
+        : '#059669';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
       path.setAttribute('class', 'flow-conduit in-conduit');
       path.setAttribute('stroke-width', strokeW);
       path.style.stroke = modColor;
-      path.style.filter = `drop-shadow(0 0 3px ${modColor}66)`;
+      path.style.strokeOpacity = '0.75';
       path.dataset.nodeFqn = fqn;
       flowSvg.appendChild(path);
     });
@@ -2831,14 +2831,14 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
-        : '#38bdf8';
+        : '#3b82f6';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
       path.setAttribute('class', 'flow-conduit out-conduit');
       path.setAttribute('stroke-width', strokeW);
       path.style.stroke = modColor;
-      path.style.filter = `drop-shadow(0 0 3px ${modColor}66)`;
+      path.style.strokeOpacity = '0.75';
       path.dataset.nodeFqn = fqn;
       flowSvg.appendChild(path);
     });
