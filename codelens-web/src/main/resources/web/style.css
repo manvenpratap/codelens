@@ -2003,16 +2003,28 @@ body.theme-light .archetype-breakup-row:hover {
 .archetype-breakup-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .archetype-breakup-badge {
   font-size: 9.5px;
   font-weight: 700;
   font-family: var(--font-mono);
-  padding: 1px 4.5px;
+  padding: 1.5px 4.5px;
   border-radius: 3px;
   line-height: 1.2;
+  width: 88px;
+  min-width: 88px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.module-breakup-row .archetype-breakup-badge {
+  width: 44px;
+  min-width: 44px;
 }
 .archetype-breakup-name {
   font-size: 11px;
@@ -3181,11 +3193,20 @@ body.theme-light .archetype-panel-item:hover {
   font-weight: 700;
   text-transform: uppercase;
   opacity: 0.85;
+  width: 84px;
+  min-width: 84px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .archetype-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
 /* Archetype Panel Groups */
@@ -3688,6 +3709,14 @@ body.theme-light .level-pill.active {
   border-radius: 3px;
   font-family: var(--font-mono);
   font-weight: 600;
+  width: 78px;
+  min-width: 78px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .legend-actions-btn {
   background: transparent;
@@ -4173,6 +4202,16 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   padding: 2px 6px;
   border-radius: 4px;
   font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+.kb-hero-title-group .kb-kind-badge {
+  width: 82px;
+  min-width: 82px;
+  flex-shrink: 0;
 }
 .kb-kind-badge.kind-class     { background: rgba(16, 185, 129, 0.12); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
 .kb-kind-badge.kind-interface { background: rgba(6, 182, 212, 0.12); color: var(--cyan-bright); border: 1px solid rgba(6, 182, 212, 0.3); }
@@ -4388,7 +4427,7 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
 .kb-row-info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -4396,8 +4435,8 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
 .kb-row-name-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .kb-row-name {
@@ -4410,6 +4449,86 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   text-overflow: ellipsis;
 }
 
+/* Aligned Column Rules for Types inside Accordion */
+.kb-member-row[data-kind="type"] .kb-row-name {
+  min-width: 210px;
+  max-width: 250px;
+  flex-shrink: 0;
+}
+
+.kb-member-row[data-kind="type"] .kb-kind-badge {
+  width: 68px;
+  min-width: 68px;
+  flex-shrink: 0;
+}
+
+.kb-member-row[data-kind="type"] .legend-class-badge {
+  width: 96px;
+  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin-left: 0 !important;
+}
+
+/* Aligned Column Rules for Fields */
+.kb-member-row[data-kind="field"] .kb-row-name {
+  min-width: 0;
+  flex: 1;
+}
+
+.kb-member-row[data-kind="field"] .kb-mod-pill {
+  width: auto;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* Aligned Column Rules for Methods */
+.kb-member-row[data-kind="method"] .kb-row-name {
+  min-width: 0;
+  flex: 1;
+}
+
+.kb-member-row[data-kind="method"] .kb-mod-pill {
+  width: auto;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.kb-member-row[data-kind="method"] .kb-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+.kb-member-row[data-kind="method"] .kb-row-meta .kb-param-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-member-row[data-kind="method"] .kb-row-meta .kb-mod-pill,
+.kb-member-row[data-kind="method"] .kb-row-meta .kb-row-line {
+  flex-shrink: 0;
+}
+
 .kb-row-meta {
   display: flex;
   align-items: center;
@@ -4418,6 +4537,7 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   font-family: var(--font-mono);
   color: var(--text-muted);
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .kb-row-right {
@@ -4425,6 +4545,7 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .kb-type-pill {
@@ -4436,6 +4557,13 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--cyan-bright);
+  min-width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .kb-mod-pill {
@@ -4445,6 +4573,10 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   padding: 1px 4px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.03);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .kb-cc-pill {
@@ -4455,7 +4587,13 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
   gap: 3px;
+  width: 82px;
+  min-width: 82px;
+  flex-shrink: 0;
 }
 .kb-cc-pill.cc-low {
   background: rgba(16, 185, 129, 0.12);
@@ -4549,7 +4687,7 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
 .kb-archetype-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -4578,6 +4716,13 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   flex-shrink: 0;
+  width: 98px;
+  min-width: 98px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .kb-archetype-title {
@@ -4588,6 +4733,7 @@ body.theme-light #knowledge-view::-webkit-scrollbar-thumb:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
 }
 
 .kb-archetype-header-right {
@@ -12186,6 +12332,14 @@ body.theme-light .module-dep-quick-btn:hover {
   border-radius: 3px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  width: 78px;
+  min-width: 78px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .mod-dep-direction-tag.outbound {
   background: rgba(59, 130, 246, 0.15);
@@ -12472,6 +12626,25 @@ body.theme-light .module-dep-quick-btn:hover {
 }
 .mod-dep-table tr:hover td {
   background: var(--bg-elevated);
+}
+.mod-dep-table th:first-child,
+.mod-dep-table td:first-child {
+  width: 90px;
+  min-width: 90px;
+  text-align: center;
+}
+.mod-dep-table .mod-dep-direction-tag {
+  width: 68px;
+  min-width: 68px;
+}
+.mod-dep-table .class-kind-pill {
+  width: 90px;
+  min-width: 90px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 /* Light theme overrides for Module Dependencies */
@@ -12805,6 +12978,13 @@ body.theme-light .instability-bar-track {
   padding: 1px 4px;
   border-radius: 3px;
   letter-spacing: 0.04em;
+  width: 36px;
+  min-width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
   flex-shrink: 0;
 }
 .flow-node-name {

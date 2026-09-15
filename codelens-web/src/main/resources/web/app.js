@@ -2233,7 +2233,7 @@ function renderTypeRow(t) {
   if (window.CodeLensClassifier) {
     const arch = window.CodeLensClassifier.classifyType(t, t.fqn || t.id, t.packageFqn);
     if (arch) {
-      archBadge = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66; margin-left:6px;" title="${esc(arch.description)}">${esc(arch.badge)}</span>`;
+      archBadge = `<span class="legend-class-badge" style="background:${arch.color}22; color:${arch.color}; border:1px solid ${arch.color}66;" title="${esc(arch.description)}">${esc(arch.badge)}</span>`;
     }
   }
   const row = createElement('div', { 
@@ -2250,7 +2250,7 @@ function renderTypeRow(t) {
       </div>
       <div class="kb-row-info">
         <div class="kb-row-name-wrap">
-          <span class="kb-row-name">${esc(t.simpleName)}</span>
+          <span class="kb-row-name" title="${esc(t.simpleName)}">${esc(t.simpleName)}</span>
           <span class="kb-kind-badge ${tKindClass}">${esc(tKind)}</span>
           ${archBadge}
         </div>
@@ -2297,19 +2297,18 @@ function renderMethodRow(m, type) {
       </div>
       <div class="kb-row-info">
         <div class="kb-row-name-wrap">
-          <span class="kb-row-name">${esc(displayName)}</span>
-          ${isConstructor ? '<span class="kb-mod-pill" style="color:var(--amber);background:rgba(245,158,11,0.1)">constructor</span>' : ''}
-          ${m.modifiers ? `<span class="kb-mod-pill">${esc(m.modifiers)}</span>` : ''}
+          <span class="kb-row-name" title="${esc(displayName)}">${esc(displayName)}</span>
         </div>
-        <div class="kb-row-meta">
-          <span>${paramsFormatted}</span>
-          ${m.startLine ? `<span>· Line ${m.startLine}</span>` : ''}
+        <div class="kb-row-meta" title="${esc(displayName)}${paramsFormatted.replace(/<[^>]*>/g, '')}">
+          ${m.modifiers ? `<span class="kb-mod-pill" title="${esc(m.modifiers)}">${esc(m.modifiers.replace(/\bsynchronized\b/g, 'sync'))}</span>` : ''}
+          <span class="kb-param-text">${paramsFormatted}</span>
+          ${m.startLine ? `<span class="kb-row-line">· Line ${m.startLine}</span>` : ''}
         </div>
       </div>
     </div>
     <div class="kb-row-right">
       <span class="kb-cc-pill ${ccTier}" title="Cyclomatic Complexity: ${cc}">CC: ${cc} (${ccLabel})</span>
-      <span class="kb-type-pill" title="Return type">${esc(m.returnType || (isConstructor ? 'void' : 'void'))}</span>
+      ${isConstructor ? '<span class="kb-mod-pill" style="color:var(--amber);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);">constructor</span>' : `<span class="kb-type-pill" title="Return type">${esc(m.returnType || 'void')}</span>`}
     </div>
   `;
   return row;
@@ -3167,14 +3166,14 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
         : '#38bdf8';
-      card.style.borderLeft = `3px solid ${modColor}`;
       const dirCls = m.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
-      const dirText = m.direction === 'OUTBOUND' ? 'OUTBOUND DEPENDENCY (Used by this)' : 'INBOUND DEPENDENT (Calls this)';
+      const dirTag = m.direction === 'OUTBOUND' ? 'OUTBOUND' : 'INBOUND';
+      const dirDesc = m.direction === 'OUTBOUND' ? 'Outbound Dependency: Used by this module' : 'Inbound Dependent: Calls into this module';
 
       card.innerHTML = `
         <div class="mod-dep-card-header">
           <div class="mod-dep-card-title-group">
-            <span class="mod-dep-direction-tag ${dirCls}">${dirText}</span>
+            <span class="mod-dep-direction-tag ${dirCls}" title="${dirDesc}">${dirTag}</span>
             <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
             <span class="mod-dep-card-modname">${esc(m.moduleName)}</span>
             <span class="mod-dep-card-pkgname">${esc(m.packageFqn)}</span>
@@ -3604,7 +3603,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       card.innerHTML = `
         <div class="mod-dep-card-header">
           <div class="mod-dep-card-title-group">
-            <span class="mod-dep-direction-tag external">EXTERNAL / JDK</span>
+            <span class="mod-dep-direction-tag external" title="External or JDK standard library">EXTERNAL</span>
             <span class="mod-dep-card-modname">${esc(m.moduleName)}</span>
           </div>
           <div class="mod-dep-card-stats">
@@ -5290,12 +5289,11 @@ function renderKnowledgeBaseForType(data) {
             </div>
             <div class="kb-row-info">
               <div class="kb-row-name-wrap">
-                <span class="kb-row-name">${esc(f.simpleName)}</span>
-                ${f.modifiers ? `<span class="kb-mod-pill">${esc(f.modifiers)}</span>` : ''}
+                <span class="kb-row-name" title="${esc(f.simpleName)}">${esc(f.simpleName)}</span>
               </div>
               <div class="kb-row-meta">
-                <span>Type: <strong style="color:var(--cyan-bright)">${esc(f.fieldType || 'Object')}</strong></span>
-                ${f.startLine ? `<span>· Line ${f.startLine}</span>` : ''}
+                ${f.modifiers ? `<span class="kb-mod-pill">${esc(f.modifiers)}</span>` : ''}
+                ${f.startLine ? `<span>Line ${f.startLine}</span>` : '<span>Field</span>'}
               </div>
             </div>
           </div>
