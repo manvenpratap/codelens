@@ -3752,7 +3752,7 @@ body.theme-light .level-pill.active {
   left: 14px;
   width: 310px;
   max-width: calc(100% - 28px);
-  max-height: calc(100% - 88px);
+  max-height: calc(100% - 190px);
   background: var(--bg-panel);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-md);
@@ -3995,12 +3995,13 @@ body.theme-light .nc-neighbor-count-badge {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Radar Minimap Navigator (Bottom Right)
+   Radar Minimap Navigator (Bottom Left)
    ───────────────────────────────────────────────────────────────────────────── */
 .graph-minimap-wrap {
   position: absolute;
   bottom: 14px;
-  right: 14px;
+  left: 14px;
+  right: auto;
   width: 150px;
   height: 100px;
   background: var(--bg-panel);
@@ -4010,11 +4011,14 @@ body.theme-light .nc-neighbor-count-badge {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   z-index: 50;
   pointer-events: none;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 #codebase-view .graph-minimap-wrap {
-  bottom: 58px; /* Above the bottom floating toolbar */
-  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  right: auto;
 }
 
 #graph-minimap,
