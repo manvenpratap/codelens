@@ -87,7 +87,7 @@ public class CallGraphAnalyzer {
         Map<String, List<String>> byClassFqnAndMethod = new HashMap<>();
         Map<String, List<String>> byPackageAndMethod = new HashMap<>();
         Map<String, String> dedupPool = new HashMap<>(Math.min(500_000, totalMethods));
-        Map<String, String> resolveCache = new HashMap<>(65536);
+        Map<String, String> resolveCache = new HashMap<>(Math.max(65536, totalMethods));
 
         // Populate vertex set with scoped deduplicated strings
         if (allMethodFqns != null) {
@@ -126,13 +126,21 @@ public class CallGraphAnalyzer {
         if (edgeStreamer != null) {
             final int[] edgeCount = new int[]{0};
             final int eStride = 5000;
+            final String[] lastFromHolder = new String[2]; // [0] = from, [1] = callerClass
             edgeStreamer.stream((rawFrom, rawTo) -> {
                 if (rawFrom == null || rawTo == null) return;
                 String from = dedup(dedupPool, rawFrom);
                 String to   = rawTo;
 
                 if (to.startsWith("~")) {
-                    String callerClass = extractClassFqn(from);
+                    String callerClass;
+                    if (from.equals(lastFromHolder[0])) {
+                        callerClass = lastFromHolder[1];
+                    } else {
+                        callerClass = extractClassFqn(from);
+                        lastFromHolder[0] = from;
+                        lastFromHolder[1] = callerClass;
+                    }
                     String cacheKey = callerClass + "|" + to;
                     String cached = resolveCache.get(cacheKey);
                     if (cached != null) {
@@ -470,17 +478,19 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView callHierarchyView(String rootFqn, int depth, boolean hideGetters) {
-        List<GraphNode> calleeNodes = callees(rootFqn, depth, hideGetters);
-        List<GraphNode> callerNodes = callers(rootFqn, depth, hideGetters);
+        String resolvedFqn = findVertex(rootFqn);
+        if (resolvedFqn == null) resolvedFqn = rootFqn;
+        List<GraphNode> calleeNodes = callees(resolvedFqn, depth, hideGetters);
+        List<GraphNode> callerNodes = callers(resolvedFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
         List<GraphEdge> edges    = new ArrayList<>();
 
         // Root node
-        GraphNode root = new GraphNode(rootFqn, label(rootFqn), "root", "METHOD");
+        GraphNode root = new GraphNode(resolvedFqn, label(resolvedFqn), "root", "METHOD");
         allNodes.add(root);
-        seen.add(rootFqn);
+        seen.add(resolvedFqn);
 
         // Callee subtree
         for (GraphNode n : calleeNodes) {
@@ -504,7 +514,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
+        return computeHierarchyLayout(resolvedFqn, new GraphView(resolvedFqn, allNodes, edges));
     }
 
     public GraphView callersView(String rootFqn, int depth) {
@@ -512,16 +522,18 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView callersView(String rootFqn, int depth, boolean hideGetters) {
-        List<GraphNode> callerNodes = callers(rootFqn, depth, hideGetters);
+        String resolvedFqn = findVertex(rootFqn);
+        if (resolvedFqn == null) resolvedFqn = rootFqn;
+        List<GraphNode> callerNodes = callers(resolvedFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
         List<GraphEdge> edges    = new ArrayList<>();
 
         // Root node
-        GraphNode root = new GraphNode(rootFqn, label(rootFqn), "root", "METHOD");
+        GraphNode root = new GraphNode(resolvedFqn, label(resolvedFqn), "root", "METHOD");
         allNodes.add(root);
-        seen.add(rootFqn);
+        seen.add(resolvedFqn);
 
         // Caller subtree
         for (GraphNode n : callerNodes) {
@@ -540,7 +552,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
+        return computeHierarchyLayout(resolvedFqn, new GraphView(resolvedFqn, allNodes, edges));
     }
 
     public GraphView calleesView(String rootFqn, int depth) {
@@ -548,16 +560,18 @@ public class CallGraphAnalyzer {
     }
 
     public GraphView calleesView(String rootFqn, int depth, boolean hideGetters) {
-        List<GraphNode> calleeNodes = callees(rootFqn, depth, hideGetters);
+        String resolvedFqn = findVertex(rootFqn);
+        if (resolvedFqn == null) resolvedFqn = rootFqn;
+        List<GraphNode> calleeNodes = callees(resolvedFqn, depth, hideGetters);
 
         Set<String> seen = new HashSet<>();
         List<GraphNode> allNodes = new ArrayList<>();
         List<GraphEdge> edges    = new ArrayList<>();
 
         // Root node
-        GraphNode root = new GraphNode(rootFqn, label(rootFqn), "root", "METHOD");
+        GraphNode root = new GraphNode(resolvedFqn, label(resolvedFqn), "root", "METHOD");
         allNodes.add(root);
-        seen.add(rootFqn);
+        seen.add(resolvedFqn);
 
         // Callee subtree
         for (GraphNode n : calleeNodes) {
@@ -576,7 +590,220 @@ public class CallGraphAnalyzer {
             }
         }
 
-        return computeHierarchyLayout(rootFqn, new GraphView(rootFqn, allNodes, edges));
+        return computeHierarchyLayout(resolvedFqn, new GraphView(resolvedFqn, allNodes, edges));
+    }
+
+    /**
+     * Finds a matching vertex in the call graph using exact, parentheses-variant, or prefix match.
+     */
+    public synchronized String findVertex(String fqn) {
+        if (fqn == null || fqn.trim().isEmpty() || callGraph == null) return null;
+        String trimmed = fqn.trim();
+        if (callGraph.containsVertex(trimmed)) return trimmed;
+        String alt = trimmed.endsWith("()") ? trimmed.substring(0, trimmed.length() - 2) : trimmed + "()";
+        if (callGraph.containsVertex(alt)) return alt;
+
+        String prefix = trimmed.contains("(") ? trimmed : trimmed + "(";
+        for (String v : callGraph.vertexSet()) {
+            if (v.startsWith(prefix) || v.equals(trimmed)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Hub Explorer view: groups callers and callees by package with member details.
+     * Provides aggregated data suitable for radial fan/arc rendering of high-connectivity hub nodes.
+     *
+     * @param fqn method or class FQN
+     * @param direction "callers", "callees", or "both"
+     */
+    public synchronized HubExplorerView hubExplorerView(String fqn, String direction) {
+        if (fqn == null || fqn.trim().isEmpty() || callGraph == null) {
+            return new HubExplorerView();
+        }
+
+        String target = fqn.trim();
+        String rootVertex = findVertex(target);
+        if (rootVertex == null) {
+            // Check if target is a class FQN
+            return hubExplorerClassView(target, direction);
+        }
+
+        String pkg = extractPackageFqn(rootVertex);
+        String cls = extractClassFqn(rootVertex);
+        int totalCallers = callGraph.inDegreeOf(rootVertex);
+        int totalCallees = callGraph.outDegreeOf(rootVertex);
+
+        GraphNode centerNode = new GraphNode(rootVertex, label(rootVertex), "root", "METHOD");
+        centerNode.packageFqn = pkg;
+        centerNode.className = cls;
+        centerNode.inDegree = totalCallers;
+        centerNode.outDegree = totalCallees;
+
+        boolean includeCallers = direction == null || "callers".equalsIgnoreCase(direction) || "both".equalsIgnoreCase(direction);
+        boolean includeCallees = direction == null || "callees".equalsIgnoreCase(direction) || "both".equalsIgnoreCase(direction);
+
+        List<HubExplorerGroup> callerGroups = new ArrayList<>();
+        List<HubExplorerGroup> calleeGroups = new ArrayList<>();
+
+        if (includeCallers) {
+            Map<String, List<GraphNode>> byPackage = new HashMap<>();
+            for (DefaultEdge e : callGraph.incomingEdgesOf(rootVertex)) {
+                String callerFqn = callGraph.getEdgeSource(e);
+                GraphNode node = new GraphNode(callerFqn, label(callerFqn), "caller", "METHOD");
+                node.packageFqn = extractPackageFqn(callerFqn);
+                node.className = extractClassFqn(callerFqn);
+                node.inDegree = callGraph.inDegreeOf(callerFqn);
+                node.outDegree = callGraph.outDegreeOf(callerFqn);
+                byPackage.computeIfAbsent(node.packageFqn, k -> new ArrayList<>()).add(node);
+            }
+
+            for (Map.Entry<String, List<GraphNode>> entry : byPackage.entrySet()) {
+                String pkgFqn = entry.getKey();
+                List<GraphNode> members = entry.getValue();
+                members.sort(Comparator.comparing((GraphNode n) -> n.className != null ? n.className : "")
+                    .thenComparing(n -> n.label != null ? n.label : ""));
+                String shortName = extractModuleName(pkgFqn);
+                if (shortName == null || shortName.isEmpty() || "default".equals(shortName)) {
+                    shortName = pkgFqn.contains(".") ? pkgFqn.substring(pkgFqn.lastIndexOf('.') + 1) : pkgFqn;
+                }
+                callerGroups.add(new HubExplorerGroup(pkgFqn, shortName, members.size(), members));
+            }
+            callerGroups.sort((a, b) -> Integer.compare(b.count, a.count));
+        }
+
+        if (includeCallees) {
+            Map<String, List<GraphNode>> byPackage = new HashMap<>();
+            for (DefaultEdge e : callGraph.outgoingEdgesOf(rootVertex)) {
+                String calleeFqn = callGraph.getEdgeTarget(e);
+                GraphNode node = new GraphNode(calleeFqn, label(calleeFqn), "callee", "METHOD");
+                node.packageFqn = extractPackageFqn(calleeFqn);
+                node.className = extractClassFqn(calleeFqn);
+                node.inDegree = callGraph.inDegreeOf(calleeFqn);
+                node.outDegree = callGraph.outDegreeOf(calleeFqn);
+                byPackage.computeIfAbsent(node.packageFqn, k -> new ArrayList<>()).add(node);
+            }
+
+            for (Map.Entry<String, List<GraphNode>> entry : byPackage.entrySet()) {
+                String pkgFqn = entry.getKey();
+                List<GraphNode> members = entry.getValue();
+                members.sort(Comparator.comparing((GraphNode n) -> n.className != null ? n.className : "")
+                    .thenComparing(n -> n.label != null ? n.label : ""));
+                String shortName = extractModuleName(pkgFqn);
+                if (shortName == null || shortName.isEmpty() || "default".equals(shortName)) {
+                    shortName = pkgFqn.contains(".") ? pkgFqn.substring(pkgFqn.lastIndexOf('.') + 1) : pkgFqn;
+                }
+                calleeGroups.add(new HubExplorerGroup(pkgFqn, shortName, members.size(), members));
+            }
+            calleeGroups.sort((a, b) -> Integer.compare(b.count, a.count));
+        }
+
+        return new HubExplorerView(centerNode, totalCallers, totalCallees, callerGroups, calleeGroups);
+    }
+
+    /**
+     * Hub Explorer view for class-level aggregation: aggregates callers and callees across all methods of the class.
+     */
+    private synchronized HubExplorerView hubExplorerClassView(String classFqn, String direction) {
+        List<String> classMethods = new ArrayList<>();
+        for (String v : callGraph.vertexSet()) {
+            if (classFqn.equals(extractClassFqn(v))) {
+                classMethods.add(v);
+            }
+        }
+
+        if (classMethods.isEmpty()) {
+            GraphNode emptyNode = new GraphNode(classFqn, classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : classFqn, "root", "CLASS");
+            return new HubExplorerView(emptyNode, 0, 0, Collections.emptyList(), Collections.emptyList());
+        }
+
+        String simpleName = classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : classFqn;
+        String pkg = extractPackageFqn(classFqn);
+
+        Set<String> classMethodSet = new HashSet<>(classMethods);
+        Set<String> callerSet = new HashSet<>();
+        Set<String> calleeSet = new HashSet<>();
+
+        for (String m : classMethods) {
+            for (DefaultEdge e : callGraph.incomingEdgesOf(m)) {
+                String src = callGraph.getEdgeSource(e);
+                if (!classMethodSet.contains(src)) {
+                    callerSet.add(src);
+                }
+            }
+            for (DefaultEdge e : callGraph.outgoingEdgesOf(m)) {
+                String tgt = callGraph.getEdgeTarget(e);
+                if (!classMethodSet.contains(tgt)) {
+                    calleeSet.add(tgt);
+                }
+            }
+        }
+
+        GraphNode centerNode = new GraphNode(classFqn, simpleName, "root", "CLASS");
+        centerNode.packageFqn = pkg;
+        centerNode.className = classFqn;
+        centerNode.inDegree = callerSet.size();
+        centerNode.outDegree = calleeSet.size();
+
+        boolean includeCallers = direction == null || "callers".equalsIgnoreCase(direction) || "both".equalsIgnoreCase(direction);
+        boolean includeCallees = direction == null || "callees".equalsIgnoreCase(direction) || "both".equalsIgnoreCase(direction);
+
+        List<HubExplorerGroup> callerGroups = new ArrayList<>();
+        List<HubExplorerGroup> calleeGroups = new ArrayList<>();
+
+        if (includeCallers) {
+            Map<String, List<GraphNode>> byPackage = new HashMap<>();
+            for (String callerFqn : callerSet) {
+                GraphNode node = new GraphNode(callerFqn, label(callerFqn), "caller", "METHOD");
+                node.packageFqn = extractPackageFqn(callerFqn);
+                node.className = extractClassFqn(callerFqn);
+                node.inDegree = callGraph.inDegreeOf(callerFqn);
+                node.outDegree = callGraph.outDegreeOf(callerFqn);
+                byPackage.computeIfAbsent(node.packageFqn, k -> new ArrayList<>()).add(node);
+            }
+
+            for (Map.Entry<String, List<GraphNode>> entry : byPackage.entrySet()) {
+                String pkgFqn = entry.getKey();
+                List<GraphNode> members = entry.getValue();
+                members.sort(Comparator.comparing((GraphNode n) -> n.className != null ? n.className : "")
+                    .thenComparing(n -> n.label != null ? n.label : ""));
+                String shortName = extractModuleName(pkgFqn);
+                if (shortName == null || shortName.isEmpty() || "default".equals(shortName)) {
+                    shortName = pkgFqn.contains(".") ? pkgFqn.substring(pkgFqn.lastIndexOf('.') + 1) : pkgFqn;
+                }
+                callerGroups.add(new HubExplorerGroup(pkgFqn, shortName, members.size(), members));
+            }
+            callerGroups.sort((a, b) -> Integer.compare(b.count, a.count));
+        }
+
+        if (includeCallees) {
+            Map<String, List<GraphNode>> byPackage = new HashMap<>();
+            for (String calleeFqn : calleeSet) {
+                GraphNode node = new GraphNode(calleeFqn, label(calleeFqn), "callee", "METHOD");
+                node.packageFqn = extractPackageFqn(calleeFqn);
+                node.className = extractClassFqn(calleeFqn);
+                node.inDegree = callGraph.inDegreeOf(calleeFqn);
+                node.outDegree = callGraph.outDegreeOf(calleeFqn);
+                byPackage.computeIfAbsent(node.packageFqn, k -> new ArrayList<>()).add(node);
+            }
+
+            for (Map.Entry<String, List<GraphNode>> entry : byPackage.entrySet()) {
+                String pkgFqn = entry.getKey();
+                List<GraphNode> members = entry.getValue();
+                members.sort(Comparator.comparing((GraphNode n) -> n.className != null ? n.className : "")
+                    .thenComparing(n -> n.label != null ? n.label : ""));
+                String shortName = extractModuleName(pkgFqn);
+                if (shortName == null || shortName.isEmpty() || "default".equals(shortName)) {
+                    shortName = pkgFqn.contains(".") ? pkgFqn.substring(pkgFqn.lastIndexOf('.') + 1) : pkgFqn;
+                }
+                calleeGroups.add(new HubExplorerGroup(pkgFqn, shortName, members.size(), members));
+            }
+            calleeGroups.sort((a, b) -> Integer.compare(b.count, a.count));
+        }
+
+        return new HubExplorerView(centerNode, callerSet.size(), calleeSet.size(), callerGroups, calleeGroups);
     }
 
     /**
@@ -1169,38 +1396,99 @@ public class CallGraphAnalyzer {
         }
 
         // Layout callers: flow leftwards (x < 0)
+        double currentCallerBaseX = -240.0;
         for (Map.Entry<Integer, List<GraphNode>> entry : callersByDepth.entrySet()) {
-            int d = entry.getKey();
             List<GraphNode> layerNodes = entry.getValue();
             int count = layerNodes.size();
-            double baseX = - (d * 240.0);
-            double stepY = count > 12 ? 42.0 : 64.0;
-            double startY = - ((count - 1) * stepY) / 2.0;
 
-            for (int i = 0; i < count; i++) {
-                GraphNode n = layerNodes.get(i);
-                double staggerX = (count > 10) ? ((i % 2 == 0) ? -20.0 : 20.0) : 0.0;
-                n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
-                n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
-                n.packageFqn = extractPackageFqn(n.id);
+            // Sort nodes by package so callers from the same package cluster together
+            layerNodes.sort(Comparator.comparing((GraphNode n) -> {
+                String p = extractPackageFqn(n.id);
+                return p != null ? p : "";
+            }).thenComparing(n -> n.id));
+
+            if (count <= 25) {
+                double baseX = currentCallerBaseX;
+                double stepY = count > 12 ? 42.0 : 64.0;
+                double startY = - ((count - 1) * stepY) / 2.0;
+
+                for (int i = 0; i < count; i++) {
+                    GraphNode n = layerNodes.get(i);
+                    double staggerX = (count > 10) ? ((i % 2 == 0) ? -20.0 : 20.0) : 0.0;
+                    n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
+                    n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
+                    n.packageFqn = extractPackageFqn(n.id);
+                }
+                currentCallerBaseX -= 240.0;
+            } else {
+                // Multi-column grid/fan layout for large layers to avoid 20,000px vertical smears
+                int colCount = Math.min(12, Math.max(2, (int) Math.ceil(Math.sqrt(count * 0.8))));
+                int rowsPerCol = (int) Math.ceil((double) count / colCount);
+                double colSpacing = 160.0;
+                double stepY = Math.max(28.0, Math.min(42.0, 900.0 / Math.max(1, rowsPerCol)));
+                double startY = - ((rowsPerCol - 1) * stepY) / 2.0;
+
+                for (int i = 0; i < count; i++) {
+                    GraphNode n = layerNodes.get(i);
+                    int col = i / rowsPerCol;
+                    int row = i % rowsPerCol;
+
+                    double colX = currentCallerBaseX - (col * colSpacing);
+                    double archY = Math.sin((double) row / Math.max(1, rowsPerCol - 1) * Math.PI) * (col * 8.0);
+
+                    n.x = Math.round(colX * 10.0) / 10.0;
+                    n.y = Math.round((startY + row * stepY + (col % 2 == 0 ? 0 : stepY * 0.5) - archY) * 10.0) / 10.0;
+                    n.packageFqn = extractPackageFqn(n.id);
+                }
+                currentCallerBaseX -= (colCount * colSpacing + 100.0);
             }
         }
 
         // Layout callees: flow rightwards (x > 0)
+        double currentCalleeBaseX = +240.0;
         for (Map.Entry<Integer, List<GraphNode>> entry : calleesByDepth.entrySet()) {
-            int d = entry.getKey();
             List<GraphNode> layerNodes = entry.getValue();
             int count = layerNodes.size();
-            double baseX = + (d * 240.0);
-            double stepY = count > 12 ? 42.0 : 64.0;
-            double startY = - ((count - 1) * stepY) / 2.0;
 
-            for (int i = 0; i < count; i++) {
-                GraphNode n = layerNodes.get(i);
-                double staggerX = (count > 10) ? ((i % 2 == 0) ? 20.0 : -20.0) : 0.0;
-                n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
-                n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
-                n.packageFqn = extractPackageFqn(n.id);
+            // Sort nodes by package so callees from the same package cluster together
+            layerNodes.sort(Comparator.comparing((GraphNode n) -> {
+                String p = extractPackageFqn(n.id);
+                return p != null ? p : "";
+            }).thenComparing(n -> n.id));
+
+            if (count <= 25) {
+                double baseX = currentCalleeBaseX;
+                double stepY = count > 12 ? 42.0 : 64.0;
+                double startY = - ((count - 1) * stepY) / 2.0;
+
+                for (int i = 0; i < count; i++) {
+                    GraphNode n = layerNodes.get(i);
+                    double staggerX = (count > 10) ? ((i % 2 == 0) ? 20.0 : -20.0) : 0.0;
+                    n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
+                    n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
+                    n.packageFqn = extractPackageFqn(n.id);
+                }
+                currentCalleeBaseX += 240.0;
+            } else {
+                int colCount = Math.min(12, Math.max(2, (int) Math.ceil(Math.sqrt(count * 0.8))));
+                int rowsPerCol = (int) Math.ceil((double) count / colCount);
+                double colSpacing = 160.0;
+                double stepY = Math.max(28.0, Math.min(42.0, 900.0 / Math.max(1, rowsPerCol)));
+                double startY = - ((rowsPerCol - 1) * stepY) / 2.0;
+
+                for (int i = 0; i < count; i++) {
+                    GraphNode n = layerNodes.get(i);
+                    int col = i / rowsPerCol;
+                    int row = i % rowsPerCol;
+
+                    double colX = currentCalleeBaseX + (col * colSpacing);
+                    double archY = Math.sin((double) row / Math.max(1, rowsPerCol - 1) * Math.PI) * (col * 8.0);
+
+                    n.x = Math.round(colX * 10.0) / 10.0;
+                    n.y = Math.round((startY + row * stepY + (col % 2 == 0 ? 0 : stepY * 0.5) - archY) * 10.0) / 10.0;
+                    n.packageFqn = extractPackageFqn(n.id);
+                }
+                currentCalleeBaseX += (colCount * colSpacing + 100.0);
             }
         }
 
@@ -1232,7 +1520,10 @@ public class CallGraphAnalyzer {
         public Double x;
         public Double y;
         public String packageFqn;
+        public String className;
         public Integer depth;
+        public Integer inDegree;
+        public Integer outDegree;
 
         public GraphNode() {}
 
@@ -1269,6 +1560,41 @@ public class CallGraphAnalyzer {
 
         public GraphView(String rootId, List<GraphNode> nodes, List<GraphEdge> edges) {
             this.rootId = rootId; this.nodes = nodes; this.edges = edges;
+        }
+    }
+
+    /** Group of caller/callee methods belonging to the same package for Hub Explorer. */
+    public static class HubExplorerGroup {
+        public String packageFqn;
+        public String shortName;
+        public int count;
+        public List<GraphNode> members;
+
+        public HubExplorerGroup() {}
+        public HubExplorerGroup(String packageFqn, String shortName, int count, List<GraphNode> members) {
+            this.packageFqn = packageFqn;
+            this.shortName = shortName;
+            this.count = count;
+            this.members = members;
+        }
+    }
+
+    /** Structured response for Hub Explorer view. */
+    public static class HubExplorerView {
+        public GraphNode centerNode;
+        public int totalCallers;
+        public int totalCallees;
+        public List<HubExplorerGroup> callerGroups;
+        public List<HubExplorerGroup> calleeGroups;
+
+        public HubExplorerView() {}
+        public HubExplorerView(GraphNode centerNode, int totalCallers, int totalCallees,
+                               List<HubExplorerGroup> callerGroups, List<HubExplorerGroup> calleeGroups) {
+            this.centerNode = centerNode;
+            this.totalCallers = totalCallers;
+            this.totalCallees = totalCallees;
+            this.callerGroups = callerGroups;
+            this.calleeGroups = calleeGroups;
         }
     }
 

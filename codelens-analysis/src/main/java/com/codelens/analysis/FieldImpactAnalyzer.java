@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Analyses which methods READ, WRITE, or PROPAGATE a given field.
@@ -15,7 +14,8 @@ import java.util.stream.Collectors;
  * calling at least one other method).
  *
  * This is a lightweight, graph-free analysis — the results are built from
- * the raw relationship lists rather than the JGraphT graph structure.
+ * streaming field access tuples rather than heavyweight object graphs,
+ * minimizing heap footprint and eliminating GC pauses on large codebases.
  */
 public class FieldImpactAnalyzer {
 
@@ -26,39 +26,98 @@ public class FieldImpactAnalyzer {
         void onProgress(String phase, int current, int total, String detail);
     }
 
-    /** Immutable snapshot of field-related relationships. */
-    private List<CodeRelationship> fieldRels      = Collections.emptyList();
-    private Set<String>            callingMethods = Collections.emptySet();
-    private Map<String, List<CodeRelationship>> fieldRelIndex = Collections.emptyMap();
+    @FunctionalInterface
+    public interface FieldStreamer {
+        void stream(FieldConsumer consumer) throws Exception;
+    }
 
+    @FunctionalInterface
+    public interface FieldConsumer {
+        void accept(String fromEntityFqn, String toEntityFqn, String kind);
+    }
+
+    /**
+     * Compact storage for field access relationships.
+     * Replaces heavyweight CodeRelationship objects with lightweight string lists.
+     */
+    public static class CompactFieldImpact {
+        public final List<String> readers = new ArrayList<>(2);
+        public final List<String> writers = new ArrayList<>(2);
+    }
+
+    private Set<String> callingMethods = Collections.emptySet();
+    private Map<String, CompactFieldImpact> fieldImpactMap = Collections.emptyMap();
+    private int totalRelsCount = 0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Rebuild APIs
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Update the internal relationship snapshot with lean field relationships and caller set, with progress callback.
+     * Rebuilds field impact index directly from a streaming cursor without instantiating
+     * intermediate CodeRelationship objects.
      */
-    public synchronized void rebuild(List<CodeRelationship> fieldRelationships, Set<String> callingMethodFqns, ProgressListener listener) {
-        this.fieldRels = fieldRelationships != null ? fieldRelationships : Collections.emptyList();
+    public synchronized void rebuildWithStream(FieldStreamer streamer,
+                                               int totalExpectedRels,
+                                               Set<String> callingMethodFqns,
+                                               ProgressListener listener) throws Exception {
         this.callingMethods = callingMethodFqns != null ? callingMethodFqns : Collections.emptySet();
+        Map<String, CompactFieldImpact> map = new HashMap<>(Math.max(1024, totalExpectedRels > 0 ? totalExpectedRels / 4 : 4096));
+        int[] count = new int[]{0};
+        int stride = totalExpectedRels > 0 ? Math.min(5000, Math.max(1, totalExpectedRels / 20)) : 1000;
 
-        Map<String, List<CodeRelationship>> index = new HashMap<>();
-        int total = this.fieldRels.size();
-        int count = 0;
-        for (CodeRelationship rel : this.fieldRels) {
-            if (rel != null && rel.getToEntityFqn() != null) {
-                index.computeIfAbsent(rel.getToEntityFqn(), k -> new ArrayList<>(4)).add(rel);
-            }
-            count++;
-            if (listener != null && (count % 250 == 0 || count == total)) {
-                String target = (rel != null && rel.getToEntityFqn() != null) ? rel.getToEntityFqn() : "field";
-                int lastDot = target.lastIndexOf('.');
-                String shortTarget = lastDot >= 0 ? target.substring(lastDot + 1) : target;
-                listener.onProgress("Field Impact: Indexing Relations", count, total,
-                    String.format("Indexed %,d / %,d field relations (%s)", count, total, shortTarget));
-            }
+        if (streamer != null) {
+            streamer.stream((from, to, kind) -> {
+                if (from == null || to == null || kind == null) return;
+                CompactFieldImpact impact = map.computeIfAbsent(to, k -> new CompactFieldImpact());
+                if ("READS_FIELD".equals(kind)) {
+                    impact.readers.add(from);
+                } else if ("WRITES_FIELD".equals(kind)) {
+                    impact.writers.add(from);
+                }
+                count[0]++;
+                if (listener != null && (count[0] % stride == 0 || count[0] == totalExpectedRels)) {
+                    int lastDot = to.lastIndexOf('.');
+                    String shortTarget = lastDot >= 0 ? to.substring(lastDot + 1) : to;
+                    listener.onProgress("Field Impact: Indexing Relations", count[0], totalExpectedRels,
+                        String.format("Indexed %,d / %,d field relations (%s)", count[0], totalExpectedRels > 0 ? totalExpectedRels : count[0], shortTarget));
+                }
+            });
         }
-        this.fieldRelIndex = Collections.unmodifiableMap(index);
-        log.info("FieldImpactAnalyzer updated: {} field rels ({} unique fields), {} calling methods",
-            fieldRels.size(), index.size(), callingMethods.size());
+
+        this.fieldImpactMap = Collections.unmodifiableMap(map);
+        this.totalRelsCount = count[0];
+        log.info("FieldImpactAnalyzer updated via streaming: {} field rels ({} unique fields), {} calling methods",
+            count[0], map.size(), this.callingMethods.size());
+    }
+
+    public synchronized void rebuildWithStream(FieldStreamer streamer,
+                                               int totalExpectedRels,
+                                               Set<String> callingMethodFqns) throws Exception {
+        rebuildWithStream(streamer, totalExpectedRels, callingMethodFqns, null);
+    }
+
+    /**
+     * Update the internal relationship snapshot with lean field relationships and caller set, with progress callback.
+     * Backwards-compatible overload for pre-fetched lists.
+     */
+    public synchronized void rebuild(List<CodeRelationship> fieldRelationships,
+                                     Set<String> callingMethodFqns,
+                                     ProgressListener listener) {
+        int total = fieldRelationships != null ? fieldRelationships.size() : 0;
+        try {
+            rebuildWithStream(consumer -> {
+                if (fieldRelationships != null) {
+                    for (CodeRelationship rel : fieldRelationships) {
+                        if (rel != null) {
+                            consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind());
+                        }
+                    }
+                }
+            }, total, callingMethodFqns, listener);
+        } catch (Exception e) {
+            log.error("Failed to rebuild field impact analyzer", e);
+        }
     }
 
     /**
@@ -105,28 +164,10 @@ public class FieldImpactAnalyzer {
      * caller propagation up to {@code depth} hops.
      */
     public ImpactView analyse(String fieldFqn, int depth, CallGraphAnalyzer callGraphAnalyzer) {
-        List<String> readers    = new ArrayList<>();
-        List<String> writers    = new ArrayList<>();
+        CompactFieldImpact impact = fieldImpactMap.get(fieldFqn);
+        List<String> readers    = impact != null ? new ArrayList<>(impact.readers) : new ArrayList<>();
+        List<String> writers    = impact != null ? new ArrayList<>(impact.writers) : new ArrayList<>();
         List<String> propagators = new ArrayList<>();
-
-        List<CodeRelationship> relsForField = fieldRelIndex.get(fieldFqn);
-        if (relsForField != null) {
-            for (CodeRelationship rel : relsForField) {
-                switch (rel.getKind()) {
-                    case "READS_FIELD"  -> readers.add(rel.getFromEntityFqn());
-                    case "WRITES_FIELD" -> writers.add(rel.getFromEntityFqn());
-                }
-            }
-        } else if (fieldRelIndex.isEmpty() && !fieldRels.isEmpty()) {
-            // Fallback for safety if index was not populated
-            for (CodeRelationship rel : fieldRels) {
-                if (!fieldFqn.equals(rel.getToEntityFqn())) continue;
-                switch (rel.getKind()) {
-                    case "READS_FIELD"  -> readers.add(rel.getFromEntityFqn());
-                    case "WRITES_FIELD" -> writers.add(rel.getFromEntityFqn());
-                }
-            }
-        }
 
         // Propagators: readers that also call another method
         for (String reader : readers) {
@@ -134,7 +175,6 @@ public class FieldImpactAnalyzer {
                 propagators.add(reader);
             }
         }
-
 
         // Build graph view
         List<CallGraphAnalyzer.GraphNode> nodes = new ArrayList<>();
@@ -172,6 +212,10 @@ public class FieldImpactAnalyzer {
 
         return new ImpactView(fieldFqn, readers, writers, propagators,
                               new CallGraphAnalyzer.GraphView(fieldFqn, nodes, edges));
+    }
+
+    public int getTotalRelationshipsCount() {
+        return totalRelsCount;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

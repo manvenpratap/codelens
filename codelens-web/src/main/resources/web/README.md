@@ -143,15 +143,10 @@ From the project root:
 This generates an optimized **Two-JAR Modular Architecture**:
 - **`codelens-app/target/codelens-app.jar` (~1.1 MB)**: Contains all application logic, REST endpoints, analysis engines, and web resources. Daily feature updates compile in **~3-4 seconds**.
 - **`codelens-app/target/codelens-deps.jar` (~22 MB)**: Pre-packaged external dependencies (Javalin, Jetty, Jackson, Lucene, JGit, JavaParser, H2, HikariCP, JGraphT). Referenced automatically via `Class-Path: codelens-deps.jar`.
-- **`codelens-app/target/codelens-app-all.jar` (~23.9 MB)**: Self-contained monolithic fat JAR fallback.
 
 ### 2. Launch the Application
 ```bash
-# Launch using the modular JAR (fastest, requires codelens-deps.jar in same directory):
 java -jar codelens-app/target/codelens-app.jar
-
-# Or launch using the monolithic fat JAR:
-java -jar codelens-app/target/codelens-app-all.jar
 ```
 Once launched, open your web browser at: **`http://localhost:7878`**
 
@@ -205,16 +200,9 @@ CodeLens offers two distribution options:
    ```
 4. Access `http://localhost:7878` in any browser.
 
-### Method 2: Monolithic Single-File Fat JAR (Fallback)
-
-If strict single-file deployment is required, deploy `codelens-app-all.jar` (~23.9 MB):
-```bash
-java -jar codelens-app-all.jar
-```
-
 ---
 
-### Method 3: Building from Source on the New Machine
+### Method 2: Building from Source on the New Machine
 
 If shipping the source repository (or cloning via Git):
 

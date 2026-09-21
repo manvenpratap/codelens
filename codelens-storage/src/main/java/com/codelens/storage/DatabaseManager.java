@@ -67,7 +67,7 @@ public class DatabaseManager {
     }
 
     /** Self-healing check: verify secondary indexes exist; rebuild if dropped by a previous crash during bulk load. */
-    private void ensureSecondaryIndexes() {
+    public void ensureSecondaryIndexes() {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'METHODS' AND INDEX_NAME = 'IDX_METHODS_TYPE'")) {
@@ -82,6 +82,11 @@ public class DatabaseManager {
                     stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
                 }
             }
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'RELATIONSHIPS' AND INDEX_NAME = 'IDX_RELS_FIELDS_COVERING'")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_fields_covering ON relationships(kind, id, to_entity_fqn, from_entity_fqn)");
+                }
+            }
         } catch (Exception e) {
             log.warn("Could not verify secondary indexes: {}", e.getMessage());
         }
@@ -94,6 +99,28 @@ public class DatabaseManager {
     /** Expose a connection from the pool (caller must close it). */
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
+    }
+
+    /** Returns connection pool diagnostics for Process Hub and health monitoring. */
+    public java.util.Map<String, Object> getPoolStats() {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        if (dataSource != null && !dataSource.isClosed()) {
+            com.zaxxer.hikari.HikariPoolMXBean mx = dataSource.getHikariPoolMXBean();
+            if (mx != null) {
+                m.put("activeConnections", mx.getActiveConnections());
+                m.put("idleConnections", mx.getIdleConnections());
+                m.put("totalConnections", mx.getTotalConnections());
+                m.put("threadsAwaiting", mx.getThreadsAwaitingConnection());
+            } else {
+                m.put("activeConnections", 0);
+                m.put("idleConnections", dataSource.getMinimumIdle());
+                m.put("totalConnections", dataSource.getMaximumPoolSize());
+                m.put("threadsAwaiting", 0);
+            }
+            m.put("maxPoolSize", dataSource.getMaximumPoolSize());
+            m.put("poolName", dataSource.getPoolName());
+        }
+        return m;
     }
 
 
@@ -262,6 +289,7 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to        ON relationships(to_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_kind      ON relationships(kind)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_fields_covering ON relationships(kind, id, to_entity_fqn, from_entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_excluded_fqn   ON excluded_scopes(fqn)");
@@ -303,6 +331,7 @@ public class DatabaseManager {
             stmt.execute("DROP INDEX IF EXISTS idx_rels_to");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_kind");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_calls_covering");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_fields_covering");
             stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
             log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped, write delay 2000ms)");
         }
@@ -356,6 +385,8 @@ public class DatabaseManager {
                           "idx_rels_kind", "relationships", "Relationship kind filter on relationships(kind)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)",
                           "idx_rels_calls_covering", "relationships", "Covering index for call graph extraction on relationships(kind, id, from_entity_fqn, to_entity_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_fields_covering ON relationships(kind, id, to_entity_fqn, from_entity_fqn)",
+                          "idx_rels_fields_covering", "relationships", "Covering index for field impact analysis on relationships(kind, id, to_entity_fqn, from_entity_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
                           "idx_pkgs_parent", "packages", "Package hierarchy tree index on packages(parent_fqn)"),
             new IndexTask("ANALYZE",

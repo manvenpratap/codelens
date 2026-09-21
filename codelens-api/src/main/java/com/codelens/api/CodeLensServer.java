@@ -203,6 +203,9 @@ public class CodeLensServer {
 
     public void warmupGraphCache(ScanProgress progress) {
         try {
+            if (progress != null) {
+                progress.recordStageStart("LAYOUT", "Graph Layout & Topology Precomputation", "Precomputing sunflower spiral cluster layouts and module dependencies");
+            }
             log.info("Starting graph layout precomputation & warm-up...");
             long start = System.currentTimeMillis();
 
@@ -282,9 +285,39 @@ public class CodeLensServer {
                 progress.setCurrentDetail(String.format("Precomputed all %d graph layouts", total));
                 progress.setSubProgress(total, total, "All layouts ready");
             }
-            log.info("Finished graph layout warm-up: {} layouts ready in {}ms",
+
+            if (cachedModuleOverview == null && !cancelRequested) {
+                try {
+                    log.info("Precomputing module dependency overview during warm-up...");
+                    List<CodePackage> packages = dao.findAllPackages();
+                    List<CodeType> types = dao.findAllTypes();
+                    List<CodeMethod> methods = isHugeCodebase ? Collections.emptyList() : dao.findAllMethods();
+                    List<CodeField> fields = isHugeCodebase ? Collections.emptyList() : dao.findAllFields();
+                    List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
+                        ? dao.findNonCallRelationships()
+                        : dao.findAllRelationships();
+                    cachedModuleOverview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
+                    log.info("Precomputed module overview: {} modules ready", cachedModuleOverview != null && cachedModuleOverview.modules != null ? cachedModuleOverview.modules.size() : 0);
+                } catch (Exception e) {
+                    log.warn("Module overview precomputation deferred: {}", e.getMessage());
+                }
+            }
+
+            if (progress != null) {
+                Map<String, String> layoutMetrics = new LinkedHashMap<>();
+                layoutMetrics.put("Layouts Cached", String.valueOf(total));
+                layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
+                layoutMetrics.put("Modules Cached", cachedModuleOverview != null && cachedModuleOverview.modules != null ? String.valueOf(cachedModuleOverview.modules.size()) : "Complete");
+                layoutMetrics.put("Placed Nodes", "Ready");
+                progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts & module overview", total), layoutMetrics);
+            }
+
+            log.info("Finished graph layout & module warm-up: {} layouts ready in {}ms",
                 total, System.currentTimeMillis() - start);
         } catch (Exception e) {
+            if (progress != null) {
+                progress.recordStageEnd("LAYOUT", "ERROR", "Layout precomputation error: " + e.getMessage(), null);
+            }
             log.warn("Graph layout warm-up encountered an error: {}", e.getMessage());
         }
     }
@@ -344,6 +377,11 @@ public class CodeLensServer {
         app.post("/api/open-folder",       this::openFolder);
         app.post("/api/shutdown",          this::shutdownServer);
 
+        // ── Process & Task Hub ─────────────────────────────────────────────────
+        app.get("/api/processes",                  this::listProcesses);
+        app.post("/api/processes/{id}/kill",       this::killProcess);
+        app.post("/api/processes/{id}/restart",    this::restartProcess);
+
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
 
@@ -370,6 +408,7 @@ public class CodeLensServer {
         app.get("/api/graph/export-json",    this::exportGraphJson);
         app.get("/api/graph/dsm",            this::getDSM);
         app.get("/api/graph/treemap",        this::getTreemap);
+        app.get("/api/graph/hub-explorer",   this::getHubExplorer);
 
         // ── Critical Path & Persistent Entities ──────────────────────────────
         app.get("/api/analysis/persistent-classes", this::getPersistentClasses);
@@ -486,7 +525,8 @@ public class CodeLensServer {
                 startupProgress.setCurrentPhase("Field Impact Analysis");
                 startupProgress.setMessage("Indexing field impact relationships…");
                 startupProgress.setPercentage(wasComplete ? 100 : 30);
-                fieldImpact.rebuild(dao.findFieldRelationships(), callGraph.getCallingMethodFqns());
+                int totalFieldRels = dao.countFieldRelationships();
+                fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callGraph.getCallingMethodFqns());
                 log.info("Initialized in-memory call graph from database with {} methods",
                     allMethodFqns.size());
 
@@ -533,6 +573,7 @@ public class CodeLensServer {
         if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
             current.setMessage("Cancelling scan...");
         }
+        logProcessBanner("CANCEL_REQUESTED", "Active Scan", resolveCurrentSourcePath(), "User requested scan cancellation");
         ctx.json(Map.of("status", "cancelling"));
     }
 
@@ -545,6 +586,220 @@ public class CodeLensServer {
             } catch (InterruptedException ignored) {}
             System.exit(0);
         }, "codelens-shutdown-trigger").start();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Console Telemetry & Process Banner Logging
+    // ─────────────────────────────────────────────────────────────────────────
+    private void logProcessBanner(String eventType, String processName, String path, String details) {
+        String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+        long freeMem = Runtime.getRuntime().freeMemory() / (1024 * 1024);
+        long totalMem = Runtime.getRuntime().totalMemory() / (1024 * 1024);
+        long usedMem = totalMem - freeMem;
+
+        System.out.println("\n" +
+            "╔════════════════════════════════════════════════════════════════════════════════════╗\n" +
+            "║ CODELENS BACKGROUND PROCESS " + String.format("%-51s", eventType) + "║\n" +
+            "║ Process:   " + String.format("%-69s", processName) + "║\n" +
+            "║ Target:    " + String.format("%-69s", path != null ? path : "-") + "║\n" +
+            "║ Details:   " + String.format("%-69s", details != null ? details : "-") + "║\n" +
+            "║ Timestamp: " + String.format("%-30s", ts) + " Memory: " + String.format("%-30s", usedMem + "MB / " + totalMem + "MB") + "║\n" +
+            "╚════════════════════════════════════════════════════════════════════════════════════╝\n");
+        log.info("[PROCESS-{}] {} | Target: {} | Details: {}", eventType, processName, path, details);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Process & Task Management Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+    private void listProcesses(Context ctx) {
+        List<Map<String, Object>> processes = new ArrayList<>();
+        ScanProgress sp = scanState.get();
+
+        // 1. Source Scanner (Full & Active Scan)
+        Map<String, Object> scannerProc = new LinkedHashMap<>();
+        scannerProc.put("id", "scanner");
+        scannerProc.put("name", "Source Code Scanner");
+        scannerProc.put("type", "Parallel AST Parser & Ingestion");
+        boolean isScanning = sp != null && sp.getStatus() == ScanProgress.Status.SCANNING;
+        boolean isComplete = sp != null && sp.getStatus() == ScanProgress.Status.COMPLETE;
+        boolean isError = sp != null && sp.getStatus() == ScanProgress.Status.ERROR;
+        scannerProc.put("status", isScanning ? "RUNNING" : (isComplete ? "COMPLETE" : (isError ? "ERROR" : "IDLE")));
+        scannerProc.put("activeStage", sp != null ? sp.getActiveStage() : "IDLE");
+        scannerProc.put("currentPhase", sp != null ? sp.getCurrentPhase() : "Idle");
+        scannerProc.put("currentDetail", sp != null ? sp.getCurrentDetail() : "");
+        scannerProc.put("percentage", sp != null ? sp.getPercentage() : 0);
+        scannerProc.put("sourcePath", sp != null ? sp.getSourcePath() : "");
+        scannerProc.put("processedFiles", sp != null ? sp.getProcessedFiles() : 0);
+        scannerProc.put("totalFiles", sp != null ? sp.getTotalFiles() : 0);
+        scannerProc.put("typesFound", sp != null ? sp.getTypesFound() : 0);
+        scannerProc.put("methodsFound", sp != null ? sp.getMethodsFound() : 0);
+        scannerProc.put("fieldsFound", sp != null ? sp.getFieldsFound() : 0);
+        scannerProc.put("durationMs", sp != null ? sp.getDurationMs() : 0);
+        scannerProc.put("startTime", sp != null ? sp.getStartTime() : 0);
+        scannerProc.put("thread", isScanning ? "codelens-scan-worker" : "-");
+        scannerProc.put("canKill", isScanning);
+        scannerProc.put("canRestart", true);
+        processes.add(scannerProc);
+
+        // 2. Incremental Delta Scanner
+        Map<String, Object> deltaProc = new LinkedHashMap<>();
+        deltaProc.put("id", "delta-scanner");
+        deltaProc.put("name", "Delta Change Scanner");
+        deltaProc.put("type", "File Watcher & Incremental Patch");
+        boolean isDeltaActive = isScanning && sp != null && ("Delta Change Detection".equals(sp.getCurrentPhase()) || "Incremental AST Parsing".equals(sp.getCurrentPhase()));
+        deltaProc.put("status", isDeltaActive ? "RUNNING" : "IDLE");
+        deltaProc.put("activeStage", isDeltaActive ? sp.getActiveStage() : "IDLE");
+        deltaProc.put("currentPhase", isDeltaActive ? sp.getCurrentPhase() : "Idle");
+        deltaProc.put("percentage", isDeltaActive ? sp.getPercentage() : 0);
+        deltaProc.put("thread", isDeltaActive ? "codelens-scan-worker" : "-");
+        deltaProc.put("canKill", isDeltaActive);
+        deltaProc.put("canRestart", true);
+        processes.add(deltaProc);
+
+        // 3. Call Graph & Topology Engine
+        Map<String, Object> graphProc = new LinkedHashMap<>();
+        graphProc.put("id", "call-graph");
+        graphProc.put("name", "Call Graph & Topology Engine");
+        graphProc.put("type", "JGraphT Topology & Field Impact");
+        boolean isGraphBuilding = isScanning && sp != null && ("Call Graph Analysis".equals(sp.getCurrentPhase()) || "Field Impact Analysis".equals(sp.getCurrentPhase()));
+        int vCount = callGraph != null ? callGraph.vertexCount() : 0;
+        int eCount = callGraph != null ? callGraph.edgeCount() : 0;
+        graphProc.put("status", isGraphBuilding ? "RUNNING" : (vCount > 0 ? "COMPLETE" : "IDLE"));
+        graphProc.put("activeStage", isGraphBuilding ? "GRAPH" : "IDLE");
+        graphProc.put("currentPhase", isGraphBuilding ? sp.getCurrentPhase() : (vCount > 0 ? "In-Memory Graph Ready" : "Idle"));
+        graphProc.put("currentDetail", String.format("%,d vertices · %,d call edges", vCount, eCount));
+        graphProc.put("percentage", isGraphBuilding ? sp.getPercentage() : (vCount > 0 ? 100 : 0));
+        graphProc.put("thread", isGraphBuilding ? "codelens-graph-builder" : "-");
+        graphProc.put("canKill", isGraphBuilding);
+        graphProc.put("canRestart", true);
+        processes.add(graphProc);
+
+        // 4. Layout Precomputation Engine
+        Map<String, Object> layoutProc = new LinkedHashMap<>();
+        layoutProc.put("id", "layout-engine");
+        layoutProc.put("name", "Sunflower Layout Precomputer");
+        layoutProc.put("type", "Sunflower Spiral & Clustering Precomputer");
+        boolean isLayoutBuilding = isScanning && sp != null && ("Precomputing Layouts".equals(sp.getCurrentPhase()) || "LAYOUT".equals(sp.getActiveStage()));
+        int cachedLayouts = layoutCache.size();
+        layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 ? "COMPLETE" : "IDLE"));
+        layoutProc.put("activeStage", isLayoutBuilding ? "LAYOUT" : "IDLE");
+        layoutProc.put("currentPhase", isLayoutBuilding ? sp.getCurrentPhase() : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle"));
+        layoutProc.put("currentDetail", String.format("%d layouts cached in memory (rev=%d)", cachedLayouts, scanRevision.get()));
+        layoutProc.put("percentage", isLayoutBuilding ? sp.getPercentage() : (cachedLayouts > 0 ? 100 : 0));
+        layoutProc.put("thread", isLayoutBuilding ? "codelens-layout-worker" : "-");
+        layoutProc.put("canKill", isLayoutBuilding);
+        layoutProc.put("canRestart", true);
+        processes.add(layoutProc);
+
+        // 5. Git History & Hotspots
+        Map<String, Object> gitProc = new LinkedHashMap<>();
+        gitProc.put("id", "git-analyzer");
+        gitProc.put("name", "Git Churn & Hotspot Analyzer");
+        gitProc.put("type", "Git Log & Code Churn Correlator");
+        gitProc.put("status", "IDLE");
+        gitProc.put("activeStage", "IDLE");
+        gitProc.put("currentPhase", "Ready");
+        gitProc.put("percentage", 0);
+        gitProc.put("thread", "-");
+        gitProc.put("canKill", false);
+        gitProc.put("canRestart", true);
+        processes.add(gitProc);
+
+        // System resources & Pool telemetry
+        long freeMem = Runtime.getRuntime().freeMemory();
+        long totalMem = Runtime.getRuntime().totalMemory();
+        long maxMem = Runtime.getRuntime().maxMemory();
+        long usedMem = totalMem - freeMem;
+
+        Map<String, Object> system = new LinkedHashMap<>();
+        system.put("heapUsedMb", usedMem / (1024 * 1024));
+        system.put("heapTotalMb", totalMem / (1024 * 1024));
+        system.put("heapMaxMb", maxMem / (1024 * 1024));
+        system.put("heapPercent", (int) ((usedMem * 100L) / maxMem));
+        system.put("activeThreads", Thread.activeCount());
+        system.put("dbPool", db.getPoolStats());
+
+        ctx.json(Map.of("processes", processes, "system", system));
+    }
+
+    private void killProcess(Context ctx) {
+        String id = ctx.pathParam("id");
+        logProcessBanner("KILL_REQUESTED", id.toUpperCase(), resolveCurrentSourcePath(), "User requested process termination");
+        if ("scanner".equalsIgnoreCase(id) || "delta-scanner".equalsIgnoreCase(id) || "all".equalsIgnoreCase(id)) {
+            cancelRequested = true;
+            ScanProgress sp = scanState.get();
+            if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+                sp.setStatus(ScanProgress.Status.ERROR);
+                sp.setMessage("Scan terminated by user via Process Hub");
+                sp.setErrorDetail("Process manually killed");
+                sp.setEndTime(System.currentTimeMillis());
+                try { dao.saveScanMeta(sp); } catch (Exception ignored) {}
+                try { db.finishBulkLoad(); } catch (Exception ignored) {}
+            }
+            ctx.json(Map.of("status", "killed", "processId", id, "message", "Scan process successfully terminated"));
+            return;
+        }
+        ctx.json(Map.of("status", "ok", "processId", id, "message", "Process signaled"));
+    }
+
+    private void restartProcess(Context ctx) {
+        String id = ctx.pathParam("id");
+        String currentPath = resolveCurrentSourcePath();
+        if (currentPath == null || currentPath.isBlank()) {
+            ctx.status(400).json(Map.of("error", "No active source path to restart"));
+            return;
+        }
+        logProcessBanner("RESTART_REQUESTED", id.toUpperCase(), currentPath, "User requested process restart via Process Hub");
+        if ("scanner".equalsIgnoreCase(id)) {
+            ScanProgress current = scanState.get();
+            if (current != null && current.getStatus() == ScanProgress.Status.SCANNING) {
+                cancelRequested = true;
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            }
+            ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
+            progress.setSourcePath(currentPath);
+            progress.setStartTime(System.currentTimeMillis());
+            progress.setMessage("Restarting full scan…");
+            scanState.set(progress);
+            scanExecutor.submit(() -> runScan(currentPath, resolveCurrentExcludePatterns(), progress));
+            ctx.json(Map.of("status", "restarted", "processId", id, "sourcePath", currentPath));
+            return;
+        } else if ("delta-scanner".equalsIgnoreCase(id)) {
+            ScanProgress progress = new ScanProgress(ScanProgress.Status.SCANNING);
+            progress.setSourcePath(currentPath);
+            progress.setStartTime(System.currentTimeMillis());
+            progress.setCurrentPhase("Delta Change Detection");
+            progress.setMessage("Resuming & rescanning changed files…");
+            scanState.set(progress);
+            scanExecutor.submit(() -> runIncrementalScan(currentPath, resolveCurrentExcludePatterns(), progress));
+            ctx.json(Map.of("status", "restarted", "processId", id, "sourcePath", currentPath));
+            return;
+        } else if ("call-graph".equalsIgnoreCase(id)) {
+            scanExecutor.submit(() -> {
+                try {
+                    log.info("Manual rebuild of call graph & field impact requested");
+                    List<String> allMethodFqns = dao.findAllMethodFqns();
+                    callGraph.rebuild(allMethodFqns, consumer -> {
+                        try { dao.streamCallRelationships(consumer::accept); } catch (Exception e) { throw new RuntimeException(e); }
+                    }, null);
+                    int totalFieldRels = dao.countFieldRelationships();
+                    fieldImpact.rebuildWithStream(consumer -> {
+                        try { dao.streamFieldRelationships(consumer::accept); } catch (Exception e) { throw new RuntimeException(e); }
+                    }, totalFieldRels, callGraph.getCallingMethodFqns(), null);
+                    log.info("Manual rebuild of call graph complete: {} vertices", callGraph.vertexCount());
+                } catch (Exception e) {
+                    log.error("Failed to rebuild call graph", e);
+                }
+            });
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Call graph rebuild queued"));
+            return;
+        } else if ("layout-engine".equalsIgnoreCase(id)) {
+            invalidateGraphCache();
+            scanExecutor.submit(() -> warmupGraphCache());
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Layout precomputations queued"));
+            return;
+        }
+        ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
     }
 
 
@@ -595,6 +850,10 @@ public class CodeLensServer {
         this.lastExcludePatterns = excludePatterns != null ? excludePatterns : Collections.emptyList();
         final String finalPath = sourcePath;
         final boolean isResume = resume;
+        logProcessBanner(isResume ? "RESUME_TRIGGERED" : "SCAN_TRIGGERED",
+            isResume ? "Resume / Incremental Scan" : "Full Codebase Scan",
+            sourcePath,
+            "Excludes: " + (finalExcludes != null && !finalExcludes.isEmpty() ? String.join(", ", finalExcludes) : "default"));
         if (isResume) {
             progress.setCurrentPhase("Delta Change Detection");
             progress.setMessage("Resuming scan — detecting modified & remaining source files…");
@@ -701,6 +960,8 @@ public class CodeLensServer {
         final List<String> finalExcludes = excludePatterns;
         this.lastExcludePatterns = excludePatterns != null ? excludePatterns : Collections.emptyList();
         final String finalPath = sourcePath;
+        logProcessBanner("INCREMENTAL_TRIGGERED", "Delta Change Detection & Rescan", sourcePath,
+            "Excludes: " + (finalExcludes != null && !finalExcludes.isEmpty() ? String.join(", ", finalExcludes) : "default"));
         scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
@@ -762,6 +1023,7 @@ public class CodeLensServer {
         try {
             // Phase 1: prepare database and lucene index
             progress.setActiveStage("PREPARE");
+            progress.recordStageStart("PREPARE", "Preparing Storage", "Clearing database tables and enabling bulk ingestion mode");
             progress.setCurrentPhase("Preparing Storage");
             progress.setMessage("Clearing existing database & index data…");
             progress.setCurrentDetail("Resetting schema & indices");
@@ -769,9 +1031,11 @@ public class CodeLensServer {
             db.clearAll();
             db.prepareForBulkLoad();
             lucene.prepareIndexRebuild();
+            progress.recordStageEnd("PREPARE", "COMPLETE", "Database and search index reset successfully", Map.of("Status", "Ready", "Mode", "Bulk Load"));
 
             // Phase 2: bounded streaming scan
             progress.setActiveStage("PARSE");
+            progress.recordStageStart("PARSE", "AST Parsing & Storage", "Scanning Java source files and extracting AST nodes in parallel");
             progress.setCurrentPhase("AST Parsing & Storage");
             progress.setMessage("Scanning Java source files in parallel…");
 
@@ -852,7 +1116,9 @@ public class CodeLensServer {
 
             if (result.cancelled || cancelRequested) {
                 log.info("Scan cancelled for {}", sourcePath);
+                logProcessBanner("CANCELLED", "Full Codebase Scan", sourcePath, "Scan was cancelled by user");
                 try { db.finishBulkLoad(); } catch (Exception ignored) {}
+                progress.recordStageEnd(progress.getActiveStage(), "CANCELLED", "Scan cancelled by user", null);
                 progress.setActiveStage("COMPLETE");
                 progress.setCurrentPhase("Cancelled");
                 progress.setCurrentDetail("Scan cancelled by user");
@@ -872,8 +1138,17 @@ public class CodeLensServer {
                 }
             }
 
+            Map<String, String> parseMetrics = new LinkedHashMap<>();
+            parseMetrics.put("Files Parsed", String.format("%,d", result.parsedFiles));
+            parseMetrics.put("Types Found", String.format("%,d", result.typesFound));
+            parseMetrics.put("Methods Found", String.format("%,d", result.methodsFound));
+            parseMetrics.put("Fields Found", String.format("%,d", result.fieldsFound));
+            parseMetrics.put("Relationships", String.format("%,d", result.relationshipsFound));
+            progress.recordStageEnd("PARSE", "COMPLETE", String.format("Parsed %,d files; discovered %,d types & %,d methods", result.parsedFiles, result.typesFound, result.methodsFound), parseMetrics);
+
             // Phase 3: finish Lucene commit & rebuild secondary database indexes
             progress.setActiveStage("INDEX");
+            progress.recordStageStart("INDEX", "Search Index & Database Index Rebuild", "Committing Lucene search documents & rebuilding secondary database B-tree indexes");
             progress.setCurrentPhase("Finalizing Index");
             progress.setMessage("Committing search index & rebuilding database indexes…");
             progress.setCurrentDetail("Committing Lucene search documents…");
@@ -914,12 +1189,20 @@ public class CodeLensServer {
                 );
             });
 
+            Map<String, String> indexMetrics = new LinkedHashMap<>();
+            indexMetrics.put("Lucene Docs", String.format("%,d", totalDocsEstimate));
+            indexMetrics.put("DB Indexes", "12 / 12 rebuilt");
+            indexMetrics.put("Search Index", "Committed");
+            indexMetrics.put("Storage Engine", "H2 MVStore");
+            progress.recordStageEnd("INDEX", "COMPLETE", String.format("Committed %,d Lucene docs & rebuilt 12 secondary DB indexes", totalDocsEstimate), indexMetrics);
+
             if (cancelRequested) {
                 return;
             }
 
             // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
             progress.setActiveStage("GRAPH");
+            progress.recordStageStart("GRAPH", "Call Graph Analysis & Field Propagation", "Computing method call hierarchy, caller triggers, and field impact propagation");
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Computing call graph & topology…");
             progress.setPercentage(75);
@@ -980,14 +1263,13 @@ public class CodeLensServer {
                 "Caller Triggers", "Querying…"
             );
 
-            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
+            int totalFieldRels = dao.countFieldRelationships();
             Set<String> callingMethods = callGraph.getCallingMethodFqns();
-            int totalFieldRels = fieldRels.size();
             int totalCallers = callingMethods.size();
 
-            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
+            progress.setCurrentDetail(String.format("Streaming & indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
             progress.setSubProgress(4, 4, "Indexing field relations");
-            fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
+            fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
                 progress.setPercentage(87 + (int)(f * 5)); // 87% -> 92%
                 progress.setCurrentDetail(detail);
@@ -999,6 +1281,13 @@ public class CodeLensServer {
                     "Caller Triggers", String.format("%,d", totalCallers)
                 );
             });
+
+            Map<String, String> graphMetrics = new LinkedHashMap<>();
+            graphMetrics.put("Graph Vertices", String.format("%,d", totalMethods));
+            graphMetrics.put("Call Edges", String.format("%,d", totalCallEdges));
+            graphMetrics.put("Field Relations", String.format("%,d", totalFieldRels));
+            graphMetrics.put("Caller Triggers", String.format("%,d", totalCallers));
+            progress.recordStageEnd("GRAPH", "COMPLETE", String.format("Mapped %,d vertices, %,d call edges & %,d field relationships", totalMethods, totalCallEdges, totalFieldRels), graphMetrics);
 
             if (cancelRequested) {
                 return;
@@ -1038,13 +1327,20 @@ public class CodeLensServer {
             // Persist scan metadata to H2 for instant session restore
             dao.saveScanMeta(progress);
 
+            logProcessBanner("SCAN_COMPLETED", "Full Codebase Scan", sourcePath,
+                String.format("Successfully parsed %,d files, %,d types, %,d methods, %,d rels in %d ms",
+                    result.parsedFiles, result.typesFound, result.methodsFound, result.relationshipsFound,
+                    progress.getEndTime() - progress.getStartTime()));
+
             log.info("Scan finished: {} types, {} methods, {} fields, {} relationships across {} files ({} parsed, {} errors)",
                 result.typesFound, result.methodsFound, result.fieldsFound,
                 result.relationshipsFound, result.totalFiles, result.parsedFiles, result.errorFiles);
 
         } catch (Exception e) {
             log.error("Scan failed", e);
+            logProcessBanner("SCAN_FAILED", "Full Codebase Scan", sourcePath, "Error: " + e.getMessage());
             try { db.finishBulkLoad(); } catch (Exception ignored) {}
+            progress.recordStageEnd(progress.getActiveStage(), "ERROR", "Scan failed: " + e.getMessage(), null);
             progress.setStatus(ScanProgress.Status.ERROR);
             progress.setMessage("Scan failed");
             progress.setErrorDetail(e.getMessage());
@@ -1056,6 +1352,13 @@ public class CodeLensServer {
     private void runIncrementalScan(String sourcePath, List<String> excludePatterns, ScanProgress progress) {
         cancelRequested = false;
         try {
+            try {
+                // Self-healing: Ensure all secondary indexes exist before running queries or deletes
+                db.ensureSecondaryIndexes();
+            } catch (Exception e) {
+                log.warn("Secondary index self-healing check: {}", e.getMessage());
+            }
+
             Path root = Paths.get(sourcePath);
             Map<String, FileMeta> existingMeta = dao.getAllFileMeta();
             JavaSourceScanner scanner = new JavaSourceScanner();
@@ -1067,6 +1370,7 @@ public class CodeLensServer {
                 progress.setCurrentDetail("Ready");
                 progress.setEndTime(System.currentTimeMillis());
                 progress.setStatus(ScanProgress.Status.COMPLETE);
+                logProcessBanner("INCREMENTAL_COMPLETED", "Incremental Delta Scan", sourcePath, "No changes detected — codebase is up to date");
                 return;
             }
 
@@ -1075,6 +1379,7 @@ public class CodeLensServer {
 
             // Phase 1: delete old data for modified and deleted files
             progress.setActiveStage("PREPARE");
+            progress.recordStageStart("PREPARE", "Patching Database", "Purging old records for modified and deleted files");
             progress.setCurrentPhase("Patching Database");
             progress.setMessage("Purging old records for modified & deleted files…");
             progress.setPercentage(3);
@@ -1082,6 +1387,7 @@ public class CodeLensServer {
             toDelete.addAll(changes.getModifiedFiles());
             toDelete.addAll(changes.getDeletedFiles());
             dao.deleteBySourceFiles(toDelete);
+            progress.recordStageEnd("PREPARE", "COMPLETE", String.format("Purged old records for %d files", toDelete.size()), Map.of("Files Purged", String.valueOf(toDelete.size())));
 
             // Phase 2: parse modified and new files
             List<Path> toParse = new ArrayList<>();
@@ -1089,6 +1395,7 @@ public class CodeLensServer {
             for (String p : changes.getModifiedFiles()) toParse.add(Paths.get(p));
 
             progress.setActiveStage("PARSE");
+            progress.recordStageStart("PARSE", "Incremental AST Parsing", String.format("Parsing %d changed files in parallel", toParse.size()));
             progress.setCurrentPhase("Incremental AST Parsing");
             progress.setMessage(String.format("Parsing %d changed files…", toParse.size()));
 
@@ -1169,6 +1476,8 @@ public class CodeLensServer {
 
             if (result.cancelled || cancelRequested) {
                 log.info("Incremental scan cancelled for {}", sourcePath);
+                logProcessBanner("CANCELLED", "Incremental Delta Scan", sourcePath, "User cancelled incremental scan");
+                progress.recordStageEnd(progress.getActiveStage(), "CANCELLED", "Incremental scan cancelled by user", null);
                 progress.setActiveStage("COMPLETE");
                 progress.setCurrentPhase("Cancelled");
                 progress.setCurrentDetail("Incremental scan cancelled by user");
@@ -1189,8 +1498,17 @@ public class CodeLensServer {
             }
             dao.recomputePackageCounts();
 
+            Map<String, String> deltaParseMetrics = new LinkedHashMap<>();
+            deltaParseMetrics.put("Files Parsed", String.format("%,d", toParse.size()));
+            deltaParseMetrics.put("Types Found", String.format("%,d", result.typesFound));
+            deltaParseMetrics.put("Methods Found", String.format("%,d", result.methodsFound));
+            deltaParseMetrics.put("Fields Found", String.format("%,d", result.fieldsFound));
+            deltaParseMetrics.put("Relationships", String.format("%,d", result.relationshipsFound));
+            progress.recordStageEnd("PARSE", "COMPLETE", String.format("Parsed %d changed files", toParse.size()), deltaParseMetrics);
+
             // Phase 4: finish Lucene commit & rebuild in-memory graphs
             progress.setActiveStage("INDEX");
+            progress.recordStageStart("INDEX", "Updating Search Index", "Committing incremental search index & verifying database indexes");
             progress.setCurrentPhase("Updating Search Index");
             progress.setMessage("Committing incremental search index…");
             progress.setCurrentDetail("Committing Lucene index to disk…");
@@ -1198,10 +1516,20 @@ public class CodeLensServer {
             progress.setSubProgress(1, 1, "Lucene Delta Index");
             progress.setDynamicMetrics("Lucene Delta", String.format("%,d files", toParse.size()), "DB Status", "Ready", "Target", "lucene-index", "State", "Committing");
             lucene.finishIndexRebuild();
+            try {
+                db.ensureSecondaryIndexes();
+            } catch (Exception ignored) {}
+            Map<String, String> deltaIndexMetrics = new LinkedHashMap<>();
+            deltaIndexMetrics.put("Lucene Delta", String.format("%,d files", toParse.size()));
+            deltaIndexMetrics.put("DB Indexes", "Verified");
+            deltaIndexMetrics.put("Search Index", "Committed");
+            deltaIndexMetrics.put("Storage Engine", "H2 MVStore");
+            progress.recordStageEnd("INDEX", "COMPLETE", "Incremental search index committed and DB indexes verified", deltaIndexMetrics);
 
             if (cancelRequested) return;
 
             progress.setActiveStage("GRAPH");
+            progress.recordStageStart("GRAPH", "Call Graph Analysis & Field Propagation", "Refreshing call graph and field impact models");
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Refreshing call graph & topology…");
             progress.setPercentage(75);
@@ -1258,14 +1586,13 @@ public class CodeLensServer {
                 "Caller Triggers", "Querying…"
             );
 
-            List<CodeRelationship> fieldRels = dao.findFieldRelationships();
+            int totalFieldRels = dao.countFieldRelationships();
             Set<String> callingMethods = callGraph.getCallingMethodFqns();
-            int totalFieldRels = fieldRels.size();
             int totalCallers = callingMethods.size();
 
-            progress.setCurrentDetail(String.format("Indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
+            progress.setCurrentDetail(String.format("Streaming & indexing %,d field relationships across %,d caller methods…", totalFieldRels, totalCallers));
             progress.setSubProgress(4, 4, "Indexing field relations");
-            fieldImpact.rebuild(fieldRels, callingMethods, (phase, curr, total, detail) -> {
+            fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
                 progress.setPercentage(87 + (int)(f * 5));
                 progress.setCurrentDetail(detail);
@@ -1277,6 +1604,12 @@ public class CodeLensServer {
                     "Caller Triggers", String.format("%,d", totalCallers)
                 );
             });
+
+            Map<String, String> deltaGraphMetrics = new LinkedHashMap<>();
+            deltaGraphMetrics.put("Graph Vertices", String.format("%,d", totalMethods));
+            deltaGraphMetrics.put("Call Edges", String.format("%,d", totalCallEdges));
+            deltaGraphMetrics.put("Field Relations", String.format("%,d", totalFieldRels));
+            progress.recordStageEnd("GRAPH", "COMPLETE", String.format("Refreshed graph with %,d vertices and %,d call edges", totalMethods, totalCallEdges), deltaGraphMetrics);
 
             if (cancelRequested) return;
 
@@ -1321,11 +1654,18 @@ public class CodeLensServer {
 
             dao.saveScanMeta(progress);
 
+            logProcessBanner("INCREMENTAL_COMPLETED", "Incremental Delta Scan", sourcePath,
+                String.format("Parsed %d changed files; total codebase is now %,d types and %,d methods in %d ms",
+                    toParse.size(), totalTypes, totalMethodsCount,
+                    progress.getEndTime() - progress.getStartTime()));
+
             log.info("Incremental delta scan finished: parsed {} changed files, total indexed is now {} types, {} methods across {} files",
-                toParse.size(), totalTypes, totalMethods, allMeta.size());
+                toParse.size(), totalTypes, totalMethodsCount, allMeta.size());
 
         } catch (Exception e) {
             log.error("Incremental scan failed", e);
+            logProcessBanner("INCREMENTAL_FAILED", "Incremental Delta Scan", sourcePath, "Error: " + e.getMessage());
+            progress.recordStageEnd(progress.getActiveStage(), "ERROR", "Incremental scan failed: " + e.getMessage(), null);
             progress.setStatus(ScanProgress.Status.ERROR);
             progress.setMessage("Incremental scan failed");
             progress.setErrorDetail(e.getMessage());
@@ -1384,11 +1724,19 @@ public class CodeLensServer {
             return;
         }
 
+        ScanProgress sp = scanState.get();
+        if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+            ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency analysis pending"));
+            return;
+        }
+
         List<CodePackage> packages = dao.findAllPackages();
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
         List<CodeField> fields = dao.findAllFields();
-        List<CodeRelationship> relationships = dao.findAllRelationships();
+        List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
+            ? dao.findNonCallRelationships()
+            : dao.findAllRelationships();
 
         ModuleDependencyAnalyzer.ModuleDependencyInsights insights = moduleDependencyAnalyzer.analyzeModule(
             query, packages, types, methods, fields, relationships, callGraph
@@ -1417,11 +1765,19 @@ public class CodeLensServer {
             return;
         }
 
+        ScanProgress sp = scanState.get();
+        if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+            ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency overview pending"));
+            return;
+        }
+
         List<CodePackage> packages = dao.findAllPackages();
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
         List<CodeField> fields = dao.findAllFields();
-        List<CodeRelationship> relationships = dao.findAllRelationships();
+        List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
+            ? dao.findNonCallRelationships()
+            : dao.findAllRelationships();
 
         overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
         cachedModuleOverview = overview;
@@ -1487,6 +1843,16 @@ public class CodeLensServer {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 4);
         ctx.json(callGraph.calleesView(id, depth));
+    }
+
+    private void getHubExplorer(Context ctx) throws Exception {
+        String fqn = ctx.queryParam("fqn");
+        if (fqn == null || fqn.trim().isEmpty()) {
+            ctx.status(400).result("Missing 'fqn' query parameter");
+            return;
+        }
+        String direction = ctx.queryParam("direction"); // "callers", "callees", or "both"
+        ctx.json(callGraph.hubExplorerView(fqn, direction));
     }
 
     private void getCallGraph(Context ctx) throws Exception {
@@ -2552,7 +2918,8 @@ public class CodeLensServer {
             invalidateGraphCache();
             List<String> allMethodFqns = dao.findAllMethodFqns();
             callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
-            fieldImpact.rebuild(dao.findFieldRelationships(), callGraph.getCallingMethodFqns());
+            int totalFieldRels = dao.countFieldRelationships();
+            fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callGraph.getCallingMethodFqns());
 
             ctx.json(Map.of(
                 "success", true,

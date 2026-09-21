@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" href="/assets/app-icon.png" />
 
   <!-- Single stylesheet; all design tokens live in :root -->
-  <link rel="stylesheet" href="/style.css?v=1.0.5" />
+  <link rel="stylesheet" href="/style.css?v=1.0.7" />
 </head>
 
 
@@ -333,6 +333,11 @@
 
       <!-- Top-Right Actions Group (Theme Toggle, Settings) -->
       <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
+        <button id="btn-process-hub" class="header-action-btn process-hub-btn" aria-label="Open Background Process Hub" title="Background Processes &amp; Task Manager">
+          <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
+          <span class="action-btn-text">Tasks</span>
+          <span class="process-hub-badge-pulse" id="process-hub-pulse" style="display:none;"></span>
+        </button>
         <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Open Reports &amp; Export Hub" title="Codebase Intelligence Reports &amp; Export Hub (Shortcut: R)">
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
           <span class="action-btn-text">Reports</span>
@@ -463,9 +468,10 @@
         <svg class="svg-icon icon-xs stat-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-pill" id="stat-pill-fields" title="Total indexed member and static fields">
+      <div class="stat-pill stat-pill-interactive" id="stat-pill-fields" title="Total indexed member and static fields (Click to view breakdown)" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
         <span class="stat-count" id="stat-fields">0</span>
         <span class="stat-label">fields</span>
+        <svg class="svg-icon icon-xs stat-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       </div>
 
       <!-- Interactive Modules List Popover -->
@@ -510,6 +516,20 @@
         </div>
         <div class="archetypes-popover-list" id="popover-methods-list">
           <!-- Populated dynamically with each method archetype badge, name, color, and count -->
+        </div>
+      </div>
+
+      <!-- Interactive Fields Breakdown Popover -->
+      <div class="methods-archetypes-popover" id="fields-stats-popover" style="display:none;" role="dialog" aria-label="Fields Breakdown">
+        <div class="archetypes-popover-header">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="popover-title">Fields Breakdown</span>
+          </div>
+          <span class="popover-total" id="popover-fields-total">0 fields</span>
+        </div>
+        <div class="archetypes-popover-list" id="popover-fields-list">
+          <!-- Populated dynamically with field metrics and stats -->
         </div>
       </div>
     </div>
@@ -790,9 +810,134 @@
         aria-live="polite"
       ></div>
 
-      <!-- Minimap / Radar Overview (Bottom Right) -->
-      <div id="graph-minimap-wrap" class="graph-minimap-wrap">
-        <canvas id="graph-minimap" width="150" height="100"></canvas>
+      <!-- ── Hub Node Radial Explorer Overlay ── -->
+      <div id="hub-explorer-overlay" class="hub-explorer-overlay" style="display:none;" aria-label="Hub Node Explorer">
+        <!-- Hub Top Header Bar -->
+        <div class="hub-header-bar">
+          <div class="hub-header-left">
+            <div class="hub-history-controls" role="group" aria-label="Navigation History">
+              <button id="btn-hub-nav-back" class="hub-nav-btn" title="Back to previous method (Alt+Left or [)" disabled>
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button id="btn-hub-nav-forward" class="hub-nav-btn" title="Forward to next method (Alt+Right or ])" disabled>
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+            <button id="btn-hub-back" class="hub-back-btn" title="Back to 2D Graph (Esc)">
+              <span class="hub-btn-icon"><svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></span>
+              <span>Graph</span>
+            </button>
+            <div class="hub-header-divider"></div>
+            <div class="hub-title-badge">
+              <span class="hub-type-glyph">m</span>
+              <div class="hub-title-info">
+                <span id="hub-title-text" class="hub-title-name">AuditTrailService.logAuditEvent</span>
+                <span id="hub-title-pkg" class="hub-title-pkg">com.tcs.bancs.common</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Direction Switcher & Counts -->
+          <div class="hub-direction-tabs" role="tablist">
+            <button class="hub-dir-tab active" data-dir="callers" title="View all upstream callers grouped by package">
+              <span class="hub-dir-icon">⬆</span>
+              <span>Callers</span>
+              <span id="hub-badge-callers" class="hub-count-badge">0</span>
+            </button>
+            <button class="hub-dir-tab" data-dir="callees" title="View all downstream callees grouped by package">
+              <span class="hub-dir-icon">⬇</span>
+              <span>Callees</span>
+              <span id="hub-badge-callees" class="hub-count-badge">0</span>
+            </button>
+            <button class="hub-dir-tab" data-dir="both" title="View both callers and callees">
+              <span>Both</span>
+            </button>
+          </div>
+
+          <div class="hub-header-right">
+            <!-- Search / Filter -->
+            <div class="hub-search-wrap">
+              <span class="hub-search-icon"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+              <input id="hub-search-input" type="search" placeholder="Filter (/)..." title="Filter packages or callers (/)" autocomplete="off" spellcheck="false" />
+            </div>
+
+            <!-- Hub Explorer Zoom Controls -->
+            <div class="hub-zoom-controls" role="group" aria-label="Camera Controls">
+              <button class="hub-tool-btn" id="btn-hub-zoom-in" title="Zoom In (+)">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button class="hub-tool-btn" id="btn-hub-zoom-out" title="Zoom Out (-)">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button class="hub-tool-btn" id="btn-hub-fit" title="Fit to Screen (F)">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><polyline points="21 15 21 21 15 21"/><polyline points="3 9 3 3 9 3"/></svg>
+              </button>
+              <button class="hub-tool-btn" id="btn-hub-reset" title="Reset View (R)">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+            </div>
+
+            <div class="hub-header-divider"></div>
+
+            <!-- Switch to Raw Graph button -->
+            <button id="btn-hub-raw-graph" class="hub-action-btn" title="Switch to Raw Multi-Column Graph View">
+              <span class="hub-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
+              <span>Raw Graph</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Canvas Wrap -->
+        <div class="hub-canvas-wrap">
+          <canvas id="hub-explorer-canvas"></canvas>
+
+          <!-- Loading Spinner -->
+          <div id="hub-loading-spinner" class="hub-loading-wrap" style="display:none;">
+            <div class="hub-spinner"></div>
+            <span class="hub-loading-text">Analyzing hub connectivity…</span>
+          </div>
+
+          <!-- Error Alert -->
+          <div id="hub-error-msg" class="hub-error-msg" style="display:none;"></div>
+
+          <!-- Empty State (when 0 callers and 0 callees) -->
+          <div id="hub-empty-state" class="hub-empty-state-wrap" style="display:none;">
+            <div class="hub-empty-icon">🔍</div>
+            <div class="hub-empty-title">No Connections Found</div>
+            <div class="hub-empty-desc" id="hub-empty-desc">This method has no recorded upstream callers or downstream callees.</div>
+            <div class="hub-empty-actions">
+              <button id="btn-hub-empty-back" class="hub-empty-btn primary" title="Go back to previous method">← Go Back</button>
+              <button id="btn-hub-empty-graph" class="hub-empty-btn" title="Return to 2D Graph">Return to Graph</button>
+            </div>
+          </div>
+
+          <!-- Bottom Legend & Helper Note -->
+          <div class="hub-bottom-legend">
+            <span class="hub-legend-tip">💡 <strong>Tip:</strong> Click any package arc to drill down into caller methods · Drag to pan · Scroll to zoom · Esc to close drawer</span>
+          </div>
+        </div>
+
+        <!-- Side Drill-Down Drawer -->
+        <div id="hub-drawer" class="hub-drawer">
+          <div class="hub-drawer-header">
+            <div class="hub-drawer-title-group">
+              <div class="hub-drawer-title-row">
+                <span id="hub-drawer-pkg-badge" class="hub-pkg-badge">PKG</span>
+                <span id="hub-drawer-pkg-title" class="hub-drawer-title">Package</span>
+              </div>
+              <span id="hub-drawer-pkg-count" class="hub-drawer-subtitle">0 callers</span>
+            </div>
+            <button id="btn-hub-drawer-close" class="hub-drawer-close" title="Close Drawer (Esc)">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <!-- Drawer Search & Summary Strip -->
+          <div class="hub-drawer-toolbar">
+            <input id="hub-drawer-filter" type="search" placeholder="Filter callers in this package…" autocomplete="off" spellcheck="false" />
+            <span id="hub-drawer-match-count" class="hub-drawer-match-count">0</span>
+          </div>
+          <div id="hub-drawer-member-list" class="hub-drawer-list"></div>
+        </div>
       </div>
 
     </section><!-- /#graph-view -->
@@ -1807,15 +1952,25 @@
             <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
             Theme &amp; Appearance
           </h3>
-          <div class="theme-picker two-theme-picker">
+          <div class="theme-picker three-theme-picker">
             <div class="theme-card active" data-theme="dark">
               <div class="theme-preview"><span style="background:#000000"></span><span style="background:#0a0d12"></span><span style="background:#10b981"></span><span style="background:#34d399"></span><span style="background:#f59e0b"></span></div>
               <div class="theme-meta">
                 <span class="theme-name">
                   <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-                  Dark (OLED Obsidian)
+                  Midnight Obsidian
                 </span>
                 <span class="theme-tagline">True black substrate &amp; mint emerald</span>
+              </div>
+            </div>
+            <div class="theme-card" data-theme="swiss">
+              <div class="theme-preview"><span style="background:#0f0f10"></span><span style="background:#161617"></span><span style="background:#eb0028"></span><span style="background:#ffffff"></span><span style="background:#a1a1a6"></span></div>
+              <div class="theme-meta">
+                <span class="theme-name">
+                  <svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>
+                  Swiss Minimalist
+                </span>
+                <span class="theme-tagline">Razor-sharp geometry &amp; Helvetica grid</span>
               </div>
             </div>
             <div class="theme-card" data-theme="light">
@@ -1823,7 +1978,7 @@
               <div class="theme-meta">
                 <span class="theme-name">
                   <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-                  Light (Pure Daylight)
+                  Pure Daylight
                 </span>
                 <span class="theme-tagline">Crisp emerald, ultra-readable daylight</span>
               </div>
@@ -2193,6 +2348,110 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     PROCESS HUB & BACKGROUND TASK MANAGER MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="process-hub-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="process-hub-modal-title">
+  <div class="modal-dialog process-hub-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon"><svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h2 id="process-hub-modal-title">Background Tasks &amp; Process Manager</h2>
+            <div class="hub-live-pill" title="Live telemetry streaming (polls every 2 seconds)"><span class="hub-live-dot"></span><span class="hub-live-text">Live</span></div>
+          </div>
+          <div class="process-hub-subtitle">Inspect telemetry, kill hanging threads, or trigger restarts for background workers</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn btn-xs btn-ghost hub-refresh-btn" id="process-hub-refresh-btn" title="Refresh process telemetry (R)">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Refresh
+        </button>
+        <button class="modal-close-btn" id="process-hub-modal-close" aria-label="Close Process Hub">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body process-hub-body">
+      <!-- System / Pool Resources Summary Bar with Mini-Gauges -->
+      <div class="process-hub-stats-bar" id="process-hub-stats-bar">
+        <div class="hub-stat-item hub-stat-card">
+          <div class="hub-stat-header">
+            <span class="hub-stat-label">Active Tasks</span>
+            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+          </div>
+          <span class="hub-stat-value" id="hub-stat-active-count">0 Running</span>
+          <span class="hub-stat-sub" id="hub-stat-active-sub">5 Registered Tasks</span>
+          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-tasks" id="hub-bar-tasks" style="width: 0%;"></div></div>
+        </div>
+        <div class="hub-stat-item hub-stat-card">
+          <div class="hub-stat-header">
+            <span class="hub-stat-label">DB Connection Pool</span>
+            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></span>
+          </div>
+          <span class="hub-stat-value" id="hub-stat-db-pool">0 Active</span>
+          <span class="hub-stat-sub" id="hub-stat-db-sub">4 Idle · Max 20 Pooled</span>
+          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-db" id="hub-bar-db" style="width: 0%;"></div></div>
+        </div>
+        <div class="hub-stat-item hub-stat-card">
+          <div class="hub-stat-header">
+            <span class="hub-stat-label">JVM Heap Memory</span>
+            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg></span>
+          </div>
+          <span class="hub-stat-value" id="hub-stat-heap">0 MB (0%)</span>
+          <span class="hub-stat-sub" id="hub-stat-heap-sub">Dynamic Allocation</span>
+          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-heap" id="hub-bar-heap" style="width: 0%;"></div></div>
+        </div>
+        <div class="hub-stat-item hub-stat-card">
+          <div class="hub-stat-header">
+            <span class="hub-stat-label">Engine Health</span>
+            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></span>
+          </div>
+          <span class="hub-stat-value text-emerald" id="hub-stat-health">Healthy</span>
+          <span class="hub-stat-sub" id="hub-stat-health-sub"><span id="hub-stat-threads">0</span> Active Threads</span>
+          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-health" id="hub-bar-health" style="width: 100%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Task Filter Tabs & Search Toolbar -->
+      <div class="process-hub-toolbar">
+        <div class="hub-filter-tabs" role="tablist" aria-label="Filter background tasks">
+          <button class="hub-tab-btn active" data-filter="all" role="tab" aria-selected="true">
+            All Tasks <span class="hub-tab-count" id="hub-count-all">0</span>
+          </button>
+          <button class="hub-tab-btn" data-filter="running" role="tab" aria-selected="false">
+            Running <span class="hub-tab-count" id="hub-count-running">0</span>
+          </button>
+          <button class="hub-tab-btn" data-filter="complete" role="tab" aria-selected="false">
+            Completed <span class="hub-tab-count" id="hub-count-complete">0</span>
+          </button>
+          <button class="hub-tab-btn" data-filter="idle" role="tab" aria-selected="false">
+            Idle <span class="hub-tab-count" id="hub-count-idle">0</span>
+          </button>
+        </div>
+        <div class="hub-search-box">
+          <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="hub-search-input" placeholder="Filter tasks by name, type, phase…" aria-label="Filter background tasks" />
+          <button class="hub-search-clear-btn" id="hub-search-clear-btn" title="Clear filter" style="display:none;">&times;</button>
+        </div>
+      </div>
+
+      <!-- Process Cards List Container -->
+      <div class="process-hub-list" id="process-hub-list">
+        <!-- Rendered dynamically from /api/processes -->
+      </div>
+
+      <!-- Empty State Container -->
+      <div class="process-hub-empty" id="process-hub-empty" style="display:none;">
+        <svg class="svg-icon icon-lg icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <div class="hub-empty-title">No matching tasks found</div>
+        <div class="hub-empty-sub">Adjust your search query or filter tab to view background processes</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
      EXPORT REPORTS MODAL
      ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="export-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="export-modal-title">
@@ -2473,7 +2732,13 @@
         </div>
         <div class="scan-card-title-text">
           <div class="scan-card-heading" id="scan-card-heading">Analyzing Codebase</div>
-          <div class="scan-card-sub" id="scan-card-source-path" title="/workspace/src">/workspace/src</div>
+          <div class="scan-path-pill" title="Target source directory">
+            <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+            <span class="scan-card-sub" id="scan-card-source-path" title="/workspace/src">/workspace/src</span>
+            <button class="scan-path-copy-btn" id="btn-copy-scan-path" title="Copy project path" aria-label="Copy project path">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div class="scan-card-header-actions">
@@ -2484,27 +2749,49 @@
       </div>
     </div>
 
-    <!-- Pipeline Stage Progress Steps -->
-    <div class="scan-pipeline-steps" id="scan-pipeline-steps">
-      <div class="scan-pipeline-step step-active" data-step="PARSE">
-        <span class="step-dot"></span>
+    <!-- Pipeline Stage Progress Steps (Clickable to inspect step history & metrics) -->
+    <div class="scan-pipeline-steps" id="scan-pipeline-steps" role="tablist" aria-label="Scan pipeline steps">
+      <div class="scan-pipeline-step step-clickable step-active" data-step="PARSE" tabindex="0" role="tab" aria-selected="true" title="Click to view AST parsing metrics and duration">
+        <span class="step-dot"><span class="step-dot-num">1</span></span>
         <span class="step-label">1. Parse AST</span>
       </div>
       <div class="scan-step-divider" data-after="PARSE"></div>
-      <div class="scan-pipeline-step step-pending" data-step="INDEX">
-        <span class="step-dot"></span>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="INDEX" tabindex="0" role="tab" aria-selected="false" title="Click to view Indexing details">
+        <span class="step-dot"><span class="step-dot-num">2</span></span>
         <span class="step-label">2. Index</span>
       </div>
       <div class="scan-step-divider" data-after="INDEX"></div>
-      <div class="scan-pipeline-step step-pending" data-step="GRAPH">
-        <span class="step-dot"></span>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="GRAPH" tabindex="0" role="tab" aria-selected="false" title="Click to view Call & Field Graph details">
+        <span class="step-dot"><span class="step-dot-num">3</span></span>
         <span class="step-label">3. Call &amp; Field Graph</span>
       </div>
       <div class="scan-step-divider" data-after="GRAPH"></div>
-      <div class="scan-pipeline-step step-pending" data-step="LAYOUT">
-        <span class="step-dot"></span>
-        <span class="step-label">4. Precompute Layouts</span>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="LAYOUT" tabindex="0" role="tab" aria-selected="false" title="Click to view Layout Precomputation details">
+        <span class="step-dot"><span class="step-dot-num">4</span></span>
+        <span class="step-label">4. Layouts</span>
       </div>
+    </div>
+
+    <!-- Interactive Step History & Detail Inspector -->
+    <div class="scan-step-detail-panel" id="scan-step-detail-panel" style="display:none;" aria-live="polite">
+      <div class="step-detail-header">
+        <div class="step-detail-title-group">
+          <span class="step-detail-status-badge badge-running" id="step-detail-status">RUNNING</span>
+          <span class="step-detail-title" id="step-detail-title">1. Parse AST</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="step-detail-duration" id="step-detail-duration">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="step-detail-duration-val">0.0s</span>
+          </div>
+          <button class="step-detail-close-btn" id="btn-close-step-detail" title="Close step details" aria-label="Close step details">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="step-detail-summary" id="step-detail-summary">Scanning Java source files and extracting AST nodes in parallel</div>
+      <div class="step-detail-metrics-grid" id="step-detail-metrics-grid"></div>
+      <div class="step-detail-log" id="step-detail-log" style="display:none;"></div>
     </div>
 
     <!-- Progress Section: Status Message + Percentage + Animated Bar Track -->
@@ -2531,21 +2818,42 @@
       <div class="scan-detail-text" id="scan-detail-text">Initializing engine…</div>
     </div>
 
-    <!-- Live Discovered Metrics Grid (4 tiles) -->
+    <!-- Phase Metrics Header (indicates which phase is currently displayed below) -->
+    <div class="scan-metrics-phase-bar" id="scan-metrics-phase-bar">
+      <div class="scan-metrics-phase-title">
+        <span class="scan-metrics-phase-pill" id="scan-metrics-phase-pill">Phase 1</span>
+        <span class="scan-metrics-phase-name" id="scan-metrics-phase-name">AST Parsing &amp; Extraction</span>
+      </div>
+      <div class="scan-metrics-phase-hint" id="scan-metrics-phase-hint">Click any stage above to inspect details</div>
+    </div>
+
+    <!-- Live Discovered Metrics Grid (4 tiles with icons) -->
     <div class="scan-live-metrics-grid" id="scan-live-metrics-grid">
-      <div class="scan-metric-tile">
+      <div class="scan-metric-tile" id="scan-metric-tile-1">
+        <div class="scan-metric-icon-wrap icon-emerald-bg" id="scan-metric-icon-1">
+          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </div>
         <span class="scan-metric-val" id="scan-live-types">0</span>
         <span class="scan-metric-lbl" id="scan-live-types-lbl">Types</span>
       </div>
-      <div class="scan-metric-tile">
+      <div class="scan-metric-tile" id="scan-metric-tile-2">
+        <div class="scan-metric-icon-wrap icon-cyan-bg" id="scan-metric-icon-2">
+          <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </div>
         <span class="scan-metric-val" id="scan-live-methods">0</span>
         <span class="scan-metric-lbl" id="scan-live-methods-lbl">Methods</span>
       </div>
-      <div class="scan-metric-tile">
+      <div class="scan-metric-tile" id="scan-metric-tile-3">
+        <div class="scan-metric-icon-wrap icon-amber-bg" id="scan-metric-icon-3">
+          <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>
+        </div>
         <span class="scan-metric-val" id="scan-live-fields">0</span>
         <span class="scan-metric-lbl" id="scan-live-fields-lbl">Fields</span>
       </div>
-      <div class="scan-metric-tile">
+      <div class="scan-metric-tile" id="scan-metric-tile-4">
+        <div class="scan-metric-icon-wrap icon-purple-bg" id="scan-metric-icon-4">
+          <svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </div>
         <span class="scan-metric-val" id="scan-live-rels">0</span>
         <span class="scan-metric-lbl" id="scan-live-rels-lbl">Relationships</span>
       </div>
@@ -2643,6 +2951,7 @@
 <script src="/sunburst.js?v=1.0.6"   defer></script>
 <script src="/city3d.js?v=1.0.6"     defer></script>
 <script src="/galaxy3d.js?v=1.0.6"   defer></script>
+<script src="/hub-explorer.js?v=1.0.7" defer></script>
 <script src="/app.js?v=1.0.6"        defer></script>
 
 

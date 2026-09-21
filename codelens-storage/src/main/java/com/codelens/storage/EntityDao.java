@@ -576,9 +576,29 @@ public class EntityDao {
     public List<CodeRelationship> findAllRelationships() throws SQLException {
         List<CodeRelationship> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(relFromRs(rs));
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(relFromRs(rs));
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Efficiently fetches non-CALLS relationships (INHERITANCE, IMPLEMENTS, FIELD_ACCESS, IMPORTS, etc.).
+     * Avoids loading massive CALLS data when the in-memory callGraph is already available.
+     */
+    public List<CodeRelationship> findNonCallRelationships() throws SQLException {
+        List<CodeRelationship> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships WHERE kind <> 'CALLS'")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(relFromRs(rs));
+            }
         }
         return list;
     }
@@ -588,6 +608,8 @@ public class EntityDao {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
                  "SELECT * FROM relationships WHERE kind=?")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
             ps.setString(1, kind);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) list.add(relFromRs(rs));
@@ -612,10 +634,34 @@ public class EntityDao {
     public int countCallRelationships() throws SQLException {
         String sql = "SELECT COUNT(*) FROM relationships WHERE kind = 'CALLS'";
         try (Connection c = db.getConnection();
-             Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery(sql)) {
-            return rs.next() ? rs.getInt(1) : 0;
+             Statement s = c.createStatement()) {
+            s.setQueryTimeout(120);
+            try (ResultSet rs = s.executeQuery(sql)) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
         }
+    }
+
+    /**
+     * Counts the total number of READS_FIELD and WRITES_FIELD relationships using an indexed query.
+     */
+    public int countFieldRelationships() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD')";
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement()) {
+            s.setQueryTimeout(120);
+            try (ResultSet rs = s.executeQuery(sql)) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    /**
+     * Consumer interface for streaming field relationships without instantiating CodeRelationship objects.
+     */
+    @FunctionalInterface
+    public interface FieldRelConsumer {
+        void accept(String fromEntityFqn, String toEntityFqn, String kind);
     }
 
     /**
@@ -641,6 +687,7 @@ public class EntityDao {
 
             try (Connection c = db.getConnection();
                  PreparedStatement ps = c.prepareStatement(lastId == null ? firstSql : nextSql)) {
+                ps.setQueryTimeout(120);
                 if (lastId == null) {
                     ps.setInt(1, chunkSize);
                 } else {
@@ -679,18 +726,69 @@ public class EntityDao {
     }
 
     /**
-     * Efficiently fetches only field-level relationships (READS_FIELD, WRITES_FIELD).
+     * Streams field relationships (kind IN ('READS_FIELD', 'WRITES_FIELD')) in short-lived connection chunks (25,000 rows),
+     * completely decoupling database connection checkout from in-memory graph construction and
+     * progress reporting.
+     *
+     * Uses covering index idx_rels_fields_covering(kind, id, to_entity_fqn, from_entity_fqn) for zero table page lookups.
      */
-    public List<CodeRelationship> findFieldRelationships() throws SQLException {
-        String sql = "SELECT * FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD')";
-        List<CodeRelationship> list = new ArrayList<>();
-        try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setFetchSize(5000);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) list.add(relFromRs(rs));
+    public void streamFieldRelationships(FieldRelConsumer consumer) throws SQLException {
+        final int chunkSize = 25000;
+        String lastId = null;
+        boolean hasMore = true;
+
+        String firstSql = "SELECT id, from_entity_fqn, to_entity_fqn, kind FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD') ORDER BY id LIMIT ?";
+        String nextSql  = "SELECT id, from_entity_fqn, to_entity_fqn, kind FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD') AND id > ? ORDER BY id LIMIT ?";
+
+        while (hasMore) {
+            List<String[]> chunk = new ArrayList<>(chunkSize);
+            String nextLastId = null;
+
+            try (Connection c = db.getConnection();
+                 PreparedStatement ps = c.prepareStatement(lastId == null ? firstSql : nextSql)) {
+                ps.setQueryTimeout(120);
+                if (lastId == null) {
+                    ps.setInt(1, chunkSize);
+                } else {
+                    ps.setString(1, lastId);
+                    ps.setInt(2, chunkSize);
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        nextLastId = rs.getString(1);
+                        chunk.add(new String[]{ rs.getString(2), rs.getString(3), rs.getString(4) });
+                    }
+                }
+            }
+
+            if (chunk.isEmpty()) {
+                break;
+            }
+
+            for (String[] tuple : chunk) {
+                consumer.accept(tuple[0], tuple[1], tuple[2]);
+            }
+
+            if (chunk.size() < chunkSize || nextLastId == null) {
+                hasMore = false;
+            } else {
+                lastId = nextLastId;
             }
         }
+    }
+
+    /**
+     * Efficiently fetches only field-level relationships (READS_FIELD, WRITES_FIELD) via chunked streaming.
+     */
+    public List<CodeRelationship> findFieldRelationships() throws SQLException {
+        List<CodeRelationship> list = new ArrayList<>();
+        streamFieldRelationships((from, to, kind) -> {
+            CodeRelationship rel = new CodeRelationship();
+            rel.setFromEntityFqn(from);
+            rel.setToEntityFqn(to);
+            rel.setKind(kind);
+            list.add(rel);
+        });
         return list;
     }
 
@@ -702,6 +800,7 @@ public class EntityDao {
         Set<String> set = new HashSet<>();
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setQueryTimeout(30);
             ps.setFetchSize(5000);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) set.add(rs.getString("from_entity_fqn"));

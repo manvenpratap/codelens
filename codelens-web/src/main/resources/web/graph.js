@@ -2686,7 +2686,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       if (neighborIds.length === 0) {
         neighborsList.innerHTML = '<span class="nc-empty">No direct connections</span>';
       } else {
-        neighborsList.innerHTML = neighborIds.map(nid => {
+        const isHub = neighborIds.length > 25;
+        const displayIds = isHub ? neighborIds.slice(0, 20) : neighborIds;
+
+        let html = displayIds.map(nid => {
           const nb = this._nodes.find(n => n.id === nid);
           const nColor = nb ? nb.communityColor : '#64748b';
           const nLabel = nb ? nb.label : nid.split('.').pop();
@@ -2702,9 +2705,28 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           `;
         }).join('');
 
+        if (isHub) {
+          html += `
+            <button class="neighbor-hub-btn" id="btn-card-open-hub">
+              ⚡ Open all ${neighborIds.length} in Hub Explorer →
+            </button>
+          `;
+        }
+
+        neighborsList.innerHTML = html;
+
         neighborsList.querySelectorAll('.neighbor-link').forEach(btn => {
           btn.onclick = () => this.focusNode(btn.dataset.nid, 1.4);
         });
+
+        const hubBtn = neighborsList.querySelector('#btn-card-open-hub');
+        if (hubBtn) {
+          hubBtn.onclick = () => {
+            if (window.hubExplorerInstance) {
+              window.hubExplorerInstance.load(node.id, 'callers');
+            }
+          };
+        }
       }
     }
 
@@ -3154,7 +3176,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   applyTheme(graphTheme) {
     if (!graphTheme) return;
     const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
-    this._activeTheme = graphTheme.key || (isBodyLight ? 'light' : 'dark');
+    const isSwiss = document.body.classList.contains('theme-swiss') || (document.body.dataset && document.body.dataset.theme === 'swiss');
+    this._activeTheme = graphTheme.key || (isSwiss ? 'swiss' : (isBodyLight ? 'light' : 'dark'));
     if (graphTheme.bg)        GC.bg   = graphTheme.bg;
     if (graphTheme.grid)      GC.grid = graphTheme.grid;
     if (graphTheme.roles)     Object.assign(GC.roles, graphTheme.roles);

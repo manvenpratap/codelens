@@ -169,6 +169,9 @@ const api = {
     GraphDataCache.set(key, data);
     return data;
   },
+  hubExplorer:        async (fqn, dir='callers') => {
+    return api.get(`/graph/hub-explorer?fqn=${encodeURIComponent(fqn)}&direction=${dir}`);
+  },
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
   review:             (body)      => api.post('/review', body),
@@ -178,6 +181,9 @@ const api = {
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
   startIncrementalScan: (sourcePath, excludePatterns) => api.post('/scan/incremental', { sourcePath, excludePatterns }),
   cancelScan:         ()          => api.post('/scan/cancel', {}),
+  processes:          ()          => api.get('/processes'),
+  killProcess:        (id)        => api.post(`/processes/${enc(id)}/kill`, {}),
+  restartProcess:     (id)        => api.post(`/processes/${enc(id)}/restart`, {}),
   shutdownServer:     ()          => api.post('/shutdown', {}),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
 
@@ -456,6 +462,729 @@ function minimizeScanModal() {
   showBanner('Scan running in background. Click the top bar badge or footer indicator anytime to view details.');
 }
 
+/** Resolve rich metrics and metadata for a specific pipeline phase */
+function getPhaseMetricsData(stageKey, s) {
+  s = s || App.lastScanProgress || {};
+  const stats = App.stats || {};
+  const history = s.stageHistory || {};
+  const stepInfo = history[stageKey] || {};
+  const metrics = stepInfo.metrics || {};
+
+  const totalFiles = s.totalFiles || stats.files || 0;
+  const parsedFiles = s.parsedFiles || s.processedFiles || totalFiles;
+  const types = s.typesFound || stats.types || 0;
+  const methods = s.methodsFound || stats.methods || 0;
+  const fields = s.fieldsFound || stats.fields || 0;
+  const rels = s.relationshipsFound || stats.relationships || 0;
+  const totalDocs = types + methods + fields;
+
+  switch (stageKey) {
+    case 'PARSE':
+      return {
+        pill: 'Phase 1',
+        name: 'AST Parsing & Extraction',
+        summary: stepInfo.summary || (types > 0 ? `Parsed ${parsedFiles.toLocaleString()} files; extracted ${types.toLocaleString()} types and ${methods.toLocaleString()} methods.` : 'Extracting AST nodes in parallel.'),
+        detailText: stepInfo.detail || `Parsed ${parsedFiles.toLocaleString()} files; discovered ${types.toLocaleString()} types, ${methods.toLocaleString()} methods, and ${fields.toLocaleString()} fields.`,
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'PARSE' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: (metrics['Types Found'] || types).toLocaleString(),
+            lbl: 'Types',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
+          },
+          {
+            val: (metrics['Methods Found'] || methods).toLocaleString(),
+            lbl: 'Methods',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'
+          },
+          {
+            val: (metrics['Fields Found'] || fields).toLocaleString(),
+            lbl: 'Fields',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/>'
+          },
+          {
+            val: (metrics['Relationships'] || rels).toLocaleString(),
+            lbl: 'Relationships',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
+          }
+        ]
+      };
+
+    case 'INDEX':
+      return {
+        pill: 'Phase 2',
+        name: 'Search & Database Indexes',
+        summary: stepInfo.summary || 'Lucene search indexing & secondary B-tree index rebuild',
+        detailText: stepInfo.detail || `Committed ${totalDocs.toLocaleString()} search documents & rebuilt 12 secondary database indexes.`,
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'INDEX' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Lucene Docs'] || (totalDocs > 0 ? totalDocs.toLocaleString() : 'Committed'),
+            lbl: 'Lucene Docs',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'
+          },
+          {
+            val: metrics['DB Indexes'] || '12 / 12',
+            lbl: 'DB Indexes',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'
+          },
+          {
+            val: metrics['Search Index'] || 'Committed',
+            lbl: 'Search Index',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'
+          },
+          {
+            val: metrics['Storage Engine'] || 'Optimized',
+            lbl: 'B-Tree Indexes',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>'
+          }
+        ]
+      };
+
+    case 'GRAPH':
+      return {
+        pill: 'Phase 3',
+        name: 'Call & Field Graph',
+        summary: stepInfo.summary || 'In-memory call graph mapping and field propagation topology',
+        detailText: stepInfo.detail || `Mapped ${methods.toLocaleString()} vertices, ${(s.relationshipsFound || rels).toLocaleString()} call edges, and ${fields.toLocaleString()} field relations.`,
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'GRAPH' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Graph Vertices'] || (methods > 0 ? methods.toLocaleString() : 'Ready'),
+            lbl: 'Graph Vertices',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<circle cx="12" cy="12" r="4"/><path d="M12 2v6"/><path d="M12 16v6"/><path d="M2 12h6"/><path d="M16 12h6"/>'
+          },
+          {
+            val: metrics['Call Edges'] || (rels > 0 ? rels.toLocaleString() : 'Mapped'),
+            lbl: 'Call Edges',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/>'
+          },
+          {
+            val: metrics['Field Relations'] || (fields > 0 ? fields.toLocaleString() : 'Indexed'),
+            lbl: 'Field Relations',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+          },
+          {
+            val: metrics['Caller Triggers'] || (stepInfo.status === 'COMPLETE' ? 'Mapped' : 'Ready'),
+            lbl: 'Caller Triggers',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+          }
+        ]
+      };
+
+    case 'LAYOUT':
+    default:
+      return {
+        pill: 'Phase 4',
+        name: 'Layout Precomputation',
+        summary: stepInfo.summary || '2D and 3D graph layout warm-up & module overview precomputation',
+        detailText: stepInfo.detail || 'Precomputed 6 topology layouts & module overview ready for instant interactive exploration.',
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'LAYOUT' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Layouts Cached'] ? `${metrics['Layouts Cached']} / 6` : '6 / 6',
+            lbl: 'Layouts Ready',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>'
+          },
+          {
+            val: metrics['Active Layout'] || 'Sunflower Clustered (Full)',
+            lbl: 'Active Layout',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>'
+          },
+          {
+            val: metrics['Modules Cached'] ? `${metrics['Modules Cached']} Modules` : 'Complete',
+            lbl: 'Clusters',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/>'
+          },
+          {
+            val: metrics['Placed Nodes'] || 'Ready',
+            lbl: 'Placed Nodes',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+          }
+        ]
+      };
+  }
+}
+
+/** Render bottom section metrics grid for a specific phase */
+function renderPhaseBottomMetrics(stageKey, s) {
+  const data = getPhaseMetricsData(stageKey, s);
+  if (!data) return;
+
+  const pillEl = qs('#scan-metrics-phase-pill');
+  const nameEl = qs('#scan-metrics-phase-name');
+  if (pillEl) pillEl.textContent = data.pill;
+  if (nameEl) nameEl.textContent = data.name;
+
+  const valEls = [qs('#scan-live-types'), qs('#scan-live-methods'), qs('#scan-live-fields'), qs('#scan-live-rels')];
+  const lblEls = [qs('#scan-live-types-lbl'), qs('#scan-live-methods-lbl'), qs('#scan-live-fields-lbl'), qs('#scan-live-rels-lbl')];
+  const iconWraps = [qs('#scan-metric-icon-1'), qs('#scan-metric-icon-2'), qs('#scan-metric-icon-3'), qs('#scan-metric-icon-4')];
+  const tiles = [qs('#scan-metric-tile-1'), qs('#scan-metric-tile-2'), qs('#scan-metric-tile-3'), qs('#scan-metric-tile-4')];
+
+  data.cards.forEach((card, idx) => {
+    const valEl = valEls[idx];
+    const lblEl = lblEls[idx];
+    const iconWrap = iconWraps[idx];
+    const tile = tiles[idx];
+
+    if (valEl) {
+      valEl.textContent = card.val;
+      if (card.valColor) valEl.style.color = card.valColor;
+    }
+    if (lblEl) lblEl.textContent = card.lbl;
+    if (iconWrap && card.iconSvg) {
+      iconWrap.className = 'scan-metric-icon-wrap ' + card.colorClass;
+      iconWrap.innerHTML = `<svg class="svg-icon icon-xs ${card.iconColor}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${card.iconSvg}</svg>`;
+    }
+    if (tile) {
+      tile.classList.remove('metric-updating');
+      void tile.offsetWidth;
+      tile.classList.add('metric-updating');
+    }
+  });
+}
+
+/** Render active file/status detail banner for a specific phase */
+function renderPhaseStatusDetail(stageKey, s) {
+  s = s || App.lastScanProgress || {};
+  const data = getPhaseMetricsData(stageKey, s);
+  if (!data) return;
+
+  const detailLabel = qs('#scan-detail-label');
+  const detailText = qs('#scan-detail-text');
+  const detailIcon = qs('#scan-detail-icon');
+
+  if (s.status === 'COMPLETE' || s.activeStage === 'COMPLETE') {
+    if (detailLabel) detailLabel.textContent = `${data.pill} · ${data.name}`;
+    if (detailIcon) detailIcon.innerHTML = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
+    if (detailText) {
+      detailText.innerHTML = `<span style="color:var(--emerald); font-weight:600;">✓ ${esc(data.detailText)}</span>`;
+    }
+  }
+}
+
+/** Inspect and select a single step from the scan pipeline (updates bottom section metrics) */
+function inspectScanStep(stepName, toggleIfSame = false) {
+  if (!stepName) return;
+  const panel = qs('#scan-step-detail-panel');
+
+  const isSameStep = App.selectedScanPhase === stepName;
+  if (toggleIfSame && isSameStep && panel && panel.style.display !== 'none') {
+    closeStepDetail();
+    return;
+  }
+  App.inspectedScanStep = stepName;
+  App.selectedScanPhase = stepName;
+
+  qsa('.scan-pipeline-step').forEach(s => {
+    if (s.dataset.step === stepName) {
+      s.classList.add('step-inspected', 'step-selected');
+      s.setAttribute('aria-selected', 'true');
+    } else {
+      s.classList.remove('step-inspected', 'step-selected');
+      s.setAttribute('aria-selected', 'false');
+    }
+  });
+
+  const sp = App.lastScanProgress || {};
+  const history = sp.stageHistory || {};
+  const stepInfo = history[stepName];
+  const phaseData = getPhaseMetricsData(stepName, sp);
+
+  // 1. Immediately update bottom section metrics
+  renderPhaseBottomMetrics(stepName, sp);
+
+  // 2. Immediately update status banner
+  renderPhaseStatusDetail(stepName, sp);
+
+  // 3. Update drawer details
+  const stepTitles = {
+    'PREPARE': '0. Preparing Storage & DB',
+    'PARSE': '1. AST Parsing & Extraction',
+    'INDEX': '2. Search & DB Indexes',
+    'GRAPH': '3. Call & Field Graph',
+    'LAYOUT': '4. Layout Precomputation'
+  };
+
+  const titleEl = qs('#step-detail-title');
+  if (titleEl) titleEl.textContent = stepTitles[stepName] || phaseData.name || stepName;
+
+  const statusBadge = qs('#step-detail-status');
+  const durVal = qs('#step-detail-duration-val');
+  const summaryEl = qs('#step-detail-summary');
+  const metricsGrid = qs('#step-detail-metrics-grid');
+
+  if (statusBadge) {
+    const isComplete = (stepInfo && (stepInfo.status === 'COMPLETE' || stepInfo.status === 'SUCCESS')) || sp.status === 'COMPLETE';
+    const isRunning = stepInfo ? stepInfo.status === 'RUNNING' : (sp.activeStage === stepName);
+    statusBadge.textContent = isComplete ? 'COMPLETE' : (isRunning ? 'RUNNING' : 'PENDING');
+    statusBadge.className = 'step-detail-status-badge ' + (isComplete ? 'badge-complete' : (isRunning ? 'badge-running' : 'badge-pending'));
+  }
+
+  if (durVal) {
+    durVal.textContent = phaseData.duration || 'Finished';
+  }
+
+  if (summaryEl) {
+    summaryEl.textContent = (stepInfo && (stepInfo.summary || stepInfo.detail)) || phaseData.summary;
+  }
+
+  if (metricsGrid) {
+    metricsGrid.innerHTML = '';
+    phaseData.cards.forEach(card => {
+      const chip = document.createElement('div');
+      chip.className = 'step-detail-metric-chip';
+      chip.innerHTML = `<span class="step-detail-metric-chip-k">${esc(card.lbl)}:</span><span class="step-detail-metric-chip-v">${esc(String(card.val))}</span>`;
+      metricsGrid.appendChild(chip);
+    });
+  }
+
+  if (panel) panel.style.display = 'flex';
+}
+
+function closeStepDetail() {
+  App.inspectedScanStep = null;
+  const panel = qs('#scan-step-detail-panel');
+  if (panel) panel.style.display = 'none';
+  // Bottom section and stepper maintain App.selectedScanPhase selection
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Process Hub & Task Manager Operations
+   ───────────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Process Hub & Task Manager Operations
+   ───────────────────────────────────────────────────────────────────────────── */
+let processHubPollInterval = null;
+let processHubFilter = 'all';
+let processHubSearch = '';
+
+function openProcessHub() {
+  const modal = qs('#process-hub-modal');
+  if (!modal) return;
+  showAccessibleModal(modal, qs('#btn-process-hub'));
+  loadProcessHubData();
+  if (processHubPollInterval) clearInterval(processHubPollInterval);
+  processHubPollInterval = setInterval(loadProcessHubData, 2000);
+}
+
+function closeProcessHub() {
+  const modal = qs('#process-hub-modal');
+  if (!modal) return;
+  hideAccessibleModal(modal);
+  if (processHubPollInterval) {
+    clearInterval(processHubPollInterval);
+    processHubPollInterval = null;
+  }
+}
+
+function getProcessIconSvg(id, type) {
+  if (id === 'scanner') {
+    return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+  } else if (id === 'delta-scanner') {
+    return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>`;
+  } else if (id === 'call-graph') {
+    return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`;
+  } else if (id === 'layout-engine') {
+    return `<svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+  } else if (id === 'git-analyzer') {
+    return `<svg class="svg-icon icon-sm icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>`;
+  }
+  return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+}
+
+async function loadProcessHubData() {
+  try {
+    const refreshBtn = qs('#process-hub-refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.classList.add('is-refreshing');
+      setTimeout(() => refreshBtn.classList.remove('is-refreshing'), 600);
+    }
+
+    const data = await api.processes();
+    if (!data) return;
+
+    const listEl = qs('#process-hub-list');
+    const emptyEl = qs('#process-hub-empty');
+    const procs = data.processes || [];
+    const system = data.system || {};
+
+    // 1. Update pulse badge on header Tasks button
+    const hasRunning = procs.some(p => p.status === 'RUNNING');
+    const pulseEl = qs('#process-hub-pulse');
+    if (pulseEl) pulseEl.style.display = hasRunning ? 'inline-block' : 'none';
+
+    // 2. Compute process counts for tabs and stats
+    const runningCount = procs.filter(p => p.status === 'RUNNING').length;
+    const completeCount = procs.filter(p => p.status === 'COMPLETE').length;
+    const idleCount = procs.filter(p => p.status === 'IDLE').length;
+    const totalCount = procs.length;
+
+    const countAllEl = qs('#hub-count-all');
+    if (countAllEl) countAllEl.textContent = totalCount;
+    const countRunningEl = qs('#hub-count-running');
+    if (countRunningEl) countRunningEl.textContent = runningCount;
+    const countCompleteEl = qs('#hub-count-complete');
+    if (countCompleteEl) countCompleteEl.textContent = completeCount;
+    const countIdleEl = qs('#hub-count-idle');
+    if (countIdleEl) countIdleEl.textContent = idleCount;
+
+    // 3. Update telemetry stats bar & visual mini-gauges
+    const activeCountEl = qs('#hub-stat-active-count');
+    if (activeCountEl) {
+      activeCountEl.textContent = `${runningCount} Running`;
+      const activeSubEl = qs('#hub-stat-active-sub');
+      if (activeSubEl) activeSubEl.textContent = `${completeCount} Completed · ${totalCount} Total`;
+      const tasksFill = qs('#hub-bar-tasks');
+      if (tasksFill) {
+        const pct = totalCount > 0 ? Math.round((runningCount / totalCount) * 100) : 0;
+        tasksFill.style.width = Math.max(pct > 0 ? 12 : 0, pct) + '%';
+      }
+    }
+
+    const dbPoolEl = qs('#hub-stat-db-pool');
+    if (dbPoolEl && system.dbPool) {
+      const active = system.dbPool.activeConnections ?? system.dbPool.active ?? 0;
+      const idle = system.dbPool.idleConnections ?? system.dbPool.idle ?? 0;
+      const maxPool = system.dbPool.maxPoolSize || 20;
+      dbPoolEl.textContent = `${active} Active`;
+      const dbSubEl = qs('#hub-stat-db-sub');
+      if (dbSubEl) dbSubEl.textContent = `${idle} Idle · Max ${maxPool} Pooled`;
+      const dbFill = qs('#hub-bar-db');
+      if (dbFill) {
+        const pct = Math.min(100, Math.round((active / Math.max(1, maxPool)) * 100));
+        dbFill.style.width = Math.max(active > 0 ? 10 : 0, pct) + '%';
+      }
+    }
+
+    const heapEl = qs('#hub-stat-heap');
+    if (heapEl) {
+      const used = system.heapUsedMb || 0;
+      const max = system.heapMaxMb || 0;
+      const pct = system.heapPercent || (max > 0 ? Math.round((used / max) * 100) : 0);
+      heapEl.textContent = `${used} MB (${pct}%)`;
+      const heapSubEl = qs('#hub-stat-heap-sub');
+      if (heapSubEl) heapSubEl.textContent = max > 0 ? `${max} MB Max Allocated` : 'Dynamic Memory Pool';
+      const heapFill = qs('#hub-bar-heap');
+      if (heapFill) {
+        heapFill.style.width = pct + '%';
+        if (pct > 85) {
+          heapFill.style.background = 'linear-gradient(90deg, #f43f5e, #e11d48)';
+        } else if (pct > 70) {
+          heapFill.style.background = 'linear-gradient(90deg, #eab308, #f59e0b)';
+        } else {
+          heapFill.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+        }
+      }
+    }
+
+    const healthEl = qs('#hub-stat-health');
+    if (healthEl) {
+      const hasError = procs.some(p => p.status === 'ERROR');
+      const healthFill = qs('#hub-bar-health');
+      if (hasError) {
+        healthEl.textContent = 'Attention Needed';
+        healthEl.className = 'hub-stat-value text-rose';
+        if (healthFill) {
+          healthFill.style.width = '45%';
+          healthFill.style.background = '#f43f5e';
+        }
+      } else {
+        healthEl.textContent = 'Healthy';
+        healthEl.className = 'hub-stat-value text-emerald';
+        if (healthFill) {
+          healthFill.style.width = '100%';
+          healthFill.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+        }
+      }
+      const threadsEl = qs('#hub-stat-threads');
+      if (threadsEl && system.activeThreads != null) {
+        threadsEl.textContent = system.activeThreads;
+      }
+      const healthSubEl = qs('#hub-stat-health-sub');
+      if (healthSubEl && system.activeThreads != null) {
+        healthSubEl.innerHTML = `<span id="hub-stat-threads">${system.activeThreads}</span> Active Threads`;
+      }
+    }
+
+    if (!listEl) return;
+
+    // 4. Filter processes by active tab and search query
+    const q = (processHubSearch || '').trim().toLowerCase();
+    const filteredProcs = procs.filter(p => {
+      // Tab filter
+      if (processHubFilter === 'running' && p.status !== 'RUNNING') return false;
+      if (processHubFilter === 'complete' && p.status !== 'COMPLETE') return false;
+      if (processHubFilter === 'idle' && p.status !== 'IDLE') return false;
+
+      // Search query filter
+      if (q) {
+        const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+
+    if (emptyEl) {
+      emptyEl.style.display = filteredProcs.length === 0 ? 'flex' : 'none';
+    }
+
+    // 5. Non-destructive keyed reconciliation
+    const existingCards = new Map();
+    listEl.querySelectorAll('.process-card[data-process-id]').forEach(c => {
+      existingCards.set(c.dataset.processId, c);
+    });
+
+    // Track active IDs to prune removed ones
+    const activeIds = new Set(filteredProcs.map(p => p.id));
+    for (const [id, el] of existingCards.entries()) {
+      if (!activeIds.has(id)) {
+        el.remove();
+        existingCards.delete(id);
+      }
+    }
+
+    filteredProcs.forEach((p, index) => {
+      let card = existingCards.get(p.id);
+      const isNew = !card;
+
+      if (isNew) {
+        card = document.createElement('div');
+        card.dataset.processId = p.id;
+      }
+
+      card.className = 'process-card' + (p.status === 'RUNNING' ? ' is-running' : '');
+
+      const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
+      const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
+
+      const iconSvg = getProcessIconSvg(p.id, p.type);
+      const statusBadgeIcon = p.status === 'RUNNING' ? '<span class="hub-live-dot" style="width:5px;height:5px;"></span>' : (p.status === 'COMPLETE' ? '✓ ' : '• ');
+
+      let rawDetail = p.currentDetail || '';
+      if (!rawDetail) {
+        if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
+        else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
+        else if (p.status === 'IDLE') rawDetail = 'Idle · Waiting for trigger';
+        else if (p.status === 'COMPLETE') rawDetail = 'Execution complete · Ready';
+        else rawDetail = 'Ready';
+      }
+      // Clean epoch rev string e.g. (rev=1789500139576) -> (rev: 17895…)
+      const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
+
+      card.innerHTML = `
+        <div class="process-card-header">
+          <div class="process-card-title-group">
+            <div class="process-card-icon-wrap" title="${esc(p.type || p.id)}">
+              ${iconSvg}
+            </div>
+            <div class="process-card-title-col">
+              <div class="process-card-title">${esc(p.name || p.id)}</div>
+              <div class="process-card-type">${esc(p.type || '')}</div>
+            </div>
+          </div>
+          <div class="process-card-badges-actions">
+            <span class="process-card-badge status-${(p.status || 'IDLE').toLowerCase()}">${statusBadgeIcon}${esc(p.status || 'IDLE')}</span>
+            ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
+            ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
+          </div>
+        </div>
+
+        ${pct > 0 || p.status === 'RUNNING' ? `
+          <div class="process-card-progress">
+            <div class="process-card-bar-track">
+              <div class="process-card-bar-fill" style="width:${pct}%;"></div>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="process-card-meta">
+          <div class="process-meta-col meta-col-phase">
+            <span class="meta-field-label">PHASE</span>
+            <span class="process-meta-chip meta-chip-phase" title="${esc(p.currentPhase || 'Idle')}">${esc(p.currentPhase || 'Idle')}</span>
+          </div>
+          <div class="process-meta-col meta-col-detail">
+            <span class="meta-field-label">ACTIVITY</span>
+            <span class="meta-detail-text" title="${esc(rawDetail)}">${esc(cleanDetail)}</span>
+          </div>
+          <div class="process-meta-col meta-col-thread">
+            <span class="meta-field-label">THREAD</span>
+            <span class="process-meta-chip meta-chip-thread font-mono" title="${esc(p.thread || '-')}">${esc(p.thread || '-')}</span>
+          </div>
+          <div class="process-meta-col meta-col-elapsed">
+            <span class="meta-field-label">TIME</span>
+            <span class="meta-elapsed-val font-mono">${durSec}</span>
+          </div>
+        </div>
+      `;
+
+      // Kill button handler
+      const killBtn = card.querySelector('.btn-kill-process');
+      if (killBtn) {
+        killBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`Are you sure you want to terminate background process "${p.name || p.id}"?`)) {
+            try {
+              killBtn.disabled = true;
+              killBtn.textContent = 'Terminating…';
+              await api.killProcess(p.id);
+              showBanner(`Process "${p.name || p.id}" killed.`);
+              loadProcessHubData();
+            } catch (err) {
+              showError(`Failed to kill process: ${err.message}`);
+              killBtn.disabled = false;
+              killBtn.textContent = 'Kill Process';
+            }
+          }
+        });
+      }
+
+      // Restart button handler
+      const restartBtn = card.querySelector('.btn-restart-process');
+      if (restartBtn) {
+        restartBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            restartBtn.disabled = true;
+            restartBtn.textContent = 'Restarting…';
+            await api.restartProcess(p.id);
+            showBanner(`Process "${p.name || p.id}" restarted.`);
+            loadProcessHubData();
+          } catch (err) {
+            showError(`Failed to restart process: ${err.message}`);
+            restartBtn.disabled = false;
+            restartBtn.textContent = 'Restart';
+          }
+        });
+      }
+
+      if (isNew) {
+        listEl.appendChild(card);
+      }
+    });
+
+  } catch (e) {
+    console.warn('Failed to load process hub data:', e);
+  }
+}
+
+function initProcessHub() {
+  qs('#btn-process-hub')?.addEventListener('click', openProcessHub);
+  qs('#process-hub-modal-close')?.addEventListener('click', closeProcessHub);
+  qs('#process-hub-refresh-btn')?.addEventListener('click', () => loadProcessHubData());
+  qs('#process-hub-modal')?.addEventListener('click', (e) => {
+    if (e.target === qs('#process-hub-modal')) closeProcessHub();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && qs('#process-hub-modal')?.style.display !== 'none') {
+      closeProcessHub();
+    }
+    // 'r' or 'R' inside Process Hub refreshes telemetry
+    if ((e.key === 'r' || e.key === 'R') && qs('#process-hub-modal')?.style.display !== 'none' && document.activeElement?.tagName !== 'INPUT') {
+      e.preventDefault();
+      loadProcessHubData();
+    }
+  });
+
+  // Filter tabs click handling
+  qsa('.hub-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('.hub-tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      processHubFilter = btn.dataset.filter || 'all';
+      loadProcessHubData();
+    });
+  });
+
+  // Search input handling
+  const searchInput = qs('#hub-search-input');
+  const clearBtn = qs('#hub-search-clear-btn');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      processHubSearch = e.target.value;
+      if (clearBtn) clearBtn.style.display = processHubSearch ? 'block' : 'none';
+      loadProcessHubData();
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (searchInput) {
+        searchInput.value = '';
+        processHubSearch = '';
+        clearBtn.style.display = 'none';
+        searchInput.focus();
+        loadProcessHubData();
+      }
+    });
+  }
+
+  // Background check every 10 seconds to update header pulse badge
+  setInterval(async () => {
+    try {
+      const data = await api.processes();
+      const hasRunning = data?.processes?.some(p => p.status === 'RUNNING');
+      const pulseEl = qs('#process-hub-pulse');
+      if (pulseEl) pulseEl.style.display = hasRunning ? 'inline-block' : 'none';
+    } catch (ignored) {}
+  }, 10000);
+}
+
 /** Re-open scan modal when user clicks header badge or footer status */
 function reopenScanModal() {
   App.scanModalDismissed = false;
@@ -492,12 +1221,21 @@ function updateScanProgress(s) {
   const headingEl = qs('#scan-card-heading');
   const modalCard = qs('.scan-modal-card');
 
+  const spinnerRing = qs('.scan-spinner-ring');
   if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
     if (headingEl) headingEl.textContent = 'Analysis Complete';
     if (modalCard) modalCard.classList.add('is-complete');
+    if (spinnerRing && !spinnerRing.classList.contains('is-complete')) {
+      spinnerRing.classList.add('is-complete');
+      spinnerRing.innerHTML = '<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
   } else {
     if (headingEl) headingEl.textContent = 'Analyzing Codebase';
     if (modalCard) modalCard.classList.remove('is-complete');
+    if (spinnerRing && spinnerRing.classList.contains('is-complete')) {
+      spinnerRing.classList.remove('is-complete');
+      spinnerRing.innerHTML = '<div class="scan-spinner-core"></div>';
+    }
   }
 
   // Action status message
@@ -519,7 +1257,18 @@ function updateScanProgress(s) {
   // Current active file name / path
   const detailText = qs('#scan-detail-text') || qs('.scan-detail-text');
   if (detailText) {
-    detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing…');
+    if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+      const pData = getPhaseMetricsData(App.selectedScanPhase || 'PARSE', s);
+      detailText.innerHTML = `<span style="color:var(--emerald); font-weight:600;">✓ ${esc(pData.detailText)}</span>`;
+    } else if (s.currentDetail && (s.currentDetail.includes('/') || s.currentDetail.includes('\\'))) {
+      const slash = s.currentDetail.includes('/') ? '/' : '\\';
+      const parts = s.currentDetail.split(slash);
+      const fileName = parts.pop();
+      const dirPath = parts.join(slash) + (parts.length > 0 ? slash : '');
+      detailText.innerHTML = `<span style="opacity:0.6; font-size:11px;">${esc(dirPath)}</span><strong style="color:var(--text-primary);">${esc(fileName)}</strong>`;
+    } else {
+      detailText.textContent = s.currentDetail || (s.totalFiles ? `${s.processedFiles || 0} of ${s.totalFiles} files` : 'Processing…');
+    }
   }
 
   // Update pipeline step track and connector dividers
@@ -527,12 +1276,16 @@ function updateScanProgress(s) {
     const stepName = stepEl.dataset.step;
     const stepNum = stageOrder[stepName] || 1;
     stepEl.classList.remove('step-active', 'step-complete', 'step-pending');
+    const dot = stepEl.querySelector('.step-dot');
     if (s.status === 'COMPLETE' || currentStepNum > stepNum) {
       stepEl.classList.add('step-complete');
+      if (dot) dot.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><polyline points="20 6 9 17 4 12"/></svg>';
     } else if (currentStepNum === stepNum) {
       stepEl.classList.add('step-active');
+      if (dot) dot.innerHTML = `<span class="step-dot-num">${stepNum}</span>`;
     } else {
       stepEl.classList.add('step-pending');
+      if (dot) dot.innerHTML = `<span class="step-dot-num">${stepNum}</span>`;
     }
   });
 
@@ -551,7 +1304,8 @@ function updateScanProgress(s) {
   const detailIcon = qs('#scan-detail-icon');
   const phase = s.currentPhase || '';
   if (s.status === 'COMPLETE') {
-    if (detailLabel) detailLabel.textContent = 'Analysis Status';
+    const pData = getPhaseMetricsData(App.selectedScanPhase || 'PARSE', s);
+    if (detailLabel) detailLabel.textContent = `${pData.pill} · ${pData.name}`;
     if (detailIcon) detailIcon.innerHTML = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
   } else if (stage === 'LAYOUT' || phase.includes('Layout')) {
     if (detailLabel) detailLabel.textContent = 'Layout Precomputation';
@@ -626,56 +1380,32 @@ function updateScanProgress(s) {
     }
   }
 
-  // Dynamic context-aware entity & stage metric counters
-  let m1Lbl = s.metric1Label, m1Val = s.metric1Value;
-  let m2Lbl = s.metric2Label, m2Val = s.metric2Value;
-  let m3Lbl = s.metric3Label, m3Val = s.metric3Value;
-  let m4Lbl = s.metric4Label, m4Val = s.metric4Value;
-
-  // Fallback defaults if backend hasn't provided explicit metric labels
-  if (!m1Lbl) {
-    if (stage === 'INDEX') {
-      m1Lbl = 'Lucene Docs'; m1Val = ((s.typesFound || 0) + (s.methodsFound || 0) + (s.fieldsFound || 0)).toLocaleString();
-      m2Lbl = 'DB Indexes';  m2Val = (s.stageCurrent ? `${s.stageCurrent} / ${s.stageTotal || 12}` : 'Rebuilding…');
-      m3Lbl = 'Target Table'; m3Val = s.stageItem || 'Secondary';
-      m4Lbl = 'Rows Indexed'; m4Val = (s.relationshipsFound || 0).toLocaleString();
-    } else if (stage === 'GRAPH') {
-      m1Lbl = 'Graph Vertices'; m1Val = (s.methodsFound || 0).toLocaleString();
-      m2Lbl = 'Call Edges';     m2Val = (s.stageCurrent && s.stageTotal ? `${s.stageCurrent.toLocaleString()} / ${s.stageTotal.toLocaleString()}` : (s.relationshipsFound || 0).toLocaleString());
-      m3Lbl = 'Field Links';    m3Val = (s.fieldsFound || 0).toLocaleString();
-      m4Lbl = 'Caller Triggers'; m4Val = 'Mapping…';
-    } else if (stage === 'LAYOUT') {
-      m1Lbl = 'Layouts Ready';  m1Val = (s.stageCurrent ? `${s.stageCurrent} / ${s.stageTotal || 6}` : 'In progress');
-      m2Lbl = 'Active Layout';  m2Val = s.stageItem || 'Sunflower';
-      m3Lbl = 'Clusters';       m3Val = 'Packages';
-      m4Lbl = 'Placed Nodes';   m4Val = (s.methodsFound || 0).toLocaleString();
-    } else {
-      m1Lbl = 'Types';         m1Val = (s.typesFound || 0).toLocaleString();
-      m2Lbl = 'Methods';       m2Val = (s.methodsFound || 0).toLocaleString();
-      m3Lbl = 'Fields';        m3Val = (s.fieldsFound || 0).toLocaleString();
-      m4Lbl = 'Relationships'; m4Val = (s.relationshipsFound || 0).toLocaleString();
+  // Selected phase resolution:
+  // If scan is actively running and user hasn't explicitly clicked a step, track the activeStage
+  if (s.status !== 'COMPLETE') {
+    if (!App.selectedScanPhase || App.selectedScanPhase === 'PREPARE') {
+      App.selectedScanPhase = stage === 'PREPARE' ? 'PARSE' : stage;
+    }
+  } else {
+    // When complete, default to user's selected phase or PARSE (Phase 1)
+    if (!App.selectedScanPhase) {
+      App.selectedScanPhase = 'PARSE';
     }
   }
 
-  const live1Val = qs('#scan-live-types');
-  const live1Lbl = qs('#scan-live-types-lbl');
-  if (live1Val) live1Val.textContent = m1Val !== undefined && m1Val !== null ? m1Val : '0';
-  if (live1Lbl) live1Lbl.textContent = m1Lbl || 'Types';
+  // Highlight selected step in stepper
+  qsa('.scan-pipeline-step').forEach(stepEl => {
+    if (stepEl.dataset.step === App.selectedScanPhase) {
+      stepEl.classList.add('step-inspected', 'step-selected');
+      stepEl.setAttribute('aria-selected', 'true');
+    } else {
+      stepEl.classList.remove('step-inspected', 'step-selected');
+      stepEl.setAttribute('aria-selected', 'false');
+    }
+  });
 
-  const live2Val = qs('#scan-live-methods');
-  const live2Lbl = qs('#scan-live-methods-lbl');
-  if (live2Val) live2Val.textContent = m2Val !== undefined && m2Val !== null ? m2Val : '0';
-  if (live2Lbl) live2Lbl.textContent = m2Lbl || 'Methods';
-
-  const live3Val = qs('#scan-live-fields');
-  const live3Lbl = qs('#scan-live-fields-lbl');
-  if (live3Val) live3Val.textContent = m3Val !== undefined && m3Val !== null ? m3Val : '0';
-  if (live3Lbl) live3Lbl.textContent = m3Lbl || 'Fields';
-
-  const live4Val = qs('#scan-live-rels');
-  const live4Lbl = qs('#scan-live-rels-lbl');
-  if (live4Val) live4Val.textContent = m4Val !== undefined && m4Val !== null ? m4Val : '0';
-  if (live4Lbl) live4Lbl.textContent = m4Lbl || 'Relationships';
+  // Render bottom section metrics of the selected phase
+  renderPhaseBottomMetrics(App.selectedScanPhase, s);
 
   // Elapsed timer & Estimated Remaining Time
   const elapsedEl = qs('#scan-elapsed-time');
@@ -748,8 +1478,13 @@ function updateScanProgress(s) {
     fText.title = txt + ' (Click to view scan dialog)';
   }
   if (fInd) {
-    fInd.className = 'status-indicator busy';
-    fInd.title = 'Active scan running (Click to view scan dialog)';
+    if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+      fInd.className = 'status-indicator live';
+      fInd.title = 'Codebase analysis complete · Engine ready (Click to view scan dialog)';
+    } else {
+      fInd.className = 'status-indicator busy';
+      fInd.title = 'Active scan running (Click to view scan dialog)';
+    }
   }
 
   // Toggle footer action buttons based on scan completion
@@ -775,6 +1510,11 @@ function updateScanProgress(s) {
 
   // Update persistent coverage popover & header badge
   updateScanSummaryUI(s);
+
+  // If a step detail panel is currently open, refresh its data in real time
+  if (App.inspectedScanStep) {
+    inspectScanStep(App.inspectedScanStep, false);
+  }
 }
 
 /** Enable features progressively as scan pipeline stages complete */
@@ -3926,7 +4666,11 @@ async function selectType(id) {
     renderTypeDetail(data);
     renderKnowledgeBaseForType(data);
     updateReviewTargetInfo();
-    switchTab('knowledge');
+    if (window.hubExplorerInstance && window.hubExplorerInstance.isOpen()) {
+      window.hubExplorerInstance.load(id, 'callers');
+    } else {
+      switchTab('knowledge');
+    }
   } catch (e) {
     showError(e.message);
   }
@@ -3947,8 +4691,12 @@ async function selectMethod(id) {
     }
     renderMethodDetail(data);
     updateReviewTargetInfo();
-    switchTab('graph');
-    await loadCallGraph(id);
+    if (window.hubExplorerInstance && window.hubExplorerInstance.isOpen()) {
+      window.hubExplorerInstance.load(id, 'callers');
+    } else {
+      switchTab('graph');
+      await loadCallGraph(id);
+    }
   } catch (e) {
     showError(e.message);
   }
@@ -4886,6 +5634,10 @@ async function loadCalleesGraph(methodId, depth = App.graphDepth) {
   }
 }
 
+App.loadCallersGraph = loadCallersGraph;
+App.loadCalleesGraph = loadCalleesGraph;
+App.loadCallGraph = loadCallGraph;
+
 /** 
  * Automatically format package FQN into clean module name without manual prefix configuration.
  * Fully supports uppercase and PascalCase package segments (e.g. com.tcs.bancs.ModuleName).
@@ -5119,6 +5871,7 @@ function renderTypeDetail(data) {
   // Action buttons
   body.appendChild(actionRow([
     { label: '🎯 Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
+    { label: '🌐 Hub Explorer', title: 'Explore cross-package callers & callees for this class', action: () => { switchTab('graph'); if (window.hubExplorerInstance) window.hubExplorerInstance.load(type.fqn, 'callers'); } },
     { label: 'View All Methods', badge: methods.length, title: `View all ${methods.length} methods in Knowledge Base`, action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
   ]));
 
@@ -5510,10 +6263,16 @@ function renderMethodDetail(data) {
       badge: callerCount,
       badgeClass: 'count-badge-callers',
       className: 'action-btn-callers' + (isCallersActive ? ' active' : ''),
-      title: `Trace upstream callers (${callerCount.toLocaleString()} direct caller${callerCount === 1 ? '' : 's'})`,
+      title: callerCount > 30
+        ? `Trace upstream callers (${callerCount.toLocaleString()} direct callers) — opens Hub Explorer`
+        : `Trace upstream callers (${callerCount.toLocaleString()} direct caller${callerCount === 1 ? '' : 's'})`,
       action: () => {
         switchTab('graph');
-        loadCallersGraph(method.id);
+        if (callerCount > 30 && window.hubExplorerInstance) {
+          window.hubExplorerInstance.load(method.fqn || method.id, 'callers');
+        } else {
+          loadCallersGraph(method.id);
+        }
         qs('#btn-inspect-callers')?.classList.add('active');
         qs('#btn-inspect-callees')?.classList.remove('active');
       }
@@ -5524,10 +6283,16 @@ function renderMethodDetail(data) {
       badge: calleeCount,
       badgeClass: 'count-badge-callees',
       className: 'action-btn-callees' + (isCalleesActive ? ' active' : ''),
-      title: `Trace downstream callees (${calleeCount.toLocaleString()} direct callee${calleeCount === 1 ? '' : 's'})`,
+      title: calleeCount > 30
+        ? `Trace downstream callees (${calleeCount.toLocaleString()} direct callees) — opens Hub Explorer`
+        : `Trace downstream callees (${calleeCount.toLocaleString()} direct callee${calleeCount === 1 ? '' : 's'})`,
       action: () => {
         switchTab('graph');
-        loadCalleesGraph(method.id);
+        if (calleeCount > 30 && window.hubExplorerInstance) {
+          window.hubExplorerInstance.load(method.fqn || method.id, 'callees');
+        } else {
+          loadCalleesGraph(method.id);
+        }
         qs('#btn-inspect-callees')?.classList.add('active');
         qs('#btn-inspect-callers')?.classList.remove('active');
       }
@@ -5979,6 +6744,61 @@ function updateArchetypesBreakup(stats) {
 
   // 3. Update Modules Popover
   updateModulesList();
+
+  // 4. Update Fields Popover
+  updateFieldsBreakup(stats);
+}
+
+/** Populate interactive fields breakdown popover with statistics */
+function updateFieldsBreakup(stats) {
+  const fieldsCount = stats?.fields || 0;
+  const classesCount = stats?.classes || stats?.types || (stats?.typesList ? stats.typesList.length : 0);
+  const avgFieldsPerClass = classesCount > 0 ? (fieldsCount / classesCount).toFixed(1) : '0';
+
+  const totalEl = qs('#popover-fields-total');
+  if (totalEl) totalEl.textContent = `${fieldsCount.toLocaleString()} fields`;
+
+  const listEl = qs('#popover-fields-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:8px; padding:4px 0;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 10px;">
+          <div style="font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600; letter-spacing:0.5px;">Avg / Class</div>
+          <div style="font-size:16px; font-weight:700; color:var(--text-primary); margin-top:2px;">${avgFieldsPerClass}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 10px;">
+          <div style="font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600; letter-spacing:0.5px;">Impact Model</div>
+          <div style="font-size:16px; font-weight:700; color:var(--color-amber, #f59e0b); margin-top:2px;">Active</div>
+        </div>
+      </div>
+      <div class="archetype-breakup-group">
+        <div class="archetype-breakup-group-title">Field Metrics &amp; Scope</div>
+        <div class="archetype-breakup-row">
+          <div class="archetype-breakup-left">
+            <span class="archetype-breakup-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.35);">[FLD]</span>
+            <span class="archetype-breakup-name">Indexed Member Variables</span>
+          </div>
+          <span class="archetype-breakup-count">${fieldsCount.toLocaleString()}</span>
+        </div>
+        <div class="archetype-breakup-row">
+          <div class="archetype-breakup-left">
+            <span class="archetype-breakup-badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.35);">[CLS]</span>
+            <span class="archetype-breakup-name">Enclosing Classes</span>
+          </div>
+          <span class="archetype-breakup-count">${classesCount.toLocaleString()}</span>
+        </div>
+        <div class="archetype-breakup-row">
+          <div class="archetype-breakup-left">
+            <span class="archetype-breakup-badge" style="background:rgba(99,102,241,0.15); color:#6366f1; border:1px solid rgba(99,102,241,0.35);">[DEP]</span>
+            <span class="archetype-breakup-name">Field Impact Analyzer</span>
+          </div>
+          <span class="archetype-breakup-count" style="color:#10b981; font-weight:600;">Indexed</span>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 let modulePopoverSortMode = 'name';
@@ -6173,7 +6993,8 @@ function initArchetypePopover() {
   const popoverPairs = [
     { pill: qs('#stat-pill-modules'), popover: qs('#modules-list-popover'), onOpen: () => updateModulesList() },
     { pill: qs('#stat-pill-classes'), popover: qs('#classes-archetypes-popover'), onOpen: () => updateArchetypesBreakup(App.stats || {}) },
-    { pill: qs('#stat-pill-methods'), popover: qs('#methods-archetypes-popover'), onOpen: () => updateArchetypesBreakup(App.stats || {}) }
+    { pill: qs('#stat-pill-methods'), popover: qs('#methods-archetypes-popover'), onOpen: () => updateArchetypesBreakup(App.stats || {}) },
+    { pill: qs('#stat-pill-fields'),  popover: qs('#fields-stats-popover'),    onOpen: () => updateFieldsBreakup(App.stats || {}) }
   ];
 
   popoverPairs.forEach(({ pill, popover, onOpen }) => {
@@ -6221,20 +7042,18 @@ function initArchetypePopover() {
     });
   });
 
-  // Clicking on the explorer-stats-footer outside classes/methods toggles modules popover
+  // Clicking on the explorer-stats-footer stops propagation so it doesn't leak
   const footer = qs('#explorer-stats-footer');
   if (footer) {
     footer.addEventListener('click', (e) => {
       if (e.target.closest('#stat-pill-classes') ||
           e.target.closest('#stat-pill-methods') ||
+          e.target.closest('#stat-pill-fields') ||
+          e.target.closest('#stat-pill-modules') ||
           e.target.closest('.methods-archetypes-popover')) {
         return;
       }
       e.stopPropagation();
-      const modulesPill = qs('#stat-pill-modules');
-      if (modulesPill) {
-        modulesPill.click();
-      }
     });
   }
 
@@ -6784,16 +7603,18 @@ async function init() {
     });
   }
 
-  // Hero theme toggle (mirrors main toggle)
+  // Hero theme toggle (mirrors main toggle - cycles dark → swiss → light)
   qs('#hero-theme-toggle-btn')?.addEventListener('click', () => {
     const s = loadSettings();
-    const isCurrentlyLight = s.theme === 'light' || document.body.classList.contains('theme-light');
-    const newTheme = isCurrentlyLight ? 'dark' : 'light';
+    const THEME_CYCLE = ['dark', 'swiss', 'light'];
+    const curIdx = THEME_CYCLE.indexOf(s.theme);
+    const newTheme = THEME_CYCLE[(curIdx + 1) % THEME_CYCLE.length];
     s.theme = newTheme;
     saveSettings(s);
     applyAllSettings(s);
     syncSettingsUI(s);
-    showBanner(`Theme: ${newTheme === 'light' ? 'Light' : 'Dark'}`);
+    const labels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
+    showBanner(`Theme: ${labels[newTheme] || newTheme}`);
   });
 
   // Hero settings button
@@ -6875,6 +7696,21 @@ async function init() {
   });
 
   // Central scan modal close / minimize & backdrop dismiss
+  qs('#btn-copy-scan-path')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const p = App.currentPath || qs('#scan-card-source-path')?.textContent || '';
+    if (p) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(p).then(() => {
+          showBanner('Project path copied to clipboard');
+        }).catch(() => {
+          showBanner(`Project path: ${p}`);
+        });
+      } else {
+        showBanner(`Project path: ${p}`);
+      }
+    }
+  });
   qs('#btn-minimize-scan')?.addEventListener('click', (e) => {
     e.stopPropagation();
     minimizeScanModal();
@@ -6909,6 +7745,42 @@ async function init() {
   qs('#footer-status-text')?.addEventListener('click', () => reopenScanModal());
   qs('.status-indicator')?.addEventListener('click', () => reopenScanModal());
 
+  // Interactive scan pipeline step inspection (clickable anytime, with Arrow key navigation)
+  const stepElements = Array.from(qsa('.scan-pipeline-step'));
+  stepElements.forEach((stepEl, idx) => {
+    stepEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const stepName = stepEl.dataset.step;
+      inspectScanStep(stepName);
+    });
+    stepEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        inspectScanStep(stepEl.dataset.step);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const next = stepElements[(idx + 1) % stepElements.length];
+        next?.focus();
+        inspectScanStep(next?.dataset?.step);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const prev = stepElements[(idx - 1 + stepElements.length) % stepElements.length];
+        prev?.focus();
+        inspectScanStep(prev?.dataset?.step);
+      }
+    });
+  });
+
+  // Step detail panel close button
+  qs('#btn-close-step-detail')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeStepDetail();
+  });
+
+  // Initialize Background Process Hub
+  initProcessHub();
+
   qs('#scan-cancel-btn')?.addEventListener('click', () => {
     if (App.stats && App.stats.types > 0) {
       updateHeaderProjectBar();
@@ -6918,16 +7790,18 @@ async function init() {
 
 
 
-  // Wire up quick theme toggle in header toolbar
+  // Wire up quick theme toggle in header toolbar (cycles dark → swiss → light)
   qs('#theme-toggle-btn')?.addEventListener('click', () => {
     const s = loadSettings();
-    const isCurrentlyLight = s.theme === 'light' || document.body.classList.contains('theme-light');
-    const newTheme = isCurrentlyLight ? 'dark' : 'light';
+    const THEME_CYCLE = ['dark', 'swiss', 'light'];
+    const curIdx = THEME_CYCLE.indexOf(s.theme);
+    const newTheme = THEME_CYCLE[(curIdx + 1) % THEME_CYCLE.length];
     s.theme = newTheme;
     saveSettings(s);
     applyAllSettings(s);
     syncSettingsUI(s);
-    showBanner(`Theme switched to ${newTheme === 'light' ? 'Light (Pure Daylight)' : 'Dark (Midnight Obsidian)'}`);
+    const labels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
+    showBanner(`Theme switched to ${labels[newTheme] || newTheme}`);
   });
 
   const browseBtn = qs('#browse-btn');
@@ -8521,6 +9395,11 @@ function initScopeManagement() {
 
   // Initial badge update
   updateExcludedScopeBadge();
+
+  // Initialize Hub Node Radial Explorer
+  if (window.HubExplorer && !window.hubExplorerInstance) {
+    window.hubExplorerInstance = new window.HubExplorer();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -9166,6 +10045,43 @@ const THEMES = {
     },
     preview: ['#000000','#0a0d12','#10b981','#34d399','#f59e0b'],
   },
+  swiss: {
+    label: 'Swiss', icon: 'swiss', tagline: 'Razor-sharp geometry & Helvetica grid. Swiss International Style.',
+    css: {
+      '--bg-base': '#0f0f10', '--bg-panel': '#161617', '--bg-surface': '#1d1d1f',
+      '--bg-elevated': '#242426', '--bg-modal': '#161617', '--bg-glass': 'rgba(22,22,23,0.92)',
+      '--border': 'rgba(255,255,255,0.12)', '--border-hover': 'rgba(255,255,255,0.24)',
+      '--border-light': 'rgba(255,255,255,0.08)', '--border-focus': '#eb0028',
+      '--primary': '#eb0028', '--primary-bg': '#1d1d1f', '--primary-hover': '#242426', '--primary-active': '#1d1d1f',
+      '--primary-subtle': 'rgba(235,0,40,0.10)', '--primary-glow': 'transparent',
+      '--primary-border': 'rgba(235,0,40,0.40)',
+      '--cyan-bright': '#eb0028', '--emerald': '#eb0028', '--amber': '#a1a1a6', '--red': '#ff3b30',
+      '--text-primary': '#ffffff', '--text-secondary': '#a1a1a6', '--text-muted': '#6e6e73',
+      '--text-code': '#ff6961',
+      '--font-ui': '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
+      '--font-display': '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
+      '--radius-xs': '1px', '--radius-sm': '2px', '--radius-md': '3px', '--radius-lg': '4px',
+    },
+    graph: {
+      bg: '#0f0f10', grid: 'rgba(255,255,255,0.04)',
+      roles: { root:'#eb0028',caller:'#ffffff',callee:'#eb0028',propagator:'#a1a1a6',field:'#6e6e73',reader:'#ffffff',writer:'#eb0028',default:'#a1a1a6' },
+      edgeKind: { CALLS:'#eb0028',READS_FIELD:'#a1a1a6',WRITES_FIELD:'#ff3b30',EXTENDS:'#6e6e73',IMPLEMENTS:'#6e6e73',default:'#48484a' },
+      nodeColors: [
+        '#eb0028', '#ff3b30', '#ff6961', '#ff453a', '#ff6482',
+        '#ffffff', '#e5e5ea', '#d1d1d6', '#c7c7cc', '#aeaeb2',
+        '#a1a1a6', '#8e8e93', '#636366', '#48484a', '#3a3a3c',
+        '#eb0028', '#d10023', '#b8001e', '#ff2d55', '#ff375f',
+        '#ffffff', '#f2f2f7', '#e5e5ea', '#d1d1d6', '#c7c7cc',
+        '#eb0028', '#ff453a', '#ff6961', '#a1a1a6', '#8e8e93',
+        '#636366', '#48484a', '#3a3a3c', '#2c2c2e', '#1c1c1e',
+        '#eb0028', '#ff3b30', '#ffffff', '#e5e5ea', '#d1d1d6',
+        '#a1a1a6', '#8e8e93', '#636366', '#eb0028', '#ff6482',
+        '#d10023', '#b8001e', '#ff2d55', '#ff375f', '#eb0028'
+      ],
+      lightMode: false,
+    },
+    preview: ['#0f0f10','#161617','#eb0028','#ffffff','#a1a1a6'],
+  },
   light: {
     label: 'Light', icon: 'sun', tagline: 'Pure Daylight. Crisp emerald contrast, ultra-readable typography.',
     css: {
@@ -9246,24 +10162,45 @@ function applyTheme(themeKey) {
     root.style.setProperty(prop, val);
   }
 
-  // Toggle light mode class
-  const isLight = themeKey === 'light';
-  document.body.classList.toggle('theme-light', isLight);
+  // Toggle theme body classes (mutually exclusive)
+  document.body.classList.remove('theme-light', 'theme-swiss');
+  if (themeKey === 'light') document.body.classList.add('theme-light');
+  else if (themeKey === 'swiss') document.body.classList.add('theme-swiss');
   document.body.dataset.theme = themeKey;
 
-  // Update top-bar theme toggle button
+  // Update top-bar theme toggle button (cycles: dark→swiss→light→dark)
   const toggleIcon = qs('#theme-toggle-icon');
   const toggleLabel = qs('#theme-toggle-label');
   if (toggleIcon) {
-    if (window.Icons) {
-      toggleIcon.innerHTML = isLight ? window.Icons.get('moon', { color: 'purple' }) : window.Icons.get('sun', { color: 'amber' });
+    // Show the icon for the NEXT theme in cycle
+    if (themeKey === 'dark') {
+      // Next is swiss – show swiss cross icon
+      if (window.Icons) {
+        toggleIcon.innerHTML = window.Icons.get('swiss', { color: 'red' });
+      } else {
+        toggleIcon.innerHTML = '<svg class="svg-icon icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>';
+      }
+    } else if (themeKey === 'swiss') {
+      // Next is light – show sun icon
+      if (window.Icons) {
+        toggleIcon.innerHTML = window.Icons.get('sun', { color: 'amber' });
+      } else {
+        toggleIcon.innerHTML = '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+      }
     } else {
-      toggleIcon.innerHTML = isLight
-        ? '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
-        : '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+      // themeKey === 'light', next is dark – show moon icon
+      if (window.Icons) {
+        toggleIcon.innerHTML = window.Icons.get('moon', { color: 'purple' });
+      } else {
+        toggleIcon.innerHTML = '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+      }
     }
   }
-  if (toggleLabel) toggleLabel.textContent = isLight ? 'Dark' : 'Light';
+  if (toggleLabel) {
+    if (themeKey === 'dark') toggleLabel.textContent = 'Swiss';
+    else if (themeKey === 'swiss') toggleLabel.textContent = 'Light';
+    else toggleLabel.textContent = 'Dark';
+  }
 
   // Apply graph canvas theme
   if (App.graph) {
@@ -11798,5 +12735,13 @@ window.openCriticalPathPicker = openCriticalPathPicker;
 window.closeCriticalPathDock = closeCriticalPathDock;
 window.applyTheme = applyTheme;
 window.switchTab = switchTab;
+window.selectMethod = selectMethod;
+window.selectType = selectType;
+window.selectField = selectField;
+if (window.App) {
+  window.App.selectMethod = selectMethod;
+  window.App.selectType = selectType;
+  window.App.selectField = selectField;
+}
 
 

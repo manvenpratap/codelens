@@ -160,5 +160,88 @@ public class ScanProgress {
         this.metric4Label = l4;
         this.metric4Value = v4;
     }
+
+    // ── Per-Step Telemetry & History ─────────────────────────────────────────
+    public static class StepDetail {
+        private String stage;
+        private String name;
+        private String status = "PENDING"; // PENDING, RUNNING, COMPLETE, ERROR
+        private long startTime;
+        private long endTime;
+        private long durationMs;
+        private String summary;
+        private String detail;
+        private java.util.Map<String, String> metrics = new java.util.LinkedHashMap<>();
+        private java.util.List<String> logMessages = new java.util.ArrayList<>();
+
+        public StepDetail() {}
+        public StepDetail(String stage, String name) {
+            this.stage = stage;
+            this.name = name;
+        }
+
+        public String getStage() { return stage; }
+        public void setStage(String stage) { this.stage = stage; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public long getStartTime() { return startTime; }
+        public void setStartTime(long startTime) { this.startTime = startTime; }
+        public long getEndTime() { return endTime; }
+        public void setEndTime(long endTime) {
+            this.endTime = endTime;
+            if (this.startTime > 0 && this.endTime >= this.startTime) {
+                this.durationMs = this.endTime - this.startTime;
+            }
+        }
+        public long getDurationMs() { return durationMs; }
+        public void setDurationMs(long durationMs) { this.durationMs = durationMs; }
+        public String getSummary() { return summary; }
+        public void setSummary(String summary) { this.summary = summary; }
+        public String getDetail() { return detail; }
+        public void setDetail(String detail) { this.detail = detail; }
+        public java.util.Map<String, String> getMetrics() { return metrics; }
+        public void setMetrics(java.util.Map<String, String> metrics) { this.metrics = metrics; }
+        public java.util.List<String> getLogMessages() { return logMessages; }
+        public void setLogMessages(java.util.List<String> logMessages) { this.logMessages = logMessages; }
+
+        public void addLog(String msg) {
+            if (msg == null) return;
+            if (logMessages.size() >= 20) {
+                logMessages.remove(0);
+            }
+            logMessages.add(msg);
+        }
+    }
+
+    private java.util.Map<String, StepDetail> stageHistory = new java.util.LinkedHashMap<>();
+
+    public java.util.Map<String, StepDetail> getStageHistory() {
+        return stageHistory;
+    }
+
+    public void setStageHistory(java.util.Map<String, StepDetail> history) {
+        this.stageHistory = history;
+    }
+
+    public synchronized StepDetail recordStageStart(String stage, String name, String summary) {
+        StepDetail step = stageHistory.computeIfAbsent(stage, k -> new StepDetail(stage, name));
+        step.setName(name);
+        step.setStatus("RUNNING");
+        step.setStartTime(System.currentTimeMillis());
+        step.setSummary(summary);
+        return step;
+    }
+
+    public synchronized void recordStageEnd(String stage, String status, String detail, java.util.Map<String, String> metrics) {
+        StepDetail step = stageHistory.get(stage);
+        if (step != null) {
+            step.setStatus(status);
+            step.setEndTime(System.currentTimeMillis());
+            if (detail != null) step.setDetail(detail);
+            if (metrics != null) step.getMetrics().putAll(metrics);
+        }
+    }
 }
 
