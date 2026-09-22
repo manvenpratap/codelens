@@ -180,10 +180,11 @@ const api = {
   scanChanges:        (sourcePath) => api.get(`/scan/changes${sourcePath ? '?sourcePath=' + encodeURIComponent(sourcePath) : ''}`),
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
   startIncrementalScan: (sourcePath, excludePatterns) => api.post('/scan/incremental', { sourcePath, excludePatterns }),
-  cancelScan:         ()          => api.post('/scan/cancel', {}),
   processes:          ()          => api.get('/processes'),
   killProcess:        (id)        => api.post(`/processes/${enc(id)}/kill`, {}),
   restartProcess:     (id)        => api.post(`/processes/${enc(id)}/restart`, {}),
+  databaseHealth:     ()          => api.get('/database/health'),
+  databaseRecover:    (action)    => api.post('/database/recover', { action }),
   shutdownServer:     ()          => api.post('/shutdown', {}),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
 
@@ -810,6 +811,10 @@ function closeStepDetail() {
 let processHubPollInterval = null;
 let processHubFilter = 'all';
 let processHubSearch = '';
+let processHubActiveTab = 'tasks';
+let processHubApiCategory = 'all';
+let processHubApiSearch = '';
+let processHubLastData = null;
 
 function openProcessHub() {
   const modal = qs('#process-hub-modal');
@@ -845,6 +850,246 @@ function getProcessIconSvg(id, type) {
   return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 }
 
+async function runDbRecovery(action) {
+  const alertEl = qs('#hub-db-recovery-alert');
+  const iconEl = qs('#hub-db-alert-icon');
+  const msgEl = qs('#hub-db-alert-msg');
+
+  const btnMap = {
+    'health_check': qs('#btn-db-action-health') || qs('#btn-quick-db-health'),
+    'reindex': qs('#btn-db-action-reindex'),
+    'compact': qs('#btn-db-action-compact'),
+    'clean_orphans': qs('#btn-db-action-clean')
+  };
+  const activeBtn = btnMap[action];
+  const origText = activeBtn ? activeBtn.innerHTML : '';
+  const allRecoveryBtns = qsa('.btn-db-action');
+
+  allRecoveryBtns.forEach(b => { b.disabled = true; });
+  if (activeBtn) {
+    activeBtn.classList.add('is-loading');
+    activeBtn.innerHTML = `<span class="hub-btn-spinner"></span> Running…`;
+  }
+
+  try {
+    const res = await api.databaseRecover(action);
+    allRecoveryBtns.forEach(b => { b.disabled = false; });
+    if (activeBtn) {
+      activeBtn.classList.remove('is-loading');
+      activeBtn.innerHTML = origText;
+    }
+    if (alertEl && msgEl) {
+      if (res && res.success) {
+        if (iconEl) iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+        alertEl.className = 'hub-db-recovery-alert alert-success';
+        msgEl.textContent = res.message || 'Database action completed successfully.';
+      } else {
+        if (iconEl) iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+        alertEl.className = 'hub-db-recovery-alert alert-warning';
+        msgEl.textContent = res?.message || 'Database action finished with warnings.';
+      }
+      alertEl.style.display = 'flex';
+    }
+    loadProcessHubData();
+  } catch (err) {
+    allRecoveryBtns.forEach(b => { b.disabled = false; });
+    if (activeBtn) {
+      activeBtn.classList.remove('is-loading');
+      activeBtn.innerHTML = origText;
+    }
+    if (alertEl && msgEl) {
+      if (iconEl) iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+      alertEl.className = 'hub-db-recovery-alert alert-error';
+      msgEl.textContent = `Operation failed: ${err.message}`;
+      alertEl.style.display = 'flex';
+    }
+  }
+}
+
+function renderDatabasePanel(db) {
+  if (!db) return;
+  const engineEl = qs('#hub-db-engine-title');
+  if (engineEl) engineEl.textContent = db.engine || 'H2 2.2.224';
+  const modeEl = qs('#hub-db-mode-title');
+  if (modeEl) modeEl.textContent = db.storageMode || 'Embedded MVStore';
+  const pathEl = qs('#hub-db-path');
+  if (pathEl) pathEl.textContent = db.filePath || 'codelens_db.mv.db';
+  const diskEl = qs('#hub-db-disk-size');
+  if (diskEl) diskEl.textContent = `${db.fileSizeMb ?? 0} MB`;
+  const pingEl = qs('#hub-db-ping-val');
+  if (pingEl) {
+    const p = db.pingMs != null && db.pingMs >= 0 ? `${db.pingMs} ms` : '-';
+    pingEl.textContent = p;
+  }
+  const badgeEl = qs('#hub-db-status-badge');
+  if (badgeEl) {
+    const st = (db.status || 'HEALTHY').toUpperCase();
+    badgeEl.textContent = st;
+    badgeEl.className = 'hub-db-status-badge ' + (st === 'HEALTHY' ? 'status-healthy' : (st === 'DEGRADED' ? 'status-degraded' : 'status-corrupted'));
+  }
+
+  // Table counts
+  const tables = db.tables || {};
+  for (const [tbl, count] of Object.entries(tables)) {
+    const el = qs(`#hub-tbl-${tbl}`);
+    if (el) el.textContent = count >= 0 ? count.toLocaleString() : '-';
+  }
+
+  // Pool details
+  const pool = db.pool || {};
+  const activeEl = qs('#hub-pool-active');
+  if (activeEl) activeEl.textContent = pool.activeConnections ?? 0;
+  const idleEl = qs('#hub-pool-idle');
+  if (idleEl) idleEl.textContent = pool.idleConnections ?? 4;
+  const totalEl = qs('#hub-pool-total');
+  if (totalEl) totalEl.textContent = pool.totalConnections ?? 4;
+  const awaitEl = qs('#hub-pool-awaiting');
+  if (awaitEl) awaitEl.textContent = pool.threadsAwaiting ?? 0;
+  const maxEl = qs('#hub-pool-max');
+  if (maxEl) maxEl.textContent = pool.maxPoolSize ?? 20;
+  const poolNameEl = qs('#hub-pool-name');
+  if (poolNameEl) poolNameEl.textContent = pool.poolName || 'CodeLens-H2';
+
+  // Indexes list
+  const idxListEl = qs('#hub-index-list');
+  if (idxListEl && db.indexes) {
+    const missing = new Set(db.indexes.missing || []);
+    const verified = db.indexes.verified;
+    const badge = qs('#hub-index-status-badge');
+    if (badge) {
+      badge.textContent = verified ? 'All Verified' : `${missing.size} Missing`;
+      badge.className = 'hub-subcard-badge ' + (verified ? 'text-emerald' : 'text-amber');
+    }
+    const expected = [
+      { name: 'idx_types_pkg', desc: 'types(package_fqn)' },
+      { name: 'idx_types_kind', desc: 'types(kind)' },
+      { name: 'idx_types_pkg_kind', desc: 'types(package_fqn, kind)' },
+      { name: 'idx_fields_type', desc: 'fields(declaring_type_fqn)' },
+      { name: 'idx_methods_type', desc: 'methods(declaring_type_fqn)' },
+      { name: 'idx_methods_name', desc: 'methods(simple_name)' },
+      { name: 'idx_rels_from', desc: 'relationships(from_entity_fqn)' },
+      { name: 'idx_rels_to', desc: 'relationships(to_entity_fqn)' },
+      { name: 'idx_rels_kind', desc: 'relationships(kind)' },
+      { name: 'idx_rels_calls_covering', desc: 'relationships covering calls' },
+      { name: 'idx_rels_fields_covering', desc: 'relationships covering fields' },
+      { name: 'idx_pkgs_parent', desc: 'packages(parent_fqn)' },
+    ];
+    idxListEl.innerHTML = expected.map(idx => {
+      const isMiss = missing.has(idx.name);
+      return `<div class="hub-index-item ${isMiss ? 'is-missing' : 'is-verified'}">
+        <span class="hub-idx-status-icon">${isMiss ? '<svg class="svg-icon icon-xs icon-amber" style="width:11px;height:11px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' : '<svg class="svg-icon icon-xs icon-emerald" style="width:11px;height:11px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'}</span>
+        <span class="hub-idx-name font-mono">${esc(idx.name)}</span>
+        <span class="hub-idx-desc">${esc(idx.desc)}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderApisPanel(apis) {
+  if (!apis) return;
+  const tbody = qs('#hub-api-table-body');
+  if (!tbody) return;
+
+  const endpoints = apis.endpoints || [];
+  const q = (processHubApiSearch || '').trim().toLowerCase();
+  const cat = processHubApiCategory || 'all';
+
+  const filtered = endpoints.filter(ep => {
+    if (cat !== 'all' && ep.category !== cat) return false;
+    if (q) {
+      const haystack = `${ep.method} ${ep.path} ${ep.category} ${ep.description}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr>
+      <td colspan="8" class="hub-empty-cell">
+        <div class="hub-empty-state-inner">
+          <svg class="svg-icon icon-md icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <div class="hub-empty-msg">No endpoints found matching "${esc(q || cat)}"</div>
+          <button class="btn btn-xs btn-secondary" id="btn-reset-apis-filter" style="margin-top:6px;">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Reset Filter
+          </button>
+        </div>
+      </td>
+    </tr>`;
+    qs('#btn-reset-apis-filter')?.addEventListener('click', () => {
+      const apiSearchInput = qs('#hub-api-search-input');
+      if (apiSearchInput) apiSearchInput.value = '';
+      processHubApiSearch = '';
+      const apiSearchClear = qs('#hub-api-search-clear');
+      if (apiSearchClear) apiSearchClear.style.display = 'none';
+      processHubApiCategory = 'all';
+      qsa('#hub-api-category-pills .hub-cat-pill').forEach(p => {
+        const isAll = (p.dataset.category || 'all') === 'all';
+        p.classList.toggle('active', isAll);
+      });
+      renderApisPanel(apis);
+    });
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(ep => {
+    const methodCls = ep.method === 'GET' ? 'method-get' : (ep.method === 'POST' ? 'method-post' : 'method-delete');
+    const statusCls = ep.lastStatus >= 200 && ep.lastStatus < 300 ? 'status-2xx' : (ep.lastStatus >= 400 ? 'status-err' : 'status-none');
+    const statusText = ep.lastStatus > 0 ? ep.lastStatus : '-';
+    const callsText = (ep.calls || 0).toLocaleString();
+    const latText = ep.calls > 0 ? `${ep.avgLatencyMs} ms` : '-';
+    return `<tr>
+      <td><span class="hub-method-badge ${methodCls}">${esc(ep.method)}</span></td>
+      <td><code class="hub-api-path font-mono" title="${esc(ep.path)}">${esc(ep.path)}</code></td>
+      <td><span class="hub-api-category-chip">${esc(ep.category || '-')}</span></td>
+      <td class="hub-api-desc">${esc(ep.description || '-')}</td>
+      <td style="text-align: right;" class="font-mono">${callsText}</td>
+      <td style="text-align: right;" class="font-mono">${latText}</td>
+      <td style="text-align: center;"><span class="hub-api-status-pill ${statusCls}">${statusText}</span></td>
+      <td style="text-align: center;">
+        ${ep.canTest ? `<button class="btn-api-test" data-path="${esc(ep.path)}" title="Test endpoint live">Test</button>` : `<button class="btn-api-copy" data-path="${esc(ep.path)}" title="Copy route path">Copy</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Wire test/copy buttons
+  tbody.querySelectorAll('.btn-api-test').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const path = btn.dataset.path;
+      btn.textContent = '…';
+      try {
+        const res = await fetch(path);
+        btn.textContent = `${res.status}`;
+        setTimeout(() => { btn.textContent = 'Test'; }, 1500);
+        loadProcessHubData();
+      } catch (err) {
+        btn.textContent = 'Err';
+        setTimeout(() => { btn.textContent = 'Test'; }, 1500);
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.btn-api-copy').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard?.writeText(btn.dataset.path);
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+    });
+  });
+}
+
+function renderServerPanel(system) {
+  if (!system) return;
+  const thEl = qs('#hub-jvm-threads');
+  if (thEl) thEl.textContent = system.activeThreads ?? '-';
+  const usedEl = qs('#hub-jvm-heap-alloc');
+  if (usedEl) usedEl.textContent = `${system.heapUsedMb ?? 0} MB`;
+  const maxEl = qs('#hub-jvm-heap-max');
+  if (maxEl) maxEl.textContent = `${system.heapMaxMb ?? 0} MB`;
+}
+
 async function loadProcessHubData() {
   try {
     const refreshBtn = qs('#process-hub-refresh-btn');
@@ -855,11 +1100,14 @@ async function loadProcessHubData() {
 
     const data = await api.processes();
     if (!data) return;
+    processHubLastData = data;
 
     const listEl = qs('#process-hub-list');
     const emptyEl = qs('#process-hub-empty');
     const procs = data.processes || [];
     const system = data.system || {};
+    const db = data.database || {};
+    const apis = data.apis || {};
 
     // 1. Update pulse badge on header Tasks button
     const hasRunning = procs.some(p => p.status === 'RUNNING');
@@ -880,88 +1128,72 @@ async function loadProcessHubData() {
     if (countCompleteEl) countCompleteEl.textContent = completeCount;
     const countIdleEl = qs('#hub-count-idle');
     if (countIdleEl) countIdleEl.textContent = idleCount;
+    const navTasksCount = qs('#hub-nav-count-tasks');
+    if (navTasksCount) navTasksCount.textContent = totalCount;
 
-    // 3. Update telemetry stats bar & visual mini-gauges
-    const activeCountEl = qs('#hub-stat-active-count');
-    if (activeCountEl) {
-      activeCountEl.textContent = `${runningCount} Running`;
-      const activeSubEl = qs('#hub-stat-active-sub');
-      if (activeSubEl) activeSubEl.textContent = `${completeCount} Completed · ${totalCount} Total`;
-      const tasksFill = qs('#hub-bar-tasks');
-      if (tasksFill) {
-        const pct = totalCount > 0 ? Math.round((runningCount / totalCount) * 100) : 0;
-        tasksFill.style.width = Math.max(pct > 0 ? 12 : 0, pct) + '%';
-      }
+    // 3. Update compact telemetry HUD strip
+    const hudTasks = qs('#hub-hud-tasks');
+    if (hudTasks) hudTasks.textContent = `${runningCount}/${totalCount} Active`;
+    const hudTasksSub = qs('#hub-hud-tasks-sub');
+    if (hudTasksSub) hudTasksSub.textContent = '';
+
+    const hudDb = qs('#hub-hud-db');
+    if (hudDb) hudDb.textContent = `H2 · ${db.fileSizeMb ?? 0} MB`;
+    const hudDbStatus = qs('#hub-hud-db-status');
+    const isHealthy = (db.status || 'HEALTHY') === 'HEALTHY';
+    const isDegraded = db.status === 'DEGRADED';
+    const dotColor = isHealthy ? 'emerald' : (isDegraded ? 'amber' : 'rose');
+    if (hudDbStatus) {
+      hudDbStatus.innerHTML = `<span class="badge-dot dot-${dotColor}"></span> ${db.status || 'Healthy'}`;
+      hudDbStatus.className = 'hud-badge text-' + dotColor;
+    }
+    const navDbBadge = qs('#hub-nav-badge-db');
+    if (navDbBadge) {
+      navDbBadge.textContent = db.status || 'Healthy';
+      navDbBadge.className = 'hub-nav-badge text-' + dotColor;
     }
 
-    const dbPoolEl = qs('#hub-stat-db-pool');
-    if (dbPoolEl && system.dbPool) {
-      const active = system.dbPool.activeConnections ?? system.dbPool.active ?? 0;
-      const idle = system.dbPool.idleConnections ?? system.dbPool.idle ?? 0;
-      const maxPool = system.dbPool.maxPoolSize || 20;
-      dbPoolEl.textContent = `${active} Active`;
-      const dbSubEl = qs('#hub-stat-db-sub');
-      if (dbSubEl) dbSubEl.textContent = `${idle} Idle · Max ${maxPool} Pooled`;
-      const dbFill = qs('#hub-bar-db');
-      if (dbFill) {
-        const pct = Math.min(100, Math.round((active / Math.max(1, maxPool)) * 100));
-        dbFill.style.width = Math.max(active > 0 ? 10 : 0, pct) + '%';
-      }
-    }
+    const active = system.dbPool?.activeConnections ?? system.dbPool?.active ?? 0;
+    const idle = system.dbPool?.idleConnections ?? system.dbPool?.idle ?? 0;
+    const maxPool = system.dbPool?.maxPoolSize || 20;
+    const hudPool = qs('#hub-hud-pool');
+    if (hudPool) hudPool.textContent = `${active}/${maxPool}`;
+    const hudPoolSub = qs('#hub-hud-pool-sub');
+    if (hudPoolSub) hudPoolSub.textContent = `(${idle} idle)`;
 
-    const heapEl = qs('#hub-stat-heap');
-    if (heapEl) {
-      const used = system.heapUsedMb || 0;
-      const max = system.heapMaxMb || 0;
-      const pct = system.heapPercent || (max > 0 ? Math.round((used / max) * 100) : 0);
-      heapEl.textContent = `${used} MB (${pct}%)`;
-      const heapSubEl = qs('#hub-stat-heap-sub');
-      if (heapSubEl) heapSubEl.textContent = max > 0 ? `${max} MB Max Allocated` : 'Dynamic Memory Pool';
-      const heapFill = qs('#hub-bar-heap');
-      if (heapFill) {
-        heapFill.style.width = pct + '%';
-        if (pct > 85) {
-          heapFill.style.background = 'linear-gradient(90deg, #f43f5e, #e11d48)';
-        } else if (pct > 70) {
-          heapFill.style.background = 'linear-gradient(90deg, #eab308, #f59e0b)';
-        } else {
-          heapFill.style.background = 'linear-gradient(90deg, #10b981, #059669)';
-        }
-      }
-    }
+    const totalReq = apis.summary?.totalRequests || 0;
+    const avgLat = apis.summary?.avgLatencyMs || 0;
+    const epCount = apis.summary?.totalEndpoints || 52;
+    const hudApis = qs('#hub-hud-apis');
+    if (hudApis) hudApis.textContent = `${epCount}`;
+    const hudApisSub = qs('#hub-hud-apis-sub');
+    if (hudApisSub) hudApisSub.textContent = `(${totalReq.toLocaleString()} calls · ${avgLat}ms)`;
 
-    const healthEl = qs('#hub-stat-health');
-    if (healthEl) {
-      const hasError = procs.some(p => p.status === 'ERROR');
-      const healthFill = qs('#hub-bar-health');
-      if (hasError) {
-        healthEl.textContent = 'Attention Needed';
-        healthEl.className = 'hub-stat-value text-rose';
-        if (healthFill) {
-          healthFill.style.width = '45%';
-          healthFill.style.background = '#f43f5e';
-        }
-      } else {
-        healthEl.textContent = 'Healthy';
-        healthEl.className = 'hub-stat-value text-emerald';
-        if (healthFill) {
-          healthFill.style.width = '100%';
-          healthFill.style.background = 'linear-gradient(90deg, #10b981, #059669)';
-        }
-      }
-      const threadsEl = qs('#hub-stat-threads');
-      if (threadsEl && system.activeThreads != null) {
-        threadsEl.textContent = system.activeThreads;
-      }
-      const healthSubEl = qs('#hub-stat-health-sub');
-      if (healthSubEl && system.activeThreads != null) {
-        healthSubEl.innerHTML = `<span id="hub-stat-threads">${system.activeThreads}</span> Active Threads`;
-      }
-    }
+    const apiTotCallsEl = qs('#hub-api-total-calls');
+    if (apiTotCallsEl) apiTotCallsEl.textContent = totalReq.toLocaleString();
+    const apiTotCountEl = qs('#hub-api-total-count');
+    if (apiTotCountEl) apiTotCountEl.textContent = epCount;
+    const apiAvgLatEl = qs('#hub-api-avg-lat');
+    if (apiAvgLatEl) apiAvgLatEl.textContent = avgLat || '0.0';
+    const navApisCount = qs('#hub-nav-count-apis');
+    if (navApisCount) navApisCount.textContent = epCount;
+
+    const used = system.heapUsedMb || 0;
+    const max = system.heapMaxMb || 0;
+    const pct = system.heapPercent || (max > 0 ? Math.round((used / max) * 100) : 0);
+    const hudHeap = qs('#hub-hud-heap');
+    if (hudHeap) hudHeap.textContent = `${used} MB`;
+    const hudThreads = qs('#hub-hud-threads');
+    if (hudThreads) hudThreads.textContent = `(${system.activeThreads ?? 0} thr)`;
+
+    // Render respective panels
+    renderDatabasePanel(db);
+    renderApisPanel(apis);
+    renderServerPanel(system);
 
     if (!listEl) return;
 
-    // 4. Filter processes by active tab and search query
+    // Filter processes by active tab and search query
     const q = (processHubSearch || '').trim().toLowerCase();
     const filteredProcs = procs.filter(p => {
       // Tab filter
@@ -981,13 +1213,12 @@ async function loadProcessHubData() {
       emptyEl.style.display = filteredProcs.length === 0 ? 'flex' : 'none';
     }
 
-    // 5. Non-destructive keyed reconciliation
+    // Keyed reconciliation for process cards
     const existingCards = new Map();
     listEl.querySelectorAll('.process-card[data-process-id]').forEach(c => {
       existingCards.set(c.dataset.processId, c);
     });
 
-    // Track active IDs to prune removed ones
     const activeIds = new Set(filteredProcs.map(p => p.id));
     for (const [id, el] of existingCards.entries()) {
       if (!activeIds.has(id)) {
@@ -996,7 +1227,7 @@ async function loadProcessHubData() {
       }
     }
 
-    filteredProcs.forEach((p, index) => {
+    filteredProcs.forEach((p) => {
       let card = existingCards.get(p.id);
       const isNew = !card;
 
@@ -1011,7 +1242,11 @@ async function loadProcessHubData() {
       const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
 
       const iconSvg = getProcessIconSvg(p.id, p.type);
-      const statusBadgeIcon = p.status === 'RUNNING' ? '<span class="hub-live-dot" style="width:5px;height:5px;"></span>' : (p.status === 'COMPLETE' ? '✓ ' : '• ');
+      const statusBadgeIcon = p.status === 'RUNNING' 
+        ? '<span class="hub-live-dot" style="width:5px;height:5px;"></span>' 
+        : (p.status === 'COMPLETE' 
+          ? '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' 
+          : '• ');
 
       let rawDetail = p.currentDetail || '';
       if (!rawDetail) {
@@ -1021,7 +1256,6 @@ async function loadProcessHubData() {
         else if (p.status === 'COMPLETE') rawDetail = 'Execution complete · Ready';
         else rawDetail = 'Ready';
       }
-      // Clean epoch rev string e.g. (rev=1789500139576) -> (rev: 17895…)
       const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
 
       card.innerHTML = `
@@ -1044,7 +1278,7 @@ async function loadProcessHubData() {
 
         ${pct > 0 || p.status === 'RUNNING' ? `
           <div class="process-card-progress">
-            <div class="process-card-bar-track">
+            <div class="process-card-bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(p.name || p.id)} Progress">
               <div class="process-card-bar-fill" style="width:${pct}%;"></div>
             </div>
           </div>
@@ -1070,23 +1304,33 @@ async function loadProcessHubData() {
         </div>
       `;
 
-      // Kill button handler
+      // Kill button handler with inline two-step confirmation
       const killBtn = card.querySelector('.btn-kill-process');
       if (killBtn) {
         killBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (confirm(`Are you sure you want to terminate background process "${p.name || p.id}"?`)) {
-            try {
-              killBtn.disabled = true;
-              killBtn.textContent = 'Terminating…';
-              await api.killProcess(p.id);
-              showBanner(`Process "${p.name || p.id}" killed.`);
-              loadProcessHubData();
-            } catch (err) {
-              showError(`Failed to kill process: ${err.message}`);
-              killBtn.disabled = false;
-              killBtn.textContent = 'Kill Process';
-            }
+          if (!killBtn.classList.contains('confirm-state')) {
+            killBtn.classList.add('confirm-state');
+            killBtn.textContent = 'Confirm Kill?';
+            const timer = setTimeout(() => {
+              killBtn.classList.remove('confirm-state');
+              killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
+            }, 3500);
+            killBtn._confirmTimer = timer;
+            return;
+          }
+          clearTimeout(killBtn._confirmTimer);
+          killBtn.classList.remove('confirm-state');
+          try {
+            killBtn.disabled = true;
+            killBtn.textContent = 'Terminating…';
+            await api.killProcess(p.id);
+            showBanner(`Process "${p.name || p.id}" killed.`);
+            loadProcessHubData();
+          } catch (err) {
+            showError(`Failed to kill process: ${err.message}`);
+            killBtn.disabled = false;
+            killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
           }
         });
       }
@@ -1128,17 +1372,108 @@ function initProcessHub() {
     if (e.target === qs('#process-hub-modal')) closeProcessHub();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && qs('#process-hub-modal')?.style.display !== 'none') {
-      closeProcessHub();
-    }
-    // 'r' or 'R' inside Process Hub refreshes telemetry
-    if ((e.key === 'r' || e.key === 'R') && qs('#process-hub-modal')?.style.display !== 'none' && document.activeElement?.tagName !== 'INPUT') {
-      e.preventDefault();
-      loadProcessHubData();
+    if (qs('#process-hub-modal')?.style.display !== 'none') {
+      if (e.key === 'Escape') {
+        closeProcessHub();
+      } else if (document.activeElement?.tagName !== 'INPUT') {
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          loadProcessHubData();
+        } else if (e.key === '1') {
+          e.preventDefault();
+          qs('.hub-nav-tab[data-tab="tasks"]')?.click();
+        } else if (e.key === '2') {
+          e.preventDefault();
+          qs('.hub-nav-tab[data-tab="database"]')?.click();
+        } else if (e.key === '3') {
+          e.preventDefault();
+          qs('.hub-nav-tab[data-tab="apis"]')?.click();
+        } else if (e.key === '4') {
+          e.preventDefault();
+          qs('.hub-nav-tab[data-tab="server"]')?.click();
+        }
+      }
     }
   });
 
-  // Filter tabs click handling
+  // Top-Level Navigation Tabs Switching
+  qsa('.hub-nav-tab').forEach(tabBtn => {
+    tabBtn.addEventListener('click', () => {
+      qsa('.hub-nav-tab').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      tabBtn.classList.add('active');
+      tabBtn.setAttribute('aria-selected', 'true');
+      processHubActiveTab = tabBtn.dataset.tab || 'tasks';
+
+      // Switch panels
+      qsa('.hub-tab-panel').forEach(p => {
+        p.classList.remove('active');
+        p.style.display = 'none';
+      });
+      const targetPanel = qs(`#hub-panel-${processHubActiveTab}`);
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+        targetPanel.style.display = 'block';
+      }
+
+      if (processHubLastData) {
+        if (processHubActiveTab === 'database') renderDatabasePanel(processHubLastData.database);
+        else if (processHubActiveTab === 'apis') renderApisPanel(processHubLastData.apis);
+        else if (processHubActiveTab === 'server') renderServerPanel(processHubLastData.system);
+      }
+    });
+  });
+
+  // Database Action Buttons
+  qs('#btn-quick-db-health')?.addEventListener('click', () => {
+    const dbTab = qs('.hub-nav-tab[data-tab="database"]');
+    if (dbTab) dbTab.click();
+    runDbRecovery('health_check');
+  });
+  qs('#btn-db-action-health')?.addEventListener('click', () => runDbRecovery('health_check'));
+  qs('#btn-db-action-reindex')?.addEventListener('click', () => runDbRecovery('reindex'));
+  qs('#btn-db-action-compact')?.addEventListener('click', () => runDbRecovery('compact'));
+  qs('#btn-db-action-clean')?.addEventListener('click', () => runDbRecovery('clean_orphans'));
+  qs('#btn-hub-db-alert-close')?.addEventListener('click', () => {
+    const alertEl = qs('#hub-db-recovery-alert');
+    if (alertEl) alertEl.style.display = 'none';
+  });
+
+  // API Category Filter Pills
+  qsa('#hub-api-category-pills .hub-cat-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      qsa('#hub-api-category-pills .hub-cat-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      processHubApiCategory = pill.dataset.category || 'all';
+      if (processHubLastData?.apis) renderApisPanel(processHubLastData.apis);
+    });
+  });
+
+  // API Search Input
+  const apiSearchInput = qs('#hub-api-search-input');
+  const apiSearchClear = qs('#hub-api-search-clear');
+  if (apiSearchInput) {
+    apiSearchInput.addEventListener('input', (e) => {
+      processHubApiSearch = e.target.value;
+      if (apiSearchClear) apiSearchClear.style.display = processHubApiSearch ? 'block' : 'none';
+      if (processHubLastData?.apis) renderApisPanel(processHubLastData.apis);
+    });
+  }
+  if (apiSearchClear) {
+    apiSearchClear.addEventListener('click', () => {
+      if (apiSearchInput) {
+        apiSearchInput.value = '';
+        processHubApiSearch = '';
+        apiSearchClear.style.display = 'none';
+        apiSearchInput.focus();
+        if (processHubLastData?.apis) renderApisPanel(processHubLastData.apis);
+      }
+    });
+  }
+
+  // Filter tabs click handling (Background Tasks)
   qsa('.hub-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       qsa('.hub-tab-btn').forEach(b => {
@@ -1152,9 +1487,9 @@ function initProcessHub() {
     });
   });
 
-  // Search input handling
-  const searchInput = qs('#hub-search-input');
-  const clearBtn = qs('#hub-search-clear-btn');
+  // Search input handling (Background Tasks)
+  const searchInput = qs('#process-hub-search-input');
+  const clearBtn = qs('#process-hub-search-clear-btn');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       processHubSearch = e.target.value;
@@ -1173,6 +1508,20 @@ function initProcessHub() {
       }
     });
   }
+
+  // Reset Tasks Filter Button in Tab 1 Empty State
+  qs('#btn-reset-tasks-filter')?.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    processHubSearch = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    processHubFilter = 'all';
+    qsa('.hub-tab-btn').forEach(b => {
+      const isAll = (b.dataset.filter || 'all') === 'all';
+      b.classList.toggle('active', isAll);
+      b.setAttribute('aria-selected', isAll ? 'true' : 'false');
+    });
+    loadProcessHubData();
+  });
 
   // Background check every 10 seconds to update header pulse badge
   setInterval(async () => {

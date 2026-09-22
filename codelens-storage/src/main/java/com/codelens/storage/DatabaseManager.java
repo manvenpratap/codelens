@@ -123,6 +123,174 @@ public class DatabaseManager {
         return m;
     }
 
+    /** Returns comprehensive database diagnostics including storage size, pool status, table counts, and index health. */
+    public java.util.Map<String, Object> getDiagnostics() {
+        java.util.Map<String, Object> diag = new java.util.LinkedHashMap<>();
+
+        // 1. File & Storage Info
+        java.nio.file.Path dbFile = java.nio.file.Paths.get(dataDir, "codelens_db.mv.db");
+        long sizeBytes = 0;
+        try {
+            if (java.nio.file.Files.exists(dbFile)) {
+                sizeBytes = java.nio.file.Files.size(dbFile);
+            }
+        } catch (Exception ignored) {}
+        double sizeMb = Math.round((sizeBytes / (1024.0 * 1024.0)) * 10.0) / 10.0;
+
+        diag.put("filePath", dbFile.toAbsolutePath().toString());
+        diag.put("fileSizeBytes", sizeBytes);
+        diag.put("fileSizeMb", sizeMb);
+        diag.put("storageMode", "Embedded MVStore (File-backed)");
+
+        // 2. Pool stats
+        diag.put("pool", getPoolStats());
+
+        // 3. Engine & Connection Ping
+        String h2Version = "Unknown";
+        double pingMs = -1;
+        boolean connected = false;
+        java.util.Map<String, Integer> tables = new java.util.LinkedHashMap<>();
+        java.util.List<String> existingIndexes = new java.util.ArrayList<>();
+        int orphanCount = 0;
+
+        long start = System.nanoTime();
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            try (ResultSet rs = stmt.executeQuery("SELECT 1")) {
+                if (rs.next()) connected = true;
+            }
+            pingMs = Math.round(((System.nanoTime() - start) / 1_000_000.0) * 10.0) / 10.0;
+
+            try (ResultSet rs = stmt.executeQuery("SELECT H2VERSION()")) {
+                if (rs.next()) h2Version = rs.getString(1);
+            }
+
+            // Table counts
+            String[] tableNames = {"PACKAGES", "TYPES", "METHODS", "FIELDS", "RELATIONSHIPS", "INCONSISTENCIES", "SCAN_META", "GIT_COMMITS", "ANALYST_NOTES"};
+            for (String tbl : tableNames) {
+                try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tbl)) {
+                    if (rs.next()) tables.put(tbl.toLowerCase(), rs.getInt(1));
+                } catch (Exception e) {
+                    tables.put(tbl.toLowerCase(), -1);
+                }
+            }
+
+            // Index checks
+            try (ResultSet rs = stmt.executeQuery("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_SCHEMA = 'PUBLIC'")) {
+                while (rs.next()) {
+                    existingIndexes.add(rs.getString(1).toLowerCase());
+                }
+            }
+
+            // Orphan count
+            try (ResultSet rs = stmt.executeQuery(
+                "SELECT (" +
+                "  (SELECT COUNT(*) FROM relationships WHERE kind IN ('CALLS','OVERRIDES') AND from_entity_fqn NOT IN (SELECT fqn FROM methods) AND from_entity_fqn NOT IN (SELECT fqn FROM types)) + " +
+                "  (SELECT COUNT(*) FROM methods WHERE declaring_type_fqn NOT IN (SELECT fqn FROM types))" +
+                ") AS total_orphans")) {
+                if (rs.next()) orphanCount = rs.getInt(1);
+            }
+
+        } catch (Exception e) {
+            log.warn("Diagnostics error: {}", e.getMessage());
+        }
+
+        diag.put("engine", "H2 " + h2Version);
+        diag.put("connected", connected);
+        diag.put("pingMs", pingMs);
+        diag.put("tables", tables);
+        diag.put("orphanCount", orphanCount);
+
+        // Critical secondary indexes expected
+        java.util.List<String> expectedIndexes = java.util.List.of(
+            "idx_types_pkg", "idx_types_kind", "idx_types_pkg_kind", "idx_fields_type",
+            "idx_methods_type", "idx_methods_name", "idx_rels_from", "idx_rels_to",
+            "idx_rels_kind", "idx_rels_calls_covering", "idx_rels_fields_covering", "idx_pkgs_parent"
+        );
+        java.util.List<String> missingIndexes = new java.util.ArrayList<>();
+        for (String exp : expectedIndexes) {
+            if (!existingIndexes.contains(exp)) {
+                missingIndexes.add(exp);
+            }
+        }
+
+        java.util.Map<String, Object> indexInfo = new java.util.LinkedHashMap<>();
+        indexInfo.put("total", existingIndexes.size());
+        indexInfo.put("verified", missingIndexes.isEmpty());
+        indexInfo.put("missing", missingIndexes);
+        diag.put("indexes", indexInfo);
+
+        // Overall health status
+        String status;
+        String message;
+        if (!connected) {
+            status = "CORRUPTED";
+            message = "Database connection failed or database file is locked/corrupted.";
+        } else if (!missingIndexes.isEmpty()) {
+            status = "DEGRADED";
+            message = "Missing " + missingIndexes.size() + " secondary index(es). Click 'Self-Heal Indexes' to rebuild.";
+        } else if (orphanCount > 0) {
+            status = "DEGRADED";
+            message = "Found " + orphanCount + " orphan records. Click 'Purge Orphans' to clean.";
+        } else {
+            status = "HEALTHY";
+            message = "Database is healthy. All tables and secondary indexes intact (" + pingMs + "ms ping).";
+        }
+        diag.put("status", status);
+        diag.put("statusMessage", message);
+        diag.put("lastChecked", System.currentTimeMillis());
+
+        return diag;
+    }
+
+    /** Runs an interactive health check and returns complete diagnostic results. */
+    public java.util.Map<String, Object> runHealthCheck() {
+        return getDiagnostics();
+    }
+
+    /** Purges dangling relationships and orphaned records from deleted/invalid source entities. */
+    public int purgeOrphanData() {
+        log.info("Purging orphan data from H2 database...");
+        int purged = 0;
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(false);
+            try {
+                int relsFrom = stmt.executeUpdate(
+                    "DELETE FROM relationships WHERE kind IN ('CALLS', 'OVERRIDES') " +
+                    "AND from_entity_fqn NOT IN (SELECT fqn FROM methods) " +
+                    "AND from_entity_fqn NOT IN (SELECT fqn FROM types)"
+                );
+                int relsTo = stmt.executeUpdate(
+                    "DELETE FROM relationships WHERE kind = 'CALLS' " +
+                    "AND to_entity_fqn NOT IN (SELECT fqn FROM methods)"
+                );
+                int relsFields = stmt.executeUpdate(
+                    "DELETE FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD') " +
+                    "AND to_entity_fqn NOT IN (SELECT fqn FROM fields)"
+                );
+                int orphanMethods = stmt.executeUpdate(
+                    "DELETE FROM methods WHERE declaring_type_fqn NOT IN (SELECT fqn FROM types)"
+                );
+                int orphanFields = stmt.executeUpdate(
+                    "DELETE FROM fields WHERE declaring_type_fqn NOT IN (SELECT fqn FROM types)"
+                );
+                conn.commit();
+                purged = relsFrom + relsTo + relsFields + orphanMethods + orphanFields;
+                log.info("Orphan purge complete: {} records removed", purged);
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (Exception e) {
+            log.error("Failed to purge orphan data: {}", e.getMessage(), e);
+        }
+        return purged;
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // DDL – idempotent CREATE IF NOT EXISTS for every table and index

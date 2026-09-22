@@ -2348,7 +2348,7 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     PROCESS HUB & BACKGROUND TASK MANAGER MODAL
+     PROCESS HUB & BACKEND PROCESS MANAGER MODAL
      ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="process-hub-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="process-hub-modal-title">
   <div class="modal-dialog process-hub-dialog">
@@ -2360,7 +2360,7 @@
             <h2 id="process-hub-modal-title">Background Tasks &amp; Process Manager</h2>
             <div class="hub-live-pill" title="Live telemetry streaming (polls every 2 seconds)"><span class="hub-live-dot"></span><span class="hub-live-text">Live</span></div>
           </div>
-          <div class="process-hub-subtitle">Inspect telemetry, kill hanging threads, or trigger restarts for background workers</div>
+          <div class="process-hub-subtitle">Inspect background workers, database storage &amp; health recovery, and REST API telemetry</div>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
@@ -2373,80 +2373,342 @@
       </div>
     </div>
     <div class="modal-body process-hub-body">
-      <!-- System / Pool Resources Summary Bar with Mini-Gauges -->
-      <div class="process-hub-stats-bar" id="process-hub-stats-bar">
-        <div class="hub-stat-item hub-stat-card">
-          <div class="hub-stat-header">
-            <span class="hub-stat-label">Active Tasks</span>
-            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-          </div>
-          <span class="hub-stat-value" id="hub-stat-active-count">0 Running</span>
-          <span class="hub-stat-sub" id="hub-stat-active-sub">5 Registered Tasks</span>
-          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-tasks" id="hub-bar-tasks" style="width: 0%;"></div></div>
+      <!-- Compact Telemetry HUD Strip -->
+      <div class="hub-telemetry-hud" id="hub-telemetry-hud" role="region" aria-label="Backend Engine Telemetry">
+        <div class="hud-telemetry-item">
+          <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="hud-lbl">Workers:</span>
+          <span class="hud-val font-mono" id="hub-hud-tasks">0/5 Active</span>
+          <span class="hud-sub" id="hub-hud-tasks-sub" style="display:none;"></span>
         </div>
-        <div class="hub-stat-item hub-stat-card">
-          <div class="hub-stat-header">
-            <span class="hub-stat-label">DB Connection Pool</span>
-            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></span>
-          </div>
-          <span class="hub-stat-value" id="hub-stat-db-pool">0 Active</span>
-          <span class="hub-stat-sub" id="hub-stat-db-sub">4 Idle · Max 20 Pooled</span>
-          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-db" id="hub-bar-db" style="width: 0%;"></div></div>
+        <div class="hud-sep">·</div>
+        <div class="hud-telemetry-item">
+          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          <span class="hud-lbl">Storage:</span>
+          <span class="hud-val font-mono" id="hub-hud-db">H2 · 0 MB</span>
+          <span class="hud-badge text-emerald" id="hub-hud-db-status"><span class="badge-dot dot-emerald"></span> Healthy</span>
         </div>
-        <div class="hub-stat-item hub-stat-card">
-          <div class="hub-stat-header">
-            <span class="hub-stat-label">JVM Heap Memory</span>
-            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg></span>
-          </div>
-          <span class="hub-stat-value" id="hub-stat-heap">0 MB (0%)</span>
-          <span class="hub-stat-sub" id="hub-stat-heap-sub">Dynamic Allocation</span>
-          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-heap" id="hub-bar-heap" style="width: 0%;"></div></div>
+        <div class="hud-sep">·</div>
+        <div class="hud-telemetry-item">
+          <svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          <span class="hud-lbl">Pool:</span>
+          <span class="hud-val font-mono" id="hub-hud-pool">0/20</span>
+          <span class="hud-sub" id="hub-hud-pool-sub">(4 idle)</span>
         </div>
-        <div class="hub-stat-item hub-stat-card">
-          <div class="hub-stat-header">
-            <span class="hub-stat-label">Engine Health</span>
-            <span class="hub-stat-icon-wrap"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></span>
-          </div>
-          <span class="hub-stat-value text-emerald" id="hub-stat-health">Healthy</span>
-          <span class="hub-stat-sub" id="hub-stat-health-sub"><span id="hub-stat-threads">0</span> Active Threads</span>
-          <div class="hub-stat-bar-track"><div class="hub-stat-bar-fill hub-bar-health" id="hub-bar-health" style="width: 100%;"></div></div>
+        <div class="hud-sep">·</div>
+        <div class="hud-telemetry-item">
+          <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span class="hud-lbl">APIs:</span>
+          <span class="hud-val font-mono" id="hub-hud-apis">67</span>
+          <span class="hud-sub" id="hub-hud-apis-sub">(0 calls)</span>
+        </div>
+        <div class="hud-sep">·</div>
+        <div class="hud-telemetry-item">
+          <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
+          <span class="hud-lbl">JVM:</span>
+          <span class="hud-val font-mono" id="hub-hud-heap">0 MB</span>
+          <span class="hud-sub" id="hub-hud-threads">(0 thr)</span>
         </div>
       </div>
 
-      <!-- Task Filter Tabs & Search Toolbar -->
-      <div class="process-hub-toolbar">
-        <div class="hub-filter-tabs" role="tablist" aria-label="Filter background tasks">
-          <button class="hub-tab-btn active" data-filter="all" role="tab" aria-selected="true">
-            All Tasks <span class="hub-tab-count" id="hub-count-all">0</span>
-          </button>
-          <button class="hub-tab-btn" data-filter="running" role="tab" aria-selected="false">
-            Running <span class="hub-tab-count" id="hub-count-running">0</span>
-          </button>
-          <button class="hub-tab-btn" data-filter="complete" role="tab" aria-selected="false">
-            Completed <span class="hub-tab-count" id="hub-count-complete">0</span>
-          </button>
-          <button class="hub-tab-btn" data-filter="idle" role="tab" aria-selected="false">
-            Idle <span class="hub-tab-count" id="hub-count-idle">0</span>
-          </button>
+      <!-- Process Hub Top-Level Navigation Tabs -->
+      <div class="hub-nav-tabs" role="tablist" aria-label="Process Hub Navigation">
+        <button class="hub-nav-tab active" data-tab="tasks" role="tab" aria-selected="true" aria-controls="hub-panel-tasks">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Background Tasks</span>
+          <span class="hub-nav-count" id="hub-nav-count-tasks">5</span>
+        </button>
+        <button class="hub-nav-tab" data-tab="database" role="tab" aria-selected="false" aria-controls="hub-panel-database">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          <span>Database &amp; Storage</span>
+          <span class="hub-nav-badge text-emerald" id="hub-nav-badge-db">Healthy</span>
+        </button>
+        <button class="hub-nav-tab" data-tab="apis" role="tab" aria-selected="false" aria-controls="hub-panel-apis">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Backend APIs</span>
+          <span class="hub-nav-count" id="hub-nav-count-apis">52</span>
+        </button>
+        <button class="hub-nav-tab" data-tab="server" role="tab" aria-selected="false" aria-controls="hub-panel-server">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
+          <span>Server Telemetry</span>
+        </button>
+      </div>
+
+      <!-- ── TAB 1: Background Tasks Panel ── -->
+      <div class="hub-tab-panel active" id="hub-panel-tasks">
+        <!-- Task Filter Tabs & Search Toolbar -->
+        <div class="process-hub-toolbar">
+          <div class="hub-filter-tabs" role="tablist" aria-label="Filter background tasks">
+            <button class="hub-tab-btn active" data-filter="all" role="tab" aria-selected="true">
+              All Tasks <span class="hub-tab-count" id="hub-count-all">0</span>
+            </button>
+            <button class="hub-tab-btn" data-filter="running" role="tab" aria-selected="false">
+              Running <span class="hub-tab-count" id="hub-count-running">0</span>
+            </button>
+            <button class="hub-tab-btn" data-filter="complete" role="tab" aria-selected="false">
+              Completed <span class="hub-tab-count" id="hub-count-complete">0</span>
+            </button>
+            <button class="hub-tab-btn" data-filter="idle" role="tab" aria-selected="false">
+              Idle <span class="hub-tab-count" id="hub-count-idle">0</span>
+            </button>
+          </div>
+          <div class="hub-search-box">
+            <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="process-hub-search-input" placeholder="Filter tasks by name, type, phase…" aria-label="Filter background tasks" />
+            <button class="hub-search-clear-btn" id="process-hub-search-clear-btn" title="Clear filter" aria-label="Clear filter" style="display:none;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
-        <div class="hub-search-box">
-          <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" id="hub-search-input" placeholder="Filter tasks by name, type, phase…" aria-label="Filter background tasks" />
-          <button class="hub-search-clear-btn" id="hub-search-clear-btn" title="Clear filter" style="display:none;">&times;</button>
+
+        <!-- Process Cards List Container -->
+        <div class="process-hub-list" id="process-hub-list">
+          <!-- Rendered dynamically from /api/processes -->
+        </div>
+
+        <!-- Empty State Container -->
+        <div class="process-hub-empty" id="process-hub-empty" style="display:none;">
+          <svg class="svg-icon icon-lg icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <div class="hub-empty-title">No matching tasks found</div>
+          <div class="hub-empty-sub">Adjust your search query or filter tab to view background processes</div>
+          <button class="btn btn-xs btn-secondary" id="btn-reset-tasks-filter" style="margin-top:10px;">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Reset Filter
+          </button>
         </div>
       </div>
 
-      <!-- Process Cards List Container -->
-      <div class="process-hub-list" id="process-hub-list">
-        <!-- Rendered dynamically from /api/processes -->
+      <!-- ── TAB 2: Database & Storage Panel ── -->
+      <div class="hub-tab-panel" id="hub-panel-database" style="display:none;">
+        <!-- Database Health & Overview Banner -->
+        <div class="hub-db-overview-banner">
+          <div class="hub-db-overview-left">
+            <div class="hub-db-engine-badge">
+              <span class="hub-db-engine-name" id="hub-db-engine-title">H2 2.2.224</span>
+              <span class="hub-db-mode-tag" id="hub-db-mode-title">Embedded MVStore</span>
+            </div>
+            <div class="hub-db-path-text" id="hub-db-path" title="Database file location on disk">.../codelens_db.mv.db</div>
+          </div>
+          <div class="hub-db-overview-right">
+            <div class="hub-db-metric-chip">
+              <span class="hub-db-metric-lbl">Disk Size</span>
+              <span class="hub-db-metric-val" id="hub-db-disk-size">0 MB</span>
+            </div>
+            <div class="hub-db-metric-chip">
+              <span class="hub-db-metric-lbl">Ping Latency</span>
+              <span class="hub-db-metric-val text-emerald" id="hub-db-ping-val">0.0 ms</span>
+            </div>
+            <div class="hub-db-metric-chip">
+              <span class="hub-db-metric-lbl">Health Status</span>
+              <span class="hub-db-status-badge status-healthy" id="hub-db-status-badge">HEALTHY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Database Health Check & Recovery Actions Strip -->
+        <div class="hub-db-actions-strip">
+          <div class="hub-db-actions-title-group">
+            <span class="hub-db-actions-title"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg> Health &amp; Recovery Actions</span>
+            <span class="hub-db-actions-sub">Perform live diagnostics, index self-healing, compaction, or orphan cleanup</span>
+          </div>
+          <div class="hub-db-btn-group">
+            <button class="btn btn-xs btn-primary" id="btn-db-action-health" title="Execute comprehensive connection, index, and table integrity check">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Run Health Check
+            </button>
+            <button class="btn btn-xs btn-outline" id="btn-db-action-reindex" title="Rebuild all secondary indexes and analyze cost-based statistics">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Self-Heal Indexes
+            </button>
+            <button class="btn btn-xs btn-outline" id="btn-db-action-compact" title="Compact H2 MVStore storage to reclaim fragmented disk space">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg> Vacuum &amp; Compact
+            </button>
+            <button class="btn btn-xs btn-outline" id="btn-db-action-clean" title="Safely remove dangling relationship or orphan method references">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Purge Orphans
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Recovery Action Result Alert Banner -->
+        <div class="hub-db-recovery-alert" id="hub-db-recovery-alert" style="display:none;" role="status">
+          <div class="hub-db-alert-content">
+            <span class="hub-db-alert-icon" id="hub-db-alert-icon">✓</span>
+            <span class="hub-db-alert-msg" id="hub-db-alert-msg">Database health check completed successfully.</span>
+          </div>
+          <button class="hub-db-alert-close" id="btn-hub-db-alert-close" aria-label="Dismiss alert">&times;</button>
+        </div>
+
+        <!-- Table Statistics Grid -->
+        <div class="hub-db-section-header">
+          <span class="hub-db-section-title">Table Statistics &amp; Row Counts</span>
+          <span class="hub-db-section-sub">Live records stored across primary relational entities</span>
+        </div>
+        <div class="hub-db-tables-grid" id="hub-db-tables-grid">
+          <div class="hub-table-card">
+            <div class="hub-table-name">PACKAGES</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-packages">-</div>
+            <div class="hub-table-desc">Namespaces &amp; modules</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">TYPES</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-types">-</div>
+            <div class="hub-table-desc">Classes, interfaces, enums</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">METHODS</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-methods">-</div>
+            <div class="hub-table-desc">Declared functions &amp; CTORs</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">FIELDS</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-fields">-</div>
+            <div class="hub-table-desc">State &amp; member variables</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">RELATIONSHIPS</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-relationships">-</div>
+            <div class="hub-table-desc">Calls, reads, writes, extends</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">GIT COMMITS</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-git_commits">-</div>
+            <div class="hub-table-desc">Commit history &amp; churn</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">ANALYST NOTES</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-analyst_notes">-</div>
+            <div class="hub-table-desc">User-annotated tags</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">SCAN META</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-scan_meta">-</div>
+            <div class="hub-table-desc">Ingestion timestamps</div>
+          </div>
+        </div>
+
+        <!-- Connection Pool & Secondary Indexes Split -->
+        <div class="hub-db-split-row">
+          <!-- Connection Pool Diagnostics -->
+          <div class="hub-db-subcard">
+            <div class="hub-subcard-header">
+              <span class="hub-subcard-title"><svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg> HikariCP Connection Pool</span>
+              <span class="hub-subcard-badge" id="hub-pool-name">CodeLens-H2</span>
+            </div>
+            <div class="hub-pool-details-grid">
+              <div class="hub-pool-row"><span class="pool-lbl">Active Connections:</span><span class="pool-val font-mono" id="hub-pool-active">0</span></div>
+              <div class="hub-pool-row"><span class="pool-lbl">Idle Connections:</span><span class="pool-val font-mono" id="hub-pool-idle">4</span></div>
+              <div class="hub-pool-row"><span class="pool-lbl">Total Connections:</span><span class="pool-val font-mono" id="hub-pool-total">4</span></div>
+              <div class="hub-pool-row"><span class="pool-lbl">Threads Awaiting:</span><span class="pool-val font-mono" id="hub-pool-awaiting">0</span></div>
+              <div class="hub-pool-row"><span class="pool-lbl">Max Pool Capacity:</span><span class="pool-val font-mono" id="hub-pool-max">20</span></div>
+              <div class="hub-pool-row"><span class="pool-lbl">Connection Timeout:</span><span class="pool-val font-mono">60,000 ms</span></div>
+            </div>
+          </div>
+
+          <!-- Secondary Index Integrity -->
+          <div class="hub-db-subcard">
+            <div class="hub-subcard-header">
+              <span class="hub-subcard-title"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Index Integrity &amp; Coverage</span>
+              <span class="hub-subcard-badge text-emerald" id="hub-index-status-badge">12/12 Verified</span>
+            </div>
+            <div class="hub-index-list" id="hub-index-list">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Empty State Container -->
-      <div class="process-hub-empty" id="process-hub-empty" style="display:none;">
-        <svg class="svg-icon icon-lg icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        <div class="hub-empty-title">No matching tasks found</div>
-        <div class="hub-empty-sub">Adjust your search query or filter tab to view background processes</div>
+      <!-- ── TAB 3: Backend REST APIs Panel ── -->
+      <div class="hub-tab-panel" id="hub-panel-apis" style="display:none;">
+        <!-- API Summary & Search Toolbar -->
+        <div class="hub-api-toolbar">
+          <div class="hub-api-search-wrap">
+            <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="hub-api-search-input" placeholder="Search 50+ APIs by endpoint path, method, category, or description…" aria-label="Search backend APIs" />
+            <button class="hub-search-clear-btn" id="hub-api-search-clear" title="Clear search" aria-label="Clear search" style="display:none;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="hub-api-metrics-strip">
+            <span class="hub-api-metric-item"><strong id="hub-api-total-count">52</strong> Endpoints</span>
+            <span class="hub-api-metric-sep">•</span>
+            <span class="hub-api-metric-item"><strong id="hub-api-total-calls">0</strong> Total Requests</span>
+            <span class="hub-api-metric-sep">•</span>
+            <span class="hub-api-metric-item"><strong id="hub-api-avg-lat">0.0</strong> ms Avg Latency</span>
+          </div>
+        </div>
+
+        <!-- API Category Filter Pills -->
+        <div class="hub-api-category-pills" id="hub-api-category-pills" role="tablist">
+          <button class="hub-cat-pill active" data-category="all">All APIs</button>
+          <button class="hub-cat-pill" data-category="Scan &amp; Ingestion">Scan &amp; Ingestion</button>
+          <button class="hub-cat-pill" data-category="Methods &amp; Call Graph">Methods &amp; Call Graph</button>
+          <button class="hub-cat-pill" data-category="Database &amp; Storage">Database &amp; Storage</button>
+          <button class="hub-cat-pill" data-category="Packages &amp; Modules">Packages &amp; Modules</button>
+          <button class="hub-cat-pill" data-category="Types &amp; Classes">Types &amp; Classes</button>
+          <button class="hub-cat-pill" data-category="Fields &amp; Impact">Fields &amp; Impact</button>
+          <button class="hub-cat-pill" data-category="Critical Path">Critical Path</button>
+          <button class="hub-cat-pill" data-category="Reports">Reports</button>
+          <button class="hub-cat-pill" data-category="Git Analytics">Git Analytics</button>
+          <button class="hub-cat-pill" data-category="Config &amp; Scope">Config &amp; Scope</button>
+        </div>
+
+        <!-- API Catalog Table Container -->
+        <div class="hub-api-table-wrap">
+          <table class="hub-api-table">
+            <thead>
+              <tr>
+                <th style="width: 80px;">Method</th>
+                <th style="width: 280px;">Endpoint Route</th>
+                <th style="width: 150px;">Category</th>
+                <th>Description</th>
+                <th style="width: 70px; text-align: right;">Calls</th>
+                <th style="width: 85px; text-align: right;">Avg Latency</th>
+                <th style="width: 80px; text-align: center;">Status</th>
+                <th style="width: 80px; text-align: center;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="hub-api-table-body">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <!-- ── TAB 4: Server Telemetry Panel ── -->
+      <div class="hub-tab-panel" id="hub-panel-server" style="display:none;">
+        <div class="hub-server-grid">
+          <!-- Server & Web Engine -->
+          <div class="hub-server-card">
+            <div class="hub-server-header">
+              <span class="hub-server-title"><svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> HTTP &amp; Web Engine</span>
+              <span class="hub-server-badge text-emerald">RUNNING</span>
+            </div>
+            <div class="hub-server-rows">
+              <div class="hub-server-row"><span class="srv-lbl">HTTP Framework:</span><span class="srv-val font-mono">Javalin 6.1.3</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Underlying Server:</span><span class="srv-val font-mono">Eclipse Jetty 11.0.20</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Listening Port:</span><span class="srv-val font-mono">7878</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Host Interface:</span><span class="srv-val font-mono">0.0.0.0 (All Interfaces)</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Compression:</span><span class="srv-val font-mono">Gzip (Enabled)</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">CORS:</span><span class="srv-val font-mono">Permissive Local (Enabled)</span></div>
+            </div>
+          </div>
+
+          <!-- JVM & Runtime -->
+          <div class="hub-server-card">
+            <div class="hub-server-header">
+              <span class="hub-server-title"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg> JVM &amp; Host Environment</span>
+              <span class="hub-server-badge" id="hub-jvm-version">Java 17</span>
+            </div>
+            <div class="hub-server-rows">
+              <div class="hub-server-row"><span class="srv-lbl">Java Runtime:</span><span class="srv-val font-mono" id="hub-jvm-runtime">Eclipse Temurin 17</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Available CPU Cores:</span><span class="srv-val font-mono" id="hub-jvm-cores">8 Cores</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Active JVM Threads:</span><span class="srv-val font-mono" id="hub-jvm-threads">0</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Heap Memory Allocated:</span><span class="srv-val font-mono" id="hub-jvm-heap-alloc">0 MB</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">Heap Memory Max:</span><span class="srv-val font-mono" id="hub-jvm-heap-max">0 MB</span></div>
+              <div class="hub-server-row"><span class="srv-lbl">GC Strategy:</span><span class="srv-val font-mono">G1 / Parallel Garbage Collector</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>

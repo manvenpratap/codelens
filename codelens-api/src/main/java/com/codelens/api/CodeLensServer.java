@@ -109,6 +109,7 @@ public class CodeLensServer {
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
+    private final ApiTracker apiTracker = new ApiTracker();
 
     public boolean handleConditionalETag(Context ctx, String cacheKey) {
         long rev = this.scanRevision.get();
@@ -364,6 +365,17 @@ public class CodeLensServer {
                 cors.addRule(rule -> rule.anyHost()));
         });
 
+        // ── API Telemetry Filters ─────────────────────────────────────────────
+        app.before(ctx -> {
+            ctx.attribute("startTime", System.currentTimeMillis());
+            apiTracker.recordRequestStart(ctx.method().name(), ctx.path());
+        });
+        app.after(ctx -> {
+            Long start = ctx.attribute("startTime");
+            long duration = start != null ? (System.currentTimeMillis() - start) : 0;
+            apiTracker.recordRequestEnd(ctx.method().name(), ctx.matchedPath(), ctx.status().getCode(), duration);
+        });
+
         // ── Root redirect ─────────────────────────────────────────────────────
         app.get("/", ctx -> ctx.redirect("/index.html"));
 
@@ -381,6 +393,10 @@ public class CodeLensServer {
         app.get("/api/processes",                  this::listProcesses);
         app.post("/api/processes/{id}/kill",       this::killProcess);
         app.post("/api/processes/{id}/restart",    this::restartProcess);
+
+        // ── Database & Storage ────────────────────────────────────────────────
+        app.get("/api/database/health",            this::getDatabaseHealth);
+        app.post("/api/database/recover",          this::recoverDatabase);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -719,7 +735,55 @@ public class CodeLensServer {
         system.put("activeThreads", Thread.activeCount());
         system.put("dbPool", db.getPoolStats());
 
-        ctx.json(Map.of("processes", processes, "system", system));
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("processes", processes);
+        resp.put("system", system);
+        resp.put("database", db.getDiagnostics());
+        resp.put("apis", Map.of(
+            "summary", apiTracker.getSummary(),
+            "endpoints", apiTracker.getEndpoints()
+        ));
+        ctx.json(resp);
+    }
+
+    private void getDatabaseHealth(Context ctx) {
+        ctx.json(db.runHealthCheck());
+    }
+
+    private void recoverDatabase(Context ctx) {
+        Map<?, ?> body = Collections.emptyMap();
+        try {
+            body = ctx.bodyAsClass(Map.class);
+        } catch (Exception ignored) {}
+        String action = body != null && body.containsKey("action") ? String.valueOf(body.get("action")) : "health_check";
+
+        String message;
+        boolean success = true;
+        try {
+            if ("reindex".equalsIgnoreCase(action)) {
+                db.finishBulkLoad();
+                message = "Secondary indexes successfully rebuilt and optimizer statistics analyzed.";
+            } else if ("compact".equalsIgnoreCase(action)) {
+                db.compactDatabase();
+                message = "Database compacted via SHUTDOWN COMPACT; connection pool reconnected.";
+            } else if ("clean_orphans".equalsIgnoreCase(action)) {
+                int purged = db.purgeOrphanData();
+                message = "Purged " + purged + " dangling/orphan records from database.";
+            } else {
+                message = "Database health check completed.";
+            }
+        } catch (Exception e) {
+            success = false;
+            message = "Recovery action '" + action + "' failed: " + e.getMessage();
+            log.error("Database recovery action failed: {}", e.getMessage(), e);
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", success);
+        response.put("action", action);
+        response.put("message", message);
+        response.put("diagnostics", db.getDiagnostics());
+        ctx.json(response);
     }
 
     private void killProcess(Context ctx) {
