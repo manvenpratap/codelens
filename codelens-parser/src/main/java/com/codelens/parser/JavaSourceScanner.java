@@ -401,7 +401,7 @@ public class JavaSourceScanner {
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
-        int chunkSize = Math.max(10, Math.min(100, javaFiles.size() / (PARSER_THREADS * 8) + 1));
+        int chunkSize = Math.min(300, Math.max(20, javaFiles.size() / (PARSER_THREADS * 4) + 1));
         List<List<Path>> chunks = new ArrayList<>();
         for (int i = 0; i < javaFiles.size(); i += chunkSize) {
             chunks.add(javaFiles.subList(i, Math.min(i + chunkSize, javaFiles.size())));

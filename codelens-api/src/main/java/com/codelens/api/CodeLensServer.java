@@ -111,6 +111,15 @@ public class CodeLensServer {
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
     private final ApiTracker apiTracker = new ApiTracker();
 
+    // ── Dedicated lifecycle tracking for background engines (independent of scanState) ──
+    private final java.util.concurrent.atomic.AtomicBoolean graphWarmupRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicReference<String> graphWarmupPhase = new java.util.concurrent.atomic.AtomicReference<>("Ready");
+    private final java.util.concurrent.atomic.AtomicInteger graphWarmupPercentage = new java.util.concurrent.atomic.AtomicInteger(0);
+
+    private final java.util.concurrent.atomic.AtomicBoolean layoutWarmupRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicReference<String> layoutWarmupPhase = new java.util.concurrent.atomic.AtomicReference<>("Ready");
+    private final java.util.concurrent.atomic.AtomicInteger layoutWarmupPercentage = new java.util.concurrent.atomic.AtomicInteger(0);
+
     public boolean handleConditionalETag(Context ctx, String cacheKey) {
         long rev = this.scanRevision.get();
         long keyHash;
@@ -203,6 +212,10 @@ public class CodeLensServer {
     }
 
     public void warmupGraphCache(ScanProgress progress) {
+        layoutWarmupRunning.set(true);
+        layoutWarmupPhase.set("Precomputing Layouts");
+        layoutWarmupPercentage.set(0);
+        logProcessBanner("LAYOUT_WARMUP_STARTED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(), "Precomputing graph layouts and module overview");
         try {
             if (progress != null) {
                 progress.recordStageStart("LAYOUT", "Graph Layout & Topology Precomputation", "Precomputing sunflower spiral cluster layouts and module dependencies");
@@ -252,11 +265,14 @@ public class CodeLensServer {
             int total = tasks.size();
             for (int i = 0; i < total; i++) {
                 if (cancelRequested) {
+                    logProcessBanner("CANCELLED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(), "Layout precomputation cancelled");
                     log.info("Layout precomputation cancelled");
                     return;
                 }
                 LayoutTask task = tasks.get(i);
                 int step = i + 1;
+                layoutWarmupPhase.set(task.name);
+                layoutWarmupPercentage.set((int) ((i / (float) total) * 100));
                 if (progress != null) {
                     progress.setActiveStage("LAYOUT");
                     progress.setCurrentPhase("Precomputing Layouts");
@@ -313,13 +329,22 @@ public class CodeLensServer {
                 progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts & module overview", total), layoutMetrics);
             }
 
+            layoutWarmupPhase.set("Ready");
+            layoutWarmupPercentage.set(100);
+
+            logProcessBanner("LAYOUT_WARMUP_COMPLETED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(),
+                String.format("Finished layout precomputation: %d layouts ready in %d ms", total, System.currentTimeMillis() - start));
             log.info("Finished graph layout & module warm-up: {} layouts ready in {}ms",
                 total, System.currentTimeMillis() - start);
         } catch (Exception e) {
+            layoutWarmupPhase.set("Error: " + e.getMessage());
+            logProcessBanner("LAYOUT_WARMUP_FAILED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(), "Error: " + e.getMessage());
             if (progress != null) {
                 progress.recordStageEnd("LAYOUT", "ERROR", "Layout precomputation error: " + e.getMessage(), null);
             }
             log.warn("Graph layout warm-up encountered an error: {}", e.getMessage());
+        } finally {
+            layoutWarmupRunning.set(false);
         }
     }
 
@@ -496,8 +521,10 @@ public class CodeLensServer {
             if (lastScan != null) {
                 if (lastScan.getStatus() == ScanProgress.Status.SCANNING) {
                     lastScan.setStatus(ScanProgress.Status.ERROR);
+                    lastScan.setActiveStage("ERROR");
+                    lastScan.setCurrentPhase("Interrupted");
                     lastScan.setMessage("Previous scan interrupted (server stopped or restarted)");
-                    lastScan.setErrorDetail("Process was terminated before scan completed");
+                    lastScan.setErrorDetail("Process was terminated before scan completed. Click 'Restart' to re-index.");
                     try { dao.saveScanMeta(lastScan); } catch (Exception ignored) {}
                 }
                 scanState.set(lastScan);
@@ -519,51 +546,39 @@ public class CodeLensServer {
         app.start(port);
         log.info("CodeLens server started on http://localhost:{}", port);
 
-        // Build call graph from database on startup with streaming cursor
+        // Build call graph from database on startup with streaming cursor (independent of scanState)
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
             if (!allMethodFqns.isEmpty()) {
-                ScanProgress startupProgress = scanState.get();
-                if (startupProgress == null) {
-                    startupProgress = new ScanProgress();
-                }
-                boolean wasComplete = startupProgress.getStatus() == ScanProgress.Status.COMPLETE;
-                if (!wasComplete) {
-                    startupProgress.setStatus(ScanProgress.Status.SCANNING);
-                }
-                startupProgress.setActiveStage("GRAPH");
-                startupProgress.setCurrentPhase("Call Graph Analysis");
-                startupProgress.setMessage("Building in-memory call graph from database…");
-                startupProgress.setPercentage(wasComplete ? 100 : 15);
-                scanState.set(startupProgress);
+                logProcessBanner("GRAPH_BUILD_STARTED", "Call Graph & Topology Engine", resolveCurrentSourcePath(), "Building in-memory call graph from database (" + allMethodFqns.size() + " methods)");
+                graphWarmupRunning.set(true);
+                graphWarmupPhase.set("Call Graph Analysis");
+                graphWarmupPercentage.set(15);
 
                 callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
-                startupProgress.setCurrentPhase("Field Impact Analysis");
-                startupProgress.setMessage("Indexing field impact relationships…");
-                startupProgress.setPercentage(wasComplete ? 100 : 30);
+                graphWarmupPhase.set("Field Impact Analysis");
+                graphWarmupPercentage.set(50);
                 int totalFieldRels = dao.countFieldRelationships();
                 fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callGraph.getCallingMethodFqns());
+                graphWarmupPhase.set("Ready");
+                graphWarmupPercentage.set(100);
+                graphWarmupRunning.set(false);
+                logProcessBanner("GRAPH_BUILD_COMPLETED", "Call Graph & Topology Engine", resolveCurrentSourcePath(),
+                    String.format("Rebuilt %,d vertices and %,d call edges", callGraph.vertexCount(), callGraph.edgeCount()));
                 log.info("Initialized in-memory call graph from database with {} methods",
                     allMethodFqns.size());
 
-                ScanProgress finalStartupProgress = startupProgress;
                 CompletableFuture.runAsync(() -> {
                     try {
-                        warmupGraphCache(finalStartupProgress);
+                        warmupGraphCache();
                     } catch (Throwable t) {
                         log.warn("Error during startup layout warmup: {}", t.getMessage());
-                    } finally {
-                        finalStartupProgress.setActiveStage("COMPLETE");
-                        finalStartupProgress.setCurrentPhase("Complete");
-                        finalStartupProgress.setCurrentDetail("Ready");
-                        finalStartupProgress.setMessage("Server ready · Graphs precomputed");
-                        finalStartupProgress.setPercentage(100);
-                        finalStartupProgress.setStatus(ScanProgress.Status.COMPLETE);
-                        try { dao.saveScanMeta(finalStartupProgress); } catch (Exception ignored) {}
                     }
                 });
             }
         } catch (Exception e) {
+            graphWarmupRunning.set(false);
+            logProcessBanner("GRAPH_BUILD_FAILED", "Call Graph & Topology Engine", resolveCurrentSourcePath(), "Error: " + e.getMessage());
             log.error("Failed to initialize call graph from database on startup: {}", e.getMessage(), e);
         }
     }
@@ -642,7 +657,7 @@ public class CodeLensServer {
         scannerProc.put("status", isScanning ? "RUNNING" : (isComplete ? "COMPLETE" : (isError ? "ERROR" : "IDLE")));
         scannerProc.put("activeStage", sp != null ? sp.getActiveStage() : "IDLE");
         scannerProc.put("currentPhase", sp != null ? sp.getCurrentPhase() : "Idle");
-        scannerProc.put("currentDetail", sp != null ? sp.getCurrentDetail() : "");
+        scannerProc.put("currentDetail", sp != null ? (isError ? (sp.getErrorDetail() != null && !sp.getErrorDetail().isBlank() ? sp.getErrorDetail() : sp.getMessage()) : sp.getCurrentDetail()) : "");
         scannerProc.put("percentage", sp != null ? sp.getPercentage() : 0);
         scannerProc.put("sourcePath", sp != null ? sp.getSourcePath() : "");
         scannerProc.put("processedFiles", sp != null ? sp.getProcessedFiles() : 0);
@@ -677,16 +692,20 @@ public class CodeLensServer {
         graphProc.put("id", "call-graph");
         graphProc.put("name", "Call Graph & Topology Engine");
         graphProc.put("type", "JGraphT Topology & Field Impact");
-        boolean isGraphBuilding = isScanning && sp != null && ("Call Graph Analysis".equals(sp.getCurrentPhase()) || "Field Impact Analysis".equals(sp.getCurrentPhase()));
+        boolean isScanGraphActive = isScanning && sp != null && ("Call Graph Analysis".equals(sp.getCurrentPhase()) || "Field Impact Analysis".equals(sp.getCurrentPhase()) || "GRAPH".equals(sp.getActiveStage()));
+        boolean isWarmupGraphActive = graphWarmupRunning.get();
+        boolean isGraphBuilding = isScanGraphActive || isWarmupGraphActive;
         int vCount = callGraph != null ? callGraph.vertexCount() : 0;
         int eCount = callGraph != null ? callGraph.edgeCount() : 0;
         graphProc.put("status", isGraphBuilding ? "RUNNING" : (vCount > 0 ? "COMPLETE" : "IDLE"));
         graphProc.put("activeStage", isGraphBuilding ? "GRAPH" : "IDLE");
-        graphProc.put("currentPhase", isGraphBuilding ? sp.getCurrentPhase() : (vCount > 0 ? "In-Memory Graph Ready" : "Idle"));
+        String graphPhase = isScanGraphActive ? sp.getCurrentPhase() : (isWarmupGraphActive ? graphWarmupPhase.get() : (vCount > 0 ? "In-Memory Graph Ready" : "Idle"));
+        int graphPct = isScanGraphActive ? sp.getPercentage() : (isWarmupGraphActive ? graphWarmupPercentage.get() : (vCount > 0 ? 100 : 0));
+        graphProc.put("currentPhase", graphPhase);
         graphProc.put("currentDetail", String.format("%,d vertices · %,d call edges", vCount, eCount));
-        graphProc.put("percentage", isGraphBuilding ? sp.getPercentage() : (vCount > 0 ? 100 : 0));
+        graphProc.put("percentage", graphPct);
         graphProc.put("thread", isGraphBuilding ? "codelens-graph-builder" : "-");
-        graphProc.put("canKill", isGraphBuilding);
+        graphProc.put("canKill", isScanGraphActive);
         graphProc.put("canRestart", true);
         processes.add(graphProc);
 
@@ -695,15 +714,19 @@ public class CodeLensServer {
         layoutProc.put("id", "layout-engine");
         layoutProc.put("name", "Sunflower Layout Precomputer");
         layoutProc.put("type", "Sunflower Spiral & Clustering Precomputer");
-        boolean isLayoutBuilding = isScanning && sp != null && ("Precomputing Layouts".equals(sp.getCurrentPhase()) || "LAYOUT".equals(sp.getActiveStage()));
+        boolean isScanLayoutActive = isScanning && sp != null && ("Precomputing Layouts".equals(sp.getCurrentPhase()) || "LAYOUT".equals(sp.getActiveStage()));
+        boolean isWarmupLayoutActive = layoutWarmupRunning.get();
+        boolean isLayoutBuilding = isScanLayoutActive || isWarmupLayoutActive;
         int cachedLayouts = layoutCache.size();
         layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 ? "COMPLETE" : "IDLE"));
         layoutProc.put("activeStage", isLayoutBuilding ? "LAYOUT" : "IDLE");
-        layoutProc.put("currentPhase", isLayoutBuilding ? sp.getCurrentPhase() : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle"));
+        String layoutPhase = isScanLayoutActive ? sp.getCurrentPhase() : (isWarmupLayoutActive ? layoutWarmupPhase.get() : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle"));
+        int layoutPct = isScanLayoutActive ? sp.getPercentage() : (isWarmupLayoutActive ? layoutWarmupPercentage.get() : (cachedLayouts > 0 ? 100 : 0));
+        layoutProc.put("currentPhase", layoutPhase);
         layoutProc.put("currentDetail", String.format("%d layouts cached in memory (rev=%d)", cachedLayouts, scanRevision.get()));
-        layoutProc.put("percentage", isLayoutBuilding ? sp.getPercentage() : (cachedLayouts > 0 ? 100 : 0));
+        layoutProc.put("percentage", layoutPct);
         layoutProc.put("thread", isLayoutBuilding ? "codelens-layout-worker" : "-");
-        layoutProc.put("canKill", isLayoutBuilding);
+        layoutProc.put("canKill", isScanLayoutActive);
         layoutProc.put("canRestart", true);
         processes.add(layoutProc);
 
@@ -712,14 +735,46 @@ public class CodeLensServer {
         gitProc.put("id", "git-analyzer");
         gitProc.put("name", "Git Churn & Hotspot Analyzer");
         gitProc.put("type", "Git Log & Code Churn Correlator");
-        gitProc.put("status", "IDLE");
-        gitProc.put("activeStage", "IDLE");
-        gitProc.put("currentPhase", "Ready");
-        gitProc.put("percentage", 0);
-        gitProc.put("thread", "-");
-        gitProc.put("canKill", false);
+        GitAnalysisProgress gp = gitProgress.get();
+        boolean isGitRunning = gp != null && gp.getStatus() == GitAnalysisProgress.Status.RUNNING;
+        boolean isGitComplete = gp != null && gp.getStatus() == GitAnalysisProgress.Status.COMPLETE;
+        boolean isGitError = gp != null && gp.getStatus() == GitAnalysisProgress.Status.ERROR;
+        gitProc.put("status", isGitRunning ? "RUNNING" : (isGitComplete ? "COMPLETE" : (isGitError ? "ERROR" : "IDLE")));
+        gitProc.put("activeStage", isGitRunning ? "GIT_ANALYSIS" : "IDLE");
+        String gitPhase = isGitRunning 
+            ? (gp.getCurrentFile() != null && !gp.getCurrentFile().isBlank() ? "Blame: " + gp.getCurrentFile() : "Auditing Blame & Churn") 
+            : (isGitComplete ? "Git Churn Analysis Ready" : (isGitError ? "Analysis Failed" : "Ready"));
+        gitProc.put("currentPhase", gitPhase);
+        String gitDetail = gp != null && gp.getMessage() != null && !gp.getMessage().isBlank()
+            ? gp.getMessage()
+            : (isGitComplete 
+                ? String.format("%,d entities annotated across %,d files", gp.getEntitiesAnnotated(), gp.getTotalFiles()) 
+                : "Git commit history and churn correlator");
+        gitProc.put("currentDetail", gitDetail);
+        gitProc.put("percentage", gp != null ? gp.getPercentage() : 0);
+        gitProc.put("durationMs", gp != null && gp.getStartTime() > 0 
+            ? (gp.getEndTime() > 0 ? gp.getEndTime() - gp.getStartTime() : System.currentTimeMillis() - gp.getStartTime()) 
+            : 0);
+        gitProc.put("startTime", gp != null ? gp.getStartTime() : 0);
+        gitProc.put("thread", isGitRunning ? "codelens-git-worker" : "-");
+        gitProc.put("canKill", isGitRunning);
         gitProc.put("canRestart", true);
         processes.add(gitProc);
+
+        // 6. Database Connection Watchdog
+        Map<String, Object> watchdogProc = new LinkedHashMap<>();
+        watchdogProc.put("id", "db-watchdog");
+        watchdogProc.put("name", "Database Connection Watchdog");
+        watchdogProc.put("type", "HikariCP Leak Detector & Auto-Recovery");
+        watchdogProc.put("status", "IDLE");
+        watchdogProc.put("activeStage", "IDLE");
+        watchdogProc.put("currentPhase", "Watchdog Active (10s interval)");
+        watchdogProc.put("currentDetail", String.format("%d active connection leases · %d leaks recovered", db.getActiveLeaseCount(), db.getRecoveredLeakCount()));
+        watchdogProc.put("percentage", 100);
+        watchdogProc.put("thread", "CodeLens-DbLeakWatchdog");
+        watchdogProc.put("canKill", false);
+        watchdogProc.put("canRestart", true);
+        processes.add(watchdogProc);
 
         // System resources & Pool telemetry
         long freeMem = Runtime.getRuntime().freeMemory();
@@ -760,7 +815,15 @@ public class CodeLensServer {
         String message;
         boolean success = true;
         try {
-            if ("reindex".equalsIgnoreCase(action)) {
+            if ("restart".equalsIgnoreCase(action)) {
+                Map<String, Object> restartReport = db.restartDatabase();
+                success = Boolean.TRUE.equals(restartReport.get("success"));
+                message = String.valueOf(restartReport.get("message"));
+            } else if ("sweep_leaks".equalsIgnoreCase(action) || "reclaim_leaks".equalsIgnoreCase(action)) {
+                Map<String, Object> sweepReport = db.sweepConnectionLeaks();
+                success = Boolean.TRUE.equals(sweepReport.get("success"));
+                message = String.valueOf(sweepReport.get("message"));
+            } else if ("reindex".equalsIgnoreCase(action)) {
                 db.finishBulkLoad();
                 message = "Secondary indexes successfully rebuilt and optimizer statistics analyzed.";
             } else if ("compact".equalsIgnoreCase(action)) {
@@ -783,6 +846,8 @@ public class CodeLensServer {
         response.put("action", action);
         response.put("message", message);
         response.put("diagnostics", db.getDiagnostics());
+        logProcessBanner("DB_" + action.toUpperCase() + (success ? "_COMPLETED" : "_FAILED"),
+            "Database Manager", "./codelens-data/codelens_db", message);
         ctx.json(response);
     }
 
@@ -801,6 +866,17 @@ public class CodeLensServer {
                 try { db.finishBulkLoad(); } catch (Exception ignored) {}
             }
             ctx.json(Map.of("status", "killed", "processId", id, "message", "Scan process successfully terminated"));
+            return;
+        } else if ("git-analyzer".equalsIgnoreCase(id)) {
+            GitAnalysisProgress gp = gitProgress.get();
+            if (gp != null && gp.getStatus() == GitAnalysisProgress.Status.RUNNING) {
+                gp.setStatus(GitAnalysisProgress.Status.ERROR);
+                gp.setMessage("Git analysis cancelled by user via Process Hub");
+                gp.setErrorDetail("Process manually killed");
+                gp.setEndTime(System.currentTimeMillis());
+                logProcessBanner("CANCELLED", "Git Churn & Hotspot Analyzer", gp.getRepoPath(), "Git analysis cancelled by user");
+            }
+            ctx.json(Map.of("status", "killed", "processId", id, "message", "Git analysis process terminated"));
             return;
         }
         ctx.json(Map.of("status", "ok", "processId", id, "message", "Process signaled"));
@@ -839,6 +915,10 @@ public class CodeLensServer {
             ctx.json(Map.of("status", "restarted", "processId", id, "sourcePath", currentPath));
             return;
         } else if ("call-graph".equalsIgnoreCase(id)) {
+            graphWarmupRunning.set(true);
+            graphWarmupPhase.set("Call Graph Analysis");
+            graphWarmupPercentage.set(10);
+            logProcessBanner("GRAPH_BUILD_STARTED", "Call Graph & Topology Engine", currentPath, "Manual rebuild of call graph & field impact requested");
             scanExecutor.submit(() -> {
                 try {
                     log.info("Manual rebuild of call graph & field impact requested");
@@ -846,13 +926,23 @@ public class CodeLensServer {
                     callGraph.rebuild(allMethodFqns, consumer -> {
                         try { dao.streamCallRelationships(consumer::accept); } catch (Exception e) { throw new RuntimeException(e); }
                     }, null);
+                    graphWarmupPhase.set("Field Impact Analysis");
+                    graphWarmupPercentage.set(50);
                     int totalFieldRels = dao.countFieldRelationships();
                     fieldImpact.rebuildWithStream(consumer -> {
                         try { dao.streamFieldRelationships(consumer::accept); } catch (Exception e) { throw new RuntimeException(e); }
                     }, totalFieldRels, callGraph.getCallingMethodFqns(), null);
+                    graphWarmupPhase.set("Ready");
+                    graphWarmupPercentage.set(100);
+                    logProcessBanner("GRAPH_BUILD_COMPLETED", "Call Graph & Topology Engine", currentPath,
+                        String.format("Manual rebuild complete: %,d vertices, %,d call edges", callGraph.vertexCount(), callGraph.edgeCount()));
                     log.info("Manual rebuild of call graph complete: {} vertices", callGraph.vertexCount());
                 } catch (Exception e) {
                     log.error("Failed to rebuild call graph", e);
+                    graphWarmupPhase.set("Error: " + e.getMessage());
+                    logProcessBanner("GRAPH_BUILD_FAILED", "Call Graph & Topology Engine", currentPath, "Error: " + e.getMessage());
+                } finally {
+                    graphWarmupRunning.set(false);
                 }
             });
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Call graph rebuild queued"));
@@ -861,6 +951,26 @@ public class CodeLensServer {
             invalidateGraphCache();
             scanExecutor.submit(() -> warmupGraphCache());
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Layout precomputations queued"));
+            return;
+        } else if ("git-analyzer".equalsIgnoreCase(id)) {
+            String repoPath = currentPath;
+            GitAnalysisProgress gp = gitProgress.get();
+            if (gp != null && gp.getRepoPath() != null && !gp.getRepoPath().isBlank()) {
+                repoPath = gp.getRepoPath();
+            }
+            GitRepoLocator.ValidationResult validation = GitRepoLocator.validate(repoPath);
+            if (!validation.isValid()) {
+                ctx.status(400).json(Map.of("error", "Source path is not a valid Git repository: " + validation.getError()));
+                return;
+            }
+            triggerGitAnalysis(validation.getRepoPath(), validation.getBranch());
+            ctx.json(Map.of("status", "restarted", "processId", id, "repoPath", validation.getRepoPath()));
+            return;
+        } else if ("db-watchdog".equalsIgnoreCase(id)) {
+            Map<String, Object> sweepReport = db.sweepConnectionLeaks();
+            String sweepMsg = String.valueOf(sweepReport.get("message"));
+            logProcessBanner("DB_LEAK_SWEEP", "Database Connection Watchdog", "codelens_db", sweepMsg);
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", sweepMsg, "report", sweepReport));
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
@@ -2336,34 +2446,15 @@ public class CodeLensServer {
         }
     }
 
-    /**
-     * POST /api/git/analyze
-     * Body: { "repoPath": "..." }
-     * Triggers asynchronous background Git blame & churn analysis.
-     */
-    private void analyzeGit(Context ctx) {
-        Map<?, ?> body = ctx.bodyAsClass(Map.class);
-        String repoPath = (String) body.get("repoPath");
-
-        GitRepoLocator.ValidationResult validation = GitRepoLocator.validate(repoPath);
-        if (!validation.isValid()) {
-            ctx.status(400).json(Map.of("error", validation.getError()));
-            return;
-        }
-
-        GitAnalysisProgress current = gitProgress.get();
-        if (current != null && current.getStatus() == GitAnalysisProgress.Status.RUNNING) {
-            ctx.status(409).json(Map.of("error", "Git analysis already in progress", "progress", current));
-            return;
-        }
-
-        String canonicalRepoPath = validation.getRepoPath();
+    private void triggerGitAnalysis(String canonicalRepoPath, String branch) {
         GitAnalysisProgress initial = new GitAnalysisProgress(GitAnalysisProgress.Status.RUNNING);
         initial.setRepoPath(canonicalRepoPath);
-        initial.setBranch(validation.getBranch());
+        initial.setBranch(branch);
         initial.setStartTime(System.currentTimeMillis());
         initial.setMessage("Preparing Git history analysis…");
         gitProgress.set(initial);
+        logProcessBanner("GIT_ANALYSIS_STARTED", "Git Churn & Hotspot Analyzer", canonicalRepoPath,
+            "Starting background Git blame & churn analysis" + (branch != null ? " (branch: " + branch + ")" : ""));
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -2385,6 +2476,10 @@ public class CodeLensServer {
                 });
 
                 dao.batchInsertGitMeta(gitMetas);
+                GitAnalysisProgress p = gitProgress.get();
+                int totalFiles = p != null ? p.getTotalFiles() : 0;
+                logProcessBanner("GIT_ANALYSIS_COMPLETED", "Git Churn & Hotspot Analyzer", canonicalRepoPath,
+                    String.format("Git analysis complete — %,d entities annotated across %,d files", gitMetas.size(), totalFiles));
                 log.info("Background Git analysis completed: {} entities annotated", gitMetas.size());
 
                 GitAnalysisProgress completed = gitProgress.get();
@@ -2395,6 +2490,7 @@ public class CodeLensServer {
                     completed.setMessage("Git analysis complete — " + gitMetas.size() + " entities annotated.");
                 }
             } catch (Exception e) {
+                logProcessBanner("GIT_ANALYSIS_FAILED", "Git Churn & Hotspot Analyzer", canonicalRepoPath, "Error: " + e.getMessage());
                 log.error("Background Git analysis failed", e);
                 GitAnalysisProgress errorP = gitProgress.get();
                 if (errorP != null) {
@@ -2405,8 +2501,31 @@ public class CodeLensServer {
                 }
             }
         });
+    }
 
-        ctx.json(Map.of("status", "started", "repoPath", canonicalRepoPath, "branch", validation.getBranch()));
+    /**
+     * POST /api/git/analyze
+     * Body: { "repoPath": "..." }
+     * Triggers asynchronous background Git blame & churn analysis.
+     */
+    private void analyzeGit(Context ctx) {
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        String repoPath = (String) body.get("repoPath");
+
+        GitRepoLocator.ValidationResult validation = GitRepoLocator.validate(repoPath);
+        if (!validation.isValid()) {
+            ctx.status(400).json(Map.of("error", validation.getError()));
+            return;
+        }
+
+        GitAnalysisProgress current = gitProgress.get();
+        if (current != null && current.getStatus() == GitAnalysisProgress.Status.RUNNING) {
+            ctx.status(409).json(Map.of("error", "Git analysis already in progress", "progress", current));
+            return;
+        }
+
+        triggerGitAnalysis(validation.getRepoPath(), validation.getBranch());
+        ctx.json(Map.of("status", "started", "repoPath", validation.getRepoPath(), "branch", validation.getBranch()));
     }
 
     /**

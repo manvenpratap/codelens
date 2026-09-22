@@ -25,6 +25,14 @@ public class DatabaseManager {
     private final String dataDir;
     private HikariDataSource dataSource;
 
+    // Connection tracking and leak auto-recovery
+    private final java.util.concurrent.ConcurrentHashMap<Connection, ConnectionLease> activeLeases = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger totalLeaksDetected = new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicInteger totalLeaksRecovered = new java.util.concurrent.atomic.AtomicInteger(0);
+    private volatile java.util.Map<String, Object> lastRecoveredLeak = null;
+    private volatile long leakThresholdMs = 60_000L; // 60s default leak timeout
+    private java.util.concurrent.ScheduledExecutorService leakWatchdog;
+
     public DatabaseManager(String dataDir) {
         this.dataDir = dataDir;
     }
@@ -36,13 +44,14 @@ public class DatabaseManager {
     private HikariConfig createHikariConfig() {
         HikariConfig cfg = new HikariConfig();
         // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs.
-        // CACHE_SIZE=524288 (512MB cache), PAGE_SIZE=8192 for high IOPS on large repos.
-        // COMPRESS=FALSE: disable page-level compression to eliminate CPU serialization during bulk ingestion.
-        // AUTO_COMPACT_FILL_RATE=0: disable background page compaction during active ingestion.
-        // RETENTION_TIME=0: immediately release old transaction page versions in MVStore (avoids version bloat on 50k+ files).
-        // LOCK_TIMEOUT=30000: 30s timeout to handle heavy I/O gracefully without premature lock aborts.
+        // CACHE_SIZE=524288 (512MB cache), PAGE_SIZE=4096 (standard B-Tree page size).
+        // COMPRESS=TRUE: enable page compression (4x-5x disk reduction for text/FQNs).
+        // AUTO_COMPACT_FILL_RATE=90: enable active MVStore chunk compaction and space reuse.
+        // RETENTION_TIME=0: immediately release old transaction page versions.
+        // TRACE_LEVEL_FILE=0: disable .trace.db file creation and disk bloat.
+        // LOCK_TIMEOUT=30000: 30s timeout to handle heavy I/O gracefully.
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=30000;CACHE_SIZE=524288;PAGE_SIZE=8192;DEFRAG_ALWAYS=FALSE;COMPRESS=FALSE;AUTO_COMPACT_FILL_RATE=0;RETENTION_TIME=0");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=30000;CACHE_SIZE=524288;PAGE_SIZE=4096;DEFRAG_ALWAYS=TRUE;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=0;TRACE_LEVEL_FILE=0");
         cfg.setUsername("sa");
         cfg.setPassword("");
         cfg.setMaximumPoolSize(20);
@@ -50,9 +59,21 @@ public class DatabaseManager {
         cfg.setConnectionTimeout(60_000);
         cfg.setValidationTimeout(5_000);
         cfg.setMaxLifetime(1800_000);
-        cfg.setLeakDetectionThreshold(600_000); // 10 minutes - avoids false leak alarms during large repo index builds
+        cfg.setLeakDetectionThreshold(60_000); // 60s - HikariCP log threshold matching auto-recovery watchdog
         cfg.setPoolName("CodeLens-H2");
         return cfg;
+    }
+
+    private synchronized void startLeakWatchdog() {
+        if (leakWatchdog != null && !leakWatchdog.isShutdown()) {
+            return;
+        }
+        leakWatchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "CodeLens-DbLeakWatchdog");
+            t.setDaemon(true);
+            return t;
+        });
+        leakWatchdog.scheduleWithFixedDelay(this::checkAndRecoverConnectionLeaks, 10, 10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     /** Initialises the connection pool and creates all tables. */
@@ -63,7 +84,8 @@ public class DatabaseManager {
 
         createSchema();
         ensureSecondaryIndexes();
-        log.info("H2 database initialised at {}/codelens_db (indexes verified)", dataDir);
+        startLeakWatchdog();
+        log.info("H2 database initialised at {}/codelens_db (indexes verified, leak auto-recovery active)", dataDir);
     }
 
     /** Self-healing check: verify secondary indexes exist; rebuild if dropped by a previous crash during bulk load. */
@@ -93,12 +115,48 @@ public class DatabaseManager {
     }
 
     public void close() {
+        if (leakWatchdog != null) {
+            leakWatchdog.shutdownNow();
+        }
+        activeLeases.clear();
         if (dataSource != null && !dataSource.isClosed()) dataSource.close();
     }
 
-    /** Expose a connection from the pool (caller must close it). */
+    /** Expose a connection from the pool wrapped with active lease tracking and leak auto-recovery. */
     public Connection getConnection() throws SQLException {
-        return dataSource.getConnection();
+        if (dataSource == null || dataSource.isClosed()) {
+            throw new SQLException("DatabaseManager data source is not initialized or has been closed.");
+        }
+
+        // Emergency starvation pre-check: if pool is saturated and threads are awaiting, run leak recovery immediately
+        com.zaxxer.hikari.HikariPoolMXBean mx = dataSource.getHikariPoolMXBean();
+        if (mx != null && mx.getThreadsAwaitingConnection() > 0 && mx.getActiveConnections() >= dataSource.getMaximumPoolSize()) {
+            checkAndRecoverConnectionLeaks();
+        }
+
+        Connection rawConn = dataSource.getConnection();
+        ConnectionLease lease = new ConnectionLease(rawConn);
+        activeLeases.put(rawConn, lease);
+
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(
+            DatabaseManager.class.getClassLoader(),
+            new Class<?>[]{ Connection.class },
+            new TrackedConnectionHandler(rawConn, lease, this)
+        );
+    }
+
+    public void unregisterLease(Connection rawConn) {
+        if (rawConn != null) {
+            activeLeases.remove(rawConn);
+        }
+    }
+
+    public void setLeakThresholdMs(long ms) {
+        this.leakThresholdMs = ms;
+    }
+
+    public long getLeakThresholdMs() {
+        return leakThresholdMs;
     }
 
     /** Returns connection pool diagnostics for Process Hub and health monitoring. */
@@ -119,6 +177,8 @@ public class DatabaseManager {
             }
             m.put("maxPoolSize", dataSource.getMaximumPoolSize());
             m.put("poolName", dataSource.getPoolName());
+            m.put("leaksRecovered", totalLeaksRecovered.get());
+            m.put("activeTracked", activeLeases.size());
         }
         return m;
     }
@@ -153,6 +213,8 @@ public class DatabaseManager {
         java.util.List<String> existingIndexes = new java.util.ArrayList<>();
         int orphanCount = 0;
 
+        boolean isTimeout = false;
+        String diagErr = null;
         long start = System.nanoTime();
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
@@ -173,6 +235,9 @@ public class DatabaseManager {
                     if (rs.next()) tables.put(tbl.toLowerCase(), rs.getInt(1));
                 } catch (Exception e) {
                     tables.put(tbl.toLowerCase(), -1);
+                    if (e instanceof SQLException && isCancelOrTimeoutException((SQLException) e)) {
+                        isTimeout = true;
+                    }
                 }
             }
 
@@ -180,6 +245,10 @@ public class DatabaseManager {
             try (ResultSet rs = stmt.executeQuery("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_SCHEMA = 'PUBLIC'")) {
                 while (rs.next()) {
                     existingIndexes.add(rs.getString(1).toLowerCase());
+                }
+            } catch (Exception e) {
+                if (e instanceof SQLException && isCancelOrTimeoutException((SQLException) e)) {
+                    isTimeout = true;
                 }
             }
 
@@ -190,10 +259,18 @@ public class DatabaseManager {
                 "  (SELECT COUNT(*) FROM methods WHERE declaring_type_fqn NOT IN (SELECT fqn FROM types))" +
                 ") AS total_orphans")) {
                 if (rs.next()) orphanCount = rs.getInt(1);
+            } catch (Exception e) {
+                if (e instanceof SQLException && isCancelOrTimeoutException((SQLException) e)) {
+                    isTimeout = true;
+                }
             }
 
         } catch (Exception e) {
             log.warn("Diagnostics error: {}", e.getMessage());
+            diagErr = e.getMessage();
+            if (e instanceof SQLException && isCancelOrTimeoutException((SQLException) e)) {
+                isTimeout = true;
+            }
         }
 
         diag.put("engine", "H2 " + h2Version);
@@ -201,6 +278,7 @@ public class DatabaseManager {
         diag.put("pingMs", pingMs);
         diag.put("tables", tables);
         diag.put("orphanCount", orphanCount);
+        diag.put("sqlState57014", isTimeout);
 
         // Critical secondary indexes expected
         java.util.List<String> expectedIndexes = java.util.List.of(
@@ -225,8 +303,16 @@ public class DatabaseManager {
         String status;
         String message;
         if (!connected) {
-            status = "CORRUPTED";
-            message = "Database connection failed or database file is locked/corrupted.";
+            if (isTimeout) {
+                status = "LOCKED";
+                message = "SQLState 57014 (Statement Timeout / Lock Contention) detected. Click 'Restart Database' to reset connection pool and release locks.";
+            } else {
+                status = "CORRUPTED";
+                message = "Database connection failed: " + (diagErr != null ? diagErr : "database file is locked or corrupted.");
+            }
+        } else if (isTimeout) {
+            status = "DEGRADED";
+            message = "SQLState 57014 (Statement Timeout / Lock Contention) detected during diagnostics. Click 'Restart Database' to reset pool and clear locks.";
         } else if (!missingIndexes.isEmpty()) {
             status = "DEGRADED";
             message = "Missing " + missingIndexes.size() + " secondary index(es). Click 'Self-Heal Indexes' to rebuild.";
@@ -240,6 +326,15 @@ public class DatabaseManager {
         diag.put("status", status);
         diag.put("statusMessage", message);
         diag.put("lastChecked", System.currentTimeMillis());
+
+        java.util.Map<String, Object> leakStats = new java.util.LinkedHashMap<>();
+        leakStats.put("enabled", true);
+        leakStats.put("thresholdMs", leakThresholdMs);
+        leakStats.put("totalDetected", totalLeaksDetected.get());
+        leakStats.put("totalRecovered", totalLeaksRecovered.get());
+        leakStats.put("activeTracked", activeLeases.size());
+        leakStats.put("lastRecovered", lastRecoveredLeak);
+        diag.put("leakRecovery", leakStats);
 
         return diag;
     }
@@ -560,7 +655,9 @@ public class DatabaseManager {
             new IndexTask("ANALYZE",
                           "ANALYZE", "all tables", "Computing cost-based query optimizer table statistics"),
             new IndexTask("SET WRITE_DELAY 500",
-                          "SET WRITE_DELAY", "h2 engine", "Restoring safe transaction commit flush delay")
+                          "SET WRITE_DELAY", "h2 engine", "Restoring safe transaction commit flush delay"),
+            new IndexTask("CHECKPOINT SYNC",
+                          "CHECKPOINT SYNC", "h2 engine", "Compacting and defragmenting database file on disk")
         };
 
         for (int i = 0; i < tasks.length; i++) {
@@ -576,6 +673,48 @@ public class DatabaseManager {
         log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
     }
 
+
+    /**
+     * Checks if the given SQLException represents a statement cancellation, query timeout,
+     * or lock timeout (SQLState 57014 / H2 ErrorCode 90051).
+     */
+    public static boolean isCancelOrTimeoutException(SQLException e) {
+        if (e == null) return false;
+        String sqlState = e.getSQLState();
+        if (sqlState != null && (sqlState.startsWith("57") || "57014".equals(sqlState))) {
+            return true;
+        }
+        int code = e.getErrorCode();
+        if (code == 90051 || code == 57014) {
+            return true;
+        }
+        String msg = e.getMessage();
+        if (msg != null) {
+            String lower = msg.toLowerCase();
+            return lower.contains("57014") || lower.contains("statement was canceled") || lower.contains("timeout trying to lock table");
+        }
+        return false;
+    }
+
+    /**
+     * Evicts a connection from the pool if it encountered SQLState 57014 or another fatal error,
+     * preventing poisoned connections from circulating in the pool.
+     */
+    public void evictIfPoisoned(Connection conn, SQLException e) {
+        if (conn != null && dataSource != null && !dataSource.isClosed()) {
+            if (isCancelOrTimeoutException(e)) {
+                log.warn("SQLState 57014 (statement canceled / lock timeout) detected on connection. Evicting connection from pool...");
+                try {
+                    conn.rollback();
+                } catch (Exception ignored) {}
+                try {
+                    dataSource.evictConnection(conn);
+                } catch (Exception ex) {
+                    log.debug("Error evicting connection: {}", ex.getMessage());
+                }
+            }
+        }
+    }
 
     /** Forces H2 MVStore compaction to rewrite file without dead page fragments. */
     public void compactDatabase() {
@@ -596,6 +735,377 @@ public class DatabaseManager {
             log.info("H2 database compaction complete; connection pool reconnected");
         } catch (Exception e) {
             log.error("Failed to compact database: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Forcefully restarts the H2 database engine and connection pool.
+     * Clears all lingering sessions, active locks, and poisoned connections (e.g. after SQLState 57014).
+     */
+    public synchronized java.util.Map<String, Object> restartDatabase() {
+        log.warn("Initiating full H2 database and connection pool restart...");
+        java.util.Map<String, Object> report = new java.util.LinkedHashMap<>();
+        java.util.List<String> actions = new java.util.ArrayList<>();
+        long start = System.currentTimeMillis();
+
+        if (dataSource != null && !dataSource.isClosed()) {
+            for (ConnectionLease lease : activeLeases.values()) {
+                lease.markRecovered();
+            }
+            activeLeases.clear();
+
+            try {
+                if (dataSource.getHikariPoolMXBean() != null) {
+                    dataSource.getHikariPoolMXBean().softEvictConnections();
+                    actions.add("Soft-evicted existing connection pool");
+                }
+            } catch (Exception e) {
+                log.debug("Soft evict note: {}", e.getMessage());
+            }
+
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("ROLLBACK");
+                actions.add("Rolled back active transactions");
+            } catch (Exception e) {
+                log.debug("Rollback before restart: {}", e.getMessage());
+            }
+
+            try {
+                dataSource.close();
+                actions.add("Closed Hikari connection pool and flushed H2 file handles");
+            } catch (Exception e) {
+                log.warn("Error closing data source: {}", e.getMessage());
+            }
+        }
+
+        // Re-create and open fresh HikariDataSource
+        boolean verified = false;
+        double pingMs = -1;
+        try {
+            HikariConfig cfg = createHikariConfig();
+            dataSource = new HikariDataSource(cfg);
+            actions.add("Initialized fresh HikariCP connection pool (" + cfg.getPoolName() + ")");
+
+            try (Connection conn = getConnection();
+                 Statement stmt = conn.createStatement()) {
+                long pStart = System.nanoTime();
+                try (ResultSet rs = stmt.executeQuery("SELECT 1")) {
+                    if (rs.next()) verified = true;
+                }
+                pingMs = Math.round(((System.nanoTime() - pStart) / 1_000_000.0) * 10.0) / 10.0;
+                actions.add("Verified database connectivity with fresh session (" + pingMs + "ms ping)");
+            }
+
+            ensureSecondaryIndexes();
+            actions.add("Verified and restored secondary indexes");
+        } catch (Exception e) {
+            log.error("Failed to restart database: {}", e.getMessage(), e);
+            report.put("success", false);
+            report.put("error", e.getMessage());
+            report.put("actions", actions);
+            return report;
+        }
+
+        long elapsedMs = System.currentTimeMillis() - start;
+        report.put("success", verified);
+        report.put("pingMs", pingMs);
+        report.put("elapsedMs", elapsedMs);
+        report.put("actions", actions);
+        report.put("message", verified ? "Database and connection pool successfully restarted in " + elapsedMs + "ms (cleared locks & SQLState 57014)." : "Database restart completed with errors.");
+        return report;
+    }
+
+    /**
+     * Scans active connection leases, detects leaks (held > leakThresholdMs or borrowing thread died),
+     * and automatically recovers them by rolling back locks and evicting from HikariCP.
+     */
+    public synchronized int checkAndRecoverConnectionLeaks() {
+        if (dataSource == null || dataSource.isClosed()) return 0;
+
+        int recoveredCount = 0;
+
+        // 1. Check tracked connections
+        for (java.util.Map.Entry<Connection, ConnectionLease> entry : activeLeases.entrySet()) {
+            Connection rawConn = entry.getKey();
+            ConnectionLease lease = entry.getValue();
+
+            if (lease.isClosed() || lease.isRecovered()) {
+                activeLeases.remove(rawConn);
+                continue;
+            }
+
+            long heldMs = lease.getHoldDurationMs();
+            long idleMs = lease.getIdleDurationMs();
+
+            boolean isDeadThread = !isThreadAlive(lease.threadId);
+            boolean isTimedOut = heldMs >= leakThresholdMs;
+
+            if (isDeadThread || isTimedOut) {
+                String reason = isDeadThread
+                    ? "Borrowing thread terminated without closing connection (" + (heldMs / 1000) + "s held)"
+                    : "Connection hold timeout exceeded (" + (heldMs / 1000) + "s held, " + (idleMs / 1000) + "s idle)";
+
+                log.warn("[LEAK-RECOVERY] Connection leak detected! {}. Allocation site: {}\nAuto-recovering and evicting connection...",
+                         reason, lease.getAllocationSite());
+
+                if (autoRecoverLease(lease, reason)) {
+                    recoveredCount++;
+                }
+            }
+        }
+
+        // 2. Pool Starvation Check: if threads are awaiting connection and pool is saturated
+        com.zaxxer.hikari.HikariPoolMXBean mx = dataSource.getHikariPoolMXBean();
+        if (mx != null && mx.getThreadsAwaitingConnection() > 0 && mx.getActiveConnections() >= dataSource.getMaximumPoolSize()) {
+            log.warn("[POOL-STARVATION] Pool saturated (active={}/{}, awaiting={}). Checking for stuck connections to reclaim...",
+                     mx.getActiveConnections(), dataSource.getMaximumPoolSize(), mx.getThreadsAwaitingConnection());
+
+            ConnectionLease oldestCandidate = null;
+            for (ConnectionLease lease : activeLeases.values()) {
+                if (!lease.isClosed() && !lease.isRecovered() && lease.getIdleDurationMs() >= 15_000) {
+                    if (oldestCandidate == null || lease.getIdleDurationMs() > oldestCandidate.getIdleDurationMs()) {
+                        oldestCandidate = lease;
+                    }
+                }
+            }
+
+            if (oldestCandidate != null) {
+                String reason = "Pool starvation emergency reclamation (" + (oldestCandidate.getIdleDurationMs() / 1000) + "s idle with "
+                    + mx.getThreadsAwaitingConnection() + " threads waiting)";
+                log.warn("[POOL-STARVATION-RECOVERY] Auto-recovering stuck connection held by thread '{}'.", oldestCandidate.threadName);
+                if (autoRecoverLease(oldestCandidate, reason)) {
+                    recoveredCount++;
+                }
+            }
+        }
+
+        return recoveredCount;
+    }
+
+    private boolean isThreadAlive(long threadId) {
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            if (t.getId() == threadId) {
+                return t.isAlive();
+            }
+        }
+        return false;
+    }
+
+    private boolean autoRecoverLease(ConnectionLease lease, String reason) {
+        if (lease.markRecovered()) {
+            activeLeases.remove(lease.rawConnection);
+            totalLeaksDetected.incrementAndGet();
+
+            try {
+                if (!lease.rawConnection.isClosed() && !lease.rawConnection.getAutoCommit()) {
+                    lease.rawConnection.rollback();
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                if (dataSource != null && !dataSource.isClosed()) {
+                    dataSource.evictConnection(lease.rawConnection);
+                } else {
+                    lease.rawConnection.close();
+                }
+            } catch (Exception e) {
+                log.warn("Error evicting leaked connection: {}", e.getMessage());
+            }
+
+            totalLeaksRecovered.incrementAndGet();
+
+            java.util.Map<String, Object> leakInfo = new java.util.LinkedHashMap<>();
+            leakInfo.put("threadName", lease.threadName);
+            leakInfo.put("threadId", lease.threadId);
+            leakInfo.put("durationMs", lease.getHoldDurationMs());
+            leakInfo.put("idleMs", lease.getIdleDurationMs());
+            leakInfo.put("reason", reason);
+            leakInfo.put("allocationSite", lease.getAllocationSite());
+            leakInfo.put("recoveredAt", System.currentTimeMillis());
+            lastRecoveredLeak = leakInfo;
+
+            log.info("[LEAK-RECOVERY] Successfully auto-recovered and evicted leaked connection ({}) in {}ms.",
+                     reason, lease.getHoldDurationMs());
+            return true;
+        }
+        return false;
+    }
+
+    /** Manually triggers an immediate sweep of active leases to detect and reclaim any leaked connections. */
+    public java.util.Map<String, Object> sweepConnectionLeaks() {
+        int evicted = checkAndRecoverConnectionLeaks();
+        java.util.Map<String, Object> res = new java.util.LinkedHashMap<>();
+        res.put("success", true);
+        res.put("evictedCount", evicted);
+        res.put("activeTracked", activeLeases.size());
+        res.put("totalLeaksDetected", totalLeaksDetected.get());
+        res.put("totalLeaksRecovered", totalLeaksRecovered.get());
+        res.put("lastRecovered", lastRecoveredLeak);
+        res.put("message", evicted > 0
+            ? "Auto-recovered and evicted " + evicted + " leaked connection(s) from pool."
+            : "No connection leaks detected. All " + activeLeases.size() + " active connection(s) are healthy.");
+        return res;
+    }
+
+    public int getActiveLeaseCount() {
+        return activeLeases.size();
+    }
+
+    public int getRecoveredLeakCount() {
+        return totalLeaksRecovered.get();
+    }
+
+    public static class ConnectionLease {
+        final Connection rawConnection;
+        final long borrowedAt;
+        final long threadId;
+        final String threadName;
+        final StackTraceElement[] allocationStack;
+        volatile long lastActivityAt;
+        final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean recovered = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        public ConnectionLease(Connection rawConnection) {
+            this.rawConnection = rawConnection;
+            this.borrowedAt = System.currentTimeMillis();
+            this.lastActivityAt = this.borrowedAt;
+            Thread t = Thread.currentThread();
+            this.threadId = t.getId();
+            this.threadName = t.getName();
+            this.allocationStack = t.getStackTrace();
+        }
+
+        public void touch() {
+            this.lastActivityAt = System.currentTimeMillis();
+        }
+
+        public boolean markClosed() {
+            return closed.compareAndSet(false, true);
+        }
+
+        public boolean markRecovered() {
+            boolean r = recovered.compareAndSet(false, true);
+            if (r) {
+                closed.set(true);
+            }
+            return r;
+        }
+
+        public boolean isClosed() {
+            return closed.get();
+        }
+
+        public boolean isRecovered() {
+            return recovered.get();
+        }
+
+        public long getHoldDurationMs() {
+            return System.currentTimeMillis() - borrowedAt;
+        }
+
+        public long getIdleDurationMs() {
+            return System.currentTimeMillis() - lastActivityAt;
+        }
+
+        public String getAllocationSite() {
+            if (allocationStack == null) return "Unknown";
+            for (StackTraceElement elem : allocationStack) {
+                String cls = elem.getClassName();
+                if (!cls.startsWith("com.codelens.storage.DatabaseManager") &&
+                    !cls.startsWith("java.lang.") &&
+                    !cls.startsWith("jdk.internal.") &&
+                    !cls.startsWith("com.zaxxer.hikari")) {
+                    return elem.getClassName() + "." + elem.getMethodName() + "(" + elem.getFileName() + ":" + elem.getLineNumber() + ")";
+                }
+            }
+            return allocationStack.length > 0 ? allocationStack[0].toString() : "Unknown";
+        }
+    }
+
+    private static class TrackedConnectionHandler implements java.lang.reflect.InvocationHandler {
+        private final Connection rawConn;
+        private final ConnectionLease lease;
+        private final DatabaseManager dbManager;
+
+        public TrackedConnectionHandler(Connection rawConn, ConnectionLease lease, DatabaseManager dbManager) {
+            this.rawConn = rawConn;
+            this.lease = lease;
+            this.dbManager = dbManager;
+        }
+
+        @Override
+        public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) throws Throwable {
+            String methodName = method.getName();
+
+            if ("close".equals(methodName)) {
+                if (lease.markClosed()) {
+                    dbManager.unregisterLease(rawConn);
+                    rawConn.close();
+                }
+                return null;
+            }
+
+            if ("isClosed".equals(methodName)) {
+                return lease.isClosed() || lease.isRecovered() || rawConn.isClosed();
+            }
+
+            if (lease.isRecovered()) {
+                throw new SQLException("Connection was auto-recovered and evicted by CodeLens DatabaseManager due to a detected connection leak (held "
+                    + lease.getHoldDurationMs() + "ms without closure at " + lease.getAllocationSite() + ")");
+            }
+
+            if ("createStatement".equals(methodName) ||
+                "prepareStatement".equals(methodName) ||
+                "prepareCall".equals(methodName) ||
+                "commit".equals(methodName) ||
+                "rollback".equals(methodName) ||
+                "setAutoCommit".equals(methodName) ||
+                "setSavepoint".equals(methodName) ||
+                "releaseSavepoint".equals(methodName)) {
+                lease.touch();
+            }
+
+            if ("unwrap".equals(methodName)) {
+                Class<?> iface = (Class<?>) args[0];
+                if (iface.isInstance(proxy)) return proxy;
+                if (iface.isInstance(rawConn)) return rawConn;
+                return rawConn.unwrap(iface);
+            }
+
+            if ("isWrapperFor".equals(methodName)) {
+                Class<?> iface = (Class<?>) args[0];
+                if (iface.isInstance(proxy) || iface.isInstance(rawConn)) return true;
+                return rawConn.isWrapperFor(iface);
+            }
+
+            if ("equals".equals(methodName)) {
+                Object other = args[0];
+                return proxy == other || rawConn.equals(other);
+            }
+
+            if ("hashCode".equals(methodName)) {
+                return System.identityHashCode(proxy);
+            }
+
+            if ("toString".equals(methodName)) {
+                return "TrackedConnection[" + rawConn.toString() + ", held " + lease.getHoldDurationMs() + "ms, site=" + lease.getAllocationSite() + "]";
+            }
+
+            try {
+                return method.invoke(rawConn, args);
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                Throwable target = ite.getTargetException();
+                if (target instanceof SQLException) {
+                    if (dbManager.isCancelOrTimeoutException((SQLException) target)) {
+                        dbManager.evictIfPoisoned(rawConn, (SQLException) target);
+                    }
+                    throw (SQLException) target;
+                }
+                if (target instanceof RuntimeException) throw (RuntimeException) target;
+                if (target instanceof Error) throw (Error) target;
+                throw new SQLException(target);
+            }
         }
     }
 }

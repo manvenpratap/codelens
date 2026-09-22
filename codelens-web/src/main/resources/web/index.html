@@ -2304,14 +2304,20 @@
 
         <!-- ── Feature Guide & Shortcuts ──────────────────────────────── -->
         <section class="settings-group settings-guide-section">
-          <h3 class="settings-group-title">
-            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Feature Guide &amp; Shortcuts
-          </h3>
+          <div class="settings-guide-header">
+            <h3 class="settings-group-title" style="margin:0;">
+              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Feature Guide &amp; Shortcuts
+            </h3>
+            <button id="settings-guide-open-btn" class="btn-ghost settings-guide-btn" title="Open full interactive Feature &amp; User Guide">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              Open Full Guide →
+            </button>
+          </div>
           <div class="settings-guide-shortcuts">
             <div class="guide-shortcut-row"><kbd>Ctrl/⌘ K</kbd><span>Focus search</span></div>
             <div class="guide-shortcut-row"><kbd>Ctrl/⌘ R</kbd><span>Re-scan codebase</span></div>
-            <div class="guide-shortcut-row"><kbd>Esc</kbd><span>Close modal / clear search</span></div>
+            <div class="guide-shortcut-row"><kbd>Esc</kbd><span>Close / clear</span></div>
             <div class="guide-shortcut-row"><kbd>1</kbd><span>Graph view</span></div>
             <div class="guide-shortcut-row"><kbd>2</kbd><span>Knowledge Base</span></div>
             <div class="guide-shortcut-row"><kbd>3</kbd><span>Code Review</span></div>
@@ -2320,12 +2326,8 @@
             <div class="guide-shortcut-row"><kbd>R</kbd><span>Reports Hub</span></div>
             <div class="guide-shortcut-row"><kbd>M</kbd><span>3D Macro Studio</span></div>
             <div class="guide-shortcut-row"><kbd>H</kbd><span>Hotspot Heat Mode</span></div>
-            <div class="guide-shortcut-row"><kbd>?</kbd><span>Open Feature Guide</span></div>
+            <div class="guide-shortcut-row"><kbd>?</kbd><span>Feature Guide</span></div>
           </div>
-          <button id="settings-guide-open-btn" class="btn-ghost" style="font-size:12px; padding:6px 14px; margin-top:10px; display:inline-flex; align-items:center; gap:6px; color:var(--emerald-400,#34d399);" title="Open full interactive Feature Guide">
-            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-            Open Full Feature Guide
-          </button>
         </section>
       </div>
 
@@ -2414,23 +2416,28 @@
       <!-- Process Hub Top-Level Navigation Tabs -->
       <div class="hub-nav-tabs" role="tablist" aria-label="Process Hub Navigation">
         <button class="hub-nav-tab active" data-tab="tasks" role="tab" aria-selected="true" aria-controls="hub-panel-tasks">
-          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span>Background Tasks</span>
+          <kbd class="hub-nav-kbd">1</kbd>
+          <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="hub-nav-title">Background Tasks</span>
           <span class="hub-nav-count" id="hub-nav-count-tasks">5</span>
         </button>
         <button class="hub-nav-tab" data-tab="database" role="tab" aria-selected="false" aria-controls="hub-panel-database">
-          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
-          <span>Database &amp; Storage</span>
+          <kbd class="hub-nav-kbd">2</kbd>
+          <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          <span class="hub-nav-title">Database &amp; Storage</span>
           <span class="hub-nav-badge text-emerald" id="hub-nav-badge-db">Healthy</span>
         </button>
         <button class="hub-nav-tab" data-tab="apis" role="tab" aria-selected="false" aria-controls="hub-panel-apis">
-          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>Backend APIs</span>
+          <kbd class="hub-nav-kbd">3</kbd>
+          <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span class="hub-nav-title">Backend APIs</span>
           <span class="hub-nav-count" id="hub-nav-count-apis">52</span>
         </button>
         <button class="hub-nav-tab" data-tab="server" role="tab" aria-selected="false" aria-controls="hub-panel-server">
-          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
-          <span>Server Telemetry</span>
+          <kbd class="hub-nav-kbd">4</kbd>
+          <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
+          <span class="hub-nav-title">Server Telemetry</span>
+          <span class="hub-nav-count" id="hub-nav-count-server">Host</span>
         </button>
       </div>
 
@@ -2512,17 +2519,23 @@
             <span class="hub-db-actions-sub">Perform live diagnostics, index self-healing, compaction, or orphan cleanup</span>
           </div>
           <div class="hub-db-btn-group">
-            <button class="btn btn-xs btn-primary" id="btn-db-action-health" title="Execute comprehensive connection, index, and table integrity check">
+            <button class="btn btn-xs btn-primary btn-db-action" id="btn-db-action-health" title="Execute comprehensive connection, index, and table integrity check">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Run Health Check
             </button>
-            <button class="btn btn-xs btn-outline" id="btn-db-action-reindex" title="Rebuild all secondary indexes and analyze cost-based statistics">
+            <button class="btn btn-xs btn-outline btn-db-action" id="btn-db-action-reindex" title="Rebuild all secondary indexes and analyze cost-based statistics">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Self-Heal Indexes
             </button>
-            <button class="btn btn-xs btn-outline" id="btn-db-action-compact" title="Compact H2 MVStore storage to reclaim fragmented disk space">
+            <button class="btn btn-xs btn-outline btn-db-action" id="btn-db-action-compact" title="Compact H2 MVStore storage to reclaim fragmented disk space">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg> Vacuum &amp; Compact
             </button>
-            <button class="btn btn-xs btn-outline" id="btn-db-action-clean" title="Safely remove dangling relationship or orphan method references">
+            <button class="btn btn-xs btn-outline btn-db-action" id="btn-db-action-clean" title="Safely remove dangling relationship or orphan method references">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Purge Orphans
+            </button>
+            <button class="btn btn-xs btn-outline btn-db-action" id="btn-db-action-leaks" data-action="sweep_leaks" title="Scan for unclosed or timed-out connections and auto-recover leaked pool slots">
+              <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Reclaim Leaks
+            </button>
+            <button class="btn btn-xs btn-outline btn-db-action" id="btn-db-action-restart" data-action="restart" title="Forcefully restart H2 engine, release transaction locks, and reset connection pool (auto-recovers from SQLState 57014)">
+              <svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Restart Database
             </button>
           </div>
         </div>
@@ -2599,6 +2612,19 @@
               <div class="hub-pool-row"><span class="pool-lbl">Threads Awaiting:</span><span class="pool-val font-mono" id="hub-pool-awaiting">0</span></div>
               <div class="hub-pool-row"><span class="pool-lbl">Max Pool Capacity:</span><span class="pool-val font-mono" id="hub-pool-max">20</span></div>
               <div class="hub-pool-row"><span class="pool-lbl">Connection Timeout:</span><span class="pool-val font-mono">60,000 ms</span></div>
+            </div>
+            <!-- Connection Leak Watchdog & Auto-Recovery Strip -->
+            <div class="hub-pool-leak-row" id="hub-pool-leak-row">
+              <div class="hub-pool-leak-col-left">
+                <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                <span class="hub-pool-leak-lbl">Leak Auto-Recovery:</span>
+                <span class="hub-pool-leak-status text-emerald" id="hub-pool-leak-status">Watchdog Active (60s)</span>
+              </div>
+              <div class="hub-pool-leak-col-right">
+                <span class="hub-pool-leak-lbl">Recovered:</span>
+                <span class="hub-pool-leak-count font-mono" id="hub-pool-leak-count">0</span>
+                <span class="hub-pool-leak-detail text-secondary" id="hub-pool-leak-detail">(0 tracked)</span>
+              </div>
             </div>
           </div>
 

@@ -1589,7 +1589,38 @@ body.theme-light .hero-recent-item:hover {
 /* Settings modal — Export & Guide sections */
 .settings-export-section,
 .settings-guide-section {
-  padding: 16px;
+  padding: 12px 16px;
+}
+.settings-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings-guide-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--emerald-400, #34d399);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(52, 211, 153, 0.06);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.settings-guide-btn:hover {
+  background: rgba(52, 211, 153, 0.14);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+body.theme-light .settings-guide-btn {
+  color: #059669;
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+body.theme-light .settings-guide-btn:hover {
+  background: #d1fae5;
 }
 .settings-export-actions {
   margin: 10px 0;
@@ -1612,31 +1643,50 @@ body.theme-light .hero-recent-item:hover {
   color: var(--text-secondary);
 }
 .settings-guide-shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px 14px;
+  margin-top: 10px;
+}
+@media (max-width: 900px) {
+  .settings-guide-shortcuts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 540px) {
+  .settings-guide-shortcuts {
+    grid-template-columns: 1fr;
+  }
 }
 .guide-shortcut-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-secondary);
+  min-width: 0;
 }
 .guide-shortcut-row kbd {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  background: var(--bg-elevated);
+  padding: 1px 6px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-family: var(--font-mono);
   color: var(--text-primary);
   white-space: nowrap;
-  min-width: 70px;
+  min-width: 58px;
+  height: 20px;
   justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.guide-shortcut-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Scan controls section */
@@ -7310,25 +7360,25 @@ body.theme-light .modal-close-btn:hover {
 }
 
 .shortcuts-table {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 6px 12px;
 }
 
 .sc-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 10px;
+  font-size: 11.5px;
 }
 
 .sc-row span {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -14320,36 +14370,79 @@ body.theme-light .meta-elapsed-val {
 /* ── Top-Level Navigation Tabs ── */
 .hub-nav-tabs {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 6px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
   margin-top: 2px;
+  box-sizing: border-box;
 }
 .hub-nav-tab {
+  flex: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 6px 14px;
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease);
   user-select: none;
+  white-space: nowrap;
+  position: relative;
 }
 .hub-nav-tab:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 .hub-nav-tab.active {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  background: var(--bg-surface, #1e2530);
+  color: #ffffff;
+  font-weight: 700;
+  border-color: rgba(0, 210, 255, 0.45);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.hub-nav-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 16%;
+  right: 16%;
+  height: 2px;
+  background: var(--cyan, #00d2ff);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--cyan, #00d2ff);
+}
+.hub-nav-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.hub-nav-tab.active .hub-nav-kbd {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: rgba(0, 210, 255, 0.4);
+  color: var(--cyan, #00d2ff);
+}
+.hub-nav-title {
+  font-size: 12px;
 }
 .hub-nav-count {
   font-size: 10.5px;
@@ -14358,6 +14451,11 @@ body.theme-light .meta-elapsed-val {
   background: rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono, monospace);
   font-weight: 700;
+  color: var(--text-secondary);
+}
+.hub-nav-tab.active .hub-nav-count {
+  background: rgba(0, 210, 255, 0.18);
+  color: #ffffff;
 }
 .hub-nav-badge {
   font-size: 10px;
@@ -14369,25 +14467,49 @@ body.theme-light .meta-elapsed-val {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Light Theme */
 body.theme-light .hub-nav-tabs {
-  border-bottom-color: #e2e8f0;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 body.theme-light .hub-nav-tab {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: #e2e8f0;
   color: #64748b;
 }
 body.theme-light .hub-nav-tab:hover {
-  background: #f1f5f9;
+  background: #ffffff;
   color: #1e293b;
+  border-color: #cbd5e1;
 }
 body.theme-light .hub-nav-tab.active {
   background: #ffffff;
   color: #0f172a;
+  border-color: #0284c7;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+body.theme-light .hub-nav-tab.active::after {
+  background: #0284c7;
+  box-shadow: 0 0 6px rgba(2, 132, 199, 0.5);
+}
+body.theme-light .hub-nav-kbd {
+  background: #e2e8f0;
   border-color: #cbd5e1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  color: #475569;
+}
+body.theme-light .hub-nav-tab.active .hub-nav-kbd {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0284c7;
 }
 body.theme-light .hub-nav-count {
   background: #e2e8f0;
   color: #334155;
+}
+body.theme-light .hub-nav-tab.active .hub-nav-count {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 /* ── TAB 2: Database & Storage Styles ── */
@@ -14483,6 +14605,12 @@ body.theme-light .hub-nav-count {
   background: rgba(244, 63, 94, 0.15);
   color: #fb7185;
   border: 1px solid rgba(244, 63, 94, 0.4);
+}
+.hub-db-status-badge.status-locked {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.6);
+  animation: pulse-border 2s infinite ease-in-out;
 }
 
 .hub-db-actions-strip {
@@ -14676,6 +14804,39 @@ body.theme-light .hub-nav-count {
 .pool-val {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.hub-pool-leak-row {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hub-pool-leak-col-left, .hub-pool-leak-col-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hub-pool-leak-lbl {
+  color: var(--text-muted);
+}
+.hub-pool-leak-status {
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+.hub-pool-leak-count {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.hub-pool-leak-detail {
+  font-size: 10.5px;
+  color: var(--text-muted);
 }
 
 .hub-index-list {

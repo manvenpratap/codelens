@@ -45,6 +45,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         // active local variables and parameters in current method/constructor scope -> declared type name
         public Map<String, String> currentScopeVarTypes = new HashMap<>();
 
+        // Deduplication set for relationships within the active method/constructor scope
+        public Set<String> currentMethodRels = new HashSet<>();
+
         public final List<CodePackage>      packages      = new ArrayList<>();
         public final List<CodeType>         types         = new ArrayList<>();
         public final List<CodeField>        fields        = new ArrayList<>();
@@ -115,8 +118,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         n.getExtendedTypes().stream().findFirst()
             .ifPresent(et -> {
                 type.setSuperClass(et.getNameAsString());
-                CodeRelationship rel = rel(fqn, et.getNameAsString(), "EXTENDS", 0);
-                ctx.relationships.add(rel);
+                addRelationship(ctx, fqn, et.getNameAsString(), "EXTENDS", 0);
             });
 
         List<String> ifaces = n.getImplementedTypes().stream()
@@ -124,7 +126,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             .collect(Collectors.toList());
         type.setInterfaces(ifaces);
         ifaces.forEach(iface ->
-            ctx.relationships.add(rel(fqn, iface, "IMPLEMENTS", 0)));
+            addRelationship(ctx, fqn, iface, "IMPLEMENTS", 0));
 
         ctx.types.add(type);
         super.visit(n, ctx);   // recurse into children (fields, methods, inner classes)
@@ -231,7 +233,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
                 // Register READS_FIELD relationship from accessor to component field
                 int line = p.getRange().map(r -> r.begin.line).orElse(0);
-                ctx.relationships.add(rel(getterFqn, fieldFqn, "READS_FIELD", line));
+                addRelationship(ctx, getterFqn, fieldFqn, "READS_FIELD", line);
             }
         }
 
@@ -266,7 +268,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             int line = n.getRange().map(r -> r.begin.line).orElse(0);
             for (Parameter p : n.getParameters()) {
                 String fieldFqn = fqn + "." + p.getNameAsString();
-                ctx.relationships.add(rel(initFqn, fieldFqn, "WRITES_FIELD", line));
+                addRelationship(ctx, initFqn, fieldFqn, "WRITES_FIELD", line);
             }
         }
 
@@ -285,7 +287,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
                 .collect(Collectors.toList());
             type.setInterfaces(ifaces);
             ifaces.forEach(iface ->
-                ctx.relationships.add(rel(fqn, iface, "IMPLEMENTS", 0)));
+                addRelationship(ctx, fqn, iface, "IMPLEMENTS", 0));
         }
 
         type.setFieldCount(n.getFields().size() + n.getParameters().size());
@@ -310,6 +312,8 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     public void visit(CompactConstructorDeclaration n, VisitContext ctx) {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
         String prevMethod = ctx.currentMethodFqn;
+        Set<String> prevMethodRels = ctx.currentMethodRels;
+        ctx.currentMethodRels = new HashSet<>();
 
         String fqn = ctx.currentTypeFqn + ".<init>()";
         ctx.currentMethodFqn = fqn;
@@ -330,6 +334,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         ctx.methods.add(method);
         super.visit(n, ctx);
+        ctx.currentMethodRels = prevMethodRels;
         ctx.currentMethodFqn = prevMethod;
     }
 
@@ -372,7 +377,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
         String prevMethod = ctx.currentMethodFqn;
         Map<String, String> prevScopeVars = ctx.currentScopeVarTypes;
+        Set<String> prevMethodRels = ctx.currentMethodRels;
         ctx.currentScopeVarTypes = new HashMap<>(prevScopeVars != null ? prevScopeVars : Collections.emptyMap());
+        ctx.currentMethodRels = new HashSet<>();
 
         for (Parameter p : n.getParameters()) {
             ctx.currentScopeVarTypes.put(p.getNameAsString(), normalizeTypeName(p.getType().asString()));
@@ -405,6 +412,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         ctx.methods.add(method);
         super.visit(n, ctx);   // recurse to pick up variables & calls inside this method
 
+        ctx.currentMethodRels = prevMethodRels;
         ctx.currentScopeVarTypes = prevScopeVars;
         ctx.currentMethodFqn = prevMethod;
     }
@@ -417,7 +425,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         if (ctx.currentTypeFqn.isEmpty()) { super.visit(n, ctx); return; }
         String prevMethod = ctx.currentMethodFqn;
         Map<String, String> prevScopeVars = ctx.currentScopeVarTypes;
+        Set<String> prevMethodRels = ctx.currentMethodRels;
         ctx.currentScopeVarTypes = new HashMap<>(prevScopeVars != null ? prevScopeVars : Collections.emptyMap());
+        ctx.currentMethodRels = new HashSet<>();
 
         for (Parameter p : n.getParameters()) {
             ctx.currentScopeVarTypes.put(p.getNameAsString(), normalizeTypeName(p.getType().asString()));
@@ -449,6 +459,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         ctx.methods.add(method);
         super.visit(n, ctx);
 
+        ctx.currentMethodRels = prevMethodRels;
         ctx.currentScopeVarTypes = prevScopeVars;
         ctx.currentMethodFqn = prevMethod;
     }
@@ -543,14 +554,8 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             calleeTarget = ctx.currentTypeFqn + "." + calleeName;
         }
 
-        CodeRelationship rel = new CodeRelationship();
         int line = n.getRange().map(r -> r.begin.line).orElse(0);
-        rel.setId(deterministicRelId(ctx.currentMethodFqn, calleeTarget, "CALLS", line));
-        rel.setFromEntityFqn(ctx.currentMethodFqn);
-        rel.setToEntityFqn(calleeTarget);
-        rel.setKind("CALLS");
-        rel.setSourceLine(line);
-        ctx.relationships.add(rel);
+        addRelationship(ctx, ctx.currentMethodFqn, calleeTarget, "CALLS", line);
 
         super.visit(n, ctx);
     }
@@ -581,10 +586,19 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
 
         if (fieldName != null) {
             int line = n.getRange().map(r -> r.begin.line).orElse(0);
-            ctx.relationships.add(
-                rel(ctx.currentMethodFqn,
+            addRelationship(ctx, ctx.currentMethodFqn,
+                ctx.currentTypeFqn + "." + fieldName,
+                "WRITES_FIELD", line);
+            if (n.getOperator() != AssignExpr.Operator.ASSIGN) {
+                addRelationship(ctx, ctx.currentMethodFqn,
                     ctx.currentTypeFqn + "." + fieldName,
-                    "WRITES_FIELD", line));
+                    "READS_FIELD", line);
+            }
+            // Crucial: Only visit the RHS (value) of the assignment.
+            // If we called super.visit(n, ctx), the target NameExpr would also be visited
+            // by visit(NameExpr), which would erroneously emit a duplicate READS_FIELD relationship for this write.
+            n.getValue().accept(this, ctx);
+            return;
         }
         super.visit(n, ctx);
     }
@@ -597,10 +611,9 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         if (!ctx.currentMethodFqn.isEmpty()
             && ctx.currentTypeFieldNames.contains(n.getNameAsString())) {
             int line = n.getRange().map(r -> r.begin.line).orElse(0);
-            ctx.relationships.add(
-                rel(ctx.currentMethodFqn,
-                    ctx.currentTypeFqn + "." + n.getNameAsString(),
-                    "READS_FIELD", line));
+            addRelationship(ctx, ctx.currentMethodFqn,
+                ctx.currentTypeFqn + "." + n.getNameAsString(),
+                "READS_FIELD", line);
         }
         super.visit(n, ctx);
     }
@@ -608,6 +621,63 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private static final Set<String> IGNORED_SCOPE_NAMES = Set.of(
+        "log", "logger", "LOG", "LOGGER",
+        "System.out", "System.err", "out", "err",
+        "Math", "Objects", "Arrays", "Collections", "Optional", "Thread",
+        "String", "StringBuilder", "StringBuffer",
+        "Integer", "Long", "Double", "Float", "Boolean", "Byte", "Short", "Character"
+    );
+
+    /**
+     * Determines whether a call target should be ignored.
+     * Heuristically filters out unresolvable JDK/logging targets or chained receiver calls
+     * that would otherwise bloat the relationship table with millions of rows that the
+     * call graph analyzer discards anyway.
+     */
+    public static boolean isIgnoredCalleeTarget(String target) {
+        if (target == null || target.isEmpty()) return true;
+        if (!target.startsWith("~")) return false; // intra-class / resolved calls are never ignored
+        String raw = target.substring(1);
+        // Chained calls with method invocation or lambda in receiver: e.g. builder.foo().bar, v -> ...
+        if (raw.contains("(") || raw.contains(")") || raw.contains("->") || raw.contains("::")) {
+            return true;
+        }
+        // Known JDK and logging package prefixes
+        if (raw.startsWith("java.") || raw.startsWith("javax.") || raw.startsWith("jakarta.")
+            || raw.startsWith("sun.") || raw.startsWith("jdk.")
+            || raw.startsWith("org.slf4j.") || raw.startsWith("org.apache.log4j.")
+            || raw.startsWith("org.apache.commons.logging.") || raw.startsWith("org.apache.logging.log4j.")
+            || raw.startsWith("System.out.") || raw.startsWith("System.err.")) {
+            return true;
+        }
+        int lastDot = raw.lastIndexOf('.');
+        if (lastDot > 0) {
+            String scope = raw.substring(0, lastDot);
+            if (IGNORED_SCOPE_NAMES.contains(scope)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Records a relationship with method-level deduplication and noise filtering.
+     */
+    public void addRelationship(VisitContext ctx, String from, String to, String kind, int line) {
+        if (from == null || to == null || kind == null) return;
+        if ("CALLS".equals(kind) && isIgnoredCalleeTarget(to)) {
+            return;
+        }
+        if (ctx.currentMethodRels != null) {
+            String dedupKey = from + "|" + to + "|" + kind;
+            if (!ctx.currentMethodRels.add(dedupKey)) {
+                return; // already recorded in this method scope
+            }
+        }
+        ctx.relationships.add(rel(from, to, kind, line));
+    }
 
     /**
      * Generates a fast, deterministic, collision-resistant 128-bit hex ID based on relationship

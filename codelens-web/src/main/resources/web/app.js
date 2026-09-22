@@ -846,6 +846,8 @@ function getProcessIconSvg(id, type) {
     return `<svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
   } else if (id === 'git-analyzer') {
     return `<svg class="svg-icon icon-sm icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>`;
+  } else if (id === 'db-watchdog') {
+    return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`;
   }
   return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 }
@@ -859,7 +861,9 @@ async function runDbRecovery(action) {
     'health_check': qs('#btn-db-action-health') || qs('#btn-quick-db-health'),
     'reindex': qs('#btn-db-action-reindex'),
     'compact': qs('#btn-db-action-compact'),
-    'clean_orphans': qs('#btn-db-action-clean')
+    'clean_orphans': qs('#btn-db-action-clean'),
+    'restart': qs('#btn-db-action-restart'),
+    'sweep_leaks': qs('#btn-db-action-leaks')
   };
   const activeBtn = btnMap[action];
   const origText = activeBtn ? activeBtn.innerHTML : '';
@@ -925,7 +929,20 @@ function renderDatabasePanel(db) {
   if (badgeEl) {
     const st = (db.status || 'HEALTHY').toUpperCase();
     badgeEl.textContent = st;
-    badgeEl.className = 'hub-db-status-badge ' + (st === 'HEALTHY' ? 'status-healthy' : (st === 'DEGRADED' ? 'status-degraded' : 'status-corrupted'));
+    badgeEl.className = 'hub-db-status-badge ' + (st === 'HEALTHY' ? 'status-healthy' : (st === 'DEGRADED' ? 'status-degraded' : (st === 'LOCKED' ? 'status-locked' : 'status-corrupted')));
+  }
+
+  // If locked or SQLState 57014 detected and alert not currently visible, show prompt
+  if (db.sqlState57014 || (db.status && db.status.toUpperCase() === 'LOCKED')) {
+    const alertEl = qs('#hub-db-recovery-alert');
+    const iconEl = qs('#hub-db-alert-icon');
+    const msgEl = qs('#hub-db-alert-msg');
+    if (alertEl && msgEl && alertEl.style.display === 'none') {
+      if (iconEl) iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+      alertEl.className = 'hub-db-recovery-alert alert-error';
+      msgEl.textContent = db.statusMessage || 'SQLState 57014 (Statement Timeout / Lock Contention) detected. Click "Restart Database" to reset connection pool and release locks.';
+      alertEl.style.display = 'flex';
+    }
   }
 
   // Table counts
@@ -949,6 +966,37 @@ function renderDatabasePanel(db) {
   if (maxEl) maxEl.textContent = pool.maxPoolSize ?? 20;
   const poolNameEl = qs('#hub-pool-name');
   if (poolNameEl) poolNameEl.textContent = pool.poolName || 'CodeLens-H2';
+
+  // Leak Auto-Recovery
+  const leak = db.leakRecovery || {};
+  const recovered = leak.totalRecovered ?? (db.pool?.leaksRecovered ?? 0);
+  const countEl = qs('#hub-pool-leak-count');
+  if (countEl) {
+    countEl.textContent = recovered;
+    if (recovered > 0) {
+      countEl.className = 'hub-pool-leak-count font-mono text-emerald';
+    } else {
+      countEl.className = 'hub-pool-leak-count font-mono';
+    }
+  }
+  const detailEl = qs('#hub-pool-leak-detail');
+  if (detailEl) {
+    if (recovered > 0 && leak.lastRecovered) {
+      const lr = leak.lastRecovered;
+      const site = lr.allocationSite ? lr.allocationSite.split('.').slice(-2).join('.') : '';
+      detailEl.textContent = `(last: ${lr.reason || 'evicted'} at ${site})`;
+      detailEl.title = `Last leak recovered at ${lr.allocationSite || 'unknown'}: held ${Math.round((lr.durationMs || 0)/1000)}s by ${lr.threadName || 'unknown'}`;
+    } else {
+      const tracked = leak.activeTracked ?? (db.pool?.activeTracked ?? 0);
+      detailEl.textContent = `(${tracked} tracked)`;
+      detailEl.title = `Watchdog monitors ${tracked} borrowed connection lease(s)`;
+    }
+  }
+  const leakStatusEl = qs('#hub-pool-leak-status');
+  if (leakStatusEl) {
+    const threshSec = Math.round((leak.thresholdMs || 60000) / 1000);
+    leakStatusEl.textContent = `Watchdog Active (${threshSec}s)`;
+  }
 
   // Indexes list
   const idxListEl = qs('#hub-index-list');
@@ -1252,6 +1300,7 @@ async function loadProcessHubData() {
       if (!rawDetail) {
         if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
         else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
+        else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
         else if (p.status === 'IDLE') rawDetail = 'Idle · Waiting for trigger';
         else if (p.status === 'COMPLETE') rawDetail = 'Execution complete · Ready';
         else rawDetail = 'Ready';
@@ -1436,6 +1485,8 @@ function initProcessHub() {
   qs('#btn-db-action-reindex')?.addEventListener('click', () => runDbRecovery('reindex'));
   qs('#btn-db-action-compact')?.addEventListener('click', () => runDbRecovery('compact'));
   qs('#btn-db-action-clean')?.addEventListener('click', () => runDbRecovery('clean_orphans'));
+  qs('#btn-db-action-leaks')?.addEventListener('click', () => runDbRecovery('sweep_leaks'));
+  qs('#btn-db-action-restart')?.addEventListener('click', () => runDbRecovery('restart'));
   qs('#btn-hub-db-alert-close')?.addEventListener('click', () => {
     const alertEl = qs('#hub-db-recovery-alert');
     if (alertEl) alertEl.style.display = 'none';
