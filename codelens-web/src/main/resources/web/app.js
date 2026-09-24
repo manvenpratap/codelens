@@ -10371,13 +10371,19 @@ window.jumpToGraphHeat = async function(fqn) {
   if (typeof loadWholeCodebaseGraph === 'function') {
     await loadWholeCodebaseGraph('arch');
   }
-  if (App.graph && !App.graph._heatMode) {
-    App.graph.toggleHeat();
-  }
-  if (fqn && App.graph) {
-    App.graph.selectNode(fqn);
-    if (typeof App.graph.focusNode === 'function') {
-      App.graph.focusNode(fqn);
+  await loadGitHeatData();
+  const targetGraph = App.graph || App.activeAltRenderer;
+  if (targetGraph) {
+    if (!targetGraph._heatMode && typeof targetGraph.toggleHeat === 'function') {
+      targetGraph.toggleHeat();
+    }
+    if (fqn) {
+      if (typeof targetGraph.selectNode === 'function') {
+        targetGraph.selectNode(fqn);
+      }
+      if (typeof targetGraph.focusNode === 'function') {
+        targetGraph.focusNode(fqn);
+      }
     }
   }
 };

@@ -1115,8 +1115,34 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     this.requestRender();
   }
 
+  _findNodeByFqn(nodeId) {
+    if (!nodeId || !this._nodes) return null;
+    let node = this._nodes.find(n => n.id === nodeId || n.fqn === nodeId);
+    if (!node && nodeId.includes('(')) {
+      const base = nodeId.substring(0, nodeId.indexOf('('));
+      const lastDot = base.lastIndexOf('.');
+      const classFqn = lastDot > 0 ? base.substring(0, lastDot) : base;
+      node = this._nodes.find(n => n.id === classFqn || n.fqn === classFqn);
+    }
+    if (!node && nodeId.includes('#')) {
+      const classFqn = nodeId.substring(0, nodeId.indexOf('#'));
+      node = this._nodes.find(n => n.id === classFqn || n.fqn === classFqn);
+    }
+    return node || null;
+  }
+
+  selectNode(nodeId) {
+    const node = this._findNodeByFqn(nodeId);
+    if (!node) return null;
+    this._selectedNode = node;
+    this._showNodeCard(node);
+    this._markDirty();
+    this.requestRender();
+    return node;
+  }
+
   focusNode(nodeId, scale = 1.35) {
-    const node = this._nodes.find(n => n.id === nodeId);
+    const node = this._findNodeByFqn(nodeId);
     if (!node) return;
 
     this._selectedNode = node;
