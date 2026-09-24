@@ -1385,32 +1385,142 @@ public class CallGraphAnalyzer {
         List<String> groupKeys = new ArrayList<>(groups.keySet());
         groupKeys.sort((a, b) -> Integer.compare(groups.get(b).size(), groups.get(a).size()));
         int totalGroups = groupKeys.size();
-        double groupSpread = Math.max(400.0, Math.sqrt(view.nodes.size()) * 52.0 + totalGroups * 36.0);
         double goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0)); // ~137.5 degrees
 
+        double[] clusterX = new double[totalGroups];
+        double[] clusterY = new double[totalGroups];
+        double[] clusterRadius = new double[totalGroups];
+        List<double[]> localNodeCoords = new ArrayList<>(totalGroups);
+
+        // Phase 1: Layout nodes within each cluster in local coordinates around (0, 0)
+        // with intra-cluster radial & label-box collision separation
+        for (int gIdx = 0; gIdx < totalGroups; gIdx++) {
+            String grp = groupKeys.get(gIdx);
+            List<GraphNode> groupNodes = groups.get(grp);
+            groupNodes.sort((a, b) -> Integer.compare(degrees.getOrDefault(b.id, 0), degrees.getOrDefault(a.id, 0)));
+
+            int count = groupNodes.size();
+            double[] lx = new double[count];
+            double[] ly = new double[count];
+            lx[0] = 0.0;
+            ly[0] = 0.0;
+
+            double baseAngleOffset = (gIdx * goldenAngle) % (2.0 * Math.PI);
+            for (int k = 1; k < count; k++) {
+                double ringAngle = baseAngleOffset + k * goldenAngle;
+                double ringDist = 76.0 + Math.sqrt(k) * 82.0;
+                lx[k] = Math.cos(ringAngle) * ringDist;
+                ly[k] = Math.sin(ringAngle) * ringDist;
+            }
+
+            // Intra-cluster collision & label bounding-box separation (25 passes)
+            for (int pass = 0; pass < 25 && count > 1; pass++) {
+                for (int i = 0; i < count; i++) {
+                    for (int j = i + 1; j < count; j++) {
+                        double dx = lx[j] - lx[i];
+                        double dy = ly[j] - ly[i];
+                        double dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 0.01) {
+                            dx = Math.cos(j * goldenAngle);
+                            dy = Math.sin(j * goldenAngle);
+                            dist = 1.0;
+                        }
+                        // Elliptical clearance: labels extend horizontally (~125px) and vertically (~56px)
+                        double minX = 128.0;
+                        double minY = 64.0;
+                        double nx = dx / minX;
+                        double ny = dy / minY;
+                        double normDist = Math.sqrt(nx * nx + ny * ny);
+                        if (normDist < 1.0) {
+                            double push = (1.0 - normDist) * 0.52;
+                            double px = (dx / dist) * (minX * 0.65) * push;
+                            double py = (dy / dist) * (minY * 0.85) * push;
+                            if (i > 0) { // keep core node (0) anchored near cluster center
+                                lx[i] -= px;
+                                ly[i] -= py;
+                            } else {
+                                lx[j] += px * 1.6;
+                                ly[j] += py * 1.6;
+                                continue;
+                            }
+                            lx[j] += px;
+                            ly[j] += py;
+                        }
+                    }
+                }
+            }
+
+            double maxR = 65.0;
+            for (int k = 0; k < count; k++) {
+                double r = Math.sqrt(lx[k] * lx[k] + ly[k] * ly[k]);
+                if (r + 75.0 > maxR) maxR = r + 75.0;
+            }
+            clusterRadius[gIdx] = maxR;
+
+            // Initial phyllotaxis spiral placement for cluster centers
+            if (gIdx == 0 && totalGroups > 1) {
+                clusterX[gIdx] = 0.0;
+                clusterY[gIdx] = 0.0;
+            } else {
+                double cAngle = gIdx * goldenAngle;
+                double cDist = (totalGroups == 1) ? 0.0 : (380.0 + Math.sqrt(gIdx) * 520.0);
+                clusterX[gIdx] = Math.cos(cAngle) * cDist;
+                clusterY[gIdx] = Math.sin(cAngle) * cDist;
+            }
+
+            double[] packed = new double[count * 2];
+            for (int k = 0; k < count; k++) {
+                packed[k * 2] = lx[k];
+                packed[k * 2 + 1] = ly[k];
+            }
+            localNodeCoords.add(packed);
+        }
+
+        // Phase 2: Circle-packing relaxation on cluster centers (80 passes)
+        // Guarantees every community hull has at least 180px clearance from every other community
+        for (int pass = 0; pass < 80 && totalGroups > 1; pass++) {
+            for (int i = 0; i < totalGroups; i++) {
+                for (int j = i + 1; j < totalGroups; j++) {
+                    double dx = clusterX[j] - clusterX[i];
+                    double dy = clusterY[j] - clusterY[i];
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 0.1) {
+                        dx = Math.cos(j * goldenAngle);
+                        dy = Math.sin(j * goldenAngle);
+                        dist = 1.0;
+                    }
+                    double reqDist = clusterRadius[i] + clusterRadius[j] + 180.0;
+                    if (dist < reqDist) {
+                        double overlap = (reqDist - dist) * 0.55;
+                        double ux = dx / dist;
+                        double uy = dy / dist;
+                        if (i == 0) {
+                            clusterX[j] += ux * overlap * 1.8;
+                            clusterY[j] += uy * overlap * 1.8;
+                        } else {
+                            clusterX[i] -= ux * overlap;
+                            clusterY[i] -= uy * overlap;
+                            clusterX[j] += ux * overlap;
+                            clusterY[j] += uy * overlap;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 3: Translate local node coordinates to final world coordinates
         int placedNodes = 0;
         for (int gIdx = 0; gIdx < totalGroups; gIdx++) {
             String grp = groupKeys.get(gIdx);
             List<GraphNode> groupNodes = groups.get(grp);
+            double[] packed = localNodeCoords.get(gIdx);
+            double gcx = clusterX[gIdx];
+            double gcy = clusterY[gIdx];
 
-            groupNodes.sort((a, b) -> Integer.compare(degrees.getOrDefault(b.id, 0), degrees.getOrDefault(a.id, 0)));
-
-            double groupAngle = totalGroups == 1 ? 0.0 : ((2.0 * Math.PI * gIdx) / totalGroups + (gIdx % 2 != 0 ? 0.15 : -0.15));
-            double groupDist = totalGroups == 1 ? 0.0 : (groupSpread * 0.55 + (gIdx % 3) * 35.0);
-            double gcx = Math.cos(groupAngle) * groupDist;
-            double gcy = Math.sin(groupAngle) * groupDist;
-
-            GraphNode core = groupNodes.get(0);
-            core.x = Math.round(gcx * 10.0) / 10.0;
-            core.y = Math.round(gcy * 10.0) / 10.0;
-            core.packageFqn = grp;
-
-            for (int k = 1; k < groupNodes.size(); k++) {
+            for (int k = 0; k < groupNodes.size(); k++) {
                 GraphNode nd = groupNodes.get(k);
-                double ringAngle = groupAngle + k * goldenAngle;
-                double ringDist = 38.0 + Math.sqrt(k) * 42.0;
-                nd.x = Math.round((gcx + Math.cos(ringAngle) * ringDist) * 10.0) / 10.0;
-                nd.y = Math.round((gcy + Math.sin(ringAngle) * ringDist) * 10.0) / 10.0;
+                nd.x = Math.round((gcx + packed[k * 2]) * 10.0) / 10.0;
+                nd.y = Math.round((gcy + packed[k * 2 + 1]) * 10.0) / 10.0;
                 nd.packageFqn = grp;
             }
             placedNodes += groupNodes.size();
@@ -1461,7 +1571,7 @@ public class CallGraphAnalyzer {
         }
 
         // Layout callers: flow leftwards (x < 0)
-        double currentCallerBaseX = -240.0;
+        double currentCallerBaseX = -320.0;
         for (Map.Entry<Integer, List<GraphNode>> entry : callersByDepth.entrySet()) {
             List<GraphNode> layerNodes = entry.getValue();
             int count = layerNodes.size();
@@ -1474,23 +1584,23 @@ public class CallGraphAnalyzer {
 
             if (count <= 25) {
                 double baseX = currentCallerBaseX;
-                double stepY = count > 12 ? 42.0 : 64.0;
+                double stepY = count > 12 ? 72.0 : 88.0;
                 double startY = - ((count - 1) * stepY) / 2.0;
 
                 for (int i = 0; i < count; i++) {
                     GraphNode n = layerNodes.get(i);
-                    double staggerX = (count > 10) ? ((i % 2 == 0) ? -20.0 : 20.0) : 0.0;
+                    double staggerX = (count > 6) ? ((i % 2 == 0) ? -42.0 : 42.0) : 0.0;
                     n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
                     n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
                     n.packageFqn = extractPackageFqn(n.id);
                 }
-                currentCallerBaseX -= 240.0;
+                currentCallerBaseX -= 320.0;
             } else {
-                // Multi-column grid/fan layout for large layers to avoid 20,000px vertical smears
+                // Multi-column grid/fan layout for large layers to avoid vertical smears
                 int colCount = Math.min(12, Math.max(2, (int) Math.ceil(Math.sqrt(count * 0.8))));
                 int rowsPerCol = (int) Math.ceil((double) count / colCount);
-                double colSpacing = 160.0;
-                double stepY = Math.max(28.0, Math.min(42.0, 900.0 / Math.max(1, rowsPerCol)));
+                double colSpacing = 240.0;
+                double stepY = Math.max(66.0, Math.min(84.0, 1400.0 / Math.max(1, rowsPerCol)));
                 double startY = - ((rowsPerCol - 1) * stepY) / 2.0;
 
                 for (int i = 0; i < count; i++) {
@@ -1505,12 +1615,12 @@ public class CallGraphAnalyzer {
                     n.y = Math.round((startY + row * stepY + (col % 2 == 0 ? 0 : stepY * 0.5) - archY) * 10.0) / 10.0;
                     n.packageFqn = extractPackageFqn(n.id);
                 }
-                currentCallerBaseX -= (colCount * colSpacing + 100.0);
+                currentCallerBaseX -= (colCount * colSpacing + 160.0);
             }
         }
 
         // Layout callees: flow rightwards (x > 0)
-        double currentCalleeBaseX = +240.0;
+        double currentCalleeBaseX = +320.0;
         for (Map.Entry<Integer, List<GraphNode>> entry : calleesByDepth.entrySet()) {
             List<GraphNode> layerNodes = entry.getValue();
             int count = layerNodes.size();
@@ -1523,22 +1633,22 @@ public class CallGraphAnalyzer {
 
             if (count <= 25) {
                 double baseX = currentCalleeBaseX;
-                double stepY = count > 12 ? 42.0 : 64.0;
+                double stepY = count > 12 ? 72.0 : 88.0;
                 double startY = - ((count - 1) * stepY) / 2.0;
 
                 for (int i = 0; i < count; i++) {
                     GraphNode n = layerNodes.get(i);
-                    double staggerX = (count > 10) ? ((i % 2 == 0) ? 20.0 : -20.0) : 0.0;
+                    double staggerX = (count > 6) ? ((i % 2 == 0) ? 42.0 : -42.0) : 0.0;
                     n.x = Math.round((baseX + staggerX) * 10.0) / 10.0;
                     n.y = Math.round((startY + i * stepY) * 10.0) / 10.0;
                     n.packageFqn = extractPackageFqn(n.id);
                 }
-                currentCalleeBaseX += 240.0;
+                currentCalleeBaseX += 320.0;
             } else {
                 int colCount = Math.min(12, Math.max(2, (int) Math.ceil(Math.sqrt(count * 0.8))));
                 int rowsPerCol = (int) Math.ceil((double) count / colCount);
-                double colSpacing = 160.0;
-                double stepY = Math.max(28.0, Math.min(42.0, 900.0 / Math.max(1, rowsPerCol)));
+                double colSpacing = 240.0;
+                double stepY = Math.max(66.0, Math.min(84.0, 1400.0 / Math.max(1, rowsPerCol)));
                 double startY = - ((rowsPerCol - 1) * stepY) / 2.0;
 
                 for (int i = 0; i < count; i++) {
@@ -1553,7 +1663,7 @@ public class CallGraphAnalyzer {
                     n.y = Math.round((startY + row * stepY + (col % 2 == 0 ? 0 : stepY * 0.5) - archY) * 10.0) / 10.0;
                     n.packageFqn = extractPackageFqn(n.id);
                 }
-                currentCalleeBaseX += (colCount * colSpacing + 100.0);
+                currentCalleeBaseX += (colCount * colSpacing + 160.0);
             }
         }
 

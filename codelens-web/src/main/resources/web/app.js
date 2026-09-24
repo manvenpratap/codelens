@@ -3629,7 +3629,10 @@ function switchTab(tabName) {
     const emptyEl = qs('#graph-empty');
     if (emptyEl && emptyEl.style.display !== 'none') {
       if (App.selected && App.selected.kind === 'type' && App.selected.data && App.selected.data.methods && App.selected.data.methods.length > 0) {
-        selectMethod(App.selected.data.methods[0].id || App.selected.data.methods[0].fqn);
+        const nonInit = App.selected.data.methods.filter(m => m.name !== '<init>' && m.name !== '<clinit>' && !(m.id || '').includes('.<init>('));
+        nonInit.sort((a, b) => (b.cyclomaticComplexity || 0) - (a.cyclomaticComplexity || 0));
+        const bestMethod = nonInit[0] || App.selected.data.methods[0];
+        selectMethod(bestMethod.id || bestMethod.fqn);
       } else if (App.selected && App.selected.kind === 'method') {
         loadCallGraph(App.selected.id);
       } else if (App.selected && App.selected.kind === 'field') {
@@ -5988,6 +5991,11 @@ async function selectType(id) {
     updateReviewTargetInfo();
     if (window.hubExplorerInstance && window.hubExplorerInstance.isOpen()) {
       window.hubExplorerInstance.load(id, 'callers');
+    } else if (App.activeTab === 'graph' && data.methods && data.methods.length > 0) {
+      const nonInit = data.methods.filter(m => m.name !== '<init>' && m.name !== '<clinit>' && !(m.id || '').includes('.<init>('));
+      nonInit.sort((a, b) => (b.cyclomaticComplexity || 0) - (a.cyclomaticComplexity || 0));
+      const bestMethod = nonInit[0] || data.methods[0];
+      await loadCallGraph(bestMethod.id || bestMethod.fqn);
     } else {
       switchTab('knowledge');
     }
@@ -10280,11 +10288,7 @@ async function loadGitSummary() {
         row.addEventListener('click', () => {
           const fqn = row.dataset.fqn;
           if (fqn) {
-            if (fqn.includes('(')) {
-              loadMethodDetails(fqn);
-            } else {
-              loadClassDetails(fqn);
-            }
+            window.selectEntity(fqn);
           }
         });
       });
@@ -10333,17 +10337,32 @@ async function loadGitHeatData() {
   } catch (_) { /* non-fatal */ }
 }
 window.loadGitHeatData = loadGitHeatData;
+window.loadClassDetails = selectType;
+window.loadMethodDetails = selectMethod;
 
 window.selectEntity = function(fqn) {
   if (!fqn) return;
   if (fqn.includes('(')) {
-    loadMethodDetails(fqn);
+    selectMethod(fqn);
+  } else if (fqn.includes('#')) {
+    selectField(fqn);
   } else {
-    loadClassDetails(fqn);
+    selectType(fqn);
   }
 };
 window.selectClass = function(fqn) {
-  window.selectEntity(fqn);
+  if (!fqn) return;
+  if (fqn.includes('(')) {
+    const base = fqn.substring(0, fqn.indexOf('('));
+    const lastDot = base.lastIndexOf('.');
+    const classFqn = lastDot > 0 ? base.substring(0, lastDot) : base;
+    selectType(classFqn);
+  } else if (fqn.includes('#')) {
+    const classFqn = fqn.substring(0, fqn.indexOf('#'));
+    selectType(classFqn);
+  } else {
+    selectType(fqn);
+  }
 };
 
 window.jumpToGraphHeat = async function(fqn) {

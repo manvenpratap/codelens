@@ -603,6 +603,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         });
       }
 
+      // Resolve any remaining node/label overlaps in precomputed layouts
+      this._resolvePrecomputedOverlaps(allProcessedNodes);
+
       // Compute community centroids and mark branch cores for precomputed layouts
       const commCentroids = new Map();
       for (const nd of allProcessedNodes) {
@@ -707,45 +710,136 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       branchMap.get(finalPkg).push(nodeObj);
     }
 
-    // Position branches blooming outward like a floral fractal tree from trunk/center
-    const branchKeys = Array.from(branchMap.keys());
+    // Position branches using two-phase Intra-Cluster Elliptical Separation + Inter-Cluster Circle Packing
+    const branchKeys = Array.from(branchMap.keys()).sort((a, b) => branchMap.get(b).length - branchMap.get(a).length);
     const totalBranches = branchKeys.length;
     const allProcessedNodes = [];
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
 
-    // Calculate trunk center distance and angular spacing
-    const branchSpread = Math.max(cx, cy) * (isLargeSet ? 0.92 : 0.75) + Math.sqrt(nodes.length) * 45;
+    const clusterX = new Float64Array(totalBranches);
+    const clusterY = new Float64Array(totalBranches);
+    const clusterRadius = new Float64Array(totalBranches);
+    const branchLocalCoords = [];
 
+    // Phase 1: Layout nodes inside each branch around (0, 0) with elliptical label-box separation
     branchKeys.forEach((bKey, bIdx) => {
       const bNodes = branchMap.get(bKey);
-      // Sort nodes in branch descending by hotScore (hottest node at the exact center of the branch)
       bNodes.sort((a, b) => b.hotScore - a.hotScore);
+      const count = bNodes.length;
+      const lx = new Float64Array(count);
+      const ly = new Float64Array(count);
+      lx[0] = 0;
+      ly[0] = 0;
 
-      const branchAngle = (bIdx / Math.max(totalBranches, 1)) * Math.PI * 2 + (bIdx % 2 ? 0.15 : -0.15);
-      const branchDist = totalBranches === 1 ? 0 : (branchSpread * 0.55 + (bIdx % 3) * 35);
-      const branchCenterX = cx + Math.cos(branchAngle) * branchDist;
-      const branchCenterY = cy + Math.sin(branchAngle) * branchDist;
+      const baseAngle = (bIdx * goldenAngle) % (Math.PI * 2);
+      for (let k = 1; k < count; k++) {
+        const ringAngle = baseAngle + k * goldenAngle;
+        const ringDist = 76 + Math.sqrt(k) * 82;
+        lx[k] = Math.cos(ringAngle) * ringDist;
+        ly[k] = Math.sin(ringAngle) * ringDist;
+      }
 
-      // Hottest node placed at branch center
-      const coreNode = bNodes[0];
-      coreNode.x = branchCenterX;
-      coreNode.y = branchCenterY;
-      coreNode.branchCenterX = branchCenterX;
-      coreNode.branchCenterY = branchCenterY;
-      coreNode.isBranchCore = true;
-      allProcessedNodes.push(coreNode);
+      // 25-pass intra-branch elliptical collision & label separation
+      for (let pass = 0; pass < 25 && count > 1; pass++) {
+        for (let i = 0; i < count; i++) {
+          for (let j = i + 1; j < count; j++) {
+            let dx = lx[j] - lx[i];
+            let dy = ly[j] - ly[i];
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 0.01) {
+              dx = Math.cos(j * goldenAngle);
+              dy = Math.sin(j * goldenAngle);
+              dist = 1;
+            }
+            const minX = (bNodes[i].radius || 12) + (bNodes[j].radius || 12) + 104;
+            const minY = (bNodes[i].radius || 12) + (bNodes[j].radius || 12) + 54;
+            const nx = dx / minX;
+            const ny = dy / minY;
+            const normDist = Math.sqrt(nx * nx + ny * ny);
+            if (normDist < 1.0) {
+              const push = (1.0 - normDist) * 0.54;
+              const px = (dx / dist) * (minX * 0.65) * push;
+              const py = (dy / dist) * (minY * 0.85) * push;
+              if (i === 0) {
+                lx[j] += px * 1.7;
+                ly[j] += py * 1.7;
+              } else {
+                lx[i] -= px;
+                ly[i] -= py;
+                lx[j] += px;
+                ly[j] += py;
+              }
+            }
+          }
+        }
+      }
 
-      // Remaining nodes bloom outward in golden ratio / sunflower spiral rings around the core
-      const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
-      for (let k = 1; k < bNodes.length; k++) {
+      let maxR = 65;
+      for (let k = 0; k < count; k++) {
+        const r = Math.sqrt(lx[k] * lx[k] + ly[k] * ly[k]) + (bNodes[k].radius || 12) + 60;
+        if (r > maxR) maxR = r;
+      }
+      clusterRadius[bIdx] = maxR;
+      branchLocalCoords.push({ lx, ly });
+
+      if (bIdx === 0 && totalBranches > 1) {
+        clusterX[bIdx] = cx;
+        clusterY[bIdx] = cy;
+      } else {
+        const cAngle = bIdx * goldenAngle;
+        const cDist = totalBranches === 1 ? 0 : (380 + Math.sqrt(bIdx) * 520);
+        clusterX[bIdx] = cx + Math.cos(cAngle) * cDist;
+        clusterY[bIdx] = cy + Math.sin(cAngle) * cDist;
+      }
+    });
+
+    // Phase 2: 80-pass Circle-Packing relaxation on branch centers (guarantees zero community hull overlap)
+    for (let pass = 0; pass < 80 && totalBranches > 1; pass++) {
+      for (let i = 0; i < totalBranches; i++) {
+        for (let j = i + 1; j < totalBranches; j++) {
+          let dx = clusterX[j] - clusterX[i];
+          let dy = clusterY[j] - clusterY[i];
+          let dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 0.1) {
+            dx = Math.cos(j * goldenAngle);
+            dy = Math.sin(j * goldenAngle);
+            dist = 1;
+          }
+          const reqDist = clusterRadius[i] + clusterRadius[j] + 170;
+          if (dist < reqDist) {
+            const overlap = (reqDist - dist) * 0.55;
+            const ux = dx / dist;
+            const uy = dy / dist;
+            if (i === 0) {
+              clusterX[j] += ux * overlap * 1.8;
+              clusterY[j] += uy * overlap * 1.8;
+            } else {
+              clusterX[i] -= ux * overlap;
+              clusterY[i] -= uy * overlap;
+              clusterX[j] += ux * overlap;
+              clusterY[j] += uy * overlap;
+            }
+          }
+        }
+      }
+    }
+
+    // Phase 3: Translate local coordinates to world coordinates
+    branchKeys.forEach((bKey, bIdx) => {
+      const bNodes = branchMap.get(bKey);
+      const { lx, ly } = branchLocalCoords[bIdx];
+      const branchCenterX = clusterX[bIdx];
+      const branchCenterY = clusterY[bIdx];
+      const bRadius = clusterRadius[bIdx];
+
+      for (let k = 0; k < bNodes.length; k++) {
         const nd = bNodes[k];
-        const ringAngle = branchAngle + k * goldenAngle;
-        const ringDist = 55 + Math.sqrt(k) * 56;
-
-        nd.x = branchCenterX + Math.cos(ringAngle) * ringDist;
-        nd.y = branchCenterY + Math.sin(ringAngle) * ringDist;
+        nd.x = branchCenterX + lx[k];
+        nd.y = branchCenterY + ly[k];
         nd.branchCenterX = branchCenterX;
         nd.branchCenterY = branchCenterY;
-        nd.isBranchCore = false;
+        nd.branchRadius = bRadius;
+        nd.isBranchCore = (k === 0);
         allProcessedNodes.push(nd);
       }
     });
@@ -1157,6 +1251,53 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
   /* ── Physics Simulation ─────────────────────────────────────────────────── */
 
+  _resolvePrecomputedOverlaps(nodes) {
+    if (!nodes || nodes.length <= 1) return;
+    const n = nodes.length;
+    const passes = n > 1500 ? 6 : (n > 500 ? 12 : 20);
+    for (let pass = 0; pass < passes; pass++) {
+      for (let i = 0; i < n; i++) {
+        const ni = nodes[i];
+        for (let j = i + 1; j < n; j++) {
+          const nj = nodes[j];
+          let dx = nj.x - ni.x;
+          let dy = nj.y - ni.y;
+          if (Math.abs(dx) > 160 || Math.abs(dy) > 95) continue;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 0.05) {
+            dx = Math.cos(j * 2.39996);
+            dy = Math.sin(j * 2.39996);
+            dist = 1.0;
+          }
+          // Elliptical bounding box accounting for horizontal text label below each node
+          const isSameComm = ni.community === nj.community;
+          const minX = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 96 : 135);
+          const minY = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 48 : 72);
+          const nx = dx / minX;
+          const ny = dy / minY;
+          const normDist = Math.sqrt(nx * nx + ny * ny);
+          if (normDist < 1.0) {
+            const push = (1.0 - normDist) * 0.52;
+            const px = (dx / dist) * (minX * 0.65) * push;
+            const py = (dy / dist) * (minY * 0.85) * push;
+            if (ni.role === 'root') {
+              nj.x += px * 1.8;
+              nj.y += py * 1.8;
+            } else if (nj.role === 'root') {
+              ni.x -= px * 1.8;
+              ni.y -= py * 1.8;
+            } else {
+              ni.x -= px;
+              ni.y -= py;
+              nj.x += px;
+              nj.y += py;
+            }
+          }
+        }
+      }
+    }
+  }
+
   _runInitialStabilization() {
     // Warm up offline avoiding freezing on large graphs
     const ticks = this._nodes.length > 500 ? 15 : (this._nodes.length > 100 ? 40 : 80);
@@ -1222,6 +1363,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         c.x /= c.count;
         c.y /= c.count;
       }
+      c.boundingRadius = Math.max(85, 76 + Math.sqrt(c.count) * 84);
     }
 
     // 2. Inter-cluster bouquet repulsion (pushes entire communities apart into distinct blooms)
@@ -1236,9 +1378,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         const dy = cb.y - ca.y;
         const distSq = dx * dx + dy * dy || 1;
         const dist = Math.sqrt(distSq);
-        const targetSep = 240 + Math.sqrt(ca.count + cb.count) * 60;
-        if (dist < targetSep * 3.0) {
-          const clusterRep = ((PHYSICS.repulsion * 3.0) / (distSq + 120)) * alpha;
+        const targetSep = ca.boundingRadius + cb.boundingRadius + 180;
+        if (dist < targetSep * 1.5) {
+          const clusterRep = ((PHYSICS.repulsion * 4.0) / Math.max(dist, 40)) * alpha;
           const fx = (dx / dist) * clusterRep;
           const fy = (dy / dist) * clusterRep;
           const repA = fx / Math.max(ca.count, 1);
@@ -1257,7 +1399,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
     }
 
-    // 3. Intra-community blooming cohesion (petals bloom radially around branch core)
+    // 3. Intra-community blooming cohesion (keeps outer nodes within community bounding radius without crushing inner rings)
     for (let i = 0; i < n; i++) {
       const nd = nodes[i];
       if (this._isNodeHidden(nd)) continue;
@@ -1271,12 +1413,11 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
 
         if (nd.isBranchCore) {
-          const fc = dist * (PHYSICS.clusterK * 2.0) * alpha;
+          const fc = dist * (PHYSICS.clusterK * 1.5) * alpha;
           nd._fx += (dx / dist) * fc;
           nd._fy += (dy / dist) * fc;
-        } else {
-          const idealBloomRadius = 40 + Math.min(160, Math.sqrt(c.count) * 22);
-          const fBloom = (dist - idealBloomRadius) * (PHYSICS.clusterK * 3.5) * alpha;
+        } else if (dist > c.boundingRadius * 0.92) {
+          const fBloom = (dist - c.boundingRadius * 0.92) * (PHYSICS.clusterK * 2.0) * alpha;
           nd._fx += (dx / dist) * fBloom;
           nd._fy += (dy / dist) * fBloom;
         }
@@ -1305,7 +1446,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
             const dy = nj.y - ni.y;
             const distSq = dx * dx + dy * dy || 0.01;
             const dist = Math.sqrt(distSq);
-            const minClearance = ni.radius + nj.radius + 36;
+            const minClearance = ni.radius + nj.radius + 54;
             let rep = 0;
             if (dist < minClearance) {
               rep = ((PHYSICS.repulsion * 2.2) / Math.max(dist, 8)) * alpha;
@@ -1316,59 +1457,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
             const fy = (dy / dist) * rep;
             ni._fx -= fx; ni._fy -= fy;
             nj._fx += fx; nj._fy += fy;
-          }
-        }
-      }
-
-      // Phase B: Cross-community sampled repulsion (prevents inter-cluster overlap)
-      // Sample up to 12 representative nodes per community for O(C² × S²) performance
-      const commSamples = [];
-      for (const comm of this._communities) {
-        if (this._hiddenCommunities.has(comm.cid)) continue;
-        const cNodes = [];
-        for (const id of comm.nodes) {
-          const idx = this._nodeIndex ? this._nodeIndex.get(id) : undefined;
-          if (idx !== undefined) {
-            const nd = nodes[idx];
-            if (nd && !this._isNodeHidden(nd)) cNodes.push(nd);
-          }
-        }
-        if (cNodes.length === 0) continue;
-        // Take evenly-spaced samples biased toward high-degree nodes
-        cNodes.sort((a, b) => b.degree - a.degree);
-        const maxSamples = Math.min(12, cNodes.length);
-        const step = Math.max(1, Math.floor(cNodes.length / maxSamples));
-        const samples = [];
-        for (let i = 0; i < cNodes.length && samples.length < maxSamples; i += step) {
-          samples.push(cNodes[i]);
-        }
-        commSamples.push({ cid: comm.cid, samples });
-      }
-      for (let ci = 0; ci < commSamples.length; ci++) {
-        for (let cj = ci + 1; cj < commSamples.length; cj++) {
-          const sa = commSamples[ci].samples;
-          const sb = commSamples[cj].samples;
-          for (let i = 0; i < sa.length; i++) {
-            for (let j = 0; j < sb.length; j++) {
-              const ni = sa[i], nj = sb[j];
-              const dx = nj.x - ni.x;
-              const dy = nj.y - ni.y;
-              const distSq = dx * dx + dy * dy || 0.01;
-              const dist = Math.sqrt(distSq);
-              const minClearance = ni.radius + nj.radius + 60;
-              let rep = 0;
-              if (dist < minClearance) {
-                rep = ((PHYSICS.repulsion * 4.5) / Math.max(dist, 8)) * alpha;
-              } else if (dist < minClearance * 4) {
-                rep = ((PHYSICS.repulsion * 1.4) / distSq) * alpha;
-              }
-              if (rep > 0) {
-                const fx = (dx / dist) * rep;
-                const fy = (dy / dist) * rep;
-                ni._fx -= fx; ni._fy -= fy;
-                nj._fx += fx; nj._fy += fy;
-              }
-            }
           }
         }
       }
@@ -1384,7 +1472,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           const dist = Math.sqrt(distSq);
 
           const isSameComm = ni.community === nj.community;
-          const minClearance = ni.radius + nj.radius + (isSameComm ? 36 : 70);
+          const minClearance = ni.radius + nj.radius + (isSameComm ? 54 : 90);
           let rep = 0;
           if (dist < minClearance) {
             rep = ((PHYSICS.repulsion * (isSameComm ? 1.8 : 4.0)) / Math.max(dist, 10)) * alpha;
@@ -1402,7 +1490,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
     }
 
-    // 5. Spring attraction along edges (tighter intra-class/cluster, flexible cross-cluster)
+    // 5. Spring attraction along edges (tighter intra-class/cluster, non-overlapping cross-cluster)
     for (const e of this._edges) {
       const srcId = typeof e.source === 'object' ? e.source.id : e.source;
       const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
@@ -1419,16 +1507,21 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
       const isSameClass = src.className && src.className === tgt.className;
       const isSameComm = src.community === tgt.community;
-      const targetLen = isSameClass
-        ? (PHYSICS.springLen * 0.40)
-        : (isSameComm
-            ? PHYSICS.springLen * 0.70
-            : PHYSICS.springLen * 1.8);
-      const springTension = (isSameClass
-        ? (PHYSICS.springK * 2.0)
-        : (isSameComm
-            ? PHYSICS.springK * 1.3
-            : PHYSICS.springK * 0.4)) * alpha;
+      if (!isSameComm) {
+        const cSrc = commCentroids.get(src.community);
+        const cTgt = commCentroids.get(tgt.community);
+        const minCommDist = (cSrc ? cSrc.boundingRadius : 120) + (cTgt ? cTgt.boundingRadius : 120) + 185;
+        if (dist <= minCommDist) continue;
+        const f = (dist - minCommDist) * (PHYSICS.springK * 0.04) * alpha;
+        const fx = (dx / dist) * f;
+        const fy = (dy / dist) * f;
+        src._fx += fx; src._fy += fy;
+        tgt._fx -= fx; tgt._fy -= fy;
+        continue;
+      }
+
+      const targetLen = isSameClass ? (PHYSICS.springLen * 0.75) : (PHYSICS.springLen * 1.05);
+      const springTension = (isSameClass ? (PHYSICS.springK * 0.9) : (PHYSICS.springK * 0.6)) * alpha;
 
       const f = (dist - targetLen) * springTension;
       const fx = (dx / dist) * f;
@@ -1488,7 +1581,53 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
     }
 
-    // 8. Hard Collision Separation (Single-pass for high FPS)
+    // 8A. Hard Community Hull Circle-Packing Separation (Guarantees zero community hull overlap)
+    if (cids.length > 1) {
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 0; i < cids.length; i++) {
+          const ca = commCentroids.get(cids[i]);
+          if (!ca || !ca.members.length) continue;
+          for (let j = i + 1; j < cids.length; j++) {
+            const cb = commCentroids.get(cids[j]);
+            if (!cb || !cb.members.length) continue;
+            let dx = cb.x - ca.x;
+            let dy = cb.y - ca.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 0.1) {
+              dx = Math.cos(j * 2.39996);
+              dy = Math.sin(j * 2.39996);
+              dist = 1;
+            }
+            const reqDist = ca.boundingRadius + cb.boundingRadius + 165;
+            if (dist < reqDist) {
+              const overlap = (reqDist - dist) * 0.54;
+              const ux = dx / dist;
+              const uy = dy / dist;
+              const shiftX = ux * overlap;
+              const shiftY = uy * overlap;
+              ca.x -= shiftX;
+              ca.y -= shiftY;
+              cb.x += shiftX;
+              cb.y += shiftY;
+              for (let k = 0; k < ca.members.length; k++) {
+                if (!ca.members[k].pinned) {
+                  ca.members[k].x -= shiftX;
+                  ca.members[k].y -= shiftY;
+                }
+              }
+              for (let k = 0; k < cb.members.length; k++) {
+                if (!cb.members[k].pinned) {
+                  cb.members[k].x += shiftX;
+                  cb.members[k].y += shiftY;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 8B. Hard Node & Label Box Elliptical Separation
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const ni = nodes[i], nj = nodes[j];
@@ -1496,21 +1635,27 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
         const dx = nj.x - ni.x;
         const dy = nj.y - ni.y;
+        if (Math.abs(dx) > 155 || Math.abs(dy) > 95) continue;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const requiredDist = ni.radius + nj.radius + 42;
+        const isSameComm = ni.community === nj.community;
+        const minX = ni.radius + nj.radius + (isSameComm ? 98 : 132);
+        const minY = ni.radius + nj.radius + (isSameComm ? 52 : 72);
+        const nx = dx / minX;
+        const ny = dy / minY;
+        const normDist = Math.sqrt(nx * nx + ny * ny);
 
-        if (dist < requiredDist) {
-          const overlap = (requiredDist - dist) * 0.55;
-          const ux = dx / dist;
-          const uy = dy / dist;
+        if (normDist < 1.0) {
+          const push = (1.0 - normDist) * 0.55;
+          const px = (dx / dist) * (minX * 0.65) * push;
+          const py = (dy / dist) * (minY * 0.85) * push;
 
           if (!ni.pinned) {
-            ni.x -= ux * overlap;
-            ni.y -= uy * overlap;
+            ni.x -= px;
+            ni.y -= py;
           }
           if (!nj.pinned) {
-            nj.x += ux * overlap;
-            nj.y += uy * overlap;
+            nj.x += px;
+            nj.y += py;
           }
         }
       }
