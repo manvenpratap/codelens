@@ -342,10 +342,6 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
           <span class="action-btn-text">⌘K</span>
         </button>
-        <button id="btn-prototype-studio" class="header-action-btn proto-action-btn" aria-label="Prototype Studio" title="Interactive Prototype Studio (5 Design Variants)">
-          <span class="action-btn-icon"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
-          <span class="action-btn-text">Prototypes</span>
-        </button>
         <button id="btn-process-hub" class="header-action-btn process-hub-btn" aria-label="Open Background Process Hub" title="Background Processes &amp; Task Manager">
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
           <span class="action-btn-text">Tasks</span>
@@ -3653,36 +3649,6 @@
       <!-- Injected dynamically by app.js -->
     </div>
   </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PROTOTYPE STUDIO MODAL (verbatim PICKER.md harness - Skill 11: prototype)
-     ═══════════════════════════════════════════════════════════════════════════ -->
-<div id="prototype-studio-modal" role="dialog" aria-modal="true" aria-label="Prototype Studio">
-  <div class="proto-studio-header">
-    <div class="proto-studio-title">
-      <svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      <span>Design Engineering Prototype Studio</span>
-      <span class="proto-axis-badge" id="proto-axis-label">Axis: Interaction &amp; Density</span>
-    </div>
-    <button id="proto-studio-close-btn" class="proto-studio-close" aria-label="Close Prototype Studio">
-      <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
-  <div class="proto-studio-stage" id="proto-stage">
-    <!-- Active prototype variant renders here -->
-  </div>
-  <!-- Verbatim HTML from PICKER.md -->
-  <nav class="proto-picker" aria-label="Prototype variants">
-    <div class="proto-picker-highlight" aria-hidden="true"></div>
-    <button class="proto-picker-item" data-active>1 Quiet</button>
-    <button class="proto-picker-item">2 Editorial</button>
-    <button class="proto-picker-item">3 Tactile</button>
-    <button class="proto-picker-item">4 Fluid</button>
-    <button class="proto-picker-item">5 Industrial</button>
-    <div class="proto-picker-divider" aria-hidden="true"></div>
-    <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation" title="Replay (R)">↺</button>
-  </nav>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
