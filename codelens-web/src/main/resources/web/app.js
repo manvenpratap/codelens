@@ -11297,35 +11297,45 @@ function kindIcon(kind) {
 
 const DEFAULT_LEFT_WIDTH = 310;
 const DEFAULT_RIGHT_WIDTH = 370;
+const DEFAULT_REPORTS_SIDEBAR_WIDTH = 290;
 const MIN_LEFT_WIDTH = 160;
 const MAX_LEFT_WIDTH = 600;
 const MIN_RIGHT_WIDTH = 220;
 const MAX_RIGHT_WIDTH = 750;
+const MIN_REPORTS_SIDEBAR_WIDTH = 190;
+const MAX_REPORTS_SIDEBAR_WIDTH = 600;
 const MIN_CENTRE_WIDTH = 260;
 
 const PANEL_STORAGE = {
   LEFT_WIDTH: 'codelens_panel_left_w',
   RIGHT_WIDTH: 'codelens_panel_right_w',
   LEFT_COLLAPSED: 'codelens_panel_left_collapsed',
-  RIGHT_COLLAPSED: 'codelens_panel_right_collapsed'
+  RIGHT_COLLAPSED: 'codelens_panel_right_collapsed',
+  REPORTS_WIDTH: 'codelens_panel_reports_w',
+  REPORTS_COLLAPSED: 'codelens_panel_reports_collapsed'
 };
 
 function initPanelResizers() {
   const resizerLeft = qs('#resizer-left');
   const resizerRight = qs('#resizer-right');
+  const resizerReports = qs('#resizer-reports');
   const btnCollapseLeft = qs('#btn-collapse-left');
   const btnCollapseRight = qs('#btn-collapse-right');
+  const btnCollapseReports = qs('#btn-collapse-reports-sidebar');
   const footerToggleLeft = qs('#footer-toggle-left');
   const footerToggleRight = qs('#footer-toggle-right');
 
   // Load saved state or defaults
   let savedLeftW = parseInt(localStorage.getItem(PANEL_STORAGE.LEFT_WIDTH), 10);
   let savedRightW = parseInt(localStorage.getItem(PANEL_STORAGE.RIGHT_WIDTH), 10);
+  let savedReportsW = parseInt(localStorage.getItem(PANEL_STORAGE.REPORTS_WIDTH), 10);
   const leftCollapsed = localStorage.getItem(PANEL_STORAGE.LEFT_COLLAPSED) === 'true';
   const rightCollapsed = localStorage.getItem(PANEL_STORAGE.RIGHT_COLLAPSED) === 'true';
+  const reportsCollapsed = localStorage.getItem(PANEL_STORAGE.REPORTS_COLLAPSED) === 'true';
 
   if (isNaN(savedLeftW) || savedLeftW < MIN_LEFT_WIDTH) savedLeftW = DEFAULT_LEFT_WIDTH;
   if (isNaN(savedRightW) || savedRightW < MIN_RIGHT_WIDTH) savedRightW = DEFAULT_RIGHT_WIDTH;
+  if (isNaN(savedReportsW) || savedReportsW < MIN_REPORTS_SIDEBAR_WIDTH) savedReportsW = DEFAULT_REPORTS_SIDEBAR_WIDTH;
 
   // Apply initial widths and collapse states
   if (leftCollapsed) {
@@ -11338,6 +11348,12 @@ function initPanelResizers() {
     collapseRightPanel(true, false);
   } else {
     setRightPanelWidth(savedRightW, false);
+  }
+
+  if (reportsCollapsed) {
+    collapseReportsSidebar(true, false);
+  } else {
+    setReportsSidebarWidth(savedReportsW, false);
   }
 
   // ── Dragging Left Resizer (Explorer) ────────────────────────────────────────
@@ -11444,12 +11460,78 @@ function initPanelResizers() {
     });
   }
 
+  // ── Dragging Reports Catalog Resizer ─────────────────────────────────────────
+  if (resizerReports) {
+    let startX = 0;
+    let startW = 0;
+
+    const onPointerMove = moveEvent => {
+      const delta = moveEvent.clientX - startX;
+      const hubLayout = qs('.reports-hub-layout');
+      const hubWidth = hubLayout ? hubLayout.clientWidth : window.innerWidth;
+      const availableW = Math.max(MIN_REPORTS_SIDEBAR_WIDTH, hubWidth - 340);
+      const maxW = Math.min(MAX_REPORTS_SIDEBAR_WIDTH, availableW);
+      const newW = Math.min(maxW, Math.max(MIN_REPORTS_SIDEBAR_WIDTH, startW + delta));
+      setReportsSidebarWidth(newW, false);
+    };
+
+    const onPointerUp = upEvent => {
+      document.body.classList.remove('resizing');
+      resizerReports.classList.remove('active');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+
+      const finalW = getReportsSidebarWidth();
+      if (finalW > 0) {
+        localStorage.setItem(PANEL_STORAGE.REPORTS_WIDTH, finalW);
+        localStorage.setItem(PANEL_STORAGE.REPORTS_COLLAPSED, 'false');
+      }
+      triggerRelayout();
+    };
+
+    const startDrag = e => {
+      if (e.button !== 0 && e.buttons !== 1) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startW = getReportsSidebarWidth();
+      document.body.classList.add('resizing');
+      resizerReports.classList.add('active');
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    };
+
+    resizerReports.addEventListener('pointerdown', startDrag);
+    resizerReports.addEventListener('mousedown', startDrag);
+    resizerReports.addEventListener('dblclick', () => {
+      setReportsSidebarWidth(DEFAULT_REPORTS_SIDEBAR_WIDTH, true);
+    });
+    resizerReports.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 40 : 16;
+        const delta = e.key === 'ArrowRight' ? step : -step;
+        const nextW = Math.min(MAX_REPORTS_SIDEBAR_WIDTH, Math.max(MIN_REPORTS_SIDEBAR_WIDTH, getReportsSidebarWidth() + delta));
+        setReportsSidebarWidth(nextW, true);
+      }
+    });
+  }
+
   // ── Collapse / Expand Buttons & Floating Expand Strips ─────────────────────
   if (btnCollapseLeft) {
     btnCollapseLeft.addEventListener('click', () => toggleLeftPanel());
   }
   if (btnCollapseRight) {
     btnCollapseRight.addEventListener('click', () => toggleRightPanel());
+  }
+  if (btnCollapseReports) {
+    btnCollapseReports.addEventListener('click', () => toggleReportsSidebar());
   }
   if (footerToggleLeft) {
     footerToggleLeft.addEventListener('click', () => toggleLeftPanel());
@@ -11467,6 +11549,11 @@ function initPanelResizers() {
   if (rightExpandStrip) {
     rightExpandStrip.addEventListener('click', () => collapseRightPanel(false, true));
   }
+
+  const reportsExpandStrip = qs('#reports-expand-strip');
+  if (reportsExpandStrip) {
+    reportsExpandStrip.addEventListener('click', () => collapseReportsSidebar(false, true));
+  }
 }
 
 function getLeftPanelWidth() {
@@ -11481,6 +11568,13 @@ function getRightPanelWidth() {
   if (!panel || panel.classList.contains('collapsed')) return 0;
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--right-w');
   return parseInt(raw, 10) || DEFAULT_RIGHT_WIDTH;
+}
+
+function getReportsSidebarWidth() {
+  const panel = qs('#reports-sidebar');
+  if (!panel || panel.classList.contains('collapsed')) return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--reports-sidebar-w');
+  return parseInt(raw, 10) || panel.offsetWidth || DEFAULT_REPORTS_SIDEBAR_WIDTH;
 }
 
 function setLeftPanelWidth(width, save = true) {
@@ -11517,6 +11611,23 @@ function setRightPanelWidth(width, save = true) {
   if (save) {
     localStorage.setItem(PANEL_STORAGE.RIGHT_WIDTH, width);
     localStorage.setItem(PANEL_STORAGE.RIGHT_COLLAPSED, 'false');
+  }
+  triggerRelayout();
+}
+
+function setReportsSidebarWidth(width, save = true) {
+  const reportsSidebar = qs('#reports-sidebar');
+  const resizer = qs('#resizer-reports');
+  const expandStrip = qs('#reports-expand-strip');
+
+  if (reportsSidebar) reportsSidebar.classList.remove('collapsed');
+  if (resizer) resizer.style.display = '';
+  if (expandStrip) expandStrip.style.display = 'none';
+
+  document.documentElement.style.setProperty('--reports-sidebar-w', `${width}px`);
+  if (save) {
+    localStorage.setItem(PANEL_STORAGE.REPORTS_WIDTH, width);
+    localStorage.setItem(PANEL_STORAGE.REPORTS_COLLAPSED, 'false');
   }
   triggerRelayout();
 }
@@ -11563,6 +11674,25 @@ function collapseRightPanel(collapsed, save = true) {
   triggerRelayout();
 }
 
+function collapseReportsSidebar(collapsed, save = true) {
+  const reportsSidebar = qs('#reports-sidebar');
+  const resizer = qs('#resizer-reports');
+  const expandStrip = qs('#reports-expand-strip');
+
+  if (collapsed) {
+    if (reportsSidebar) reportsSidebar.classList.add('collapsed');
+    if (resizer) resizer.style.display = 'none';
+    if (expandStrip) expandStrip.style.display = 'flex';
+    document.documentElement.style.setProperty('--reports-sidebar-w', '0px');
+    if (save) localStorage.setItem(PANEL_STORAGE.REPORTS_COLLAPSED, 'true');
+  } else {
+    let savedW = parseInt(localStorage.getItem(PANEL_STORAGE.REPORTS_WIDTH), 10);
+    if (isNaN(savedW) || savedW < MIN_REPORTS_SIDEBAR_WIDTH) savedW = DEFAULT_REPORTS_SIDEBAR_WIDTH;
+    setReportsSidebarWidth(savedW, save);
+  }
+  triggerRelayout();
+}
+
 function toggleLeftPanel() {
   const leftPanel = qs('#left-panel');
   const isCollapsed = leftPanel?.classList.contains('collapsed');
@@ -11575,9 +11705,16 @@ function toggleRightPanel() {
   collapseRightPanel(!isCollapsed, true);
 }
 
+function toggleReportsSidebar() {
+  const reportsSidebar = qs('#reports-sidebar');
+  const isCollapsed = reportsSidebar?.classList.contains('collapsed');
+  collapseReportsSidebar(!isCollapsed, true);
+}
+
 function resetPanelWidths() {
   setLeftPanelWidth(DEFAULT_LEFT_WIDTH, true);
   setRightPanelWidth(DEFAULT_RIGHT_WIDTH, true);
+  setReportsSidebarWidth(DEFAULT_REPORTS_SIDEBAR_WIDTH, true);
   showBanner('Panels reset to default dimensions');
 }
 
