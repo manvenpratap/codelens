@@ -4,6 +4,8 @@ target/
 
 # CodeLens runtime data (re-created on each scan)
 codelens-data/
+codelens-stress-data/
+codelens-*-data/
 
 # IDE files
 .idea/

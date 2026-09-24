@@ -83,6 +83,7 @@ public class CodeLensServer {
     private final ReportService      reportService;
     private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final GitBlameService    gitBlameService;
+    private final StressTestService  stressTestService = new StressTestService();
     private final int                port;
 
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
@@ -422,6 +423,11 @@ public class CodeLensServer {
         // ── Database & Storage ────────────────────────────────────────────────
         app.get("/api/database/health",            this::getDatabaseHealth);
         app.post("/api/database/recover",          this::recoverDatabase);
+
+        // ── Scale & Stress Testing ─────────────────────────────────────────────
+        app.post("/api/stress-test/start",         this::startStressTest);
+        app.get("/api/stress-test/status",         this::getStressTestStatus);
+        app.post("/api/stress-test/stop",          this::stopStressTest);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -776,6 +782,27 @@ public class CodeLensServer {
         watchdogProc.put("canRestart", true);
         processes.add(watchdogProc);
 
+        // 7. Scale & Stress Test Engine
+        Map<String, Object> stressProc = new LinkedHashMap<>();
+        stressProc.put("id", "stress-test");
+        stressProc.put("name", "Scale & Stress Test Runner");
+        stressProc.put("type", "High-Throughput Load & Capacity Benchmark");
+        StressTestProgress stp = stressTestService.getProgress();
+        boolean isStressRunning = stp != null && stp.getStatus() == StressTestProgress.Status.RUNNING;
+        boolean isStressComplete = stp != null && stp.getStatus() == StressTestProgress.Status.COMPLETE;
+        boolean isStressError = stp != null && stp.getStatus() == StressTestProgress.Status.ERROR;
+        stressProc.put("status", isStressRunning ? "RUNNING" : (isStressComplete ? "COMPLETE" : (isStressError ? "ERROR" : "IDLE")));
+        stressProc.put("activeStage", stp != null ? stp.getActiveStage() : "IDLE");
+        stressProc.put("currentPhase", stp != null ? stp.getCurrentPhase() : "Idle");
+        stressProc.put("currentDetail", stp != null ? (isStressError && stp.getErrorDetail() != null && !stp.getErrorDetail().isBlank() ? stp.getErrorDetail() : stp.getCurrentDetail()) : "");
+        stressProc.put("percentage", stp != null ? stp.getPercentage() : 0);
+        stressProc.put("durationMs", stp != null ? stp.getDurationMs() : 0);
+        stressProc.put("startTime", stp != null ? stp.getStartTime() : 0);
+        stressProc.put("thread", isStressRunning ? "codelens-stress-worker" : "-");
+        stressProc.put("canKill", isStressRunning);
+        stressProc.put("canRestart", true);
+        processes.add(stressProc);
+
         // System resources & Pool telemetry
         long freeMem = Runtime.getRuntime().freeMemory();
         long totalMem = Runtime.getRuntime().totalMemory();
@@ -878,12 +905,27 @@ public class CodeLensServer {
             }
             ctx.json(Map.of("status", "killed", "processId", id, "message", "Git analysis process terminated"));
             return;
+        } else if ("stress-test".equalsIgnoreCase(id)) {
+            stressTestService.stopStressTest();
+            ctx.json(Map.of("status", "killed", "processId", id, "message", "Scale & stress test cancellation requested"));
+            return;
         }
         ctx.json(Map.of("status", "ok", "processId", id, "message", "Process signaled"));
     }
 
     private void restartProcess(Context ctx) {
         String id = ctx.pathParam("id");
+        if ("stress-test".equalsIgnoreCase(id)) {
+            StressTestProgress lastP = stressTestService.getProgress();
+            int c = lastP != null && lastP.getTargetClasses() > 0 ? lastP.getTargetClasses() : 30_000;
+            int f = lastP != null && lastP.getTargetFields() > 0 ? lastP.getTargetFields() : 150_000;
+            long r = lastP != null && lastP.getTargetRelationships() > 0 ? lastP.getTargetRelationships() : 15_000_000L;
+            String dir = lastP != null && lastP.getTargetDir() != null ? lastP.getTargetDir() : "/Volumes/Study/Projects/codelens/codelens-stress-data";
+            boolean started = stressTestService.startStressTest(c, f, r, dir);
+            ctx.json(Map.of("status", started ? "restarted" : "running", "processId", id, "message", started ? "Stress test restarted." : "Stress test is already running."));
+            return;
+        }
+
         String currentPath = resolveCurrentSourcePath();
         if (currentPath == null || currentPath.isBlank()) {
             ctx.status(400).json(Map.of("error", "No active source path to restart"));
@@ -974,6 +1016,44 @@ public class CodeLensServer {
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
+    }
+
+    private void startStressTest(Context ctx) {
+        Map<?, ?> body = Collections.emptyMap();
+        try {
+            body = ctx.bodyAsClass(Map.class);
+        } catch (Exception ignored) {}
+
+        int classes = 30_000;
+        int fields = 150_000;
+        long rels = 15_000_000L;
+        String dir = "/Volumes/Study/Projects/codelens/codelens-stress-data";
+
+        if (body != null) {
+            if (body.get("classes") instanceof Number n) classes = n.intValue();
+            if (body.get("fields") instanceof Number n) fields = n.intValue();
+            if (body.get("relationships") instanceof Number n) rels = n.longValue();
+            if (body.get("targetDir") instanceof String s && !s.isBlank()) dir = s;
+        }
+
+        boolean started = stressTestService.startStressTest(classes, fields, rels, dir);
+        if (started) {
+            logProcessBanner("STRESS_TEST_STARTED", "Stress Test Runner", dir,
+                String.format("Target: %,d classes, %,d fields, %,d relationships", classes, fields, rels));
+            ctx.json(Map.of("success", true, "message", "Stress test started successfully", "progress", stressTestService.getProgress()));
+        } else {
+            ctx.status(409).json(Map.of("success", false, "message", "A stress test is already running", "progress", stressTestService.getProgress()));
+        }
+    }
+
+    private void getStressTestStatus(Context ctx) {
+        ctx.json(stressTestService.getProgress());
+    }
+
+    private void stopStressTest(Context ctx) {
+        stressTestService.stopStressTest();
+        logProcessBanner("STRESS_TEST_STOPPED", "Stress Test Runner", "-", "User stopped stress test execution");
+        ctx.json(Map.of("success", true, "message", "Stress test stop requested", "progress", stressTestService.getProgress()));
     }
 
 

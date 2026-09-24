@@ -14881,6 +14881,216 @@ body.theme-light .hub-nav-tab.active .hub-nav-count {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* ── Scale & Stress Testing Benchmark Styles ── */
+.hub-db-stress-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hub-stress-presets {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.btn-stress-preset {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-stress-preset:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+.btn-stress-preset.active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+.hub-stress-card {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hub-stress-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hub-stress-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 110px;
+}
+.hub-stress-field label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.hub-stress-field input {
+  width: 100%;
+  height: 30px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  outline: none;
+}
+.hub-stress-field input:focus {
+  border-color: var(--accent);
+}
+.hub-stress-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 1px;
+}
+.hub-stress-telemetry-box {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hub-stress-telemetry-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hub-stress-phase-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hub-stress-phase-badge {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.hub-stress-detail {
+  font-size: 11.5px;
+}
+.hub-stress-pct-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.hub-stress-progress-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.hub-stress-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #10b981);
+  transition: width 0.3s ease;
+}
+.hub-stress-meters-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 680px) {
+  .hub-stress-meters-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.hub-stress-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hub-stress-meter .meter-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.hub-stress-meter .meter-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.hub-stress-results-card {
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hub-stress-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hub-stress-results-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hub-stress-results-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.hub-stress-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px 14px;
+}
+.hub-stress-res-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hub-stress-res-lbl {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.hub-stress-res-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+}
 
 /* ── TAB 3: Backend REST APIs Styles ── */
 .hub-api-toolbar {
@@ -15186,6 +15396,40 @@ body.theme-light .hub-subcard-badge {
 }
 body.theme-light .hub-index-item {
   background: #f8fafc;
+}
+body.theme-light .hub-stress-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+body.theme-light .hub-stress-field input {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+body.theme-light .btn-stress-preset {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+body.theme-light .btn-stress-preset:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+body.theme-light .btn-stress-preset.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+body.theme-light .hub-stress-telemetry-box {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+body.theme-light .hub-stress-progress-bar-wrap {
+  background: #e2e8f0;
+}
+body.theme-light .hub-stress-results-card {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 body.theme-light .hub-api-search-wrap input {
   background: #ffffff;

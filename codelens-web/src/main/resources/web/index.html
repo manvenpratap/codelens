@@ -2639,6 +2639,95 @@
             </div>
           </div>
         </div>
+
+        <!-- ── Scale & Stress Testing Benchmark Section ── -->
+        <div class="hub-db-stress-section">
+          <div class="hub-db-section-header">
+            <div class="hub-db-section-header-left">
+              <span class="hub-db-section-title">
+                <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Scale &amp; Stress Testing Benchmark
+              </span>
+              <span class="hub-db-section-sub">Validate massive capacity (30k classes, 150k fields, 15M relationships) with zero trace bloat &amp; compact storage</span>
+            </div>
+            <div class="hub-stress-presets">
+              <button type="button" class="btn btn-xs btn-outline btn-stress-preset active" data-classes="300" data-fields="1500" data-rels="15000" id="btn-stress-preset-smoke" title="Fast smoke test (300 classes, 15k rels)">Smoke (15k)</button>
+              <button type="button" class="btn btn-xs btn-outline btn-stress-preset" data-classes="3000" data-fields="15000" data-rels="300000" id="btn-stress-preset-std" title="Standard test (3,000 classes, 300k rels)">Standard (300k)</button>
+              <button type="button" class="btn btn-xs btn-outline btn-stress-preset" data-classes="30000" data-fields="150000" data-rels="15000000" id="btn-stress-preset-massive" title="Enterprise Scale test (30,000 classes, 150,000 fields, 15,000,000 rels)">Enterprise (15M)</button>
+            </div>
+          </div>
+
+          <div class="hub-stress-card">
+            <div class="hub-stress-form-row">
+              <div class="hub-stress-field">
+                <label for="stress-input-classes">Classes</label>
+                <input type="number" id="stress-input-classes" class="input-xs font-mono" value="300" min="10" max="100000" />
+              </div>
+              <div class="hub-stress-field">
+                <label for="stress-input-fields">Fields</label>
+                <input type="number" id="stress-input-fields" class="input-xs font-mono" value="1500" min="10" max="500000" />
+              </div>
+              <div class="hub-stress-field">
+                <label for="stress-input-rels">Relationships</label>
+                <input type="number" id="stress-input-rels" class="input-xs font-mono" value="15000" min="100" max="50000000" />
+              </div>
+              <div class="hub-stress-actions">
+                <button type="button" class="btn btn-xs btn-primary" id="btn-stress-start" title="Launch scale stress benchmark">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Stress Test
+                </button>
+                <button type="button" class="btn btn-xs btn-outline text-rose" id="btn-stress-stop" style="display:none;" title="Abort active stress test">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg> Abort
+                </button>
+              </div>
+            </div>
+
+            <!-- Real-time Progress & Telemetry Strip -->
+            <div class="hub-stress-telemetry-box" id="hub-stress-telemetry" style="display:none;">
+              <div class="hub-stress-telemetry-top">
+                <div class="hub-stress-phase-info">
+                  <span class="hub-stress-phase-badge" id="hub-stress-phase">Initializing</span>
+                  <span class="hub-stress-detail text-secondary" id="hub-stress-detail">Preparing bulk load...</span>
+                </div>
+                <div class="hub-stress-pct-badge font-mono" id="hub-stress-pct">0%</div>
+              </div>
+              <div class="hub-stress-progress-bar-wrap">
+                <div class="hub-stress-progress-bar" id="hub-stress-bar" style="width: 0%;"></div>
+              </div>
+              <div class="hub-stress-meters-row">
+                <div class="hub-stress-meter">
+                  <span class="meter-lbl">Ingestion Rate</span>
+                  <span class="meter-val font-mono text-emerald" id="hub-stress-rate">0 rows/s</span>
+                </div>
+                <div class="hub-stress-meter">
+                  <span class="meter-lbl">Database Size</span>
+                  <span class="meter-val font-mono" id="hub-stress-dbsize">0 MB</span>
+                </div>
+                <div class="hub-stress-meter">
+                  <span class="meter-lbl">Heap Memory</span>
+                  <span class="meter-val font-mono" id="hub-stress-heap">0 MB</span>
+                </div>
+                <div class="hub-stress-meter">
+                  <span class="meter-lbl">Relationships Ingested</span>
+                  <span class="meter-val font-mono" id="hub-stress-ingested">0 / 0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Benchmark Results Summary Card -->
+            <div class="hub-stress-results-card" id="hub-stress-results" style="display:none;">
+              <div class="hub-stress-results-header">
+                <span class="hub-stress-results-title">
+                  <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Benchmark Performance Report
+                </span>
+                <span class="hub-stress-results-badge status-healthy" id="hub-stress-result-status">COMPLETED</span>
+              </div>
+              <div class="hub-stress-results-grid" id="hub-stress-results-grid">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ── TAB 3: Backend REST APIs Panel ── -->

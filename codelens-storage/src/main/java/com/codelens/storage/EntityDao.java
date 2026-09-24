@@ -674,12 +674,12 @@ public class EntityDao {
      * guaranteeing zero connection pool exhaustion or HikariCP leak warnings.
      */
     public void streamCallRelationships(java.util.function.BiConsumer<String, String> consumer) throws SQLException {
-        final int chunkSize = 25000;
+        final int chunkSize = 50000;
         String lastId = null;
         boolean hasMore = true;
 
-        String firstSql = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS' ORDER BY id LIMIT ?";
-        String nextSql  = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS' AND id > ? ORDER BY id LIMIT ?";
+        String firstSql = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS' ORDER BY kind, id LIMIT ?";
+        String nextSql  = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = 'CALLS' AND id > ? ORDER BY kind, id LIMIT ?";
 
         while (hasMore) {
             List<String[]> chunk = new ArrayList<>(chunkSize);
@@ -726,19 +726,24 @@ public class EntityDao {
     }
 
     /**
-     * Streams field relationships (kind IN ('READS_FIELD', 'WRITES_FIELD')) in short-lived connection chunks (25,000 rows),
+     * Streams field relationships (kind IN ('READS_FIELD', 'WRITES_FIELD')) in short-lived connection chunks (50,000 rows),
      * completely decoupling database connection checkout from in-memory graph construction and
      * progress reporting.
      *
-     * Uses covering index idx_rels_fields_covering(kind, id, to_entity_fqn, from_entity_fqn) for zero table page lookups.
+     * Uses covering index idx_rels_fields_covering(kind, id, to_entity_fqn, from_entity_fqn) with index-sorted traversal.
      */
     public void streamFieldRelationships(FieldRelConsumer consumer) throws SQLException {
-        final int chunkSize = 25000;
+        streamFieldRelationshipsForKind("READS_FIELD", consumer);
+        streamFieldRelationshipsForKind("WRITES_FIELD", consumer);
+    }
+
+    private void streamFieldRelationshipsForKind(String kind, FieldRelConsumer consumer) throws SQLException {
+        final int chunkSize = 50000;
         String lastId = null;
         boolean hasMore = true;
 
-        String firstSql = "SELECT id, from_entity_fqn, to_entity_fqn, kind FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD') ORDER BY id LIMIT ?";
-        String nextSql  = "SELECT id, from_entity_fqn, to_entity_fqn, kind FROM relationships WHERE kind IN ('READS_FIELD', 'WRITES_FIELD') AND id > ? ORDER BY id LIMIT ?";
+        String firstSql = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = ? ORDER BY kind, id LIMIT ?";
+        String nextSql  = "SELECT id, from_entity_fqn, to_entity_fqn FROM relationships WHERE kind = ? AND id > ? ORDER BY kind, id LIMIT ?";
 
         while (hasMore) {
             List<String[]> chunk = new ArrayList<>(chunkSize);
@@ -747,16 +752,17 @@ public class EntityDao {
             try (Connection c = db.getConnection();
                  PreparedStatement ps = c.prepareStatement(lastId == null ? firstSql : nextSql)) {
                 ps.setQueryTimeout(120);
+                ps.setString(1, kind);
                 if (lastId == null) {
-                    ps.setInt(1, chunkSize);
-                } else {
-                    ps.setString(1, lastId);
                     ps.setInt(2, chunkSize);
+                } else {
+                    ps.setString(2, lastId);
+                    ps.setInt(3, chunkSize);
                 }
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         nextLastId = rs.getString(1);
-                        chunk.add(new String[]{ rs.getString(2), rs.getString(3), rs.getString(4) });
+                        chunk.add(new String[]{ rs.getString(2), rs.getString(3) });
                     }
                 }
             }
@@ -766,7 +772,7 @@ public class EntityDao {
             }
 
             for (String[] tuple : chunk) {
-                consumer.accept(tuple[0], tuple[1], tuple[2]);
+                consumer.accept(tuple[0], tuple[1], kind);
             }
 
             if (chunk.size() < chunkSize || nextLastId == null) {
