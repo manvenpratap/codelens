@@ -3585,7 +3585,18 @@ function switchTab(tabName) {
     t.classList.toggle('active', isActive);
     t.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
-  qsa('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === tabName + '-view'));
+  qsa('.tab-content').forEach(tc => {
+    const isActive = tc.id === tabName + '-view';
+    tc.classList.toggle('active', isActive);
+    if (isActive && previousTab !== tabName && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      tc.classList.add('blur-masked-transition', 'blur-masked-active');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          tc.classList.remove('blur-masked-active');
+        });
+      });
+    }
+  });
 
   // Pause rendering loops in inactive tabs to save CPU/GPU
   if (previousTab === 'codebase' && tabName !== 'codebase' && App.activeAltRenderer && typeof App.activeAltRenderer.pause === 'function') {
@@ -10709,6 +10720,10 @@ function initScopeManagement() {
   if (window.HubExplorer && !window.hubExplorerInstance) {
     window.hubExplorerInstance = new window.HubExplorer();
   }
+
+  // Initialize Command Palette (⌘K) & Prototype Studio (Skills 10 & 11)
+  if (typeof initCommandPalette === 'function') initCommandPalette();
+  if (typeof initPrototypeStudio === 'function') initPrototypeStudio();
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -10848,70 +10863,313 @@ function setLoading() {
     </div>`;
 }
 
-/* ── Toast notification queue ──────────────────────────────── */
-
-/** Lazily create / return the single toast container element. */
-function _getToastContainer() {
-  let el = document.getElementById('toast-container');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'toast-container';
-    document.body.appendChild(el);
+/* ─────────────────────────────────────────────────────────────────────────────
+   Apple HIG Fluid Feedback: Audio & Haptic Synthesis (WWDC 2018 / 2026)
+   Synthesizes subtle 10-30ms micro-impulses on meaningful user commits.
+   Zero external audio assets needed; runs via standard Web Audio API.
+   ───────────────────────────────────────────────────────────────────────────── */
+const CodeLensFeedback = (() => {
+  let ctx = null;
+  function getCtx() {
+    try {
+      if (!ctx && (window.AudioContext || window.webkitAudioContext)) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      return ctx;
+    } catch (_) { return null; }
   }
-  return el;
-}
 
-/**
- * Show a queued toast notification.
- * @param {string} msg   — the message to display
- * @param {'success'|'error'|'info'|'warning'} type — visual variant
- * @param {number}  duration — auto-dismiss delay in ms (default 3500)
- */
-function showToast(msg, type = 'success', duration = 3500) {
-  const container = _getToastContainer();
+  function playImpulse(freq = 440, type = 'sine', duration = 0.04, gainVal = 0.02) {
+    try {
+      const c = getCtx();
+      if (!c) return;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, c.currentTime);
+      gain.gain.setValueAtTime(gainVal, c.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start();
+      osc.stop(c.currentTime + duration);
+    } catch (_) {}
+  }
 
-  // Icon SVGs per type
+  return {
+    click() {
+      playImpulse(520, 'sine', 0.03, 0.025);
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+    },
+    success() {
+      playImpulse(660, 'triangle', 0.08, 0.035);
+      if (navigator.vibrate) try { navigator.vibrate([10, 30, 15]); } catch (_) {}
+    },
+    notice() {
+      playImpulse(280, 'sine', 0.06, 0.03);
+      if (navigator.vibrate) try { navigator.vibrate(20); } catch (_) {}
+    }
+  };
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Sonner Toast Notification System (Emil Kowalski Architecture)
+   Stacked, swipe-to-dismiss, velocity-aware, interruptible CSS transitions.
+   ───────────────────────────────────────────────────────────────────────────── */
+const toast = (() => {
+  let _toaster = null;
+  let _nextId = 1;
+  const _activeToasts = new Map();
+
+  function _getToaster() {
+    if (!_toaster || !document.body.contains(_toaster)) {
+      _toaster = document.getElementById('sonner-toaster');
+      if (!_toaster) {
+        _toaster = document.createElement('section');
+        _toaster.id = 'sonner-toaster';
+        _toaster.setAttribute('data-sonner-toaster', 'true');
+        _toaster.setAttribute('aria-label', 'Notifications');
+        _toaster.setAttribute('tabindex', '-1');
+        document.body.appendChild(_toaster);
+
+        _toaster.addEventListener('mouseenter', () => _updateStack(true));
+        _toaster.addEventListener('mouseleave', () => _updateStack(false));
+      }
+    }
+    return _toaster;
+  }
+
+  function _updateStack(expanded = false) {
+    const toasts = Array.from(_getToaster().querySelectorAll('.sonner-toast:not(.sonner-exiting)'));
+    const total = toasts.length;
+    toasts.forEach((el, idx) => {
+      const fromBottom = total - 1 - idx;
+      if (expanded) {
+        el.style.transform = `translateY(0) scale(1)`;
+        el.style.opacity = '1';
+        el.style.zIndex = `${100 + idx}`;
+      } else {
+        if (fromBottom === 0) {
+          el.style.transform = `translateY(0) scale(1)`;
+          el.style.opacity = '1';
+          el.style.zIndex = '100';
+        } else if (fromBottom === 1) {
+          el.style.transform = `translateY(-12px) scale(0.95)`;
+          el.style.opacity = '0.9';
+          el.style.zIndex = '99';
+        } else if (fromBottom === 2) {
+          el.style.transform = `translateY(-24px) scale(0.90)`;
+          el.style.opacity = '0.75';
+          el.style.zIndex = '98';
+        } else {
+          el.style.transform = `translateY(-36px) scale(0.85)`;
+          el.style.opacity = '0';
+          el.style.zIndex = '97';
+        }
+      }
+    });
+  }
+
   const icons = {
-    success: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-    error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-    info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-    warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    success: `<svg class="sonner-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error:   `<svg class="sonner-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    info:    `<svg class="sonner-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    warning: `<svg class="sonner-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    loading: `<svg class="sonner-icon-svg sonner-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
   };
 
-  const toast = document.createElement('div');
-  toast.className = `toast-item toast-${type}`;
-  toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${msg}</span>`;
-  container.appendChild(toast);
+  function createToast(title, opts = {}) {
+    const toaster = _getToaster();
+    const id = opts.id || `toast_${_nextId++}`;
+    const type = opts.type || 'info';
+    const duration = (opts.duration !== undefined) ? opts.duration : (type === 'error' ? 5000 : 3500);
 
-  // Trigger logo emit animation
-  const logo = qs('.logo-image') || qs('.logo');
-  if (logo) {
-    logo.classList.remove('logo-pulse');
-    void logo.offsetWidth; // trigger reflow
-    logo.classList.add('logo-pulse');
+    // If toast with this id already exists, update in-place
+    if (_activeToasts.has(id)) {
+      const existing = _activeToasts.get(id);
+      const titleEl = existing.el.querySelector('.sonner-title');
+      const descEl = existing.el.querySelector('.sonner-desc');
+      const iconEl = existing.el.querySelector('.sonner-icon');
+      if (titleEl) titleEl.textContent = title;
+      if (descEl) descEl.textContent = opts.description || '';
+      if (iconEl) iconEl.innerHTML = icons[type] || icons.info;
+      existing.el.className = `sonner-toast sonner-${type}`;
+
+      if (existing.timer) clearTimeout(existing.timer);
+      if (duration !== Infinity) {
+        existing.timer = setTimeout(() => dismiss(id), duration);
+      }
+      return id;
+    }
+
+    const el = document.createElement('div');
+    el.className = `sonner-toast sonner-${type} sonner-entering`;
+    el.setAttribute('data-sonner-toast', id);
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+    let html = `<div class="sonner-icon">${icons[type] || icons.info}</div>`;
+    html += `<div class="sonner-content">`;
+    html += `<div class="sonner-title">${esc(title)}</div>`;
+    if (opts.description) {
+      html += `<div class="sonner-desc">${esc(opts.description)}</div>`;
+    }
+    html += `</div>`;
+
+    if (opts.action) {
+      html += `<button class="sonner-action" type="button">${esc(opts.action.label || 'Action')}</button>`;
+    }
+    el.innerHTML = html;
+
+    if (opts.action && typeof opts.action.onClick === 'function') {
+      const actionBtn = el.querySelector('.sonner-action');
+      if (actionBtn) {
+        actionBtn.addEventListener('click', (e) => {
+          opts.action.onClick(e);
+          dismiss(id);
+        });
+      }
+    }
+
+    // Interactive swipe-to-dismiss gesture tracking
+    let startY = 0;
+    let currentY = 0;
+    let startTime = 0;
+    let isDragging = false;
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.sonner-action')) return;
+      isDragging = true;
+      startY = e.clientY;
+      currentY = e.clientY;
+      startTime = Date.now();
+      el.setPointerCapture(e.pointerId);
+      el.style.transition = 'none';
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      currentY = e.clientY;
+      const deltaY = Math.max(0, currentY - startY);
+      el.style.transform = `translateY(${deltaY}px)`;
+      el.style.opacity = `${Math.max(0.2, 1 - deltaY / 120)}`;
+    });
+
+    const endDrag = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      const deltaY = currentY - startY;
+      const elapsed = Math.max(1, Date.now() - startTime);
+      const velocity = deltaY / elapsed;
+
+      el.style.transition = '';
+      if (deltaY > 45 || velocity > 0.12) {
+        dismiss(id);
+      } else {
+        _updateStack();
+      }
+    };
+
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+
+    toaster.appendChild(el);
+
+    // Audio/Haptic feedback on appearance
+    if (type === 'success') CodeLensFeedback.success();
+    else if (type === 'error') CodeLensFeedback.notice();
+    else CodeLensFeedback.click();
+
+    // Trigger hardware-accelerated entrance
+    requestAnimationFrame(() => {
+      el.classList.remove('sonner-entering');
+      _updateStack();
+    });
+
+    let timer = null;
+    if (duration !== Infinity) {
+      timer = setTimeout(() => dismiss(id), duration);
+    }
+
+    _activeToasts.set(id, { el, timer });
+    return id;
   }
 
-  // Auto-dismiss
-  const dismiss = () => {
-    toast.classList.add('toast-exit');
-    toast.addEventListener('animationend', () => toast.remove(), { once: true });
-  };
-  const timer = setTimeout(dismiss, duration);
+  function dismiss(id) {
+    if (!id) {
+      // Dismiss all
+      _activeToasts.forEach((val, k) => dismiss(k));
+      return;
+    }
+    const item = _activeToasts.get(id);
+    if (!item) return;
+    if (item.timer) clearTimeout(item.timer);
 
-  // Click to dismiss early
-  toast.style.pointerEvents = 'auto';
-  toast.style.cursor = 'pointer';
-  toast.addEventListener('click', () => { clearTimeout(timer); dismiss(); }, { once: true });
+    item.el.classList.add('sonner-exiting');
+    item.el.addEventListener('transitionend', () => {
+      if (item.el.parentNode) item.el.remove();
+      _activeToasts.delete(id);
+      _updateStack();
+    }, { once: true });
+
+    // Fallback cleanup in case transitionend is canceled
+    setTimeout(() => {
+      if (item.el.parentNode) item.el.remove();
+      _activeToasts.delete(id);
+      _updateStack();
+    }, 320);
+  }
+
+  function toastFn(title, opts) {
+    return createToast(title, opts);
+  }
+  toastFn.message = (title, opts) => createToast(title, opts);
+  toastFn.success = (title, opts) => createToast(title, { ...(opts || {}), type: 'success' });
+  toastFn.error = (title, opts) => createToast(title, { ...(opts || {}), type: 'error' });
+  toastFn.info = (title, opts) => createToast(title, { ...(opts || {}), type: 'info' });
+  toastFn.warning = (title, opts) => createToast(title, { ...(opts || {}), type: 'warning' });
+  toastFn.loading = (title, opts) => createToast(title, { ...(opts || {}), type: 'loading', duration: Infinity });
+  toastFn.dismiss = (id) => dismiss(id);
+  toastFn.promise = (prom, { loading, success, error }) => {
+    const id = createToast(loading || 'Processing…', { type: 'loading', duration: Infinity });
+    return Promise.resolve(typeof prom === 'function' ? prom() : prom)
+      .then((val) => {
+        const msg = typeof success === 'function' ? success(val) : (success || 'Completed successfully');
+        createToast(msg, { id, type: 'success' });
+        return val;
+      })
+      .catch((err) => {
+        const msg = typeof error === 'function' ? error(err) : (error || (err && err.message) || 'Operation failed');
+        createToast(msg, { id, type: 'error' });
+        throw err;
+      });
+  };
+
+  return toastFn;
+})();
+
+// Attach to window
+window.toast = toast;
+
+/** Backward-compatible drop-in wrapper forwarding all existing showToast calls to Sonner engine */
+function showToast(msg, type = 'success', duration = 3500) {
+  if (type === 'success') return toast.success(msg, { duration });
+  if (type === 'error')   return toast.error(msg,   { duration });
+  if (type === 'warning') return toast.warning(msg, { duration });
+  return toast.info(msg, { duration });
 }
 
 /** Show a brief success banner (queued). */
-function showBanner(msg) { showToast(msg, 'success', 3500); }
+function showBanner(msg) { toast.success(msg); }
 
 /** Show a temporary error toast (queued). */
-function showError(msg)  { showToast(msg, 'error',   4500); }
+function showError(msg)  { toast.error(msg); }
 
 /** Flash a red border on an input briefly. */
 function flashInput(el) {
+  if (!el) return;
   el.style.borderColor = 'var(--red)';
   el.focus();
   setTimeout(() => { el.style.borderColor = ''; }, 1200);
@@ -14052,5 +14310,553 @@ if (window.App) {
   window.App.selectType = selectType;
   window.App.selectField = selectField;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Command Palette Controller (cmdk style - Skill 10: pick-ui-library)
+   Implements Raycast 0ms keyboard rule, grouped actions, instant fuzzy search.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function initCommandPalette() {
+  const modal = qs('#command-palette-modal');
+  const input = qs('#cmdk-input');
+  const list = qs('#cmdk-list');
+  const triggerBtn = qs('#btn-command-palette');
+  if (!modal || !input || !list) return;
+
+  let activeIndex = 0;
+  let filteredCommands = [];
+
+  const commands = [
+    // Navigation
+    {
+      id: 'nav-graph',
+      title: 'Open Architecture Graph',
+      subtitle: 'Interactive 2D/3D force-directed dependency graph',
+      group: 'Navigation',
+      shortcut: '1',
+      icon: '<svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7"/></svg>',
+      action: () => switchTab('graph')
+    },
+    {
+      id: 'nav-kb',
+      title: 'Open Knowledge Base',
+      subtitle: 'Architectural documentation and module analysis',
+      group: 'Navigation',
+      shortcut: '2',
+      icon: '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/></svg>',
+      action: () => switchTab('kb')
+    },
+    {
+      id: 'nav-review',
+      title: 'Open Code Review & Diagnostics',
+      subtitle: 'Deep architectural and semantic code quality review',
+      group: 'Navigation',
+      shortcut: '3',
+      icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      action: () => switchTab('review')
+    },
+    {
+      id: 'nav-studio',
+      title: 'Launch 3D Macro Visualizer Studio',
+      subtitle: '3D software city and galaxy cluster view',
+      group: 'Navigation',
+      shortcut: 'M',
+      icon: '<svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/></svg>',
+      action: () => {
+        if (typeof openMacroStudio === 'function') openMacroStudio();
+        else switchTab('codebase');
+      }
+    },
+    {
+      id: 'nav-reports',
+      title: 'Open Reports & Export Hub',
+      subtitle: 'Export architecture snapshots and executive summaries',
+      group: 'Navigation',
+      shortcut: 'R',
+      icon: '<svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      action: () => {
+        if (typeof openReportModal === 'function') openReportModal();
+        else switchTab('reports');
+      }
+    },
+    {
+      id: 'nav-hub',
+      title: 'Open Background Tasks & Process Hub',
+      subtitle: 'JVM heap watchdog, thread analyzer, and async queue',
+      group: 'Navigation',
+      shortcut: 'P',
+      icon: '<svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+      action: () => {
+        if (typeof openProcessHub === 'function') openProcessHub();
+      }
+    },
+    {
+      id: 'nav-cp',
+      title: 'Open Critical Path Picker',
+      subtitle: 'Analyze bottleneck nodes, cycle clusters, and blast radii',
+      group: 'Navigation',
+      shortcut: 'C',
+      icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+      action: () => {
+        if (typeof openCriticalPathPicker === 'function') openCriticalPathPicker();
+      }
+    },
+    {
+      id: 'nav-prototype',
+      title: 'Launch Prototype Studio',
+      subtitle: 'Interactive 5-variant design engineering showcase',
+      group: 'Navigation',
+      shortcut: 'Shift+P',
+      icon: '<svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>',
+      action: () => {
+        if (typeof openPrototypeStudio === 'function') openPrototypeStudio();
+      }
+    },
+
+    // Diagnostics & Memory
+    {
+      id: 'diag-gc',
+      title: 'Trigger Garbage Collection (GC)',
+      subtitle: 'Run immediate JVM compaction and free unreferenced heap objects',
+      group: 'Diagnostics & JVM',
+      shortcut: '⌥G',
+      icon: '<svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+      action: () => {
+        if (typeof toast !== 'undefined') toast.loading('Triggering JVM Garbage Collection…', { id: 'cmd-gc' });
+        fetch('/api/process-hub/jvm/gc', { method: 'POST' })
+          .then(r => r.json())
+          .then(d => {
+            const freed = ((d.freedBytes || 0) / (1024 * 1024)).toFixed(1);
+            if (typeof toast !== 'undefined') toast.success(`Garbage collection finished. Freed ${freed} MB.`, { id: 'cmd-gc' });
+          })
+          .catch(e => {
+            if (typeof toast !== 'undefined') toast.error('GC request failed: ' + e.message, { id: 'cmd-gc' });
+          });
+      }
+    },
+    {
+      id: 'diag-deadlocks',
+      title: 'Scan for Thread Deadlocks',
+      subtitle: 'Perform instant cyclic lock graph contention analysis',
+      group: 'Diagnostics & JVM',
+      shortcut: '⌥D',
+      icon: '<svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+      action: () => {
+        fetch('/api/process-hub/jvm/deadlocks')
+          .then(r => r.json())
+          .then(d => {
+            if (d.deadlocks && d.deadlocks.length > 0) {
+              if (typeof toast !== 'undefined') toast.warning(`Warning: ${d.deadlocks.length} thread deadlocks detected!`);
+            } else {
+              if (typeof toast !== 'undefined') toast.success('Deadlock scan passed: 0 blocked threads found.');
+            }
+          })
+          .catch(e => {
+            if (typeof toast !== 'undefined') toast.error('Deadlock scan failed: ' + e.message);
+          });
+      }
+    },
+
+    // Preferences & Theme
+    {
+      id: 'pref-theme',
+      title: 'Toggle Dark / Light Theme',
+      subtitle: 'Switch application color palette and glass materials',
+      group: 'Preferences',
+      shortcut: '⌥T',
+      icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg>',
+      action: () => {
+        const toggleBtn = qs('#theme-toggle-btn');
+        if (toggleBtn) toggleBtn.click();
+      }
+    }
+  ];
+
+  function renderList(query = '') {
+    const q = query.trim().toLowerCase();
+    filteredCommands = commands.filter(cmd => {
+      if (!q) return true;
+      return cmd.title.toLowerCase().includes(q) ||
+             cmd.subtitle.toLowerCase().includes(q) ||
+             cmd.group.toLowerCase().includes(q);
+    });
+
+    if (filteredCommands.length === 0) {
+      list.innerHTML = `
+        <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          No matching commands found for "${esc(query)}"
+        </div>
+      `;
+      activeIndex = -1;
+      return;
+    }
+
+    if (activeIndex >= filteredCommands.length || activeIndex < 0) {
+      activeIndex = 0;
+    }
+
+    // Group items
+    let html = '';
+    let currentGroup = null;
+    let itemIdx = 0;
+
+    filteredCommands.forEach(cmd => {
+      if (cmd.group !== currentGroup) {
+        currentGroup = cmd.group;
+        html += `<div class="cmdk-group-title">${esc(currentGroup)}</div>`;
+      }
+      const isSelected = itemIdx === activeIndex;
+      html += `
+        <div class="cmdk-item ${isSelected ? 'selected' : ''}" data-index="${itemIdx}" role="option" aria-selected="${isSelected}">
+          <div class="cmdk-item-left">
+            ${cmd.icon}
+            <div>
+              <div style="font-weight: 500;">${esc(cmd.title)}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${esc(cmd.subtitle)}</div>
+            </div>
+          </div>
+          ${cmd.shortcut ? `<span class="cmdk-item-shortcut">${esc(cmd.shortcut)}</span>` : ''}
+        </div>
+      `;
+      itemIdx++;
+    });
+
+    list.innerHTML = html;
+
+    // Scroll active into view
+    const activeEl = list.querySelector('.cmdk-item.selected');
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function openPalette(instant = false) {
+    if (instant) {
+      modal.style.transition = 'none';
+    } else {
+      modal.style.transition = '';
+    }
+    modal.classList.add('open');
+    input.value = '';
+    activeIndex = 0;
+    renderList('');
+    input.focus();
+    if (typeof CodeLensFeedback !== 'undefined') CodeLensFeedback.click();
+  }
+
+  function closePalette() {
+    modal.classList.remove('open');
+    input.blur();
+  }
+
+  function executeActive() {
+    if (activeIndex >= 0 && activeIndex < filteredCommands.length) {
+      const cmd = filteredCommands[activeIndex];
+      closePalette();
+      if (typeof CodeLensFeedback !== 'undefined') CodeLensFeedback.click();
+      if (cmd && typeof cmd.action === 'function') {
+        cmd.action();
+      }
+    }
+  }
+
+  // Event Listeners
+  if (triggerBtn) {
+    triggerBtn.addEventListener('click', () => openPalette(false));
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closePalette();
+  });
+
+  input.addEventListener('input', (e) => {
+    renderList(e.target.value);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (filteredCommands.length > 0) {
+        activeIndex = (activeIndex + 1) % filteredCommands.length;
+        renderList(input.value);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (filteredCommands.length > 0) {
+        activeIndex = (activeIndex - 1 + filteredCommands.length) % filteredCommands.length;
+        renderList(input.value);
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      executeActive();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closePalette();
+    }
+  });
+
+  list.addEventListener('click', (e) => {
+    const item = e.target.closest('.cmdk-item');
+    if (item && item.dataset.index !== undefined) {
+      activeIndex = parseInt(item.dataset.index, 10);
+      executeActive();
+    }
+  });
+
+  // Global Keyboard Shortcut: ⌘K or Ctrl+K (Raycast 0ms keyboard rule)
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (modal.classList.contains('open')) {
+        closePalette();
+      } else {
+        openPalette(true); // 0ms Raycast rule for keyboard trigger
+      }
+    } else if (e.key === 'Escape' && modal.classList.contains('open')) {
+      closePalette();
+    }
+  });
+
+  window.openCommandPalette = openPalette;
+  window.closeCommandPalette = closePalette;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Prototype Studio Controller (Skill 11: prototype)
+   Verbatim PICKER.md harness and 5 divergent design engineering variants.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function initPrototypeStudio() {
+  const modal = qs('#prototype-studio-modal');
+  const stage = qs('#proto-stage');
+  const openBtn = qs('#btn-prototype-studio');
+  const closeBtn = qs('#proto-studio-close-btn');
+  const picker = qs('.proto-picker');
+  if (!modal || !stage || !picker) return;
+
+  const highlight = picker.querySelector('.proto-picker-highlight');
+  const items = picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)');
+  const replay = picker.querySelector('.proto-picker-replay');
+  let active = 0;
+
+  function moveHighlight(el) {
+    if (!el || !highlight) return;
+    highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+    highlight.style.width = `${el.offsetWidth}px`;
+  }
+
+  // 5 Divergent Variant Renderers
+  const variants = [
+    // 0: Quiet
+    {
+      title: 'Quiet',
+      axis: 'Minimal Motion & Raw Density',
+      render: () => `
+        <div class="proto-card-showcase stagger-cascade">
+          <div class="proto-demo-card variant-quiet">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">JVM Heap Allocations</div>
+            <div class="proto-metric-val">348.2 <span style="font-size: 14px; color: var(--text-muted);">MB</span></div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Watchdog active · High-water watermark at 1.8 GB</div>
+          </div>
+          <div class="proto-demo-card variant-quiet">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Active Worker Threads</div>
+            <div class="proto-metric-val">18 <span style="font-size: 14px; color: #10b981;">RUNNABLE</span></div>
+            <div style="font-size: 12px; color: var(--text-secondary);">0 deadlocks detected · 4 parked threads</div>
+          </div>
+          <div class="proto-demo-card variant-quiet">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Indexed Classes</div>
+            <div class="proto-metric-val">2,491 <span style="font-size: 14px; color: var(--text-muted);">types</span></div>
+            <div style="font-size: 12px; color: var(--text-secondary);">14,820 methods parsed · AST cache warm</div>
+          </div>
+        </div>
+      `
+    },
+    // 1: Editorial
+    {
+      title: 'Editorial',
+      axis: 'Narrative Typography & Structured Spacing',
+      render: () => `
+        <div class="proto-card-showcase stagger-cascade">
+          <div class="proto-demo-card variant-editorial" style="grid-column: 1 / -1;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between;">
+              <span style="font-family: var(--font-display); font-size: 20px; font-weight: 600; color: #fff;">System Architecture Health</span>
+              <span style="font-family: var(--font-mono); font-size: 12px; color: #10b981; font-weight: 600;">STATUS: NOMINAL</span>
+            </div>
+            <div class="proto-metric-val" style="margin: 12px 0 6px 0;">99.4% Architecture Compliance</div>
+            <p style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); margin: 0; max-width: 680px;">
+              CodeLens background analyzers report steady-state operation. Memory watchdog auto-recovery traps are primed, thread locking contention is near zero, and circular dependencies remain isolated in designated adapter packages.
+            </p>
+            <div style="display: flex; gap: 24px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 13px; color: var(--text-muted);">
+              <span>Target: <strong>production-main</strong></span>
+              <span>Uptime: <strong>4d 18h</strong></span>
+              <span>P99 Query: <strong>4.2ms</strong></span>
+            </div>
+          </div>
+        </div>
+      `
+    },
+    // 2: Tactile
+    {
+      title: 'Tactile',
+      axis: 'Acoustic Impulse & Physics Depth',
+      render: () => `
+        <div class="proto-card-showcase stagger-cascade">
+          <div class="proto-demo-card variant-tactile">
+            <div style="font-weight: 600; font-size: 14px; color: #fff;">Tactile Button Physics</div>
+            <div style="font-size: 12px; color: var(--text-muted);">Try clicking below with speakers on to feel synthesized audio-haptic feedback:</div>
+            <div style="display: flex; gap: 10px; margin-top: 8px;">
+              <button class="btn btn-primary" onclick="if(window.CodeLensFeedback) CodeLensFeedback.click(); if(window.toast) toast.success('Primary button engaged');" style="transition: transform var(--dur-press) var(--ease-spring); flex: 1;">
+                Primary Click
+              </button>
+              <button class="btn btn-ghost" onclick="if(window.CodeLensFeedback) CodeLensFeedback.notice(); if(window.toast) toast.error('Notice trigger simulated');" style="transition: transform var(--dur-press) var(--ease-spring); flex: 1;">
+                Notice Impulse
+              </button>
+            </div>
+          </div>
+          <div class="proto-demo-card variant-tactile">
+            <div style="font-weight: 600; font-size: 14px; color: #fff;">Spring Elevation Card</div>
+            <div class="proto-metric-val" style="font-size: 26px; color: #38bdf8;">120ms Spring</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Direct interactive surface with inset edge reflections and physical damping.</div>
+          </div>
+        </div>
+      `
+    },
+    // 3: Fluid
+    {
+      title: 'Fluid',
+      axis: 'Translucent Glass & Smooth Continuous Motion',
+      render: () => `
+        <div class="proto-card-showcase stagger-cascade">
+          <div class="proto-demo-card variant-fluid" style="grid-column: 1 / -1;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 600; color: #fff;">Translucent Telemetry Materials</span>
+              <span class="process-hub-badge-pulse" style="display: inline-block;"></span>
+            </div>
+            <div style="margin: 14px 0 6px 0;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                <span style="color: var(--text-secondary);">Heap Pressure</span>
+                <span class="font-mono text-cyan" style="font-weight: 600;">38.4%</span>
+              </div>
+              <div style="height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden;">
+                <div style="width: 38.4%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #06b6d4, #10b981); transition: width 400ms var(--ease-spring);"></div>
+              </div>
+            </div>
+            <div style="margin: 10px 0 6px 0;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                <span style="color: var(--text-secondary);">Thread Capacity</span>
+                <span class="font-mono text-emerald" style="font-weight: 600;">22.1%</span>
+              </div>
+              <div style="height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden;">
+                <div style="width: 22.1%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10b981, #3b82f6); transition: width 400ms var(--ease-spring);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+    },
+    // 4: Industrial
+    {
+      title: 'Industrial',
+      axis: 'Precision Telemetry & Monospace Data Matrix',
+      render: () => `
+        <div class="proto-card-showcase stagger-cascade">
+          <div class="proto-demo-card variant-industrial">
+            <div style="font-family: var(--font-mono); font-size: 11px; color: #10b981;">[CHANNEL_01: HEAP_PAGE]</div>
+            <div class="proto-metric-val">0x004F_A892</div>
+            <div style="font-family: var(--font-mono); font-size: 11px; color: rgba(16,185,129,0.7);">DELTA: +0.42 MB/s · CYCLES: 142</div>
+          </div>
+          <div class="proto-demo-card variant-industrial">
+            <div style="font-family: var(--font-mono); font-size: 11px; color: #10b981;">[CHANNEL_02: AST_PARSER]</div>
+            <div class="proto-metric-val">12,410 TOK/S</div>
+            <div style="font-family: var(--font-mono); font-size: 11px; color: rgba(16,185,129,0.7);">CONCURRENCY: 8 WORKERS · BUFFER: OK</div>
+          </div>
+          <div class="proto-demo-card variant-industrial">
+            <div style="font-family: var(--font-mono); font-size: 11px; color: #10b981;">[CHANNEL_03: GC_WATCHDOG]</div>
+            <div class="proto-metric-val">TRAP_ARMED</div>
+            <div style="font-family: var(--font-mono); font-size: 11px; color: rgba(16,185,129,0.7);">THRESHOLD: 80.0% · CIRCUIT: CLOSED</div>
+          </div>
+        </div>
+      `
+    }
+  ];
+
+  function mount(i) {
+    const v = variants[i];
+    if (!v) return;
+    const axisLabel = qs('#proto-axis-label');
+    if (axisLabel) axisLabel.textContent = `Axis: ${v.axis}`;
+
+    // Emil blur-masked crossfade
+    stage.classList.add('blur-masked-transition', 'blur-masked-active');
+    setTimeout(() => {
+      stage.innerHTML = v.render();
+      stage.classList.remove('blur-masked-active');
+      if (typeof CodeLensFeedback !== 'undefined') CodeLensFeedback.click();
+    }, 40);
+  }
+
+  function setActive(i) {
+    if (i < 0 || i >= items.length) return;
+    items[active].removeAttribute('data-active');
+    items[i].setAttribute('data-active', '');
+    moveHighlight(items[i]);
+    active = i;
+    mount(i);
+  }
+
+  items.forEach((item, i) => {
+    item.addEventListener('click', () => setActive(i));
+  });
+
+  if (replay) {
+    replay.addEventListener('click', () => {
+      if (typeof CodeLensFeedback !== 'undefined') CodeLensFeedback.click();
+      mount(active);
+    });
+  }
+
+  function openStudio() {
+    modal.classList.add('open');
+    setActive(active);
+    // Double RAF initialization verbatim from PICKER.md
+    requestAnimationFrame(() => {
+      moveHighlight(items[active]);
+      requestAnimationFrame(() => {
+        picker.setAttribute('data-ready', '');
+      });
+    });
+    if (typeof CodeLensFeedback !== 'undefined') CodeLensFeedback.click();
+  }
+
+  function closeStudio() {
+    modal.classList.remove('open');
+  }
+
+  if (openBtn) openBtn.addEventListener('click', openStudio);
+  if (closeBtn) closeBtn.addEventListener('click', closeStudio);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeStudio();
+  });
+
+  // Keyboard navigation verbatim from PICKER.md
+  window.addEventListener('keydown', (e) => {
+    if (!modal.classList.contains('open')) return;
+
+    if (e.key >= '1' && e.key <= String(items.length)) {
+      setActive(Number(e.key) - 1);
+    } else if (e.key === 'ArrowLeft') {
+      setActive((active - 1 + items.length) % items.length);
+    } else if (e.key === 'ArrowRight') {
+      setActive((active + 1) % items.length);
+    } else if (e.key === 'r' || e.key === 'R') {
+      mount(active);
+    } else if (e.key === 'Escape') {
+      closeStudio();
+    }
+  });
+
+  window.openPrototypeStudio = openStudio;
+  window.closePrototypeStudio = closeStudio;
+}
+
 
 
