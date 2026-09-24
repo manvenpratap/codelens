@@ -53,13 +53,13 @@ let GC = {
 };
 
 let PHYSICS = {
-  repulsion:      14000,  // calibrated anti-overlap charge (reduced to prevent violent explosive kicks)
-  springLen:      110,    // balanced rest spring for tighter, cleaner blooms
-  springK:        0.030,  // spring tension
-  clusterK:       0.007,  // community cohesion
-  centerForce:    0.0004, // smooth centering
-  damping:        0.80,   // base velocity damping
-  maxTicks:       180,    // fast stabilization (anneals to 0 in ~1s on screen)
+  repulsion:      22000,  // strong anti-overlap charge for clear node separation
+  springLen:      160,    // generous rest spring for spacious layouts
+  springK:        0.025,  // softer spring tension (less pull = more separation)
+  clusterK:       0.005,  // gentler community cohesion (lets nodes spread within clusters)
+  centerForce:    0.0003, // lighter centering to avoid crushing clusters together
+  damping:        0.78,   // slightly lower damping for longer settling range
+  maxTicks:       320,    // extended simulation time for large graphs to fully settle
   nodeBaseRadius: 9,      // unchanged
 };
 
@@ -739,7 +739,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       for (let k = 1; k < bNodes.length; k++) {
         const nd = bNodes[k];
         const ringAngle = branchAngle + k * goldenAngle;
-        const ringDist = 38 + Math.sqrt(k) * 42;
+        const ringDist = 55 + Math.sqrt(k) * 56;
 
         nd.x = branchCenterX + Math.cos(ringAngle) * ringDist;
         nd.y = branchCenterY + Math.sin(ringAngle) * ringDist;
@@ -1159,7 +1159,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
   _runInitialStabilization() {
     // Warm up offline avoiding freezing on large graphs
-    const ticks = this._nodes.length > 500 ? 5 : (this._nodes.length > 100 ? 25 : 60);
+    const ticks = this._nodes.length > 500 ? 15 : (this._nodes.length > 100 ? 40 : 80);
     for (let i = 0; i < ticks; i++) {
       this._simulateTick();
     }
@@ -1236,7 +1236,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         const dy = cb.y - ca.y;
         const distSq = dx * dx + dy * dy || 1;
         const dist = Math.sqrt(distSq);
-        const targetSep = 180 + Math.sqrt(ca.count + cb.count) * 45;
+        const targetSep = 240 + Math.sqrt(ca.count + cb.count) * 60;
         if (dist < targetSep * 3.0) {
           const clusterRep = ((PHYSICS.repulsion * 3.0) / (distSq + 120)) * alpha;
           const fx = (dx / dist) * clusterRep;
@@ -1275,7 +1275,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           nd._fx += (dx / dist) * fc;
           nd._fy += (dy / dist) * fc;
         } else {
-          const idealBloomRadius = 26 + Math.min(120, Math.sqrt(c.count) * 16);
+          const idealBloomRadius = 40 + Math.min(160, Math.sqrt(c.count) * 22);
           const fBloom = (dist - idealBloomRadius) * (PHYSICS.clusterK * 3.5) * alpha;
           nd._fx += (dx / dist) * fBloom;
           nd._fy += (dy / dist) * fBloom;
@@ -1286,6 +1286,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     // 4. Repulsion force between node pairs (differentiated intra vs inter community)
     if (n > 300) {
       // High-performance spatial clustering: calculate repulsion within each community bloom
+      // Phase A: Intra-community repulsion (full N² within each community)
       for (const comm of this._communities) {
         if (this._hiddenCommunities.has(comm.cid)) continue;
         const cNodes = [];
@@ -1304,17 +1305,70 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
             const dy = nj.y - ni.y;
             const distSq = dx * dx + dy * dy || 0.01;
             const dist = Math.sqrt(distSq);
-            const minClearance = ni.radius + nj.radius + 18;
+            const minClearance = ni.radius + nj.radius + 36;
             let rep = 0;
             if (dist < minClearance) {
-              rep = ((PHYSICS.repulsion * 1.8) / Math.max(dist, 10)) * alpha;
+              rep = ((PHYSICS.repulsion * 2.2) / Math.max(dist, 8)) * alpha;
             } else {
-              rep = ((PHYSICS.repulsion * 0.35 * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
+              rep = ((PHYSICS.repulsion * 0.4 * (1 + (ni.degree + nj.degree) * 0.05)) / distSq) * alpha;
             }
             const fx = (dx / dist) * rep;
             const fy = (dy / dist) * rep;
             ni._fx -= fx; ni._fy -= fy;
             nj._fx += fx; nj._fy += fy;
+          }
+        }
+      }
+
+      // Phase B: Cross-community sampled repulsion (prevents inter-cluster overlap)
+      // Sample up to 12 representative nodes per community for O(C² × S²) performance
+      const commSamples = [];
+      for (const comm of this._communities) {
+        if (this._hiddenCommunities.has(comm.cid)) continue;
+        const cNodes = [];
+        for (const id of comm.nodes) {
+          const idx = this._nodeIndex ? this._nodeIndex.get(id) : undefined;
+          if (idx !== undefined) {
+            const nd = nodes[idx];
+            if (nd && !this._isNodeHidden(nd)) cNodes.push(nd);
+          }
+        }
+        if (cNodes.length === 0) continue;
+        // Take evenly-spaced samples biased toward high-degree nodes
+        cNodes.sort((a, b) => b.degree - a.degree);
+        const maxSamples = Math.min(12, cNodes.length);
+        const step = Math.max(1, Math.floor(cNodes.length / maxSamples));
+        const samples = [];
+        for (let i = 0; i < cNodes.length && samples.length < maxSamples; i += step) {
+          samples.push(cNodes[i]);
+        }
+        commSamples.push({ cid: comm.cid, samples });
+      }
+      for (let ci = 0; ci < commSamples.length; ci++) {
+        for (let cj = ci + 1; cj < commSamples.length; cj++) {
+          const sa = commSamples[ci].samples;
+          const sb = commSamples[cj].samples;
+          for (let i = 0; i < sa.length; i++) {
+            for (let j = 0; j < sb.length; j++) {
+              const ni = sa[i], nj = sb[j];
+              const dx = nj.x - ni.x;
+              const dy = nj.y - ni.y;
+              const distSq = dx * dx + dy * dy || 0.01;
+              const dist = Math.sqrt(distSq);
+              const minClearance = ni.radius + nj.radius + 60;
+              let rep = 0;
+              if (dist < minClearance) {
+                rep = ((PHYSICS.repulsion * 4.5) / Math.max(dist, 8)) * alpha;
+              } else if (dist < minClearance * 4) {
+                rep = ((PHYSICS.repulsion * 1.4) / distSq) * alpha;
+              }
+              if (rep > 0) {
+                const fx = (dx / dist) * rep;
+                const fy = (dy / dist) * rep;
+                ni._fx -= fx; ni._fy -= fy;
+                nj._fx += fx; nj._fy += fy;
+              }
+            }
           }
         }
       }
@@ -1330,7 +1384,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           const dist = Math.sqrt(distSq);
 
           const isSameComm = ni.community === nj.community;
-          const minClearance = ni.radius + nj.radius + (isSameComm ? 18 : 60);
+          const minClearance = ni.radius + nj.radius + (isSameComm ? 36 : 70);
           let rep = 0;
           if (dist < minClearance) {
             rep = ((PHYSICS.repulsion * (isSameComm ? 1.8 : 4.0)) / Math.max(dist, 10)) * alpha;
@@ -1397,7 +1451,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       nd.vy = (nd.vy + nd._fy) * currentDamping;
 
       // Decaying speed limit prevents orbital slingshotting
-      const maxSpeed = 2.5 + 6.5 * alpha;
+      const maxSpeed = 3.0 + 9.0 * alpha;
       const speed = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
       if (speed > maxSpeed) {
         nd.vx = (nd.vx / speed) * maxSpeed;
@@ -1443,10 +1497,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         const dx = nj.x - ni.x;
         const dy = nj.y - ni.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const requiredDist = ni.radius + nj.radius + 28;
+        const requiredDist = ni.radius + nj.radius + 42;
 
         if (dist < requiredDist) {
-          const overlap = (requiredDist - dist) * 0.5;
+          const overlap = (requiredDist - dist) * 0.55;
           const ux = dx / dist;
           const uy = dy / dist;
 

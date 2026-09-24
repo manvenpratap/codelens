@@ -11686,9 +11686,9 @@ const THEMES = {
 const SETTINGS_DEFAULTS = {
   theme: 'dark',
   nodeBaseRadius: 9,
-  repulsion: 20000,
-  springLen: 180,
-  damping: 0.80,
+  repulsion: 22000,
+  springLen: 160,
+  damping: 0.78,
   showParticles: true,
   showMinimap: true,
   showLabels: true,
