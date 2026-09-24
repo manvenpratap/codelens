@@ -198,14 +198,14 @@ public class Application {
     private static void printBanner(int port) {
         System.out.println();
         System.out.println("  ╔═══════════════════════════════════════╗");
-        System.out.println("  ║   ██████╗ ██████╗ ██████╗ ███████╗   ║");
-        System.out.println("  ║  ██╔════╝██╔═══██╗██╔══██╗██╔════╝   ║");
-        System.out.println("  ║  ██║     ██║   ██║██║  ██║█████╗     ║");
-        System.out.println("  ║  ██║     ██║   ██║██║  ██║██╔══╝     ║");
-        System.out.println("  ║  ╚██████╗╚██████╔╝██████╔╝███████╗   ║");
-        System.out.println("  ║   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝   ║");
-        System.out.println("  ║        L E N S                        ║");
-        System.out.println("  ║   Java Codebase Intelligence v1.0     ║");
+        System.out.println("  ║   ██████╗ ██████╗ ██████╗ ███████╗    ║");
+        System.out.println("  ║  ██╔════╝██╔═══██╗██╔══██╗██╔════╝    ║");
+        System.out.println("  ║  ██║     ██║   ██║██║  ██║█████╗      ║");
+        System.out.println("  ║  ██║     ██║   ██║██║  ██║██╔══╝      ║");
+        System.out.println("  ║  ╚██████╗╚██████╔╝██████╔╝███████╗    ║");
+        System.out.println("  ║   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝    ║");
+        System.out.println("  ║                L E N S                ║");
+        System.out.println("  ║    Java Codebase Intelligence v1.0    ║");
         System.out.println("  ╚═══════════════════════════════════════╝");
         System.out.printf( "  Starting on port %d…%n", port);
     }

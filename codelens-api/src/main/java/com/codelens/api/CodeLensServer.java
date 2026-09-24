@@ -730,15 +730,59 @@ public class CodeLensServer {
         long totalMem = Runtime.getRuntime().totalMemory() / (1024 * 1024);
         long usedMem = totalMem - freeMem;
 
+        final int innerWidth = 82; // Space between "║ " and " ║"
+        String top = "╔" + "═".repeat(innerWidth + 2) + "╗";
+        String bottom = "╚" + "═".repeat(innerWidth + 2) + "╝";
+
+        String line1 = formatBannerField("CODELENS BACKGROUND PROCESS ", eventType, innerWidth, true);
+        String line2 = formatBannerField("Process:   ", processName, innerWidth, true);
+        String line3 = formatBannerField("Target:    ", path != null ? path : "-", innerWidth, false);
+        String line4 = formatBannerField("Details:   ", details != null ? details : "-", innerWidth, true);
+
+        String tsPart = "Timestamp: " + ts;
+        String memPart = "Memory: " + usedMem + "MB / " + totalMem + "MB";
+        int spacing = innerWidth - tsPart.length() - memPart.length();
+        String line5;
+        if (spacing > 0) {
+            line5 = "║ " + tsPart + " ".repeat(spacing) + memPart + " ║";
+        } else {
+            line5 = "║ " + truncateAndPad(tsPart + " " + memPart, innerWidth) + " ║";
+        }
+
         System.out.println("\n" +
-            "╔════════════════════════════════════════════════════════════════════════════════════╗\n" +
-            "║ CODELENS BACKGROUND PROCESS " + String.format("%-51s", eventType) + "║\n" +
-            "║ Process:   " + String.format("%-69s", processName) + "║\n" +
-            "║ Target:    " + String.format("%-69s", path != null ? path : "-") + "║\n" +
-            "║ Details:   " + String.format("%-69s", details != null ? details : "-") + "║\n" +
-            "║ Timestamp: " + String.format("%-30s", ts) + " Memory: " + String.format("%-30s", usedMem + "MB / " + totalMem + "MB") + "║\n" +
-            "╚════════════════════════════════════════════════════════════════════════════════════╝\n");
+            top + "\n" +
+            line1 + "\n" +
+            line2 + "\n" +
+            line3 + "\n" +
+            line4 + "\n" +
+            line5 + "\n" +
+            bottom);
         log.info("[PROCESS-{}] {} | Target: {} | Details: {}", eventType, processName, path, details);
+    }
+
+    private static String formatBannerField(String label, String value, int innerWidth, boolean truncateTail) {
+        String val = (value != null && !value.isBlank()) ? value : "-";
+        int maxValLen = innerWidth - label.length();
+        if (val.length() > maxValLen) {
+            if (truncateTail) {
+                val = val.substring(0, Math.max(0, maxValLen - 3)) + "...";
+            } else {
+                val = "..." + val.substring(val.length() - Math.max(0, maxValLen - 3));
+            }
+        }
+        String content = label + val;
+        if (content.length() < innerWidth) {
+            content = content + " ".repeat(innerWidth - content.length());
+        }
+        return "║ " + content + " ║";
+    }
+
+    private static String truncateAndPad(String text, int width) {
+        if (text == null) text = "";
+        if (text.length() > width) {
+            return text.substring(0, width - 3) + "...";
+        }
+        return text + " ".repeat(width - text.length());
     }
 
     // ─────────────────────────────────────────────────────────────────────────

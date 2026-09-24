@@ -36,12 +36,13 @@ public class ScaleStressTest {
             }
         }
 
-        System.out.println("╔════════════════════════════════════════════════════════════════════════════════╗");
-        System.out.println("║                   CODELENS MASSIVE SCALE STRESS TEST                           ║");
-        System.out.printf("║ Classes: %,7d  |  Fields: %,7d  |  Relationships: %,10d        ║%n", classes, fields, rels);
-        System.out.printf("║ Mode: %-73s ║%n", verifyOnly ? "VERIFY EXISTING DATASET & RUN BENCHMARKS" : "FULL GENERATE + INGEST + BENCHMARK");
-        System.out.printf("║ Target Directory: %-60s ║%n", targetDir);
-        System.out.println("╚════════════════════════════════════════════════════════════════════════════════╝");
+        int innerHeader = 78;
+        System.out.println("╔" + "═".repeat(innerHeader + 2) + "╗");
+        printBoxLine("                   CODELENS MASSIVE SCALE STRESS TEST", innerHeader);
+        printBoxLine(String.format("Classes: %,7d  |  Fields: %,7d  |  Relationships: %,10d", classes, fields, rels), innerHeader);
+        printBoxLine("Mode: " + (verifyOnly ? "VERIFY EXISTING DATASET & RUN BENCHMARKS" : "FULL GENERATE + INGEST + BENCHMARK"), innerHeader);
+        printBoxLine("Target Directory: " + targetDir, innerHeader);
+        System.out.println("╚" + "═".repeat(innerHeader + 2) + "╝");
 
         ScaleStressTest test = new ScaleStressTest();
         test.runScaleBenchmark(classes, fields, rels, targetDir, verifyOnly);
@@ -412,26 +413,35 @@ public class ScaleStressTest {
 
             long totalElapsedMs = System.currentTimeMillis() - overallStart;
 
-            System.out.println("\n╔════════════════════════════════════════════════════════════════════════════════╗");
-            System.out.println("║                       BENCHMARK RESULTS SUMMARY                                ║");
-            System.out.println("╠════════════════════════════════════════════════════════════════════════════════╣");
-            System.out.printf("║ Total Classes Ingested:        %,12d                                  ║%n", actClasses);
-            System.out.printf("║ Total Fields Ingested:         %,12d                                  ║%n", actFields);
-            System.out.printf("║ Total Methods Ingested:        %,12d                                  ║%n", actMethods);
-            System.out.printf("║ Total Relationships Ingested:  %,12d                                  ║%n", actRels);
-            System.out.println("╟────────────────────────────────────────────────────────────────────────────────╢");
-            System.out.printf("║ Relationship Ingest Duration:  %,10d ms (%,7.0f rows/sec)            ║%n", relsDuration, finalThroughput);
-            System.out.printf("║ Secondary Index & Compaction:  %,10d ms                                 ║%n", indexDuration);
-            System.out.printf("║ Total Test Execution Time:     %,10d ms (%.1f minutes)                    ║%n", totalElapsedMs, totalElapsedMs / 60000.0);
-            System.out.printf("║ Final Database Size on Disk:   %,10.2f MB (%.2f GB)                       ║%n", finalDbMb, finalDbGb);
-            System.out.printf("║ Storage Efficiency:            %,10.2f bytes per relationship            ║%n", (double) finalDbBytes / actRels);
-            System.out.printf("║ Trace File Bloat:                     0 MB (Trace logging disabled)       ║%n");
-            System.out.printf("║ Database Health & Integrity:          PASSED (0.2ms latency, 27 indexes)  ║%n");
-            System.out.println("╚════════════════════════════════════════════════════════════════════════════════╝");
+            int inner = 78;
+            System.out.println("\n╔" + "═".repeat(inner + 2) + "╗");
+            printBoxLine("                       BENCHMARK RESULTS SUMMARY", inner);
+            System.out.println("╠" + "═".repeat(inner + 2) + "╣");
+            printBoxLine(String.format("Total Classes Ingested:        %,12d", actClasses), inner);
+            printBoxLine(String.format("Total Fields Ingested:         %,12d", actFields), inner);
+            printBoxLine(String.format("Total Methods Ingested:        %,12d", actMethods), inner);
+            printBoxLine(String.format("Total Relationships Ingested:  %,12d", actRels), inner);
+            System.out.println("╟" + "─".repeat(inner + 2) + "╢");
+            printBoxLine(String.format("Relationship Ingest Duration:  %,10d ms (%,7.0f rows/sec)", relsDuration, finalThroughput), inner);
+            printBoxLine(String.format("Secondary Index & Compaction:  %,10d ms", indexDuration), inner);
+            printBoxLine(String.format("Total Test Execution Time:     %,10d ms (%.1f minutes)", totalElapsedMs, totalElapsedMs / 60000.0), inner);
+            printBoxLine(String.format("Final Database Size on Disk:   %,10.2f MB (%.2f GB)", finalDbMb, finalDbGb), inner);
+            printBoxLine(String.format("Storage Efficiency:            %,10.2f bytes per relationship", (double) finalDbBytes / actRels), inner);
+            printBoxLine("Trace File Bloat:                     0 MB (Trace logging disabled)", inner);
+            printBoxLine("Database Health & Integrity:          PASSED (0.2ms latency, 27 indexes)", inner);
+            System.out.println("╚" + "═".repeat(inner + 2) + "╝");
 
         } finally {
             db.close();
         }
+    }
+
+    private static void printBoxLine(String text, int innerWidth) {
+        String s = (text != null) ? text : "";
+        if (s.length() > innerWidth) {
+            s = s.substring(0, innerWidth - 3) + "...";
+        }
+        System.out.println("║ " + s + " ".repeat(innerWidth - s.length()) + " ║");
     }
 
     private static void deleteRecursively(File file) {

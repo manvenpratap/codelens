@@ -296,10 +296,21 @@ public class HeapAutoRecoveryManager {
      * Emergency Trap: Handle an intercepted OutOfMemoryError from an HTTP handler or background worker.
      */
     public AutoRecoveryIncident handleTrappedOOM(String source, Throwable error) {
-        log.error("╔════════════════════════════════════════════════════════════════════════════════╗");
-        log.error("║ EMERGENCY: OutOfMemoryError trapped from [{}]!                                 ║", source);
-        log.error("║ Initiating immediate emergency heap auto-recovery pipeline...                  ║");
-        log.error("╚════════════════════════════════════════════════════════════════════════════════╝");
+        final int innerWidth = 82;
+        String top = "╔" + "═".repeat(innerWidth + 2) + "╗";
+        String bottom = "╚" + "═".repeat(innerWidth + 2) + "╝";
+        String msg1 = "EMERGENCY: OutOfMemoryError trapped from [" + (source != null ? source : "-") + "]!";
+        if (msg1.length() > innerWidth) {
+            msg1 = msg1.substring(0, innerWidth - 3) + "...";
+        }
+        String line1 = "║ " + msg1 + " ".repeat(innerWidth - msg1.length()) + " ║";
+        String msg2 = "Initiating immediate emergency heap auto-recovery pipeline...";
+        if (msg2.length() > innerWidth) {
+            msg2 = msg2.substring(0, innerWidth - 3) + "...";
+        }
+        String line2 = "║ " + msg2 + " ".repeat(innerWidth - msg2.length()) + " ║";
+
+        log.error("\n{}\n{}\n{}\n{}", top, line1, line2, bottom);
 
         // Force circuit breaker on trapped OOM
         circuitBreakerActive.set(true);
