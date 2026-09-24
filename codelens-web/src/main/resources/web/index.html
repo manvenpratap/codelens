@@ -2029,37 +2029,124 @@
       <div class="settings-grid-row">
         <!-- ── Graph Physics ────────────────────────────────────────────── -->
         <section class="settings-group">
-          <h3 class="settings-group-title">
-            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>
-            Graph Physics &amp; Forces
-          </h3>
-          <div class="settings-row"><label>Node Size</label><input type="range" id="set-node-size" min="5" max="20" step="1" value="9" /><span class="settings-val" id="set-node-size-val">9</span></div>
-          <div class="settings-row"><label>Repulsion</label><input type="range" id="set-repulsion" min="5000" max="50000" step="1000" value="20000" /><span class="settings-val" id="set-repulsion-val">20000</span></div>
-          <div class="settings-row"><label>Spring Length</label><input type="range" id="set-spring-len" min="80" max="400" step="10" value="180" /><span class="settings-val" id="set-spring-len-val">180</span></div>
-          <div class="settings-row"><label>Damping</label><input type="range" id="set-damping" min="0.50" max="0.95" step="0.01" value="0.80" /><span class="settings-val" id="set-damping-val">0.80</span></div>
+          <div class="settings-section-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>
+              Graph Physics &amp; Forces
+            </h3>
+            <p class="settings-help-text">Fine-tune the force-directed layout simulation dynamics, particle repulsion, and edge tension.</p>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-node-size">Node Size</label>
+              <span class="settings-row-desc">Base canvas radius for classes, interfaces, and methods</span>
+            </div>
+            <div class="settings-row-control slider-control">
+              <input type="range" id="set-node-size" min="5" max="20" step="1" value="9" />
+              <span class="settings-val" id="set-node-size-val">9</span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-repulsion">Repulsion</label>
+              <span class="settings-row-desc">Coulomb electrostatic push between unlinked nodes to prevent overlapping</span>
+            </div>
+            <div class="settings-row-control slider-control">
+              <input type="range" id="set-repulsion" min="5000" max="50000" step="1000" value="20000" />
+              <span class="settings-val" id="set-repulsion-val">20000</span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-spring-len">Spring Length</label>
+              <span class="settings-row-desc">Resting equilibrium distance (px) along caller→callee relationship edges</span>
+            </div>
+            <div class="settings-row-control slider-control">
+              <input type="range" id="set-spring-len" min="80" max="400" step="10" value="180" />
+              <span class="settings-val" id="set-spring-len-val">180</span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-damping">Damping</label>
+              <span class="settings-row-desc">Velocity decay friction per tick; higher values stabilize and freeze jitter faster</span>
+            </div>
+            <div class="settings-row-control slider-control">
+              <input type="range" id="set-damping" min="0.50" max="0.95" step="0.01" value="0.80" />
+              <span class="settings-val" id="set-damping-val">0.80</span>
+            </div>
+          </div>
         </section>
 
         <!-- ── Visual & Rendering ───────────────────────────────────────── -->
         <section class="settings-group">
-          <h3 class="settings-group-title">
-            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-            Visual Overlays &amp; Defaults
-          </h3>
-          <div class="settings-row"><label>Edge Particles</label><label class="toggle-switch"><input type="checkbox" id="set-particles" checked /><span class="toggle-track"></span></label></div>
-          <div class="settings-row"><label>Radar Minimap</label><label class="toggle-switch"><input type="checkbox" id="set-minimap" checked /><span class="toggle-track"></span></label></div>
-          <div class="settings-row"><label>Node Labels</label><label class="toggle-switch"><input type="checkbox" id="set-labels" checked /><span class="toggle-track"></span></label></div>
-          <div class="settings-row"><label>Community Hulls</label><label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label></div>
-          <div class="settings-row">
-            <label>Default Graph Depth</label>
-            <select id="set-default-depth" class="settings-select">
-              <option value="1">1 hop</option>
-              <option value="2">2 hops</option>
-              <option value="3" selected>3 hops</option>
-              <option value="5">5 hops</option>
-              <option value="15">Max</option>
-            </select>
+          <div class="settings-section-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+              Visual Overlays &amp; Defaults
+            </h3>
+            <p class="settings-help-text">Configure HUD overlays, particle streams, cluster boundary hulls, and default canvas viewports.</p>
           </div>
-          <div class="settings-row"><label>Auto-fit on Load</label><label class="toggle-switch"><input type="checkbox" id="set-auto-fit" checked /><span class="toggle-track"></span></label></div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-particles">Edge Particles</label>
+              <span class="settings-row-desc">Animated flow pulses tracing caller→callee invocation streams in real time</span>
+            </div>
+            <div class="settings-row-control">
+              <label class="toggle-switch"><input type="checkbox" id="set-particles" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-minimap">Radar Minimap</label>
+              <span class="settings-row-desc">Picture-in-picture canvas navigator with interactive pan/zoom viewport frame</span>
+            </div>
+            <div class="settings-row-control">
+              <label class="toggle-switch"><input type="checkbox" id="set-minimap" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-labels">Node Labels</label>
+              <span class="settings-row-desc">Always display text labels beneath nodes (shows on hover only when disabled)</span>
+            </div>
+            <div class="settings-row-control">
+              <label class="toggle-switch"><input type="checkbox" id="set-labels" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-hulls">Community Hulls</label>
+              <span class="settings-row-desc">Convex hulls grouping related packages and modules with translucent color fills</span>
+            </div>
+            <div class="settings-row-control">
+              <label class="toggle-switch"><input type="checkbox" id="set-hulls" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-default-depth">Default Graph Depth</label>
+              <span class="settings-row-desc">Initial BFS traversal hop limit when opening or centering a node</span>
+            </div>
+            <div class="settings-row-control">
+              <select id="set-default-depth" class="settings-select">
+                <option value="1">1 hop</option>
+                <option value="2">2 hops</option>
+                <option value="3" selected>3 hops</option>
+                <option value="5">5 hops</option>
+                <option value="15">Max</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-auto-fit">Auto-fit on Load</label>
+              <span class="settings-row-desc">Automatically zoom and center canvas to fit all rendered nodes upon scan</span>
+            </div>
+            <div class="settings-row-control">
+              <label class="toggle-switch"><input type="checkbox" id="set-auto-fit" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
         </section>
       </div>
 

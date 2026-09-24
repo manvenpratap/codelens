@@ -7692,6 +7692,21 @@ body.theme-light .modal-close-btn:hover {
   gap: 6px;
 }
 
+.settings-section-header {
+  margin-bottom: 12px;
+}
+
+.settings-section-header .settings-group-title {
+  margin-bottom: 4px;
+}
+
+.settings-help-text {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.4;
+  margin: 0;
+}
+
 /* ── Settings Row (label + control) ─────────────────────────────── */
 
 .settings-row {
@@ -7718,6 +7733,45 @@ body.theme-light .modal-close-btn:hover {
   color: #f1f5f9;
   min-width: 120px;
   flex-shrink: 0;
+}
+
+.settings-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.settings-row-info label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f1f5f9;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+}
+
+.settings-row-desc {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.35;
+}
+
+.settings-row-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.settings-row-control.slider-control {
+  gap: 10px;
+  width: 210px;
+}
+
+.settings-row-control.slider-control input[type="range"] {
+  flex: 1;
 }
 
 /* ── Range Slider ───────────────────────────────────────────────── */
@@ -9010,6 +9064,13 @@ body.theme-light .settings-row {
 }
 body.theme-light .settings-row > label:first-child {
   color: #1e293b;
+}
+body.theme-light .settings-row-info label {
+  color: #0f172a;
+}
+body.theme-light .settings-help-text,
+body.theme-light .settings-row-desc {
+  color: #64748b;
 }
 body.theme-light .deployment-config-card {
   background: #ffffff;
@@ -16785,6 +16846,14 @@ body.theme-swiss .settings-group {
   background: #1d1d1f;
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 3px;
+}
+body.theme-swiss .settings-row-info label {
+  font-weight: 700;
+  color: #ffffff;
+}
+body.theme-swiss .settings-row-desc,
+body.theme-swiss .settings-help-text {
+  color: #8e8e93;
 }
 
 body.theme-swiss .theme-card {
