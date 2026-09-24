@@ -535,6 +535,28 @@ public class CodeLensServer {
                 }
                 scanState.set(lastScan);
                 log.info("Restored last scan progress state for {}", lastScan.getSourcePath());
+            } else {
+                Map<String, Object> stats = dao.getStats();
+                int typeCount = stats.containsKey("types") ? ((Number) stats.get("types")).intValue() : 0;
+                if (typeCount > 0) {
+                    ScanProgress synth = new ScanProgress(ScanProgress.Status.COMPLETE);
+                    synth.setSourcePath(resolveCurrentSourcePath());
+                    synth.setTypesFound(typeCount);
+                    synth.setMethodsFound(stats.containsKey("methods") ? ((Number) stats.get("methods")).intValue() : 0);
+                    synth.setFieldsFound(stats.containsKey("fields") ? ((Number) stats.get("fields")).intValue() : 0);
+                    synth.setRelationshipsFound(stats.containsKey("relationships") ? ((Number) stats.get("relationships")).intValue() : 0);
+                    synth.setTotalFiles(typeCount);
+                    synth.setParsedFiles(typeCount);
+                    synth.setProcessedFiles(typeCount);
+                    synth.setCurrentPhase("Complete");
+                    synth.setCurrentDetail("Ready");
+                    synth.setMessage("Dataset loaded (" + typeCount + " types)");
+                    synth.setStartTime(System.currentTimeMillis() - 1000);
+                    synth.setEndTime(System.currentTimeMillis());
+                    try { dao.saveScanMeta(synth); } catch (Exception ignored) {}
+                    scanState.set(synth);
+                    log.info("Synthesized scan metadata from populated database ({} types, {} methods)", typeCount, stats.get("methods"));
+                }
             }
         } catch (Exception e) {
             log.warn("Failed to load last scan metadata: {}", e.getMessage());

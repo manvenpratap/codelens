@@ -437,6 +437,27 @@ public class StressTestService {
             p.setPercentage(100);
             p.setEndTime(System.currentTimeMillis());
 
+            // Persist scan metadata so any loaded stress dataset is immediately recognized
+            try {
+                ScanProgress sp = new ScanProgress(ScanProgress.Status.COMPLETE);
+                sp.setSourcePath(dbPathStr);
+                sp.setTotalFiles(totalClasses);
+                sp.setProcessedFiles(totalClasses);
+                sp.setParsedFiles(totalClasses);
+                sp.setTypesFound(totalClasses);
+                sp.setMethodsFound(totalMethods);
+                sp.setFieldsFound(totalFields);
+                sp.setRelationshipsFound((int) Math.min(Integer.MAX_VALUE, totalRels));
+                sp.setCurrentPhase("Complete");
+                sp.setCurrentDetail(String.format("Benchmark dataset: %,d classes, %,d rels", totalClasses, totalRels));
+                sp.setMessage("Scale stress test dataset loaded");
+                sp.setStartTime(p.getStartTime());
+                sp.setEndTime(p.getEndTime());
+                dao.saveScanMeta(sp);
+            } catch (Exception ex) {
+                log.warn("Failed to save scan metadata for stress dataset: {}", ex.getMessage());
+            }
+
         } finally {
             db.close();
         }

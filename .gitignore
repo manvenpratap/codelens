@@ -6,6 +6,8 @@ target/
 codelens-data/
 codelens-stress-data/
 codelens-*-data/
+codelens-*-backup/
+codelens-data-*/
 
 # IDE files
 .idea/
