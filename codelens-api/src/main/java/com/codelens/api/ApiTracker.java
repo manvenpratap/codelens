@@ -78,6 +78,15 @@ public class ApiTracker {
         addRoute("GET",  "/api/database/health",  "Database & Storage", "Check H2 MVStore size, pool metrics, table counts & integrity", true);
         addRoute("POST", "/api/database/recover", "Database & Storage", "Execute self-healing index rebuild, compaction, or orphan purge", false);
 
+        // ── JVM & Telemetry ───────────────────────────────────────────────────
+        addRoute("GET",  "/api/jvm/metrics",             "JVM & Telemetry", "Comprehensive JVM telemetry: Heap, Pools, GC, Threads, OS CPU", true);
+        addRoute("POST", "/api/jvm/gc",                  "JVM & Telemetry", "Trigger manual garbage collection (System.gc()) & report reclaimed MB", true);
+        addRoute("GET",  "/api/jvm/threads",              "JVM & Telemetry", "Live thread list with states, CPU time, locks, and top stack frame", true);
+        addRoute("GET",  "/api/jvm/threads/{id}/stack",  "JVM & Telemetry", "Inspect stack trace of an individual JVM thread", false);
+        addRoute("GET",  "/api/jvm/thread-dump",          "JVM & Telemetry", "Generate full diagnostic JVM thread dump for export", true);
+        addRoute("GET",  "/api/jvm/deadlocks",            "JVM & Telemetry", "Scan JVM for deadlocked monitor and synchronizer threads", true);
+        addRoute("POST", "/api/jvm/trim-memory",         "JVM & Telemetry", "Evict in-memory layout & module caches and run garbage collection", true);
+
         // ── Packages & Modules ────────────────────────────────────────────────
         addRoute("GET",  "/api/packages",                    "Packages & Modules", "List all detected Java packages with hierarchy", true);
         addRoute("GET",  "/api/packages/{fqn}/types",        "Packages & Modules", "Retrieve types declared within package", false);

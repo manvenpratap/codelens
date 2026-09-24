@@ -188,6 +188,13 @@ const api = {
   startStressTest:    (params)    => api.post('/stress-test/start', params || {}),
   getStressTestStatus: ()         => api.get('/stress-test/status'),
   stopStressTest:     ()          => api.post('/stress-test/stop', {}),
+  jvmMetrics:         ()          => api.get('/jvm/metrics'),
+  triggerGc:          ()          => api.post('/jvm/gc', {}),
+  jvmThreads:         (q, state)  => api.get(`/jvm/threads?q=${encodeURIComponent(q || '')}&state=${encodeURIComponent(state || 'ALL')}`),
+  jvmThreadStack:     (id)        => api.get(`/jvm/threads/${enc(id)}/stack`),
+  jvmThreadDump:      (format)    => api.get(`/jvm/thread-dump${format ? '?format=' + encodeURIComponent(format) : ''}`),
+  jvmDeadlocks:       ()          => api.get('/jvm/deadlocks'),
+  trimMemory:         ()          => api.post('/jvm/trim-memory', {}),
   shutdownServer:     ()          => api.post('/shutdown', {}),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
 
@@ -818,6 +825,10 @@ let processHubActiveTab = 'tasks';
 let processHubApiCategory = 'all';
 let processHubApiSearch = '';
 let processHubLastData = null;
+let jvmThreadsFilterState = 'ALL';
+let jvmThreadsSearchQuery = '';
+let jvmLastThreadsList = [];
+let jvmDumpRawText = '';
 
 function openProcessHub() {
   const modal = qs('#process-hub-modal');
@@ -1324,14 +1335,335 @@ function renderApisPanel(apis) {
   });
 }
 
-function renderServerPanel(system) {
+function showJvmAlert(type, message) {
+  const alertEl = qs('#hub-jvm-alert');
+  const iconEl = qs('#hub-jvm-alert-icon');
+  const msgEl = qs('#hub-jvm-alert-msg');
+  if (!alertEl || !msgEl) return;
+
+  alertEl.className = `hub-jvm-alert alert-${type}`;
+  if (iconEl) {
+    if (type === 'success') {
+      iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+    } else if (type === 'warning') {
+      iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    } else {
+      iconEl.innerHTML = `<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+    }
+  }
+  msgEl.textContent = message;
+  alertEl.style.display = 'flex';
+}
+
+let jvmThreadsLoading = false;
+async function loadJvmThreads() {
+  if (jvmThreadsLoading) return;
+  const tbody = qs('#jvm-threads-tbody');
+  if (!tbody) return;
+
+  jvmThreadsLoading = true;
+  try {
+    const data = await api.jvmThreads(jvmThreadsSearchQuery, jvmThreadsFilterState);
+    const threads = data.threads || [];
+    jvmLastThreadsList = threads;
+
+    if (threads.length === 0) {
+      tbody.innerHTML = `<tr>
+        <td colspan="7" class="hub-empty-cell" style="text-align:center; padding: 24px;">
+          <div class="text-secondary" style="font-size:12px;">No active threads match state "${esc(jvmThreadsFilterState)}" ${jvmThreadsSearchQuery ? `and query "${esc(jvmThreadsSearchQuery)}"` : ''}</div>
+        </td>
+      </tr>`;
+      jvmThreadsLoading = false;
+      return;
+    }
+
+    tbody.innerHTML = threads.map(t => {
+      const state = (t.state || 'UNKNOWN').toUpperCase();
+      const stateCls = state === 'RUNNABLE' ? 'state-runnable' : (state === 'WAITING' ? 'state-waiting' : (state === 'TIMED_WAITING' ? 'state-timed_waiting' : (state === 'BLOCKED' ? 'state-blocked' : '')));
+      const cpuTime = t.cpuTimeMs != null && t.cpuTimeMs >= 0 ? `${t.cpuTimeMs.toFixed(1)} ms` : '-';
+      const daemonTag = t.daemon ? '<span class="th-daemon-tag font-mono">daemon</span>' : '';
+      const topFrame = t.topFrame || '-';
+      const isCodeLens = topFrame.includes('com.codelens');
+
+      return `<tr>
+        <td class="font-mono text-muted">#${t.id}</td>
+        <td>
+          <div class="th-name-cell">
+            <span class="font-mono text-truncate" title="${esc(t.name)}" style="max-width: 240px;">${esc(t.name)}</span>
+            ${daemonTag}
+          </div>
+        </td>
+        <td><span class="th-state-badge font-mono ${stateCls}">${state}</span></td>
+        <td style="text-align: center;" class="font-mono text-muted">${t.priority ?? '-'}</td>
+        <td style="text-align: right;" class="font-mono text-secondary">${cpuTime}</td>
+        <td>
+          <div class="th-top-frame font-mono ${isCodeLens ? 'text-cyan' : ''}" title="${esc(topFrame)}">
+            ${esc(topFrame)}
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <button type="button" class="btn-inspect-stack" data-tid="${t.id}" title="Inspect call stack frames">Inspect</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Wire inspect stack buttons
+    tbody.querySelectorAll('.btn-inspect-stack').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tid = btn.dataset.tid;
+        openJvmThreadStack(tid);
+      });
+    });
+
+  } catch (err) {
+    console.warn('Failed to load JVM threads:', err);
+  } finally {
+    jvmThreadsLoading = false;
+  }
+}
+
+async function openJvmThreadStack(tid) {
+  const modal = qs('#jvm-stack-modal');
+  if (!modal) return;
+  const infoEl = qs('#jvm-stack-info');
+  const framesEl = qs('#jvm-stack-frames');
+  const subEl = qs('#jvm-stack-sub');
+
+  if (infoEl) infoEl.innerHTML = '<div class="text-secondary font-mono" style="font-size:11px;">Fetching thread stack…</div>';
+  if (framesEl) framesEl.innerHTML = '<div class="text-secondary font-mono" style="font-size:11px; padding:10px;">Loading frames…</div>';
+  showAccessibleModal(modal);
+
+  try {
+    const data = await api.jvmThreadStack(tid);
+    if (!data.found) {
+      if (infoEl) infoEl.innerHTML = `<span class="text-rose">${esc(data.message || 'Thread not found')}</span>`;
+      if (framesEl) framesEl.innerHTML = '';
+      return;
+    }
+
+    if (subEl) subEl.textContent = `Thread #${data.id}: "${data.name}" (${data.state})`;
+
+    if (infoEl) {
+      const lockInfo = data.lockName ? ` · Waiting on lock: <code class="font-mono text-amber">${esc(data.lockName)}</code>` : '';
+      const ownerInfo = data.lockOwnerName ? ` (owned by "${esc(data.lockOwnerName)}" #${data.lockOwnerId})` : '';
+      infoEl.innerHTML = `
+        <div style="font-size:12px;">
+          <strong class="font-mono">#${data.id} ${esc(data.name)}</strong>
+          <span class="th-state-badge state-${(data.state || '').toLowerCase()}" style="margin-left:8px;">${data.state}</span>
+          ${data.daemon ? '<span class="th-daemon-tag" style="margin-left:6px;">daemon</span>' : ''}
+          <span class="text-muted" style="margin-left:8px;">Priority: ${data.priority}</span>
+          ${lockInfo}${ownerInfo}
+        </div>
+      `;
+    }
+
+    const frames = data.frames || [];
+    if (frames.length === 0) {
+      if (framesEl) framesEl.innerHTML = '<div class="text-muted" style="padding:12px;">No stack frames (thread idle or native waiting).</div>';
+      return;
+    }
+
+    if (framesEl) {
+      framesEl.innerHTML = frames.map((f, i) => {
+        const isCodeLens = f.isCodeLens;
+        const cls = isCodeLens ? 'jvm-stack-frame is-codelens' : 'jvm-stack-frame';
+        const fileLoc = f.fileName ? `${f.fileName}:${f.lineNumber}` : (f.isNative ? 'Native Method' : 'Unknown Source');
+        return `
+          <div class="${cls}">
+            <span class="text-muted" style="width:24px; display:inline-block; text-align:right; margin-right:8px;">${i}</span>
+            <span class="${isCodeLens ? 'text-cyan' : 'text-primary'}">${esc(f.className)}.${esc(f.methodName)}</span>
+            <span class="text-muted" style="margin-left:6px;">(${esc(fileLoc)})</span>
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    if (infoEl) infoEl.innerHTML = `<span class="text-rose">Error: ${esc(err.message)}</span>`;
+  }
+}
+
+async function openJvmThreadDump() {
+  const modal = qs('#jvm-thread-dump-modal');
+  if (!modal) return;
+  const preEl = qs('#jvm-dump-raw');
+  const subEl = qs('#jvm-dump-sub');
+
+  if (preEl) preEl.textContent = 'Generating live JVM thread dump…';
+  showAccessibleModal(modal);
+
+  try {
+    const data = await api.jvmThreadDump();
+    jvmDumpRawText = data.rawText || '';
+    if (subEl) subEl.textContent = `${data.threadCount} threads captured at ${data.timestamp} · ${data.deadlockCount} deadlocks detected`;
+    if (preEl) preEl.textContent = jvmDumpRawText;
+  } catch (err) {
+    if (preEl) preEl.textContent = `Failed to generate thread dump: ${err.message}`;
+  }
+}
+
+function renderJvmPanel(system) {
   if (!system) return;
-  const thEl = qs('#hub-jvm-threads');
-  if (thEl) thEl.textContent = system.activeThreads ?? '-';
-  const usedEl = qs('#hub-jvm-heap-alloc');
-  if (usedEl) usedEl.textContent = `${system.heapUsedMb ?? 0} MB`;
-  const maxEl = qs('#hub-jvm-heap-max');
-  if (maxEl) maxEl.textContent = `${system.heapMaxMb ?? 0} MB`;
+
+  // 1. Heap Memory Card
+  const heap = system.heap || {};
+  const usedMb = heap.usedMb ?? system.heapUsedMb ?? 0;
+  const committedMb = heap.committedMb ?? system.heapTotalMb ?? 0;
+  const maxMb = heap.maxMb ?? system.heapMaxMb ?? 0;
+  const pct = heap.percentage ?? system.heapPercent ?? (maxMb > 0 ? Math.round((usedMb / maxMb) * 100) : 0);
+  const freeMb = heap.freeMb ?? Math.max(0, maxMb - usedMb);
+
+  const navBadge = qs('#hub-nav-badge-jvm');
+  if (navBadge) {
+    navBadge.textContent = `Heap ${pct}%`;
+    navBadge.className = 'hub-nav-badge ' + (pct > 85 ? 'text-rose' : (pct > 70 ? 'text-amber' : 'text-emerald'));
+  }
+
+  const heapPctEl = qs('#jvm-heap-pct-badge');
+  if (heapPctEl) heapPctEl.textContent = `${pct}%`;
+  const heapGaugeEl = qs('#jvm-heap-gauge');
+  if (heapGaugeEl) heapGaugeEl.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  const heapUsedEl = qs('#jvm-heap-used');
+  if (heapUsedEl) heapUsedEl.textContent = `${usedMb.toLocaleString()} MB`;
+  const heapCommittedEl = qs('#jvm-heap-committed');
+  if (heapCommittedEl) heapCommittedEl.textContent = `${committedMb.toLocaleString()} MB`;
+  const heapMaxEl = qs('#jvm-heap-max');
+  if (heapMaxEl) heapMaxEl.textContent = `${maxMb.toLocaleString()} MB`;
+  const heapFreeEl = qs('#jvm-heap-free');
+  if (heapFreeEl) heapFreeEl.textContent = `${freeMb.toLocaleString()} MB`;
+
+  // 2. Non-Heap & Metaspace Card
+  const nonHeap = system.nonHeap || {};
+  const nonHeapUsedMb = nonHeap.usedMb ?? 0;
+  const nonHeapCommittedMb = nonHeap.committedMb ?? 0;
+  const cl = system.classLoading || {};
+  const classesLoaded = cl.loadedClassCount ?? 0;
+  const classesUnloaded = cl.unloadedClassCount ?? 0;
+
+  const nonHeapBadge = qs('#jvm-nonheap-used-badge');
+  if (nonHeapBadge) nonHeapBadge.textContent = `${nonHeapUsedMb} MB`;
+  const nonHeapUsedEl = qs('#jvm-nonheap-used');
+  if (nonHeapUsedEl) nonHeapUsedEl.textContent = `${nonHeapUsedMb.toLocaleString()} MB`;
+  const nonHeapCommittedEl = qs('#jvm-nonheap-committed');
+  if (nonHeapCommittedEl) nonHeapCommittedEl.textContent = `${nonHeapCommittedMb.toLocaleString()} MB`;
+  const clLoadedEl = qs('#jvm-classes-loaded');
+  if (clLoadedEl) clLoadedEl.textContent = classesLoaded.toLocaleString();
+  const clUnloadedEl = qs('#jvm-classes-unloaded');
+  if (clUnloadedEl) clUnloadedEl.textContent = classesUnloaded.toLocaleString();
+
+  // 3. Garbage Collection Card
+  const gc = system.gc || {};
+  const totalCollections = gc.totalCollections ?? 0;
+  const totalTimeMs = gc.totalTimeMs ?? 0;
+  const gcBadge = qs('#jvm-gc-total-badge');
+  if (gcBadge) gcBadge.textContent = `${totalCollections.toLocaleString()} Collections`;
+  const gcCountEl = qs('#jvm-gc-count');
+  if (gcCountEl) gcCountEl.textContent = totalCollections.toLocaleString();
+  const gcTimeEl = qs('#jvm-gc-time');
+  if (gcTimeEl) gcTimeEl.textContent = `${totalTimeMs.toLocaleString()} ms`;
+
+  const collectorsListEl = qs('#jvm-gc-collectors-list');
+  if (collectorsListEl && gc.collectors) {
+    collectorsListEl.innerHTML = gc.collectors.map(c => `
+      <div class="jvm-gc-collector-item">
+        <span class="text-secondary">${esc(c.name)}:</span>
+        <span class="font-mono">${(c.count || 0).toLocaleString()} (${(c.timeMs || 0).toLocaleString()} ms)</span>
+      </div>
+    `).join('');
+  }
+
+  // 4. Host OS & CPU Card
+  const os = system.os || {};
+  const rt = system.runtime || {};
+  const cores = os.availableProcessors ?? 8;
+  const procCpu = os.processCpuPercent != null ? `${os.processCpuPercent}%` : '-';
+  const sysLoad = os.systemLoadAverage != null && os.systemLoadAverage >= 0 ? os.systemLoadAverage : '-';
+  const uptimeStr = rt.uptimeFormatted ?? '-';
+
+  const osCoresEl = qs('#jvm-os-cores');
+  if (osCoresEl) osCoresEl.textContent = `${cores} Cores`;
+  const procCpuEl = qs('#jvm-proc-cpu');
+  if (procCpuEl) procCpuEl.textContent = procCpu;
+  const sysLoadEl = qs('#jvm-sys-load');
+  if (sysLoadEl) sysLoadEl.textContent = String(sysLoad);
+  const uptimeEl = qs('#jvm-uptime');
+  if (uptimeEl) uptimeEl.textContent = uptimeStr;
+  const vmVersionEl = qs('#jvm-vm-version');
+  if (vmVersionEl) {
+    const vmStr = `${rt.vmName || 'Java HotSpot'} (${rt.vmVersion || '17'})`;
+    vmVersionEl.textContent = vmStr;
+    vmVersionEl.title = vmStr;
+  }
+
+  // 5. Memory Pools Detail
+  const poolsGrid = qs('#hub-jvm-pools-grid');
+  if (poolsGrid && system.memoryPools) {
+    poolsGrid.innerHTML = system.memoryPools.map(p => {
+      const pUsed = p.usedMb ?? 0;
+      const pMax = p.maxMb ?? -1;
+      const pPct = p.percentage != null && p.percentage >= 0 ? p.percentage : 0;
+      const barColor = pPct > 85 ? '#f43f5e' : (pPct > 70 ? '#f59e0b' : '#38bdf8');
+      const maxText = pMax > 0 ? `${pMax} MB` : 'No Limit';
+      return `
+        <div class="jvm-pool-card">
+          <div class="jvm-pool-header">
+            <span class="jvm-pool-name" title="${esc(p.name)}">${esc(p.name)}</span>
+            <span class="jvm-pool-pct font-mono">${pPct >= 0 ? pPct + '%' : '-'}</span>
+          </div>
+          <div class="jvm-pool-bar-wrap">
+            <div class="jvm-pool-bar" style="width: ${Math.min(100, Math.max(0, pPct))}%; background: ${barColor};"></div>
+          </div>
+          <div class="jvm-pool-footer font-mono">${pUsed} MB / ${maxText}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 6. Thread Matrix Stat Pills
+  const th = system.threads || {};
+  const liveCount = th.liveCount ?? system.activeThreads ?? 0;
+  const runnable = th.runnable ?? 0;
+  const waiting = th.waiting ?? 0;
+  const timed = th.timedWaiting ?? 0;
+  const blocked = th.blocked ?? 0;
+  const deadlocks = th.deadlocksCount ?? 0;
+
+  const thTot = qs('#jvm-th-total');
+  if (thTot) thTot.textContent = liveCount;
+  const thRun = qs('#jvm-th-runnable');
+  if (thRun) thRun.textContent = runnable;
+  const thWait = qs('#jvm-th-waiting');
+  if (thWait) thWait.textContent = waiting;
+  const thTimed = qs('#jvm-th-timed');
+  if (thTimed) thTimed.textContent = timed;
+  const thBlock = qs('#jvm-th-blocked');
+  if (thBlock) thBlock.textContent = blocked;
+  const thDead = qs('#jvm-th-deadlocks');
+  if (thDead) thDead.textContent = deadlocks;
+  const deadPill = qs('#jvm-th-deadlocks-pill');
+  if (deadPill) deadPill.classList.toggle('has-deadlocks', deadlocks > 0);
+
+  // 7. JVM Arguments & Flags
+  const args = rt.inputArguments || [];
+  const argsCountEl = qs('#jvm-args-count');
+  if (argsCountEl) argsCountEl.textContent = args.length;
+  const argsContainer = qs('#jvm-args-container');
+  if (argsContainer) {
+    if (args.length === 0) {
+      argsContainer.innerHTML = '<span class="text-muted font-mono" style="font-size:11px;">Default JVM parameters active</span>';
+    } else {
+      argsContainer.innerHTML = args.map(a => `<code class="jvm-arg-pill font-mono">${esc(a)}</code>`).join('');
+    }
+  }
+
+  // 8. Load Thread List (only if JVM tab is active)
+  if (processHubActiveTab === 'jvm' || processHubActiveTab === 'server') {
+    loadJvmThreads();
+  }
+}
+
+function renderServerPanel(system) {
+  renderJvmPanel(system);
 }
 
 async function loadProcessHubData() {
@@ -1635,7 +1967,7 @@ function initProcessHub() {
           qs('.hub-nav-tab[data-tab="apis"]')?.click();
         } else if (e.key === '4') {
           e.preventDefault();
-          qs('.hub-nav-tab[data-tab="server"]')?.click();
+          qs('.hub-nav-tab[data-tab="jvm"]')?.click() || qs('.hub-nav-tab[data-tab="server"]')?.click();
         }
       }
     }
@@ -1666,7 +1998,7 @@ function initProcessHub() {
       if (processHubLastData) {
         if (processHubActiveTab === 'database') renderDatabasePanel(processHubLastData.database);
         else if (processHubActiveTab === 'apis') renderApisPanel(processHubLastData.apis);
-        else if (processHubActiveTab === 'server') renderServerPanel(processHubLastData.system);
+        else if (processHubActiveTab === 'jvm' || processHubActiveTab === 'server') renderJvmPanel(processHubLastData.system);
       }
     });
   });
@@ -1782,6 +2114,168 @@ function initProcessHub() {
 
   // Initialize scale & stress testing benchmark controls
   initStressTestControls();
+
+  // Initialize JVM Manager controls
+  initJvmManagerControls();
+}
+
+function initJvmManagerControls() {
+  // 1. Run Garbage Collection
+  qs('#btn-jvm-gc')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-gc');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Running GC…`;
+    }
+    try {
+      const res = await api.triggerGc();
+      showJvmAlert('success', `Explicit GC executed: Reclaimed ${res.freedMb} MB in ${res.durationMs} ms (Heap: ${res.beforeUsedMb} MB → ${res.afterUsedMb} MB)`);
+      loadProcessHubData();
+    } catch (err) {
+      showJvmAlert('error', `Failed to trigger Garbage Collection: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // 2. Trim Caches & GC
+  qs('#btn-jvm-trim')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-trim');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Trimming…`;
+    }
+    try {
+      const res = await api.trimMemory();
+      showJvmAlert('success', res.message || `Trimmed layout & module caches and executed GC (Freed ${res.freedMb} MB in ${res.durationMs} ms)`);
+      loadProcessHubData();
+    } catch (err) {
+      showJvmAlert('error', `Failed to trim memory: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // 3. Scan Deadlocks
+  qs('#btn-jvm-deadlocks')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-deadlocks');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Scanning…`;
+    }
+    try {
+      const res = await api.jvmDeadlocks();
+      if (res.hasDeadlocks) {
+        showJvmAlert('error', `⚠️ Deadlock Detected! ${res.count} thread(s) are permanently deadlocked.`);
+      } else {
+        showJvmAlert('success', `Clean scan: No deadlocked threads detected in the JVM.`);
+      }
+      loadProcessHubData();
+    } catch (err) {
+      showJvmAlert('error', `Deadlock scan failed: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // 4. Thread Dump Modal
+  qs('#btn-jvm-dump')?.addEventListener('click', () => {
+    openJvmThreadDump();
+  });
+  qs('#jvm-thread-dump-modal-close')?.addEventListener('click', () => {
+    const modal = qs('#jvm-thread-dump-modal');
+    if (modal) hideAccessibleModal(modal);
+  });
+  qs('#jvm-thread-dump-modal')?.addEventListener('click', (e) => {
+    if (e.target === qs('#jvm-thread-dump-modal')) {
+      hideAccessibleModal(qs('#jvm-thread-dump-modal'));
+    }
+  });
+  qs('#btn-jvm-dump-copy')?.addEventListener('click', () => {
+    if (jvmDumpRawText) {
+      navigator.clipboard?.writeText(jvmDumpRawText);
+      const btn = qs('#btn-jvm-dump-copy');
+      if (btn) {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.innerHTML = `<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`; }, 1500);
+      }
+    }
+  });
+  qs('#btn-jvm-dump-download')?.addEventListener('click', () => {
+    if (jvmDumpRawText) {
+      const blob = new Blob([jvmDumpRawText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `codelens-thread-dump-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  });
+
+  // 5. Thread Stack Modal
+  qs('#jvm-stack-modal-close')?.addEventListener('click', () => {
+    const modal = qs('#jvm-stack-modal');
+    if (modal) hideAccessibleModal(modal);
+  });
+  qs('#jvm-stack-modal')?.addEventListener('click', (e) => {
+    if (e.target === qs('#jvm-stack-modal')) {
+      hideAccessibleModal(qs('#jvm-stack-modal'));
+    }
+  });
+
+  // 6. Dismiss Alert
+  qs('#btn-jvm-alert-close')?.addEventListener('click', () => {
+    const alertEl = qs('#hub-jvm-alert');
+    if (alertEl) alertEl.style.display = 'none';
+  });
+
+  // 7. Thread search and state filters
+  const threadSearchInput = qs('#jvm-thread-search-input');
+  const threadSearchClear = qs('#jvm-thread-search-clear');
+  if (threadSearchInput) {
+    threadSearchInput.addEventListener('input', (e) => {
+      jvmThreadsSearchQuery = e.target.value;
+      if (threadSearchClear) threadSearchClear.style.display = jvmThreadsSearchQuery ? 'block' : 'none';
+      loadJvmThreads();
+    });
+  }
+  if (threadSearchClear) {
+    threadSearchClear.addEventListener('click', () => {
+      if (threadSearchInput) {
+        threadSearchInput.value = '';
+        jvmThreadsSearchQuery = '';
+        threadSearchClear.style.display = 'none';
+        threadSearchInput.focus();
+        loadJvmThreads();
+      }
+    });
+  }
+
+  qsa('.hub-th-state-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('.hub-th-state-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      jvmThreadsFilterState = btn.dataset.state || 'ALL';
+      loadJvmThreads();
+    });
+  });
+
+  qs('#btn-jvm-threads-refresh')?.addEventListener('click', () => {
+    loadJvmThreads();
+  });
 }
 
 /** Re-open scan modal when user clicks header badge or footer status */

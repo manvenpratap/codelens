@@ -2433,11 +2433,11 @@
           <span class="hub-nav-title">Backend APIs</span>
           <span class="hub-nav-count" id="hub-nav-count-apis">52</span>
         </button>
-        <button class="hub-nav-tab" data-tab="server" role="tab" aria-selected="false" aria-controls="hub-panel-server">
+        <button class="hub-nav-tab" data-tab="jvm" role="tab" aria-selected="false" aria-controls="hub-panel-jvm">
           <kbd class="hub-nav-kbd">4</kbd>
           <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
-          <span class="hub-nav-title">Server Telemetry</span>
-          <span class="hub-nav-count" id="hub-nav-count-server">Host</span>
+          <span class="hub-nav-title">JVM Manager</span>
+          <span class="hub-nav-badge text-amber" id="hub-nav-badge-jvm">Heap 0%</span>
         </button>
       </div>
 
@@ -2763,6 +2763,7 @@
           <button class="hub-cat-pill" data-category="Reports">Reports</button>
           <button class="hub-cat-pill" data-category="Git Analytics">Git Analytics</button>
           <button class="hub-cat-pill" data-category="Config &amp; Scope">Config &amp; Scope</button>
+          <button class="hub-cat-pill" data-category="JVM &amp; Telemetry">JVM &amp; Telemetry</button>
         </div>
 
         <!-- API Catalog Table Container -->
@@ -2787,43 +2788,312 @@
         </div>
       </div>
 
-      <!-- ── TAB 4: Server Telemetry Panel ── -->
-      <div class="hub-tab-panel" id="hub-panel-server" style="display:none;">
-        <div class="hub-server-grid">
-          <!-- Server & Web Engine -->
-          <div class="hub-server-card">
-            <div class="hub-server-header">
-              <span class="hub-server-title"><svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> HTTP &amp; Web Engine</span>
-              <span class="hub-server-badge text-emerald">RUNNING</span>
+      <!-- ── TAB 4: JVM Manager & Runtime Diagnostics Panel ── -->
+      <div class="hub-tab-panel" id="hub-panel-jvm" style="display:none;">
+
+        <!-- JVM Actions & Diagnostics Bar -->
+        <div class="hub-jvm-action-bar">
+          <div class="hub-jvm-action-left">
+            <div class="hub-jvm-title-group">
+              <span class="hub-jvm-main-title">
+                <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg>
+                JVM Runtime &amp; Concurrency Manager
+              </span>
+              <span class="hub-jvm-tagline" id="hub-jvm-tagline">Real-time HotSpot memory pools, garbage collection pauses, and live thread inspection</span>
             </div>
-            <div class="hub-server-rows">
-              <div class="hub-server-row"><span class="srv-lbl">HTTP Framework:</span><span class="srv-val font-mono">Javalin 6.1.3</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Underlying Server:</span><span class="srv-val font-mono">Eclipse Jetty 11.0.20</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Listening Port:</span><span class="srv-val font-mono">7878</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Host Interface:</span><span class="srv-val font-mono">0.0.0.0 (All Interfaces)</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Compression:</span><span class="srv-val font-mono">Gzip (Enabled)</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">CORS:</span><span class="srv-val font-mono">Permissive Local (Enabled)</span></div>
+          </div>
+          <div class="hub-jvm-action-right">
+            <button type="button" class="btn btn-xs btn-primary" id="btn-jvm-gc" title="Trigger explicit garbage collection via System.gc()">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.6 2-4 .3 1.4 2 2.4 2 4Z"/></svg>
+              Run Garbage Collection
+            </button>
+            <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-trim" title="Evict in-memory layout &amp; module caches and reclaim heap">
+              <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Trim Caches &amp; GC
+            </button>
+            <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-dump" title="Generate and view complete thread dump">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              Thread Dump
+            </button>
+            <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-deadlocks" title="Scan for deadlocked threads">
+              <svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="1"/><line x1="12" y1="15" x2="12.01" y2="15"/></svg>
+              Scan Deadlocks
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Feedback Alert Strip -->
+        <div class="hub-jvm-alert" id="hub-jvm-alert" style="display:none;">
+          <div class="hub-jvm-alert-icon" id="hub-jvm-alert-icon"></div>
+          <div class="hub-jvm-alert-msg" id="hub-jvm-alert-msg"></div>
+          <button type="button" class="hub-jvm-alert-close" id="btn-jvm-alert-close" aria-label="Close notification">&times;</button>
+        </div>
+
+        <!-- 4 Primary Metric Cards Grid -->
+        <div class="hub-jvm-metrics-grid">
+          <!-- Card 1: Heap Memory -->
+          <div class="hub-jvm-card">
+            <div class="hub-jvm-card-header">
+              <span class="hub-jvm-card-title">
+                <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                Heap Memory
+              </span>
+              <span class="hub-jvm-pct-badge font-mono" id="jvm-heap-pct-badge">0%</span>
+            </div>
+            <div class="hub-jvm-gauge-wrap">
+              <div class="hub-jvm-gauge-bar" id="jvm-heap-gauge" style="width: 0%;"></div>
+            </div>
+            <div class="hub-jvm-stats-grid">
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Used</span>
+                <span class="jvm-stat-val font-mono" id="jvm-heap-used">0 MB</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Committed</span>
+                <span class="jvm-stat-val font-mono" id="jvm-heap-committed">0 MB</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Max Allocation</span>
+                <span class="jvm-stat-val font-mono" id="jvm-heap-max">0 MB</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Free Headroom</span>
+                <span class="jvm-stat-val font-mono text-emerald" id="jvm-heap-free">0 MB</span>
+              </div>
             </div>
           </div>
 
-          <!-- JVM & Runtime -->
-          <div class="hub-server-card">
-            <div class="hub-server-header">
-              <span class="hub-server-title"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 21v2M9 1v2"/></svg> JVM &amp; Host Environment</span>
-              <span class="hub-server-badge" id="hub-jvm-version">Java 17</span>
+          <!-- Card 2: Non-Heap & Metaspace -->
+          <div class="hub-jvm-card">
+            <div class="hub-jvm-card-header">
+              <span class="hub-jvm-card-title">
+                <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+                Non-Heap &amp; Metaspace
+              </span>
+              <span class="hub-jvm-chip text-cyan" id="jvm-nonheap-used-badge">0 MB</span>
             </div>
-            <div class="hub-server-rows">
-              <div class="hub-server-row"><span class="srv-lbl">Java Runtime:</span><span class="srv-val font-mono" id="hub-jvm-runtime">Eclipse Temurin 17</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Available CPU Cores:</span><span class="srv-val font-mono" id="hub-jvm-cores">8 Cores</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Active JVM Threads:</span><span class="srv-val font-mono" id="hub-jvm-threads">0</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Heap Memory Allocated:</span><span class="srv-val font-mono" id="hub-jvm-heap-alloc">0 MB</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">Heap Memory Max:</span><span class="srv-val font-mono" id="hub-jvm-heap-max">0 MB</span></div>
-              <div class="hub-server-row"><span class="srv-lbl">GC Strategy:</span><span class="srv-val font-mono">G1 / Parallel Garbage Collector</span></div>
+            <div class="hub-jvm-gauge-wrap">
+              <div class="hub-jvm-gauge-bar bar-cyan" id="jvm-nonheap-gauge" style="width: 100%;"></div>
+            </div>
+            <div class="hub-jvm-stats-grid">
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Used</span>
+                <span class="jvm-stat-val font-mono" id="jvm-nonheap-used">0 MB</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Committed</span>
+                <span class="jvm-stat-val font-mono" id="jvm-nonheap-committed">0 MB</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Classes Loaded</span>
+                <span class="jvm-stat-val font-mono" id="jvm-classes-loaded">0</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Unloaded</span>
+                <span class="jvm-stat-val font-mono text-muted" id="jvm-classes-unloaded">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Garbage Collection -->
+          <div class="hub-jvm-card">
+            <div class="hub-jvm-card-header">
+              <span class="hub-jvm-card-title">
+                <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+                Garbage Collection
+              </span>
+              <span class="hub-jvm-chip text-emerald" id="jvm-gc-total-badge">0 Collections</span>
+            </div>
+            <div class="hub-jvm-gc-summary">
+              <div class="jvm-gc-metric-row">
+                <span class="jvm-gc-lbl">Total Collections:</span>
+                <span class="jvm-gc-val font-mono" id="jvm-gc-count">0</span>
+              </div>
+              <div class="jvm-gc-metric-row">
+                <span class="jvm-gc-lbl">Accumulated Pause Time:</span>
+                <span class="jvm-gc-val font-mono" id="jvm-gc-time">0 ms</span>
+              </div>
+              <div class="jvm-gc-collectors-list" id="jvm-gc-collectors-list">
+                <!-- Dynamically populated collector breakdown -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Host OS & CPU -->
+          <div class="hub-jvm-card">
+            <div class="hub-jvm-card-header">
+              <span class="hub-jvm-card-title">
+                <svg class="svg-icon icon-xs icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                Host Environment &amp; CPU
+              </span>
+              <span class="hub-jvm-chip" id="jvm-os-cores">8 Cores</span>
+            </div>
+            <div class="hub-jvm-stats-grid">
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Process CPU</span>
+                <span class="jvm-stat-val font-mono text-cyan" id="jvm-proc-cpu">0.0%</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">System Load Avg</span>
+                <span class="jvm-stat-val font-mono" id="jvm-sys-load">0.0</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Process Uptime</span>
+                <span class="jvm-stat-val font-mono" id="jvm-uptime">0m 0s</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Java Runtime</span>
+                <span class="jvm-stat-val font-mono text-ellipsis" id="jvm-vm-version" title="Java Version">Java 17</span>
+              </div>
             </div>
           </div>
         </div>
+
+        <!-- Memory Pools Breakdown Section -->
+        <div class="hub-jvm-section">
+          <div class="hub-jvm-section-header">
+            <span class="hub-jvm-section-title">
+              <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Memory Pools Detail (Eden, Survivor, Old Gen, Metaspace, CodeCache)
+            </span>
+          </div>
+          <div class="hub-jvm-pools-grid" id="hub-jvm-pools-grid">
+            <!-- Dynamically populated pools meters -->
+          </div>
+        </div>
+
+        <!-- Live Concurrency & Active Threads Section -->
+        <div class="hub-jvm-section">
+          <div class="hub-jvm-section-header">
+            <div class="hub-jvm-threads-header-left">
+              <span class="hub-jvm-section-title">
+                <svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                Live Threads Matrix &amp; Stack Inspector
+              </span>
+              <div class="hub-jvm-thread-pills" id="hub-jvm-thread-pills">
+                <span class="thread-stat-pill">Total: <strong id="jvm-th-total">0</strong></span>
+                <span class="thread-stat-pill pill-runnable">Runnable: <strong id="jvm-th-runnable">0</strong></span>
+                <span class="thread-stat-pill pill-waiting">Waiting: <strong id="jvm-th-waiting">0</strong></span>
+                <span class="thread-stat-pill pill-timed">Timed Waiting: <strong id="jvm-th-timed">0</strong></span>
+                <span class="thread-stat-pill pill-blocked">Blocked: <strong id="jvm-th-blocked">0</strong></span>
+                <span class="thread-stat-pill pill-deadlocks" id="jvm-th-deadlocks-pill">Deadlocks: <strong id="jvm-th-deadlocks">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Thread Search and State Filter Toolbar -->
+          <div class="hub-jvm-threads-toolbar">
+            <div class="hub-jvm-thread-search">
+              <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="jvm-thread-search-input" placeholder="Filter threads by name, thread ID, or top frame…" aria-label="Filter threads" />
+              <button class="hub-search-clear-btn" id="jvm-thread-search-clear" style="display:none;" title="Clear search">&times;</button>
+            </div>
+            <div class="hub-jvm-state-filters" role="tablist" aria-label="Filter thread states">
+              <button type="button" class="hub-th-state-btn active" data-state="ALL">ALL</button>
+              <button type="button" class="hub-th-state-btn" data-state="RUNNABLE">RUNNABLE</button>
+              <button type="button" class="hub-th-state-btn" data-state="WAITING">WAITING</button>
+              <button type="button" class="hub-th-state-btn" data-state="TIMED_WAITING">TIMED_WAITING</button>
+              <button type="button" class="hub-th-state-btn" data-state="BLOCKED">BLOCKED</button>
+            </div>
+            <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-threads-refresh" title="Refresh thread list">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+          </div>
+
+          <!-- Threads Table -->
+          <div class="hub-jvm-threads-table-wrap">
+            <table class="hub-jvm-threads-table">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">TID</th>
+                  <th style="width: 250px;">Thread Name</th>
+                  <th style="width: 120px;">State</th>
+                  <th style="width: 60px; text-align: center;">Prio</th>
+                  <th style="width: 90px; text-align: right;">CPU Time</th>
+                  <th>Top Stack Frame</th>
+                  <th style="width: 100px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="jvm-threads-tbody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- JVM Arguments & Flags Accordion Card -->
+        <div class="hub-jvm-section">
+          <details class="hub-jvm-details">
+            <summary class="hub-jvm-summary">
+              <span class="hub-jvm-summary-title">
+                <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                JVM Input Arguments &amp; Flags (<span id="jvm-args-count">0</span> flags configured)
+              </span>
+              <span class="hub-jvm-summary-hint">Click to inspect JVM runtime parameters</span>
+            </summary>
+            <div class="hub-jvm-args-content" id="jvm-args-container">
+              <!-- Rendered as code blocks -->
+            </div>
+          </details>
+        </div>
+
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     JVM THREAD DUMP MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="jvm-thread-dump-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="jvm-dump-title">
+  <div class="modal-dialog jvm-dump-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon"><svg class="svg-icon icon-amber icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
+        <div>
+          <h2 id="jvm-dump-title">JVM Diagnostic Thread Dump</h2>
+          <p class="modal-subtitle" id="jvm-dump-sub">Live snapshot of all thread stacks, lock monitors, and synchronizers</p>
+        </div>
+      </div>
+      <div class="modal-header-actions">
+        <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-dump-copy" title="Copy raw thread dump text to clipboard">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy
+        </button>
+        <button type="button" class="btn btn-xs btn-outline" id="btn-jvm-dump-download" title="Download thread dump as .txt file">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download
+        </button>
+        <button class="modal-close-btn" id="jvm-thread-dump-modal-close" aria-label="Close Thread Dump Modal">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body jvm-dump-body">
+      <pre class="jvm-dump-pre font-mono" id="jvm-dump-raw">Loading live thread dump…</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     JVM THREAD STACK INSPECTOR MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="jvm-stack-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="jvm-stack-title">
+  <div class="modal-dialog jvm-stack-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon"><svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
+        <div>
+          <h2 id="jvm-stack-title">Thread Stack Inspector</h2>
+          <p class="modal-subtitle" id="jvm-stack-sub">Inspecting execution frame hierarchy</p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="jvm-stack-modal-close" aria-label="Close Stack Inspector">&times;</button>
+    </div>
+    <div class="modal-body jvm-stack-body">
+      <div class="jvm-stack-thread-info" id="jvm-stack-info">
+        <!-- Thread info banner -->
+      </div>
+      <div class="jvm-stack-frames-list" id="jvm-stack-frames">
+        <!-- Frames rendered with com.codelens highlight -->
+      </div>
     </div>
   </div>
 </div>

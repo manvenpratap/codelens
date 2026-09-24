@@ -84,6 +84,7 @@ public class CodeLensServer {
     private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final GitBlameService    gitBlameService;
     private final StressTestService  stressTestService = new StressTestService();
+    private final JvmManagerService  jvmManager = new JvmManagerService();
     private final int                port;
 
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
@@ -428,6 +429,15 @@ public class CodeLensServer {
         app.post("/api/stress-test/start",         this::startStressTest);
         app.get("/api/stress-test/status",         this::getStressTestStatus);
         app.post("/api/stress-test/stop",          this::stopStressTest);
+
+        // ── JVM Management & Telemetry ────────────────────────────────────────
+        app.get("/api/jvm/metrics",                this::getJvmMetrics);
+        app.post("/api/jvm/gc",                    this::triggerJvmGc);
+        app.get("/api/jvm/threads",                this::listJvmThreads);
+        app.get("/api/jvm/threads/{id}/stack",     this::getJvmThreadStack);
+        app.get("/api/jvm/thread-dump",            this::getJvmThreadDump);
+        app.get("/api/jvm/deadlocks",              this::getJvmDeadlocks);
+        app.post("/api/jvm/trim-memory",           this::trimJvmMemory);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -825,13 +835,14 @@ public class CodeLensServer {
         stressProc.put("canRestart", true);
         processes.add(stressProc);
 
-        // System resources & Pool telemetry
+        // System resources, JVM telemetry & Pool metrics
+        Map<String, Object> jvmMetrics = jvmManager.getComprehensiveMetrics();
         long freeMem = Runtime.getRuntime().freeMemory();
         long totalMem = Runtime.getRuntime().totalMemory();
         long maxMem = Runtime.getRuntime().maxMemory();
         long usedMem = totalMem - freeMem;
 
-        Map<String, Object> system = new LinkedHashMap<>();
+        Map<String, Object> system = new LinkedHashMap<>(jvmMetrics);
         system.put("heapUsedMb", usedMem / (1024 * 1024));
         system.put("heapTotalMb", totalMem / (1024 * 1024));
         system.put("heapMaxMb", maxMem / (1024 * 1024));
@@ -1076,6 +1087,74 @@ public class CodeLensServer {
         stressTestService.stopStressTest();
         logProcessBanner("STRESS_TEST_STOPPED", "Stress Test Runner", "-", "User stopped stress test execution");
         ctx.json(Map.of("success", true, "message", "Stress test stop requested", "progress", stressTestService.getProgress()));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // JVM Management & Monitoring Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+    private void getJvmMetrics(Context ctx) {
+        ctx.json(jvmManager.getComprehensiveMetrics());
+    }
+
+    private void triggerJvmGc(Context ctx) {
+        Map<String, Object> res = jvmManager.triggerGc();
+        logProcessBanner("JVM_GC", "Garbage Collector", "System.gc()",
+                String.format("Reclaimed %s MB (duration: %d ms)", res.get("freedMb"), res.get("durationMs")));
+        ctx.json(res);
+    }
+
+    private void listJvmThreads(Context ctx) {
+        String q = ctx.queryParam("q");
+        String state = ctx.queryParam("state");
+        List<Map<String, Object>> list = jvmManager.getThreadList(q, state);
+        ctx.json(Map.of(
+            "count", list.size(),
+            "query", q != null ? q : "",
+            "stateFilter", state != null ? state : "ALL",
+            "threads", list
+        ));
+    }
+
+    private void getJvmThreadStack(Context ctx) {
+        String idParam = ctx.pathParam("id");
+        try {
+            long tid = Long.parseLong(idParam);
+            Map<String, Object> stack = jvmManager.getThreadStackTrace(tid);
+            if (Boolean.FALSE.equals(stack.get("found"))) {
+                ctx.status(404).json(stack);
+            } else {
+                ctx.json(stack);
+            }
+        } catch (NumberFormatException e) {
+            ctx.status(400).json(Map.of("found", false, "message", "Invalid thread ID: " + idParam));
+        }
+    }
+
+    private void getJvmThreadDump(Context ctx) {
+        Map<String, Object> dump = jvmManager.generateThreadDump();
+        String format = ctx.queryParam("format");
+        if ("text".equalsIgnoreCase(format) || "raw".equalsIgnoreCase(format)) {
+            ctx.contentType("text/plain; charset=utf-8").result((String) dump.get("rawText"));
+        } else {
+            ctx.json(dump);
+        }
+    }
+
+    private void getJvmDeadlocks(Context ctx) {
+        ctx.json(jvmManager.findDeadlocks());
+    }
+
+    private void trimJvmMemory(Context ctx) {
+        Map<String, Object> res = jvmManager.trimMemory(() -> {
+            int beforeLayouts = layoutCache.size();
+            layoutCache.clear();
+            moduleDependencyCache.clear();
+            cachedModuleOverview = null;
+            log.info("Trimmed in-memory layout & module caches (cleared {} layouts)", beforeLayouts);
+        });
+        logProcessBanner("JVM_TRIM", "Memory Optimizer", "Caches + GC",
+                String.format("Reclaimed %s MB (duration: %d ms)", res.get("freedMb"), res.get("durationMs")));
+        ctx.json(res);
     }
 
 
