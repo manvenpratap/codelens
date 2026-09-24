@@ -36,6 +36,11 @@ public class StressTestService {
 
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private Future<?> activeTask = null;
+    private volatile HeapAutoRecoveryManager heapAutoRecoveryManager;
+
+    public void setHeapAutoRecoveryManager(HeapAutoRecoveryManager manager) {
+        this.heapAutoRecoveryManager = manager;
+    }
 
     public StressTestProgress getProgress() {
         return progress.get();
@@ -88,19 +93,31 @@ public class StressTestService {
         activeTask = executor.submit(() -> {
             try {
                 executeStressPipeline(totalClasses, totalFields, totalRels, targetPath, p);
-            } catch (Exception e) {
-                if (cancelRequested.get() || Thread.currentThread().isInterrupted()) {
+            } catch (Throwable t) {
+                if (t instanceof OutOfMemoryError || (t.getCause() != null && t.getCause() instanceof OutOfMemoryError)) {
+                    log.error("Out of memory during stress test execution! Invoking emergency heap auto-recovery...", t);
+                    if (heapAutoRecoveryManager != null) {
+                        heapAutoRecoveryManager.handleTrappedOOM("StressTest (" + totalClasses + " classes)", t);
+                    } else {
+                        System.gc();
+                    }
+                    p.setStatus(StressTestProgress.Status.ERROR);
+                    p.setActiveStage("OOM_RECOVERED");
+                    p.setCurrentPhase("Auto-Recovered from Heap Pressure");
+                    p.setErrorDetail("Java heap space ceiling reached. Auto-recovery pipeline purged volatile caches and stabilized memory.");
+                    p.setMessage("Stress test halted safely; application heap was auto-recovered.");
+                } else if (cancelRequested.get() || Thread.currentThread().isInterrupted()) {
                     p.setStatus(StressTestProgress.Status.CANCELLED);
                     p.setActiveStage("CANCELLED");
                     p.setCurrentPhase("Cancelled");
                     p.setMessage("Stress test cancelled.");
                 } else {
-                    log.error("Stress test failed", e);
+                    log.error("Stress test failed", t);
                     p.setStatus(StressTestProgress.Status.ERROR);
                     p.setActiveStage("ERROR");
                     p.setCurrentPhase("Failed");
-                    p.setErrorDetail(e.getMessage() != null ? e.getMessage() : e.toString());
-                    p.setMessage("Stress test encountered an error: " + e.getMessage());
+                    p.setErrorDetail(t.getMessage() != null ? t.getMessage() : t.toString());
+                    p.setMessage("Stress test encountered an error: " + t.getMessage());
                 }
                 p.setEndTime(System.currentTimeMillis());
             }

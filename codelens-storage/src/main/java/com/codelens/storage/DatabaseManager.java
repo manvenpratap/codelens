@@ -115,6 +115,40 @@ public class DatabaseManager {
         }
     }
 
+    /**
+     * Shrink H2 database internal memory cache and checkpoint dirty pages.
+     * Called during heap pressure auto-recovery to release up to hundreds of MBs.
+     */
+    public boolean trimCache(int targetCacheSizeKb) {
+        if (dataSource == null || dataSource.isClosed()) return false;
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SET CACHE_SIZE " + Math.max(8192, targetCacheSizeKb));
+            stmt.execute("CHECKPOINT");
+            log.info("H2 database cache trimmed to {} KB and checkpointed", targetCacheSizeKb);
+            return true;
+        } catch (Exception e) {
+            log.warn("Failed to trim H2 database cache: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Restore default H2 database cache size (512MB) after memory pressure subsides.
+     */
+    public boolean restoreDefaultCache() {
+        if (dataSource == null || dataSource.isClosed()) return false;
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SET CACHE_SIZE 524288");
+            log.info("Restored default H2 database cache size (512MB)");
+            return true;
+        } catch (Exception e) {
+            log.warn("Failed to restore default H2 database cache: {}", e.getMessage());
+            return false;
+        }
+    }
+
     public void close() {
         if (leakWatchdog != null) {
             leakWatchdog.shutdownNow();

@@ -2949,6 +2949,94 @@
           </div>
         </div>
 
+        <!-- Auto-Recovery & Memory Sentinel Section -->
+        <div class="hub-jvm-autorecovery-card" id="hub-jvm-autorecovery-card">
+          <div class="hub-jvm-autorecovery-header">
+            <div class="hub-jvm-autorecovery-title-grp">
+              <span class="hub-jvm-autorecovery-icon">
+                <svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </span>
+              <div>
+                <div class="hub-jvm-autorecovery-title">Heap Auto-Recovery &amp; Memory Sentinel</div>
+                <div class="hub-jvm-autorecovery-sub">Continuous JMX &amp; Polling Watchdog · Proactive Cache Eviction · Anti-OOM Circuit Breaker</div>
+              </div>
+            </div>
+            <div class="hub-jvm-autorecovery-actions">
+              <span class="hub-jvm-chip chip-green" id="jvm-ar-cb-status">CIRCUIT BREAKER: CLOSED</span>
+              <span class="hub-jvm-chip chip-blue" id="jvm-ar-watchdog-status">WATCHDOG: ACTIVE</span>
+              <button class="hub-btn-tool" id="btn-jvm-test-autorecovery" title="Safely allocate transient memory spike and verify auto-recovery">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span>Test Auto-Recovery</span>
+              </button>
+              <button class="hub-btn-tool" id="btn-jvm-force-recovery" title="Trigger immediate auto-recovery pass">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>Force Recovery Pass</span>
+              </button>
+              <button class="hub-btn-tool btn-danger" id="btn-jvm-reset-cb" style="display:none;" title="Reset tripped circuit breaker">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Reset Circuit Breaker</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Watchdog Metrics Bar -->
+          <div class="hub-jvm-ar-metrics-strip">
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Threshold Levels</span>
+              <span class="hub-ar-val" id="jvm-ar-thresholds">Warn 75% · Crit 85% · Emerg 92%</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Auto-Recoveries Executed</span>
+              <span class="hub-ar-val font-mono text-cyan" id="jvm-ar-total-count">0 events</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Total Memory Reclaimed</span>
+              <span class="hub-ar-val font-mono text-emerald" id="jvm-ar-total-reclaimed">0.0 MB</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Last Recovery Event</span>
+              <span class="hub-ar-val font-mono text-slate" id="jvm-ar-last-event">None recorded</span>
+            </div>
+          </div>
+
+          <!-- Incident Audit History Table -->
+          <div class="hub-jvm-incidents-section">
+            <div class="hub-jvm-incidents-header">
+              <span class="hub-jvm-incidents-title">
+                <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Auto-Recovery Audit Log (Last 50 Incidents)
+              </span>
+              <span class="hub-jvm-chip" id="jvm-ar-incident-badge">0 Incidents</span>
+            </div>
+            <div class="hub-jvm-incidents-scroll">
+              <table class="hub-jvm-incidents-table">
+                <thead>
+                  <tr>
+                    <th>Incident ID</th>
+                    <th>Time</th>
+                    <th>Trigger Source</th>
+                    <th>Heap Before → After</th>
+                    <th>Reclaimed</th>
+                    <th>Duration</th>
+                    <th>Circuit Breaker</th>
+                    <th>Actions Executed</th>
+                  </tr>
+                </thead>
+                <tbody id="hub-jvm-incidents-tbody">
+                  <tr>
+                    <td colspan="8" class="hub-incidents-empty">
+                      <div class="empty-state-p">
+                        <svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <span>No heap pressure incidents recorded. Memory watchdog is actively monitoring allocations.</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Memory Pools Breakdown Section -->
         <div class="hub-jvm-section">
           <div class="hub-jvm-section-header">

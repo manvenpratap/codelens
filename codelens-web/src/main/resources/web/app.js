@@ -195,6 +195,10 @@ const api = {
   jvmThreadDump:      (format)    => api.get(`/jvm/thread-dump${format ? '?format=' + encodeURIComponent(format) : ''}`),
   jvmDeadlocks:       ()          => api.get('/jvm/deadlocks'),
   trimMemory:         ()          => api.post('/jvm/trim-memory', {}),
+  autoRecoveryStatus: ()          => api.get('/jvm/auto-recovery'),
+  triggerAutoRecovery:()          => api.post('/jvm/auto-recovery/trigger', {}),
+  simulateAutoRecovery:(mb = 60)  => api.post(`/jvm/auto-recovery/simulate?targetMb=${encodeURIComponent(mb)}`, {}),
+  resetCircuitBreaker:()          => api.post('/jvm/auto-recovery/reset-circuit-breaker', {}),
   shutdownServer:     ()          => api.post('/shutdown', {}),
   notes:              (fqn)       => api.get(`/notes/${enc(fqn)}`),
 
@@ -1502,6 +1506,146 @@ async function openJvmThreadDump() {
   }
 }
 
+let jvmAutoRecoveryLoading = false;
+async function loadJvmAutoRecovery() {
+  if (jvmAutoRecoveryLoading) return;
+  const tbody = qs('#hub-jvm-incidents-tbody');
+  if (!tbody) return;
+
+  jvmAutoRecoveryLoading = true;
+  try {
+    const data = await api.autoRecoveryStatus();
+    if (!data) return;
+    renderJvmAutoRecovery(data);
+  } catch (err) {
+    console.error('Failed to load JVM auto-recovery status:', err);
+  } finally {
+    jvmAutoRecoveryLoading = false;
+  }
+}
+
+function formatIncidentTime(ts) {
+  if (!ts) return '-';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    return String(ts);
+  }
+}
+
+function renderJvmAutoRecovery(data) {
+  if (!data) return;
+
+  // Circuit Breaker Status Chip & Reset Button
+  const cbChip = qs('#jvm-ar-cb-status');
+  const resetBtn = qs('#btn-jvm-reset-cb');
+  if (cbChip) {
+    if (data.circuitBreakerActive) {
+      cbChip.className = 'hub-jvm-chip chip-rose';
+      cbChip.textContent = 'CIRCUIT BREAKER: TRIPPED (OPEN)';
+      if (resetBtn) resetBtn.style.display = 'inline-flex';
+    } else {
+      cbChip.className = 'hub-jvm-chip chip-green';
+      cbChip.textContent = 'CIRCUIT BREAKER: CLOSED';
+      if (resetBtn) resetBtn.style.display = 'none';
+    }
+  }
+
+  // Watchdog Status Chip
+  const wdChip = qs('#jvm-ar-watchdog-status');
+  if (wdChip) {
+    if (data.watchdogActive) {
+      wdChip.className = 'hub-jvm-chip chip-blue';
+      wdChip.textContent = 'WATCHDOG: ACTIVE';
+    } else {
+      wdChip.className = 'hub-jvm-chip chip-rose';
+      wdChip.textContent = 'WATCHDOG: STOPPED';
+    }
+  }
+
+  // Thresholds
+  const thEl = qs('#jvm-ar-thresholds');
+  if (thEl) {
+    thEl.textContent = `Warn ${data.warningThresholdPct || 75}% · Crit ${data.criticalThresholdPct || 85}% · Emerg ${data.emergencyThresholdPct || 92}% (Reset <${data.hysteresisResetPct || 75}%)`;
+  }
+
+  // Counts & Reclaimed
+  const countEl = qs('#jvm-ar-total-count');
+  if (countEl) countEl.textContent = `${data.totalRecoveries || 0} events`;
+
+  const reclaimedEl = qs('#jvm-ar-total-reclaimed');
+  if (reclaimedEl) reclaimedEl.textContent = `${(data.totalReclaimedMb || 0).toFixed(1)} MB`;
+
+  // Last recovery event
+  const lastEl = qs('#jvm-ar-last-event');
+  if (lastEl) {
+    if (data.lastRecoveryTimestamp > 0) {
+      const timeStr = formatIncidentTime(data.lastRecoveryTimestamp);
+      lastEl.textContent = `${data.lastRecoveryTrigger || 'AUTO'} (${(data.lastRecoveryFreedMb || 0).toFixed(1)} MB, ${data.lastRecoveryDurationMs || 0} ms) · ${timeStr}`;
+    } else {
+      lastEl.textContent = 'None recorded';
+    }
+  }
+
+  // Incident Count Badge
+  const incidents = data.incidents || [];
+  const badgeEl = qs('#jvm-ar-incident-badge');
+  if (badgeEl) {
+    badgeEl.textContent = `${incidents.length} Incident${incidents.length === 1 ? '' : 's'}`;
+  }
+
+  // Incidents Table
+  const tbody = qs('#hub-jvm-incidents-tbody');
+  if (tbody) {
+    if (incidents.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="hub-incidents-empty">
+            <div class="empty-state-p">
+              <svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span>No heap pressure incidents recorded. Memory watchdog is actively monitoring allocations.</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    } else {
+      tbody.innerHTML = incidents.map(inc => {
+        let triggerClass = 'chip-blue';
+        if (inc.trigger === 'OOM_TRAP' || inc.trigger === 'WATCHDOG_EMERGENCY') {
+          triggerClass = 'chip-rose';
+        } else if (inc.trigger === 'WATCHDOG_CRITICAL') {
+          triggerClass = 'chip-amber';
+        } else if (inc.trigger === 'MANUAL_API_TRIGGER') {
+          triggerClass = 'chip-purple';
+        }
+
+        const cbHtml = inc.circuitBreakerActive
+          ? '<span class="hub-jvm-chip chip-rose font-mono">TRIPPED</span>'
+          : '<span class="hub-jvm-chip chip-green font-mono">CLOSED</span>';
+
+        const actionsList = (inc.actions || []).map(a => `<span class="hub-action-chip font-mono" title="${esc(a)}">${esc(a)}</span>`).join('');
+        const timeStr = formatIncidentTime(inc.timestamp);
+
+        return `
+          <tr>
+            <td><code class="font-mono text-cyan" style="font-size:11px;">${esc(inc.id || '-')}</code></td>
+            <td class="font-mono text-secondary" style="font-size:11px; white-space:nowrap;">${esc(timeStr)}</td>
+            <td><span class="hub-jvm-chip ${triggerClass} font-mono" style="font-size:10px;">${esc(inc.trigger || 'UNKNOWN')}</span></td>
+            <td class="font-mono" style="font-size:11px; white-space:nowrap;">
+              ${inc.heapBeforeMb} MB (${inc.percentageBefore}%) → <span class="text-emerald font-semibold">${inc.heapAfterMb} MB (${inc.percentageAfter}%)</span>
+            </td>
+            <td><span class="font-mono text-emerald font-semibold" style="font-size:11px;">+${(inc.reclaimedMb || 0).toFixed(1)} MB</span></td>
+            <td><span class="font-mono text-muted" style="font-size:11px;">${inc.durationMs || 0} ms</span></td>
+            <td>${cbHtml}</td>
+            <td><div class="hub-incident-actions">${actionsList || '<span class="text-muted" style="font-size:11px;">Default GC cycle</span>'}</div></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
 function renderJvmPanel(system) {
   if (!system) return;
 
@@ -1656,9 +1800,10 @@ function renderJvmPanel(system) {
     }
   }
 
-  // 8. Load Thread List (only if JVM tab is active)
+  // 8. Load Thread List & Auto-Recovery (only if JVM tab is active)
   if (processHubActiveTab === 'jvm' || processHubActiveTab === 'server') {
     loadJvmThreads();
+    loadJvmAutoRecovery();
   }
 }
 
@@ -2275,6 +2420,77 @@ function initJvmManagerControls() {
 
   qs('#btn-jvm-threads-refresh')?.addEventListener('click', () => {
     loadJvmThreads();
+  });
+
+  // 8. Test Auto-Recovery (Memory pressure spike simulation)
+  qs('#btn-jvm-test-autorecovery')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-test-autorecovery');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Simulating…`;
+    }
+    try {
+      const res = await api.simulateAutoRecovery(60);
+      const inc = res.incident || {};
+      const alloc = res.simulatedPayloadMb || 60;
+      showJvmAlert('success', `⚡ Auto-Recovery Test Passed: Simulated ${alloc} MB pressure spike. Sentinel recovered ${(inc.reclaimedMb || 0).toFixed(1)} MB in ${inc.durationMs || 0} ms (Heap: ${inc.heapBeforeMb || 0} MB → ${inc.heapAfterMb || 0} MB).`);
+      loadProcessHubData();
+      loadJvmAutoRecovery();
+    } catch (err) {
+      showJvmAlert('error', `Auto-recovery simulation failed: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // 9. Force Auto-Recovery Pass
+  qs('#btn-jvm-force-recovery')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-force-recovery');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Evicting & GC…`;
+    }
+    try {
+      const res = await api.triggerAutoRecovery();
+      showJvmAlert('success', `🧹 Force recovery pass complete: Evicted caches, trimmed DB, and reclaimed ${res.reclaimedMb} MB in ${res.durationMs} ms (Heap: ${res.heapBeforeMb} MB → ${res.heapAfterMb} MB). Circuit breaker is ${res.circuitBreakerActive ? 'OPEN' : 'CLOSED'}.`);
+      loadProcessHubData();
+      loadJvmAutoRecovery();
+    } catch (err) {
+      showJvmAlert('error', `Force recovery pass failed: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  });
+
+  // 10. Reset Circuit Breaker
+  qs('#btn-jvm-reset-cb')?.addEventListener('click', async () => {
+    const btn = qs('#btn-jvm-reset-cb');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="hub-btn-spinner"></span> Resetting…`;
+    }
+    try {
+      await api.resetCircuitBreaker();
+      showJvmAlert('success', 'Memory circuit breaker manually reset to CLOSED. Scans and heavy tasks are now unblocked.');
+      loadProcessHubData();
+      loadJvmAutoRecovery();
+    } catch (err) {
+      showJvmAlert('error', `Failed to reset circuit breaker: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
   });
 }
 

@@ -15508,6 +15508,224 @@ body.theme-light .hub-nav-tab.active .hub-nav-count {
   display: flex;
   justify-content: space-between;
 }
+
+/* ── JVM Heap Auto-Recovery & Memory Sentinel ─────────────────────── */
+.hub-jvm-autorecovery-card {
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(14, 165, 233, 0.04) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-md, 8px);
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.hub-jvm-autorecovery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.hub-jvm-autorecovery-title-grp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hub-jvm-autorecovery-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+  flex-shrink: 0;
+}
+.hub-jvm-autorecovery-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.hub-jvm-autorecovery-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.hub-jvm-autorecovery-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip-green {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #10b981 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+.chip-blue {
+  background: rgba(14, 165, 233, 0.15) !important;
+  color: #0ea5e9 !important;
+  border: 1px solid rgba(14, 165, 233, 0.3) !important;
+}
+.chip-red, .chip-rose {
+  background: rgba(244, 63, 94, 0.18) !important;
+  color: #f43f5e !important;
+  border: 1px solid rgba(244, 63, 94, 0.4) !important;
+}
+.chip-amber {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #f59e0b !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+}
+.chip-purple {
+  background: rgba(168, 85, 247, 0.18) !important;
+  color: #a855f7 !important;
+  border: 1px solid rgba(168, 85, 247, 0.4) !important;
+}
+.hub-btn-tool.btn-danger {
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.08);
+}
+.hub-btn-tool.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.18);
+  border-color: #f43f5e;
+}
+.hub-jvm-ar-metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.hub-ar-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hub-ar-lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.hub-ar-val {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.hub-jvm-incidents-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.hub-jvm-incidents-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.hub-jvm-incidents-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hub-jvm-incidents-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.hub-jvm-incidents-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.hub-jvm-incidents-table th {
+  padding: 6px 10px;
+  font-size: 10px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.hub-jvm-incidents-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+.hub-jvm-incidents-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.hub-incidents-empty {
+  text-align: center;
+  padding: 24px !important;
+  color: var(--text-muted);
+}
+.empty-state-p {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.incident-badge-oom {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+.incident-badge-crit {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.incident-badge-sim {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.15);
+  color: #0ea5e9;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+.incident-actions-tag,
+.hub-action-chip {
+  display: inline-block;
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+
 .hub-jvm-section {
   margin-bottom: 14px;
   display: flex;
@@ -15908,6 +16126,35 @@ body.theme-light .jvm-arg-pill {
   background: #f1f5f9;
   border-color: #cbd5e1;
   color: #0284c7;
+}
+
+body.theme-light .hub-jvm-autorecovery-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(14, 165, 233, 0.06) 100%);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+body.theme-light .hub-jvm-ar-metrics-strip {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+body.theme-light .hub-jvm-incidents-scroll {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+body.theme-light .hub-jvm-incidents-table th {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+body.theme-light .hub-jvm-incidents-table td {
+  border-color: #f1f5f9;
+  color: #1e293b;
+}
+body.theme-light .incident-actions-tag,
+body.theme-light .hub-action-chip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
 }
 
 /* ── Process Hub Light Theme Overrides ── */

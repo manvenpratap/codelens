@@ -85,6 +85,7 @@ public class CodeLensServer {
     private final GitBlameService    gitBlameService;
     private final StressTestService  stressTestService = new StressTestService();
     private final JvmManagerService  jvmManager = new JvmManagerService();
+    private final HeapAutoRecoveryManager heapWatchdog = new HeapAutoRecoveryManager();
     private final int                port;
 
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
@@ -103,10 +104,10 @@ public class CodeLensServer {
 
     private Javalin app;
 
-    // ── Graph Layout Cache & Disk Persistence ────────────────────────────────
-    private final Map<String, CallGraphAnalyzer.GraphView> layoutCache = new ConcurrentHashMap<>();
+    // ── Graph Layout Cache & Disk Persistence (SoftReference backed for automatic JVM GC cooperative eviction) ──
+    private final Map<String, java.lang.ref.SoftReference<CallGraphAnalyzer.GraphView>> layoutCache = new ConcurrentHashMap<>();
     private final ModuleDependencyAnalyzer moduleDependencyAnalyzer;
-    private final Map<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> moduleDependencyCache = new ConcurrentHashMap<>();
+    private final Map<String, java.lang.ref.SoftReference<ModuleDependencyAnalyzer.ModuleDependencyInsights>> moduleDependencyCache = new ConcurrentHashMap<>();
     private volatile ModuleDependencyAnalyzer.ModuleOverviewPayload cachedModuleOverview = null;
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
@@ -161,8 +162,15 @@ public class CodeLensServer {
     public CallGraphAnalyzer.GraphView getOrComputeLayout(String cacheKey, java.util.function.Supplier<CallGraphAnalyzer.GraphView> computer) {
         if (cacheKey == null) return computer.get();
 
-        // 1. Check in-memory cache
-        CallGraphAnalyzer.GraphView cached = layoutCache.get(cacheKey);
+        // 1. Check in-memory cache (SoftReference)
+        CallGraphAnalyzer.GraphView cached = null;
+        java.lang.ref.SoftReference<CallGraphAnalyzer.GraphView> ref = layoutCache.get(cacheKey);
+        if (ref != null) {
+            cached = ref.get();
+            if (cached == null) {
+                layoutCache.remove(cacheKey); // evicted by JVM GC under heap pressure
+            }
+        }
         if (cached != null) {
             return cached;
         }
@@ -173,7 +181,7 @@ public class CodeLensServer {
             try {
                 CallGraphAnalyzer.GraphView diskView = jsonMapper.readValue(cacheFile, CallGraphAnalyzer.GraphView.class);
                 if (diskView != null && diskView.nodes != null) {
-                    layoutCache.put(cacheKey, diskView);
+                    layoutCache.put(cacheKey, new java.lang.ref.SoftReference<>(diskView));
                     return diskView;
                 }
             } catch (Exception e) {
@@ -184,7 +192,7 @@ public class CodeLensServer {
         // 3. Compute layout
         CallGraphAnalyzer.GraphView computed = computer.get();
         if (computed != null && computed.nodes != null) {
-            layoutCache.put(cacheKey, computed);
+            layoutCache.put(cacheKey, new java.lang.ref.SoftReference<>(computed));
             try {
                 jsonMapper.writeValue(cacheFile, computed);
             } catch (Exception e) {
@@ -370,6 +378,23 @@ public class CodeLensServer {
         this.criticalPathAnalyzer  = new CriticalPathAnalyzer(this.callGraph);
         this.gitBlameService       = new GitBlameService();
         this.port                  = port;
+
+        // ── Initialize Heap Auto-Recovery Watchdog & Hooks ─────────────────────
+        this.heapWatchdog.registerRecoveryHook("In-Memory Graph & Module Layout Caches", () -> {
+            int layouts = layoutCache.size();
+            int modules = moduleDependencyCache.size();
+            layoutCache.clear();
+            moduleDependencyCache.clear();
+            cachedModuleOverview = null;
+            log.info("Heap Auto-Recovery: evicted {} layout and {} module in-memory caches", layouts, modules);
+        });
+        this.heapWatchdog.registerRecoveryHook("H2 Database Page Cache Shrink (16MB)", () -> {
+            this.db.trimCache(16384);
+        });
+        this.heapWatchdog.setOnCircuitBreakerReset(() -> {
+            this.db.restoreDefaultCache();
+        });
+        this.stressTestService.setHeapAutoRecoveryManager(this.heapWatchdog);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -377,6 +402,22 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
 
     public void start() {
+        this.heapWatchdog.startWatchdog();
+
+        // Install JVM-wide default uncaught exception handler for any thread encountering OOM
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            Throwable root = throwable;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            if (root instanceof OutOfMemoryError) {
+                log.error("UNCAUGHT OUTOFMEMORYERROR on thread [{}]: {}", thread.getName(), root.getMessage());
+                heapWatchdog.handleTrappedOOM("Thread[" + thread.getName() + "]", root);
+            } else {
+                log.error("Uncaught exception on thread [{}]: {}", thread.getName(), throwable.getMessage(), throwable);
+            }
+        });
+
         app = Javalin.create(cfg -> {
             // Serve static frontend files (live from disk in dev workspace, fallback to JAR classpath)
             java.io.File localWeb = new java.io.File("codelens-web/src/main/resources/web");
@@ -438,6 +479,10 @@ public class CodeLensServer {
         app.get("/api/jvm/thread-dump",            this::getJvmThreadDump);
         app.get("/api/jvm/deadlocks",              this::getJvmDeadlocks);
         app.post("/api/jvm/trim-memory",           this::trimJvmMemory);
+        app.get("/api/jvm/auto-recovery",          this::getJvmAutoRecovery);
+        app.post("/api/jvm/auto-recovery/trigger", this::triggerJvmAutoRecovery);
+        app.post("/api/jvm/auto-recovery/simulate", this::simulateJvmAutoRecovery);
+        app.post("/api/jvm/auto-recovery/reset-circuit-breaker", this::resetJvmCircuitBreaker);
 
         // ── Stats ─────────────────────────────────────────────────────────────
         app.get("/api/stats",        this::getStats);
@@ -525,10 +570,28 @@ public class CodeLensServer {
         app.get("/api/readme",          this::getReadme);
 
 
-        // ── Global error handler ──────────────────────────────────────────────
+        // ── Global error handler & OOM Safety Net ────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            if (root instanceof OutOfMemoryError) {
+                HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.handleTrappedOOM("HTTP: " + ctx.method() + " " + ctx.path(), root);
+                logProcessBanner("OOM_RECOVERED", "Heap Space Sentinel", ctx.path(),
+                    String.format("Auto-recovered: reclaimed %.1f MB · Heap: %d MB -> %d MB", inc.reclaimedMb, inc.heapBeforeMb, inc.heapAfterMb));
+                ctx.status(503).json(Map.of(
+                    "error", "Java heap space exhausted during request processing.",
+                    "autoRecovered", true,
+                    "reclaimedMb", inc.reclaimedMb,
+                    "incident", inc.toMap(),
+                    "message", "CodeLens auto-recovery routine intercepted the OutOfMemoryError, purged volatile caches, and restored memory.",
+                    "suggestion", "Query was too large for current heap. Narrow down packages or allocate more heap (-Xmx)."
+                ));
+                return;
+            }
             log.error("Unhandled error on {} {}: {}", ctx.method(), ctx.path(), e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", e.getMessage()));
+            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
         });
 
         // Restore last scan progress state if available
@@ -623,6 +686,7 @@ public class CodeLensServer {
 
     public void stop() {
         cancelRequested = true;
+        heapWatchdog.stopWatchdog();
         if (app != null) {
             try { app.stop(); } catch (Exception ignored) {}
         }
@@ -835,6 +899,26 @@ public class CodeLensServer {
         stressProc.put("canRestart", true);
         processes.add(stressProc);
 
+        // 8. Heap Memory Watchdog & Auto-Recovery
+        Map<String, Object> autoRecMetrics = heapWatchdog.getStatusAndMetrics();
+        Map<String, Object> heapProc = new LinkedHashMap<>();
+        heapProc.put("id", "heap-watchdog");
+        heapProc.put("name", "Heap Auto-Recovery Watchdog");
+        heapProc.put("type", "Memory Sentinel & Circuit Breaker");
+        boolean cbActive = (Boolean) autoRecMetrics.get("circuitBreakerActive");
+        heapProc.put("status", cbActive ? "ALERT" : "ACTIVE");
+        heapProc.put("activeStage", cbActive ? "CIRCUIT_BREAKER_OPEN" : "MONITORING");
+        heapProc.put("currentPhase", cbActive ? "Circuit Breaker Active (Throttling)" : "Watching Heap Allocation (3s poll)");
+        heapProc.put("currentDetail", String.format("%d recoveries · %.1f MB reclaimed · %d%% current heap",
+            (Long) autoRecMetrics.get("totalRecoveries"),
+            (Double) autoRecMetrics.get("totalReclaimedMb"),
+            (Integer) autoRecMetrics.get("currentHeapPct")));
+        heapProc.put("percentage", 100);
+        heapProc.put("thread", "CodeLens-HeapWatchdog");
+        heapProc.put("canKill", false);
+        heapProc.put("canRestart", true);
+        processes.add(heapProc);
+
         // System resources, JVM telemetry & Pool metrics
         Map<String, Object> jvmMetrics = jvmManager.getComprehensiveMetrics();
         long freeMem = Runtime.getRuntime().freeMemory();
@@ -1012,10 +1096,16 @@ public class CodeLensServer {
                     logProcessBanner("GRAPH_BUILD_COMPLETED", "Call Graph & Topology Engine", currentPath,
                         String.format("Manual rebuild complete: %,d vertices, %,d call edges", callGraph.vertexCount(), callGraph.edgeCount()));
                     log.info("Manual rebuild of call graph complete: {} vertices", callGraph.vertexCount());
-                } catch (Exception e) {
-                    log.error("Failed to rebuild call graph", e);
-                    graphWarmupPhase.set("Error: " + e.getMessage());
-                    logProcessBanner("GRAPH_BUILD_FAILED", "Call Graph & Topology Engine", currentPath, "Error: " + e.getMessage());
+                } catch (Throwable t) {
+                    if (t instanceof OutOfMemoryError || (t.getCause() != null && t.getCause() instanceof OutOfMemoryError)) {
+                        heapWatchdog.handleTrappedOOM("CallGraphRebuild", t);
+                        graphWarmupPhase.set("Auto-Recovered from Heap Limit");
+                        logProcessBanner("GRAPH_BUILD_OOM", "Call Graph Engine", currentPath, "OutOfMemoryError trapped; auto-recovery executed");
+                    } else {
+                        log.error("Failed to rebuild call graph", t);
+                        graphWarmupPhase.set("Error: " + t.getMessage());
+                        logProcessBanner("GRAPH_BUILD_FAILED", "Call Graph & Topology Engine", currentPath, "Error: " + t.getMessage());
+                    }
                 } finally {
                     graphWarmupRunning.set(false);
                 }
@@ -1046,6 +1136,12 @@ public class CodeLensServer {
             String sweepMsg = String.valueOf(sweepReport.get("message"));
             logProcessBanner("DB_LEAK_SWEEP", "Database Connection Watchdog", "codelens_db", sweepMsg);
             ctx.json(Map.of("status", "restarted", "processId", id, "message", sweepMsg, "report", sweepReport));
+            return;
+        } else if ("heap-watchdog".equalsIgnoreCase(id)) {
+            heapWatchdog.stopWatchdog();
+            heapWatchdog.startWatchdog();
+            HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.triggerAutoRecovery("PROCESS_RESTART_REQUEST");
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Heap Watchdog restarted & memory auto-recovered (" + inc.reclaimedMb + " MB freed)"));
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
@@ -1157,12 +1253,44 @@ public class CodeLensServer {
         ctx.json(res);
     }
 
+    private void getJvmAutoRecovery(Context ctx) {
+        ctx.json(heapWatchdog.getStatusAndMetrics());
+    }
+
+    private void triggerJvmAutoRecovery(Context ctx) {
+        HeapAutoRecoveryManager.AutoRecoveryIncident incident = heapWatchdog.triggerAutoRecovery("MANUAL_API_TRIGGER");
+        logProcessBanner("HEAP_RECOVERED", "Heap Watchdog", "Manual Trigger",
+                String.format("Reclaimed %.1f MB (duration: %d ms)", incident.reclaimedMb, incident.durationMs));
+        ctx.json(incident.toMap());
+    }
+
+    private void simulateJvmAutoRecovery(Context ctx) {
+        int targetMb = intParam(ctx, "targetMb", 60);
+        Map<String, Object> res = heapWatchdog.simulateMemoryPressure(targetMb);
+        logProcessBanner("HEAP_SIMULATION", "Memory Watchdog", "Simulation Test",
+                String.format("Simulated %d MB load -> Auto-recovery completed", targetMb));
+        ctx.json(res);
+    }
+
+    private void resetJvmCircuitBreaker(Context ctx) {
+        heapWatchdog.resetCircuitBreaker();
+        ctx.json(Map.of("status", "ok", "message", "Circuit breaker reset to CLOSED"));
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Handler: POST /api/scan
     // Body: { "sourcePath": "/absolute/path/to/src", "excludePatterns": ["target", "build", "..."] }
     // ─────────────────────────────────────────────────────────────────────────
     private void startScan(Context ctx) {
+        if (heapWatchdog.isCircuitBreakerActive()) {
+            ctx.status(503).json(Map.of(
+                "error", "Server memory circuit breaker is active. Heap is under heavy pressure (" + heapWatchdog.getCurrentHeapUsagePercentage() + "%).",
+                "circuitBreaker", true,
+                "message", "Auto-recovery is stabilizing the JVM. Please wait a moment before starting a new scan."
+            ));
+            return;
+        }
+
         Map<?, ?> body = ctx.bodyAsClass(Map.class);
         String sourcePath = (String) body.get("sourcePath");
         if (sourcePath == null || sourcePath.isBlank()) {
@@ -1691,7 +1819,19 @@ public class CodeLensServer {
                 result.typesFound, result.methodsFound, result.fieldsFound,
                 result.relationshipsFound, result.totalFiles, result.parsedFiles, result.errorFiles);
 
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            if (e instanceof OutOfMemoryError || (e.getCause() != null && e.getCause() instanceof OutOfMemoryError)) {
+                heapWatchdog.handleTrappedOOM("FullScan (" + sourcePath + ")", e);
+                logProcessBanner("SCAN_OOM_RECOVERED", "Full Codebase Scan", sourcePath, "Out of memory trapped; auto-recovery executed");
+                try { db.finishBulkLoad(); } catch (Exception ignored) {}
+                progress.recordStageEnd(progress.getActiveStage(), "ERROR", "Scan reached heap memory limit. Memory was auto-recovered.", null);
+                progress.setStatus(ScanProgress.Status.ERROR);
+                progress.setMessage("Scan halted: Java heap memory limit reached. Caches purged & memory stabilized.");
+                progress.setErrorDetail("OutOfMemoryError: Java heap space. Recommended: launch with -Xmx4g or higher for large projects.");
+                progress.setEndTime(System.currentTimeMillis());
+                try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+                return;
+            }
             log.error("Scan failed", e);
             logProcessBanner("SCAN_FAILED", "Full Codebase Scan", sourcePath, "Error: " + e.getMessage());
             try { db.finishBulkLoad(); } catch (Exception ignored) {}
@@ -2017,7 +2157,18 @@ public class CodeLensServer {
             log.info("Incremental delta scan finished: parsed {} changed files, total indexed is now {} types, {} methods across {} files",
                 toParse.size(), totalTypes, totalMethodsCount, allMeta.size());
 
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            if (e instanceof OutOfMemoryError || (e.getCause() != null && e.getCause() instanceof OutOfMemoryError)) {
+                heapWatchdog.handleTrappedOOM("IncrementalScan (" + sourcePath + ")", e);
+                logProcessBanner("INCREMENTAL_OOM_RECOVERED", "Incremental Delta Scan", sourcePath, "Out of memory trapped; auto-recovery executed");
+                progress.recordStageEnd(progress.getActiveStage(), "ERROR", "Incremental scan reached heap limit. Memory was auto-recovered.", null);
+                progress.setStatus(ScanProgress.Status.ERROR);
+                progress.setMessage("Incremental scan halted: Java heap memory limit reached. Memory was auto-recovered.");
+                progress.setErrorDetail("OutOfMemoryError: Java heap space.");
+                progress.setEndTime(System.currentTimeMillis());
+                try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+                return;
+            }
             log.error("Incremental scan failed", e);
             logProcessBanner("INCREMENTAL_FAILED", "Incremental Delta Scan", sourcePath, "Error: " + e.getMessage());
             progress.recordStageEnd(progress.getActiveStage(), "ERROR", "Incremental scan failed: " + e.getMessage(), null);
@@ -2073,7 +2224,14 @@ public class CodeLensServer {
         }
 
         String cacheKey = query.trim().toLowerCase();
-        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = moduleDependencyCache.get(cacheKey);
+        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = null;
+        java.lang.ref.SoftReference<ModuleDependencyAnalyzer.ModuleDependencyInsights> ref = moduleDependencyCache.get(cacheKey);
+        if (ref != null) {
+            cached = ref.get();
+            if (cached == null) {
+                moduleDependencyCache.remove(cacheKey);
+            }
+        }
         if (cached != null) {
             ctx.json(cached);
             return;
@@ -2103,12 +2261,12 @@ public class CodeLensServer {
             return;
         }
 
-        moduleDependencyCache.put(cacheKey, insights);
+        moduleDependencyCache.put(cacheKey, new java.lang.ref.SoftReference<>(insights));
         if (insights.moduleName != null) {
-            moduleDependencyCache.put(insights.moduleName.toLowerCase(), insights);
+            moduleDependencyCache.put(insights.moduleName.toLowerCase(), new java.lang.ref.SoftReference<>(insights));
         }
         if (insights.packageFqn != null) {
-            moduleDependencyCache.put(insights.packageFqn.toLowerCase(), insights);
+            moduleDependencyCache.put(insights.packageFqn.toLowerCase(), new java.lang.ref.SoftReference<>(insights));
         }
 
         ctx.json(insights);

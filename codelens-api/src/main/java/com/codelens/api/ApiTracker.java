@@ -86,6 +86,10 @@ public class ApiTracker {
         addRoute("GET",  "/api/jvm/thread-dump",          "JVM & Telemetry", "Generate full diagnostic JVM thread dump for export", true);
         addRoute("GET",  "/api/jvm/deadlocks",            "JVM & Telemetry", "Scan JVM for deadlocked monitor and synchronizer threads", true);
         addRoute("POST", "/api/jvm/trim-memory",         "JVM & Telemetry", "Evict in-memory layout & module caches and run garbage collection", true);
+        addRoute("GET",  "/api/jvm/auto-recovery",       "JVM & Telemetry", "Heap auto-recovery watchdog status, threshold levels, and incident log", true);
+        addRoute("POST", "/api/jvm/auto-recovery/trigger", "JVM & Telemetry", "Manually trigger heap auto-recovery routine and record incident", true);
+        addRoute("POST", "/api/jvm/auto-recovery/simulate", "JVM & Telemetry", "Simulate transient memory pressure spike to test auto-recovery end-to-end", true);
+        addRoute("POST", "/api/jvm/auto-recovery/reset-circuit-breaker", "JVM & Telemetry", "Manually reset memory circuit breaker to closed state", true);
 
         // ── Packages & Modules ────────────────────────────────────────────────
         addRoute("GET",  "/api/packages",                    "Packages & Modules", "List all detected Java packages with hierarchy", true);
