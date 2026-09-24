@@ -3024,6 +3024,556 @@ public class ReportService {
     }
 
     // =========================================================================
+    // 8. TECHNICAL DEBT & REFACTORING ROI ESTIMATOR REPORT
+    // =========================================================================
+
+    public static class TechnicalDebtReportData {
+        public String generatedAt;
+        public int maintainabilityScore; // 0 - 100
+        public String sqaleRating;       // A, B, C, D, E
+        public double totalDebtHours;
+        public double totalDebtDays;
+        public double debtRatioPercent;
+        public int godClassCount;
+        public int brainMethodCount;
+        public List<GodClassMetric> godClasses = new ArrayList<>();
+        public List<BrainMethodMetric> brainMethods = new ArrayList<>();
+        public List<PackageDebtMetric> packageDebt = new ArrayList<>();
+        public List<PackageDebtMetric> packageDebtHotspots = new ArrayList<>();
+    }
+
+    public static class GodClassMetric {
+        public String classFqn;
+        public String simpleName;
+        public String packageName;
+        public int methodCount;
+        public int fieldCount;
+        public int lineCount;
+        public int weightedMethodsPerClass; // WMC = sum of method CC
+        public int wmc;
+        public int efferentCoupling;
+        public int afferentCoupling;
+        public double estimatedHours;
+        public String severity; // CRITICAL, HIGH, MEDIUM
+        public String decompositionAdvice;
+    }
+
+    public static class BrainMethodMetric {
+        public String methodFqn;
+        public String simpleName;
+        public String declaringClass;
+        public String packageName;
+        public int cyclomaticComplexity;
+        public int complexity;
+        public int linesOfCode;
+        public int lineCount;
+        public int inDegree;
+        public int callerCount;
+        public int outDegree;
+        public double roiScore;
+        public double refactoringRoiScore;
+        public double estimatedHours;
+        public int estimatedMinutes;
+        public String severity;
+        public String refactoringStrategy;
+        public String refactoringAdvice;
+    }
+
+    public static class PackageDebtMetric {
+        public String packageName;
+        public int classCount;
+        public int totalLines;
+        public double avgComplexity;
+        public int totalWmc;
+        public int highComplexityMethods;
+        public double debtHours;
+        public double debtDensityPerKloc;
+        public String debtRating;
+    }
+
+    public TechnicalDebtReportData buildTechnicalDebtData(List<CodeType> types,
+                                                          List<CodeMethod> methods,
+                                                          List<CodeField> fields,
+                                                          List<CodeRelationship> relationships) {
+        TechnicalDebtReportData data = new TechnicalDebtReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Map<String, List<CodeMethod>> methodsByType = methods.stream()
+            .filter(m -> m.getDeclaringTypeFqn() != null)
+            .collect(Collectors.groupingBy(CodeMethod::getDeclaringTypeFqn));
+
+        Map<String, List<CodeField>> fieldsByType = fields.stream()
+            .filter(f -> f.getDeclaringTypeFqn() != null)
+            .collect(Collectors.groupingBy(CodeField::getDeclaringTypeFqn));
+
+        Map<String, Integer> methodIn = new HashMap<>();
+        Map<String, Integer> methodOut = new HashMap<>();
+        Map<String, Set<String>> classInSet = new HashMap<>();
+        Map<String, Set<String>> classOutSet = new HashMap<>();
+
+        Map<String, String> methodToType = new HashMap<>();
+        for (CodeMethod m : methods) {
+            methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
+        }
+
+        for (CodeRelationship r : relationships) {
+            if ("CALLS".equals(r.getKind())) {
+                methodOut.merge(r.getFromEntityFqn(), 1, Integer::sum);
+                methodIn.merge(r.getToEntityFqn(), 1, Integer::sum);
+                String srcClass = methodToType.get(r.getFromEntityFqn());
+                String tgtClass = methodToType.get(r.getToEntityFqn());
+                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)) {
+                    classOutSet.computeIfAbsent(srcClass, k -> new HashSet<>()).add(tgtClass);
+                    classInSet.computeIfAbsent(tgtClass, k -> new HashSet<>()).add(srcClass);
+                }
+            }
+        }
+
+        double totalHours = 0.0;
+        int totalLoc = 0;
+
+        // 1. Evaluate God Classes & WMC
+        Map<String, PackageDebtMetric> pkgDebtMap = new HashMap<>();
+        for (CodeType t : types) {
+            List<CodeMethod> tMethods = methodsByType.getOrDefault(t.getFqn(), Collections.emptyList());
+            List<CodeField> tFields = fieldsByType.getOrDefault(t.getFqn(), Collections.emptyList());
+            int wmc = tMethods.stream().mapToInt(m -> Math.max(1, m.getCyclomaticComplexity())).sum();
+            int ca = classInSet.getOrDefault(t.getFqn(), Collections.emptySet()).size();
+            int ce = classOutSet.getOrDefault(t.getFqn(), Collections.emptySet()).size();
+            int tLines = t.getLineCount() > 0 ? t.getLineCount() : Math.max(10, t.getEndLine() - t.getStartLine() + 1);
+
+            String pkg = (t.getPackageFqn() != null && !t.getPackageFqn().isBlank()) ? t.getPackageFqn() : "(default)";
+            PackageDebtMetric pm = pkgDebtMap.computeIfAbsent(pkg, k -> {
+                PackageDebtMetric p = new PackageDebtMetric();
+                p.packageName = k;
+                return p;
+            });
+            pm.classCount++;
+            pm.totalWmc += wmc;
+            pm.totalLines += tLines;
+
+            if (wmc >= 22 || tMethods.size() >= 14 || (tFields.size() >= 8 && wmc >= 15)) {
+                GodClassMetric g = new GodClassMetric();
+                g.classFqn = t.getFqn();
+                g.simpleName = t.getSimpleName() != null ? t.getSimpleName() : extractClassSimple(t.getFqn());
+                g.packageName = pkg;
+                g.methodCount = tMethods.size();
+                g.fieldCount = tFields.size();
+                g.lineCount = tLines;
+                g.weightedMethodsPerClass = wmc;
+                g.wmc = wmc;
+                g.afferentCoupling = ca;
+                g.efferentCoupling = ce;
+                g.estimatedHours = Math.round(((wmc - 12) * 0.35 + tFields.size() * 0.25 + ce * 0.3) * 10.0) / 10.0;
+                if (g.estimatedHours < 1.0) g.estimatedHours = 1.5;
+                g.severity = (wmc >= 45 || g.estimatedHours >= 12.0) ? "CRITICAL" : (wmc >= 30 ? "HIGH" : "MEDIUM");
+                if (tFields.size() >= 8 && ce >= 5) {
+                    g.decompositionAdvice = "Extract cohesive state fields into a dedicated Domain State / Value Object and split outbound collaborators via Façade.";
+                } else if (tMethods.size() >= 15) {
+                    g.decompositionAdvice = "Decompose high-method surface into Command/Handler strategies following Single Responsibility Principle (SRP).";
+                } else {
+                    g.decompositionAdvice = "Reduce Weighted Methods per Class (WMC=" + wmc + ") by extracting complex conditional branches into helper policies.";
+                }
+                data.godClasses.add(g);
+                totalHours += g.estimatedHours;
+                pm.debtHours += g.estimatedHours;
+            }
+        }
+
+        data.godClasses.sort((a, b) -> Integer.compare(b.weightedMethodsPerClass, a.weightedMethodsPerClass));
+        data.godClassCount = data.godClasses.size();
+
+        // 2. Evaluate Brain Methods & Refactoring ROI
+        for (CodeMethod m : methods) {
+            int cc = Math.max(1, m.getCyclomaticComplexity());
+            int loc = Math.max(1, m.getEndLine() - m.getStartLine() + 1);
+            totalLoc += loc;
+            int inDeg = methodIn.getOrDefault(m.getFqn(), 0);
+            int outDeg = methodOut.getOrDefault(m.getFqn(), 0);
+
+            String pkg = "default";
+            if (m.getDeclaringTypeFqn() != null && m.getDeclaringTypeFqn().contains(".")) {
+                pkg = m.getDeclaringTypeFqn().substring(0, m.getDeclaringTypeFqn().lastIndexOf('.'));
+            }
+            PackageDebtMetric pm = pkgDebtMap.get(pkg);
+
+            if (cc >= 6 || (cc >= 4 && inDeg >= 3) || outDeg >= 6) {
+                if (pm != null) pm.highComplexityMethods++;
+                BrainMethodMetric bm = new BrainMethodMetric();
+                bm.methodFqn = m.getFqn();
+                bm.simpleName = m.getSimpleName() != null ? m.getSimpleName() : extractSimpleMethodName(m.getFqn());
+                bm.declaringClass = m.getDeclaringTypeFqn() != null ? m.getDeclaringTypeFqn() : "";
+                bm.packageName = pkg;
+                bm.cyclomaticComplexity = cc;
+                bm.complexity = cc;
+                bm.linesOfCode = loc;
+                bm.lineCount = loc;
+                bm.inDegree = inDeg;
+                bm.callerCount = inDeg;
+                bm.outDegree = outDeg;
+                bm.estimatedHours = Math.round(((cc - 3) * 0.4 + outDeg * 0.15) * 10.0) / 10.0;
+                if (bm.estimatedHours < 0.5) bm.estimatedHours = 0.5;
+                bm.estimatedMinutes = (int) Math.round(bm.estimatedHours * 60);
+                // ROI Score: higher caller fan-in + higher CC = highest blast-radius reduction per hour spent
+                bm.roiScore = Math.min(100.0, Math.round(((cc * 4.5) + (inDeg * 7.5) + (outDeg * 2.5)) * 10.0) / 10.0);
+                bm.refactoringRoiScore = bm.roiScore;
+                bm.severity = (cc >= 15 || bm.roiScore >= 75) ? "CRITICAL" : (cc >= 10 || bm.roiScore >= 50 ? "HIGH" : "MEDIUM");
+                bm.refactoringStrategy = (inDeg >= 4)
+                    ? "High-ROI Contract Target: " + inDeg + " upstream callers depend on this method. Guard with unit tests and extract pure sub-methods."
+                    : "Simplify nested branching (CC=" + cc + ") using Guard Clauses or Strategy dispatch.";
+                bm.refactoringAdvice = bm.refactoringStrategy;
+                data.brainMethods.add(bm);
+                totalHours += bm.estimatedHours;
+                if (pm != null) pm.debtHours += bm.estimatedHours;
+            }
+        }
+
+        data.brainMethods.sort((a, b) -> Double.compare(b.roiScore, a.roiScore));
+        data.brainMethodCount = data.brainMethods.size();
+
+        for (PackageDebtMetric pm : pkgDebtMap.values()) {
+            pm.debtHours = Math.round(pm.debtHours * 10.0) / 10.0;
+            pm.avgComplexity = pm.classCount > 0 ? Math.round((pm.totalWmc * 10.0) / pm.classCount) / 10.0 : 1.0;
+            pm.debtDensityPerKloc = pm.totalLines > 0 ? Math.round((pm.debtHours * 1000.0 / pm.totalLines) * 10.0) / 10.0 : 0.0;
+            pm.debtRating = pm.debtHours >= 20 ? "HIGH DEBT" : (pm.debtHours >= 8 ? "MODERATE" : "HEALTHY");
+            data.packageDebt.add(pm);
+        }
+        data.packageDebt.sort((a, b) -> Double.compare(b.debtHours, a.debtHours));
+        data.packageDebtHotspots = data.packageDebt;
+
+        data.totalDebtHours = Math.round(totalHours * 10.0) / 10.0;
+        data.totalDebtDays = Math.round((totalHours / 8.0) * 10.0) / 10.0;
+        double baselineDevHours = Math.max(40.0, (Math.max(totalLoc, types.size() * 80) / 35.0));
+        data.debtRatioPercent = Math.min(99.9, Math.round((totalHours / baselineDevHours) * 1000.0) / 10.0);
+        data.maintainabilityScore = (int) Math.max(15, Math.min(100, Math.round(100.0 - data.debtRatioPercent * 1.4)));
+        data.sqaleRating = data.debtRatioPercent <= 5.0 ? "A"
+            : data.debtRatioPercent <= 10.0 ? "B"
+            : data.debtRatioPercent <= 20.0 ? "C"
+            : data.debtRatioPercent <= 50.0 ? "D" : "E";
+
+        return data;
+    }
+
+    public String renderTechnicalDebtMarkdown(TechnicalDebtReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# CodeLens Technical Debt & Refactoring ROI Report\n\n");
+        sb.append("**Generated At:** ").append(d.generatedAt).append("\n");
+        sb.append("**SQALE Maintainability Rating:** ").append(d.sqaleRating).append(" (Score: ").append(d.maintainabilityScore).append("/100)\n");
+        sb.append("**Estimated Remediation Effort:** ").append(d.totalDebtHours).append(" hours (~").append(d.totalDebtDays).append(" engineering days)\n");
+        sb.append("**Technical Debt Ratio:** ").append(d.debtRatioPercent).append("%\n\n");
+
+        sb.append("## 1. Top Refactoring ROI Methods (Brain Methods)\n\n");
+        sb.append("| Method | Declaring Class | CC | Callers (Ca) | Fan-Out (Ce) | Est. Hours | ROI Score | Strategy |\n");
+        sb.append("|---|---|---|---|---|---|---|---|\n");
+        for (BrainMethodMetric m : d.brainMethods.stream().limit(25).collect(Collectors.toList())) {
+            sb.append("| `").append(m.simpleName).append("` | `").append(m.declaringClass).append("` | ")
+              .append(m.cyclomaticComplexity).append(" | ").append(m.inDegree).append(" | ").append(m.outDegree).append(" | ")
+              .append(m.estimatedHours).append("h | ").append(m.roiScore).append(" | ").append(m.refactoringStrategy).append(" |\n");
+        }
+
+        sb.append("\n## 2. God Classes & Decomposition Candidates\n\n");
+        sb.append("| Class | Package | WMC | Methods | Fields | Est. Hours | Decomposition Advice |\n");
+        sb.append("|---|---|---|---|---|---|---|\n");
+        for (GodClassMetric g : d.godClasses.stream().limit(20).collect(Collectors.toList())) {
+            sb.append("| `").append(g.simpleName).append("` | `").append(g.packageName).append("` | ")
+              .append(g.weightedMethodsPerClass).append(" | ").append(g.methodCount).append(" | ").append(g.fieldCount).append(" | ")
+              .append(g.estimatedHours).append("h | ").append(g.decompositionAdvice).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderTechnicalDebtCsv(TechnicalDebtReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Category,EntityFQN,Package,Metric1_CC_or_WMC,Metric2_Callers_or_Methods,EstimatedHours,ROIScore,Severity,Recommendation\n");
+        for (BrainMethodMetric m : d.brainMethods) {
+            sb.append("BRAIN_METHOD,").append(escapeCsv(m.methodFqn)).append(",").append(escapeCsv(m.packageName)).append(",")
+              .append(m.cyclomaticComplexity).append(",").append(m.inDegree).append(",").append(m.estimatedHours).append(",")
+              .append(m.roiScore).append(",").append(m.severity).append(",").append(escapeCsv(m.refactoringStrategy)).append("\n");
+        }
+        for (GodClassMetric g : d.godClasses) {
+            sb.append("GOD_CLASS,").append(escapeCsv(g.classFqn)).append(",").append(escapeCsv(g.packageName)).append(",")
+              .append(g.weightedMethodsPerClass).append(",").append(g.methodCount).append(",").append(g.estimatedHours).append(",")
+              .append(g.weightedMethodsPerClass).append(",").append(g.severity).append(",").append(escapeCsv(g.decompositionAdvice)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderTechnicalDebtHtml(TechnicalDebtReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Technical Debt & ROI Report</title>");
+        sb.append("<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0d12;color:#e2e8f0;padding:32px;}");
+        sb.append("h1,h2{color:#38bdf8;}table{width:100%;border-collapse:collapse;margin-top:16px;background:#111621;}");
+        sb.append("th,td{padding:10px 12px;border:1px solid #1e293b;text-align:left;font-size:13px;}th{background:#161e2e;color:#94a3b8;}");
+        sb.append(".kpi{display:inline-block;background:#111621;border:1px solid #1e293b;padding:16px 24px;border-radius:8px;margin-right:12px;margin-bottom:16px;}</style></head><body>");
+        sb.append("<h1>Technical Debt & Refactoring ROI Report</h1>");
+        sb.append("<div><div class='kpi'><strong>SQALE Rating:</strong> ").append(escapeHtml(d.sqaleRating)).append("</div>");
+        sb.append("<div class='kpi'><strong>Maintainability:</strong> ").append(d.maintainabilityScore).append("/100</div>");
+        sb.append("<div class='kpi'><strong>Remediation Effort:</strong> ").append(d.totalDebtHours).append("h (").append(d.totalDebtDays).append(" days)</div>");
+        sb.append("<div class='kpi'><strong>Debt Ratio:</strong> ").append(d.debtRatioPercent).append("%</div></div>");
+        sb.append("<h2>Top Refactoring ROI Methods</h2><table><thead><tr><th>Method</th><th>Class</th><th>CC</th><th>Callers</th><th>Est. Hours</th><th>ROI Score</th><th>Strategy</th></tr></thead><tbody>");
+        for (BrainMethodMetric m : d.brainMethods.stream().limit(25).collect(Collectors.toList())) {
+            sb.append("<tr><td><code>").append(escapeHtml(m.simpleName)).append("</code></td><td><code>").append(escapeHtml(m.declaringClass))
+              .append("</code></td><td>").append(m.cyclomaticComplexity).append("</td><td>").append(m.inDegree).append("</td><td>")
+              .append(m.estimatedHours).append("h</td><td><strong>").append(m.roiScore).append("</strong></td><td>").append(escapeHtml(m.refactoringStrategy)).append("</td></tr>");
+        }
+        sb.append("</tbody></table></body></html>");
+        return sb.toString();
+    }
+
+    // =========================================================================
+    // 9. EXECUTIVE ARCHITECTURE HEALTH SCORECARD REPORT
+    // =========================================================================
+
+    public static class ExecutiveSummaryReportData {
+        public String generatedAt;
+        public int overallHealthScore; // 0 - 100
+        public String overallGrade;    // A+, A, B, C, D, F
+        public String executiveHeadline;
+        public String executiveVerdict;
+        public int totalTypes;
+        public int totalMethods;
+        public int totalFields;
+        public int totalPackages;
+        public double totalDebtHours;
+        public List<DimensionScore> dimensions = new ArrayList<>();
+        public List<DimensionScore> dimensionScores = new ArrayList<>();
+        public List<PriorityActionItem> priorityRoadmap = new ArrayList<>();
+    }
+
+    public static class DimensionScore {
+        public String name;
+        public String dimensionName;
+        public String category;
+        public int score; // 0 - 100
+        public String grade;
+        public String status; // OPTIMAL, ATTENTION, CRITICAL
+        public String summary;
+        public String keyMetricLabel;
+        public String reportLink;
+    }
+
+    public static class PriorityActionItem {
+        public int rank;
+        public String priority; // P0, P1, P2
+        public String category;
+        public String entityFqn;
+        public String targetEntity;
+        public String title;
+        public String impactSummary;
+        public String expectedImpact;
+        public String estimatedEffort;
+        public String recommendedAction;
+        public String targetTab; // knowledge, graph, review
+    }
+
+    public ExecutiveSummaryReportData buildExecutiveSummaryData(List<CodeType> types,
+                                                                List<CodeMethod> methods,
+                                                                List<CodeField> fields,
+                                                                List<CodeRelationship> relationships,
+                                                                List<GitMeta> gitMetas) {
+        ExecutiveSummaryReportData out = new ExecutiveSummaryReportData();
+        out.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        out.totalTypes = types.size();
+        out.totalMethods = methods.size();
+        out.totalFields = fields.size();
+
+        ArchitectureReportData arch = buildArchitectureData(types, methods, fields, relationships);
+        ChangeRiskReportData risk = buildChangeRiskData(types, methods, fields, relationships, gitMetas);
+        CircularDependencyReportData cycles = buildCircularDependencyData(types, methods, relationships);
+        ArchetypeGovernanceReportData gov = buildArchetypeGovernanceData(types, methods, fields, relationships);
+        DeadCodeReportData dead = buildDeadCodeData(types, methods, fields, relationships);
+        TechnicalDebtReportData debt = buildTechnicalDebtData(types, methods, fields, relationships);
+
+        out.totalPackages = arch.totalPackages;
+        out.totalDebtHours = debt.totalDebtHours;
+
+        int modScore = cycles.acyclicScore;
+        int riskScore = Math.max(10, 100 - risk.averageRiskScore);
+        int govScore = gov.governanceScore;
+        int debtScore = debt.maintainabilityScore;
+        int hygieneScore = (int) Math.max(20, Math.min(100, Math.round(100.0 - dead.deadCodePercentage * 1.5)));
+        int couplingScore = arch.healthScore;
+
+        out.dimensions.add(makeDimension("Modularity & Acyclicity", "TOPOLOGY", modScore,
+            cycles.totalClassCycles + " class cycles, " + cycles.totalPackageTangles + " package tangles", "circular-dependencies"));
+        out.dimensions.add(makeDimension("Blast Radius & Change Resilience", "RISK", riskScore,
+            risk.criticalRiskCount + " critical risk classes, " + (risk.fieldMutationHotspots != null ? risk.fieldMutationHotspots.size() : 0) + " field hotspots", "change-risk"));
+        out.dimensions.add(makeDimension("Enterprise Archetype Governance", "COMPLIANCE", govScore,
+            gov.totalViolations + " layering/audit violations across " + gov.totalArchetypesFound + " archetypes", "archetype-governance"));
+        out.dimensions.add(makeDimension("Maintainability & Technical Debt", "SQALE", debtScore,
+            debt.totalDebtHours + "h est. remediation (SQALE " + debt.sqaleRating + ")", "technical-debt"));
+        out.dimensions.add(makeDimension("Package Coupling Stability", "ARCHITECTURE", couplingScore,
+            arch.totalPackages + " packages, " + arch.totalDependencies + " structural dependencies", "architecture"));
+        out.dimensions.add(makeDimension("Code Hygiene & Reachability", "DEAD CODE", hygieneScore,
+            dead.deadCodePercentage + "% unreferenced footprint (" + dead.orphanedMethodsCount + " orphan methods)", "dead-code"));
+        out.dimensionScores = out.dimensions;
+
+        double weighted = modScore * 0.22 + riskScore * 0.20 + govScore * 0.18 + debtScore * 0.16 + couplingScore * 0.14 + hygieneScore * 0.10;
+        out.overallHealthScore = (int) Math.round(weighted);
+        out.overallGrade = gradeForScore(out.overallHealthScore);
+        out.executiveHeadline = out.overallHealthScore >= 85
+            ? "Architecture is structurally sound with high modularity and controlled blast radius."
+            : out.overallHealthScore >= 70
+            ? "Architecture is healthy overall, with localized hotspots in state mutation and method complexity."
+            : "Architecture exhibits elevated coupling and change-risk hotspots requiring targeted decoupling.";
+        out.executiveVerdict = out.executiveHeadline;
+
+        // Synthesize Top Priority Roadmap items across all analyzers
+        int rank = 1;
+        if (cycles.classCycles != null && !cycles.classCycles.isEmpty()) {
+            ClassCycleItem c = cycles.classCycles.get(0);
+            String firstClass = (c.path != null && !c.path.isEmpty()) ? c.path.get(0) : "";
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P0", "CYCLE DECOUPLING", firstClass,
+                "Break " + c.cycleLength + "-class recursive dependency loop",
+                "Sever edge " + c.recommendedCutEdge + " via interface inversion or domain event.", "graph"));
+        }
+        if (risk.classRiskRankings != null && !risk.classRiskRankings.isEmpty()) {
+            ClassRiskItem topRisk = risk.classRiskRankings.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P0", "BLAST RADIUS", topRisk.classFqn,
+                "Isolate highest blast-radius class (" + topRisk.simpleName + ", Risk " + topRisk.riskScore + "/100)",
+                "Encapsulate mutable fields (" + topRisk.fieldBlastRadius + " downstream readers) behind immutable DTO projections.", "knowledge"));
+        }
+        if (risk.fieldMutationHotspots != null && !risk.fieldMutationHotspots.isEmpty()) {
+            FieldMutationHotspot fh = risk.fieldMutationHotspots.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P1", "STATE RIPPLE", fh.fieldFqn,
+                "Stabilize high-ripple field (" + fh.readerMethodCount + " downstream reader methods)",
+                "Audit writer method " + fh.writerMethodFqn + " and guard state transitions.", "graph"));
+        }
+        if (gov.violations != null && !gov.violations.isEmpty()) {
+            GovernanceViolation gv = gov.violations.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P1", "ARCHETYPE GOVERNANCE", gv.entityFqn,
+                gv.ruleName + " on " + gv.archetypeName,
+                gv.architecturalRemediation, "knowledge"));
+        }
+        if (debt.brainMethods != null && !debt.brainMethods.isEmpty()) {
+            BrainMethodMetric bm = debt.brainMethods.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P1", "REFACTORING ROI", bm.methodFqn,
+                "Refactor high-ROI method " + bm.simpleName + " (CC=" + bm.cyclomaticComplexity + ", ROI=" + bm.roiScore + ")",
+                bm.refactoringStrategy + " (~" + bm.estimatedHours + "h effort)", "graph"));
+        }
+        if (debt.godClasses != null && !debt.godClasses.isEmpty()) {
+            GodClassMetric gc = debt.godClasses.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P2", "GOD CLASS SPLIT", gc.classFqn,
+                "Decompose God Class " + gc.simpleName + " (WMC=" + gc.weightedMethodsPerClass + ", " + gc.methodCount + " methods)",
+                gc.decompositionAdvice + " (~" + gc.estimatedHours + "h effort)", "knowledge"));
+        }
+        if (dead.orphanedMethods != null && !dead.orphanedMethods.isEmpty()) {
+            OrphanedMethodItem om = dead.orphanedMethods.get(0);
+            out.priorityRoadmap.add(makeRoadmap(rank++, "P2", "CODE HYGIENE", om.methodFqn,
+                "Prune or wire unreferenced entrypoint " + om.simpleName + " (" + dead.orphanedMethodsCount + " total orphans)",
+                "Verify if reflective/external entrypoint; otherwise remove dead code to reduce maintenance surface.", "knowledge"));
+        }
+
+        return out;
+    }
+
+    private static DimensionScore makeDimension(String name, String category, int score, String summary, String reportLink) {
+        DimensionScore d = new DimensionScore();
+        d.name = name;
+        d.dimensionName = name;
+        d.category = category;
+        d.score = Math.max(0, Math.min(100, score));
+        d.grade = gradeForScore(d.score);
+        d.status = d.score >= 80 ? "OPTIMAL" : (d.score >= 60 ? "ATTENTION" : "CRITICAL");
+        d.summary = summary;
+        d.keyMetricLabel = summary;
+        d.reportLink = reportLink;
+        return d;
+    }
+
+    private static PriorityActionItem makeRoadmap(int rank, String priority, String category, String entityFqn,
+                                                  String title, String recommendedAction, String targetTab) {
+        PriorityActionItem item = new PriorityActionItem();
+        item.rank = rank;
+        item.priority = priority;
+        item.category = category;
+        item.entityFqn = entityFqn;
+        item.targetEntity = entityFqn;
+        item.title = title;
+        item.impactSummary = title;
+        item.expectedImpact = recommendedAction;
+        item.estimatedEffort = "P0".equals(priority) ? "2-4 hrs" : ("P1".equals(priority) ? "1-2 hrs" : "30-60 min");
+        item.recommendedAction = recommendedAction;
+        item.targetTab = targetTab;
+        return item;
+    }
+
+    private static String gradeForScore(int score) {
+        if (score >= 93) return "A+";
+        if (score >= 85) return "A";
+        if (score >= 78) return "B+";
+        if (score >= 70) return "B";
+        if (score >= 60) return "C";
+        if (score >= 50) return "D";
+        return "F";
+    }
+
+    public String renderExecutiveSummaryMarkdown(ExecutiveSummaryReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# CodeLens Executive Architecture Health Scorecard\n\n");
+        sb.append("**Generated At:** ").append(d.generatedAt).append("\n");
+        sb.append("**Composite Health Score:** ").append(d.overallHealthScore).append("/100 (**Grade ").append(d.overallGrade).append("**)\n");
+        sb.append("**Executive Summary:** ").append(d.executiveHeadline).append("\n\n");
+
+        sb.append("## 1. Architectural Health Dimensions\n\n");
+        sb.append("| Dimension | Category | Score | Grade | Status | Key Diagnostic Summary |\n");
+        sb.append("|---|---|---|---|---|---|\n");
+        for (DimensionScore dim : d.dimensions) {
+            sb.append("| **").append(dim.name).append("** | ").append(dim.category).append(" | ")
+              .append(dim.score).append("/100 | ").append(dim.grade).append(" | ").append(dim.status)
+              .append(" | ").append(dim.summary).append(" |\n");
+        }
+
+        sb.append("\n## 2. Prioritized Architectural Action Roadmap\n\n");
+        sb.append("| Rank | Priority | Category | Target Entity | Action Title | Prescribed Remediation |\n");
+        sb.append("|---|---|---|---|---|---|\n");
+        for (PriorityActionItem item : d.priorityRoadmap) {
+            sb.append("| #").append(item.rank).append(" | **").append(item.priority).append("** | ")
+              .append(item.category).append(" | `").append(item.entityFqn).append("` | ")
+              .append(item.title).append(" | ").append(item.recommendedAction).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderExecutiveSummaryCsv(ExecutiveSummaryReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Section,NameOrPriority,Category,ScoreOrEntity,GradeOrTitle,StatusOrAction\n");
+        for (DimensionScore dim : d.dimensions) {
+            sb.append("DIMENSION,").append(escapeCsv(dim.name)).append(",").append(escapeCsv(dim.category)).append(",")
+              .append(dim.score).append(",").append(escapeCsv(dim.grade)).append(",").append(escapeCsv(dim.summary)).append("\n");
+        }
+        for (PriorityActionItem item : d.priorityRoadmap) {
+            sb.append("ROADMAP,").append(escapeCsv(item.priority)).append(",").append(escapeCsv(item.category)).append(",")
+              .append(escapeCsv(item.entityFqn)).append(",").append(escapeCsv(item.title)).append(",").append(escapeCsv(item.recommendedAction)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderExecutiveSummaryHtml(ExecutiveSummaryReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Executive Architecture Health Scorecard</title>");
+        sb.append("<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0d12;color:#e2e8f0;padding:32px;}");
+        sb.append("h1,h2{color:#38bdf8;}table{width:100%;border-collapse:collapse;margin-top:16px;background:#111621;}");
+        sb.append("th,td{padding:10px 12px;border:1px solid #1e293b;text-align:left;font-size:13px;}th{background:#161e2e;color:#94a3b8;}</style></head><body>");
+        sb.append("<h1>Executive Architecture Health Scorecard — Grade ").append(escapeHtml(d.overallGrade)).append(" (").append(d.overallHealthScore).append("/100)</h1>");
+        sb.append("<p>").append(escapeHtml(d.executiveHeadline)).append("</p>");
+        sb.append("<h2>Architectural Health Dimensions</h2><table><thead><tr><th>Dimension</th><th>Category</th><th>Score</th><th>Grade</th><th>Status</th><th>Summary</th></tr></thead><tbody>");
+        for (DimensionScore dim : d.dimensions) {
+            sb.append("<tr><td><strong>").append(escapeHtml(dim.name)).append("</strong></td><td>").append(escapeHtml(dim.category))
+              .append("</td><td>").append(dim.score).append("/100</td><td>").append(escapeHtml(dim.grade)).append("</td><td>")
+              .append(escapeHtml(dim.status)).append("</td><td>").append(escapeHtml(dim.summary)).append("</td></tr>");
+        }
+        sb.append("</tbody></table><h2>Prioritized Action Roadmap</h2><table><thead><tr><th>Priority</th><th>Category</th><th>Target Entity</th><th>Action</th><th>Remediation</th></tr></thead><tbody>");
+        for (PriorityActionItem item : d.priorityRoadmap) {
+            sb.append("<tr><td><strong>").append(escapeHtml(item.priority)).append("</strong></td><td>").append(escapeHtml(item.category))
+              .append("</td><td><code>").append(escapeHtml(item.entityFqn)).append("</code></td><td>").append(escapeHtml(item.title))
+              .append("</td><td>").append(escapeHtml(item.recommendedAction)).append("</td></tr>");
+        }
+        sb.append("</tbody></table></body></html>");
+        return sb.toString();
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

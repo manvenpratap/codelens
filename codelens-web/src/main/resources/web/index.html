@@ -26,7 +26,7 @@
   <link rel="apple-touch-icon" href="/assets/app-icon.png" />
 
   <!-- Single stylesheet; all design tokens live in :root -->
-  <link rel="stylesheet" href="/style.css?v=1.1.0" />
+  <link rel="stylesheet" href="/style.css?v=1.1.2" />
 </head>
 
 
@@ -1427,7 +1427,7 @@
               <span>Reports Catalog</span>
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
-              <span class="reports-catalog-badge">8 Reports</span>
+              <span class="reports-catalog-badge">10 Reports</span>
               <button type="button" id="btn-collapse-reports-sidebar" class="panel-collapse-btn" aria-label="Collapse Reports Catalog Sidebar" title="Collapse Reports Catalog">
                 <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
@@ -1440,6 +1440,15 @@
               <span class="usp-badge">KEY USP</span>
             </div>
 
+            <div class="report-nav-item" data-report="executive-summary">
+              <div class="report-nav-icon icon-cyan-bg"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Executive Health Scorecard</div>
+                <div class="report-nav-desc">6-dimension grade, radar health &amp; P0/P1 action roadmap</div>
+              </div>
+              <span class="report-nav-tag tag-arch">SCORECARD</span>
+            </div>
+
             <div class="report-nav-item active" data-report="change-risk">
               <div class="report-nav-icon icon-rose-bg"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
               <div class="report-nav-info">
@@ -1447,6 +1456,15 @@
                 <div class="report-nav-desc">Composite risk scores, mutation hotspots &amp; ripple</div>
               </div>
               <span class="report-nav-tag tag-hot">HIGH RISK</span>
+            </div>
+
+            <div class="report-nav-item" data-report="technical-debt">
+              <div class="report-nav-icon icon-indigo-bg"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Technical Debt &amp; ROI Estimator</div>
+                <div class="report-nav-desc">SQALE rating, God classes, Brain methods &amp; payoff ROI</div>
+              </div>
+              <span class="report-nav-tag tag-hot">SQALE ROI</span>
             </div>
 
             <div class="report-nav-item" data-report="dead-code">
@@ -3821,7 +3839,7 @@
 <script src="/city3d.js?v=1.0.6"     defer></script>
 <script src="/galaxy3d.js?v=1.0.6"   defer></script>
 <script src="/hub-explorer.js?v=1.0.7" defer></script>
-<script src="/app.js?v=1.1.1"        defer></script>
+<script src="/app.js?v=1.1.2"        defer></script>
 
 
 

@@ -11871,6 +11871,8 @@ body.resizing .reports-sidebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   background: rgba(255, 255, 255, 0.015);
 }
 
@@ -11889,6 +11891,86 @@ body.resizing .reports-sidebar {
   padding: 2px 7px;
   border-radius: 10px;
   background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.report-table-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.report-severity-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.report-sev-pill {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.report-sev-pill:hover {
+  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.report-sev-pill.active {
+  background: rgba(6, 182, 212, 0.16);
+  color: var(--cyan-400, #38bdf8);
+}
+
+.report-sev-pill.sev-critical.active {
+  background: rgba(244, 63, 94, 0.18);
+  color: #f43f5e;
+}
+
+.report-sev-pill.sev-high.active {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+
+.report-table-search-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  min-width: 180px;
+  transition: border-color 0.15s ease;
+}
+
+.report-table-search-wrap:focus-within {
+  border-color: var(--cyan-400, #38bdf8);
+}
+
+.report-table-filter-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  width: 100%;
+  font-family: var(--font-sans, sans-serif);
+}
+
+.report-table-filter-input::placeholder {
   color: var(--text-muted);
 }
 

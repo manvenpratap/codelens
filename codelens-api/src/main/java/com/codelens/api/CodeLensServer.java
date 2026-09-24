@@ -548,6 +548,8 @@ public class CodeLensServer {
         app.get("/api/reports/dead-code",             this::getDeadCodeReport);
         app.get("/api/reports/circular-dependencies", this::getCircularDependenciesReport);
         app.get("/api/reports/archetype-governance",  this::getArchetypeGovernanceReport);
+        app.get("/api/reports/technical-debt",        this::getTechnicalDebtReport);
+        app.get("/api/reports/executive-summary",     this::getExecutiveSummaryReport);
         app.get("/api/reports/review",                this::getReviewReport);
         app.get("/api/reports/metrics",               this::getMetricsReport);
         app.get("/api/reports/html-snapshot",         this::getHtmlSnapshotReport);
@@ -3292,6 +3294,57 @@ public class CodeLensServer {
         }
     }
 
+    private void getTechnicalDebtReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format != null) format = format.trim().toLowerCase();
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+            ReportService.TechnicalDebtReportData data = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderTechnicalDebtHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderTechnicalDebtMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderTechnicalDebtCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate technical debt report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate technical debt report: " + e.getMessage()));
+        }
+    }
+
+    private void getExecutiveSummaryReport(Context ctx) {
+        try {
+            String format = ctx.queryParam("format");
+            if (format != null) format = format.trim().toLowerCase();
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+            List<GitMeta> gitMetas = dao.findAllGitMeta();
+            ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
+
+            if ("html".equals(format)) {
+                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderExecutiveSummaryHtml(data));
+            } else if ("markdown".equals(format) || "md".equals(format)) {
+                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderExecutiveSummaryMarkdown(data));
+            } else if ("csv".equals(format)) {
+                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderExecutiveSummaryCsv(data));
+            } else {
+                ctx.json(data);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate executive summary report: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to generate executive summary report: " + e.getMessage()));
+        }
+    }
+
     private void downloadReport(Context ctx) {
         try {
             String type = ctx.queryParam("type");
@@ -3324,6 +3377,10 @@ public class CodeLensServer {
                 getCircularDependenciesReport(ctx);
             } else if ("archetype-governance".equals(type) || "governance".equals(type)) {
                 getArchetypeGovernanceReport(ctx);
+            } else if ("technical-debt".equals(type) || "debt".equals(type)) {
+                getTechnicalDebtReport(ctx);
+            } else if ("executive-summary".equals(type) || "scorecard".equals(type)) {
+                getExecutiveSummaryReport(ctx);
             } else {
                 getArchitectureReport(ctx);
             }

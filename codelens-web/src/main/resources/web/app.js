@@ -12970,10 +12970,22 @@ async function syncSettingsFromServer() {
 
 // ── Codebase Intelligence Reports & Export Hub ───────────────────────────────────
 const REPORTS_METADATA = {
+  'executive-summary': {
+    title: 'Executive Architectural Health Scorecard',
+    subtitle: 'Composite 6-dimension architectural assessment, radar scorecard, and prioritized P0/P1/P2 remediation roadmap.',
+    badge: 'SCORECARD',
+    badgeClass: 'tag-arch'
+  },
   'change-risk': {
     title: 'Change Risk & Blast Radius Matrix',
     subtitle: 'Deep structural risk analysis combining field mutations, fan-out blast radius, and downstream dependency propagation.',
     badge: 'HIGH RISK',
+    badgeClass: 'tag-hot'
+  },
+  'technical-debt': {
+    title: 'Technical Debt & SQALE Remediation ROI Estimator',
+    subtitle: 'SQALE maintainability rating, remediation effort hours, God classes, and high-ROI Brain method refactoring targets.',
+    badge: 'SQALE ROI',
     badgeClass: 'tag-hot'
   },
   'dead-code': {
@@ -13227,7 +13239,11 @@ const ReportsHub = {
     const container = qs('#reports-dashboard-container');
     if (!container) return;
 
-    if (type === 'change-risk') {
+    if (type === 'executive-summary') {
+      ReportsHub.renderExecutiveSummaryDashboard(container, data);
+    } else if (type === 'technical-debt') {
+      ReportsHub.renderTechnicalDebtDashboard(container, data);
+    } else if (type === 'change-risk') {
       ReportsHub.renderChangeRiskDashboard(container, data);
     } else if (type === 'dead-code') {
       ReportsHub.renderDeadCodeDashboard(container, data);
@@ -13244,6 +13260,8 @@ const ReportsHub = {
     } else {
       container.innerHTML = `<pre class="reports-code-output">${esc(JSON.stringify(data, null, 2))}</pre>`;
     }
+
+    ReportsHub.enhanceInteractiveTables(container);
   },
 
   renderChangeRiskDashboard(container, d) {
@@ -13479,6 +13497,63 @@ const ReportsHub = {
       </div>
     `;
 
+    if (d.highRiskMethods && d.highRiskMethods.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">
+              <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              <span>High-Risk Methods (Complexity × Blast Radius × State Mutation)</span>
+            </div>
+            <span class="report-section-badge">${d.highRiskMethods.length} Methods</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Method Signature</th>
+                  <th>Declaring Class</th>
+                  <th>Risk Score</th>
+                  <th>CC</th>
+                  <th>Callers</th>
+                  <th>Fields Written</th>
+                  <th>Risk Factor</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.highRiskMethods.slice(0, 20).map(m => {
+                  const mFqn = m.methodFqn || (m.declaringClass + '.' + m.simpleName + '()');
+                  const rClass = m.riskScore >= 50 ? 'risk-critical' : (m.riskScore >= 25 ? 'risk-high' : 'risk-medium');
+                  return `
+                    <tr>
+                      <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Inspect ${esc(mFqn)}">
+                        <a href="#" onclick="event.preventDefault(); selectMethod('${esc(mFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#f43f5e; text-decoration:none; cursor:pointer;">${esc(m.simpleName)}</a>
+                      </td>
+                      <td>
+                        <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.declaringClass)}</a>
+                      </td>
+                      <td><span class="risk-badge ${rClass}">${m.riskScore}</span></td>
+                      <td style="font-family:var(--font-mono);">${m.complexity}</td>
+                      <td style="font-family:var(--font-mono);">${m.directCallers}</td>
+                      <td style="font-family:var(--font-mono);">${m.fieldsWritten}</td>
+                      <td style="color:var(--text-muted); font-size:11.5px;">${esc(m.riskFactor)}</td>
+                      <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(mFqn)}');">Call Graph →</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
     container.innerHTML = html;
   },
 
@@ -13628,6 +13703,56 @@ const ReportsHub = {
         </div>
       </div>
     `;
+
+    if (d.unreferencedFields && d.unreferencedFields.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">
+              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Unreferenced Fields (Zero Read/Write References)</span>
+            </div>
+            <span class="report-section-badge">${d.unreferencedFields.length} Fields</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Field Name</th>
+                  <th>Field Type</th>
+                  <th>Declaring Class</th>
+                  <th>Diagnostic Reason</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.unreferencedFields.slice(0, 20).map(f => {
+                  const fFqn = f.fieldFqn || (f.declaringClass + '.' + f.fieldName);
+                  return `
+                    <tr>
+                      <td>
+                        <a href="#" onclick="event.preventDefault(); selectField('${esc(fFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(f.fieldName)}</a>
+                      </td>
+                      <td style="font-family:var(--font-mono); color:var(--text-secondary);">${esc(f.fieldType)}</td>
+                      <td>
+                        <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(f.declaringClass)}', 'knowledge');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(f.declaringClass)}</a>
+                      </td>
+                      <td><span class="risk-badge risk-low">${esc(f.reason || '0 reads & 0 writes')}</span></td>
+                      <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(f.declaringClass)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectField('${esc(fFqn)}');">Trace →</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
 
     container.innerHTML = html;
   },
@@ -14212,6 +14337,452 @@ const ReportsHub = {
     }
 
     container.innerHTML = html;
+  },
+
+  renderExecutiveSummaryDashboard(container, d) {
+    const score = d.overallHealthScore ?? 85;
+    const grade = d.overallGrade || 'B';
+    const scoreColor = score >= 85 ? '#10b981' : (score >= 70 ? '#38bdf8' : (score >= 55 ? '#f59e0b' : '#f43f5e'));
+
+    let html = `
+      <!-- Executive Health Banner -->
+      <div class="report-section-card" style="background:linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(15, 23, 42, 0.75) 100%); border-color:rgba(6, 182, 212, 0.3); padding:20px 24px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:20px;">
+          <div style="display:flex; align-items:center; gap:20px;">
+            <div style="width:76px; height:76px; border-radius:16px; background:rgba(15, 23, 42, 0.9); border:2px solid ${scoreColor}; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(0,0,0,0.35);">
+              <span style="font-size:26px; font-weight:900; color:${scoreColor}; line-height:1;">${esc(grade)}</span>
+              <span style="font-size:11px; font-family:var(--font-mono); color:var(--text-muted); margin-top:3px;">${score}/100</span>
+            </div>
+            <div>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                <span style="font-size:16px; font-weight:800; color:var(--text-primary); letter-spacing:-0.01em;">Principal Architect Health Assessment</span>
+                <span class="risk-badge ${score >= 75 ? 'risk-low' : (score >= 55 ? 'risk-medium' : 'risk-high')}">COMPOSITE SCORE: ${score}/100</span>
+              </div>
+              <p style="margin:0; font-size:13px; color:var(--text-secondary); max-width:760px; line-height:1.55;">
+                ${esc(d.executiveVerdict || 'Multi-dimensional architectural telemetry synthesized across modularity, blast radius, archetype compliance, SQALE debt, coupling stability, and reachability.')}
+              </p>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-sm btn-secondary" onclick="ReportsHub.activate('technical-debt');">Inspect SQALE Debt →</button>
+            <button class="btn btn-sm btn-primary" onclick="ReportsHub.activate('change-risk');">Inspect Blast Radius →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6-Dimension Architectural Radar Cards -->
+      <div class="report-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
+    `;
+
+    (d.dimensionScores || []).forEach(dim => {
+      const s = dim.score ?? 80;
+      const accent = s >= 85 ? '#10b981' : (s >= 70 ? '#38bdf8' : (s >= 55 ? '#f59e0b' : '#f43f5e'));
+      const badgeCls = s >= 85 ? 'risk-low' : (s >= 70 ? 'risk-medium' : (s >= 55 ? 'risk-high' : 'risk-critical'));
+      let targetReport = 'architecture';
+      const dn = (dim.dimensionName || '').toLowerCase();
+      if (dn.includes('modular') || dn.includes('acycl')) targetReport = 'circular-dependencies';
+      else if (dn.includes('blast') || dn.includes('risk')) targetReport = 'change-risk';
+      else if (dn.includes('archetype') || dn.includes('governance')) targetReport = 'archetype-governance';
+      else if (dn.includes('debt') || dn.includes('maintain')) targetReport = 'technical-debt';
+      else if (dn.includes('hygiene') || dn.includes('dead')) targetReport = 'dead-code';
+
+      html += `
+        <div class="report-kpi-card" style="--kpi-accent: ${accent}; cursor:pointer;" onclick="ReportsHub.activate('${targetReport}');" title="Click to drill down into ${esc(dim.dimensionName)} report">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span class="report-kpi-label">${esc(dim.dimensionName)}</span>
+            <span class="risk-badge ${badgeCls}">${esc(dim.status)} (${esc(dim.grade)})</span>
+          </div>
+          <div class="report-kpi-val" style="margin:6px 0 4px;">
+            <span>${s}<span style="font-size:14px; color:var(--text-muted); font-weight:500;">/100</span></span>
+          </div>
+          <div style="width:100%; height:6px; background:rgba(148,163,184,0.14); border-radius:999px; overflow:hidden; margin:4px 0 6px;">
+            <div style="width:${Math.max(4, Math.min(100, s))}%; height:100%; background:${accent}; border-radius:999px;"></div>
+          </div>
+          <span class="report-kpi-sub" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>${esc(dim.keyMetricLabel)}</span>
+            <strong style="color:${accent}; font-size:11px;">Drill down →</strong>
+          </span>
+        </div>
+      `;
+    });
+
+    html += `
+      </div>
+
+      <!-- Prioritized Action Roadmap -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>Prioritized Architectural Action Roadmap (P0 / P1 / P2)</span>
+          </div>
+          <span class="report-section-badge">${(d.priorityRoadmap || []).length} Action Items</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Category</th>
+                <th>Action Item</th>
+                <th>Target Entity / Scope</th>
+                <th>Est. Effort</th>
+                <th>Expected Architectural Impact</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.priorityRoadmap || []).map(item => {
+                const pBadge = item.priority === 'P0' ? 'risk-critical' : (item.priority === 'P1' ? 'risk-high' : 'risk-medium');
+                const target = item.targetEntity || '';
+                const hasEntity = target && target.includes('.') && !target.includes(' ');
+                return `
+                  <tr>
+                    <td><span class="risk-badge ${pBadge}">${esc(item.priority)}</span></td>
+                    <td><strong style="font-size:11.5px; color:var(--text-secondary);">${esc(item.category)}</strong></td>
+                    <td style="font-weight:700; color:var(--text-primary);">${esc(item.title)}</td>
+                    <td style="font-family:var(--font-mono); font-size:11.5px;">
+                      ${hasEntity
+                        ? `<a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(target)}', 'knowledge');" style="color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(target)}</a>`
+                        : `<span style="color:var(--text-muted);">${esc(target)}</span>`}
+                    </td>
+                    <td><span class="risk-badge risk-low">${esc(item.estimatedEffort)}</span></td>
+                    <td style="color:var(--text-secondary); font-size:12px;">${esc(item.expectedImpact)}</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        ${hasEntity ? `
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(target)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(target)}', 'graph');">Graph →</button>
+                        ` : `
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="ReportsHub.activate('technical-debt');">Debt Hub →</button>
+                        `}
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  renderTechnicalDebtDashboard(container, d) {
+    const rating = d.sqaleRating || 'A';
+    const ratingClass = rating === 'A' ? 'risk-low' : (rating === 'B' ? 'risk-medium' : (rating === 'C' ? 'risk-high' : 'risk-critical'));
+
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
+          <span class="report-kpi-label">SQALE Rating &amp; Score</span>
+          <div class="report-kpi-val">
+            <span class="risk-badge ${ratingClass}" style="font-size:15px; padding:4px 10px;">Grade ${esc(rating)}</span>
+            <span>${d.maintainabilityScore ?? 85}<span style="font-size:13px; color:var(--text-muted);">/100</span></span>
+          </div>
+          <span class="report-kpi-sub">Debt Ratio: <strong>${d.debtRatioPercent ?? 0}%</strong> of dev cost</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Total Remediation Effort</span>
+          <div class="report-kpi-val">
+            <span>${d.totalDebtHours ?? 0} hrs</span>
+            <span class="risk-badge risk-high">${d.totalDebtDays ?? 0} eng-days</span>
+          </div>
+          <span class="report-kpi-sub">Estimated refactoring time to zero debt</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">God Classes &amp; Blobs</span>
+          <div class="report-kpi-val">${d.godClassCount ?? (d.godClasses ? d.godClasses.length : 0)}</div>
+          <span class="report-kpi-sub">High WMC, excessive methods/fields &amp; coupling</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Complex Brain Methods</span>
+          <div class="report-kpi-val">${d.brainMethodCount ?? (d.brainMethods ? d.brainMethods.length : 0)}</div>
+          <span class="report-kpi-sub">Ranked by Refactoring ROI (CC × Callers)</span>
+        </div>
+      </div>
+
+      <!-- God Classes & Blob Anti-Patterns -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>God Classes &amp; Blob Anti-Patterns (Structural Decomposition Targets)</span>
+          </div>
+          <span class="report-section-badge">${(d.godClasses || []).length} Classes</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Class Name</th>
+                <th>Package</th>
+                <th>WMC (Complexity)</th>
+                <th>Methods / Fields</th>
+                <th>Lines</th>
+                <th>Est. Effort</th>
+                <th>Decomposition Strategy</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.godClasses || []).map(g => `
+                <tr>
+                  <td>
+                    <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(g.classFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(g.simpleName)}</a>
+                  </td>
+                  <td>
+                    <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(g.packageName)}');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(g.packageName)}</a>
+                  </td>
+                  <td><span class="risk-badge ${g.wmc >= 80 ? 'risk-critical' : 'risk-high'}">${g.wmc}</span></td>
+                  <td style="font-family:var(--font-mono);">${g.methodCount}m / ${g.fieldCount}f</td>
+                  <td style="font-family:var(--font-mono);">${g.lineCount}</td>
+                  <td><span class="risk-badge risk-medium">${g.estimatedHours} hrs</span></td>
+                  <td style="font-size:11.5px; color:var(--text-secondary); max-width:290px;">${esc(g.decompositionAdvice)}</td>
+                  <td>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                      <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(g.classFqn)}', 'knowledge');">KB →</button>
+                      <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="jumpToGraphHeat('${esc(g.classFqn)}');">Heat →</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Complex Brain Methods Ranked by Refactoring ROI -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span>Complex Brain Methods Ranked by Refactoring ROI (CC × Inbound Callers)</span>
+          </div>
+          <span class="report-section-badge">${(d.brainMethods || []).length} Methods</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Method Name</th>
+                <th>Declaring Class</th>
+                <th>Complexity (CC)</th>
+                <th>Lines</th>
+                <th>Callers (Ca)</th>
+                <th>ROI Score</th>
+                <th>Est. Effort</th>
+                <th>Refactoring Advice</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.brainMethods || []).map(m => {
+                const mFqn = m.methodFqn || (m.declaringClass + '.' + m.simpleName + '()');
+                return `
+                  <tr>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); selectMethod('${esc(mFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#f59e0b; text-decoration:none; cursor:pointer;">${esc(m.simpleName)}</a>
+                    </td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.declaringClass)}</a>
+                    </td>
+                    <td><span class="risk-badge ${m.complexity >= 20 ? 'risk-critical' : 'risk-high'}">${m.complexity}</span></td>
+                    <td style="font-family:var(--font-mono);">${m.lineCount}</td>
+                    <td style="font-family:var(--font-mono);">${m.callerCount}</td>
+                    <td><strong style="font-family:var(--font-mono); color:#38bdf8;">${m.refactoringRoiScore}</strong></td>
+                    <td><span class="risk-badge risk-low">${m.estimatedMinutes} min</span></td>
+                    <td style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">${esc(m.refactoringAdvice)}</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');">KB →</button>
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(mFqn)}');">Call Graph →</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Package Technical Debt Density -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            <span>Package Technical Debt Density (Remediation Hours per 1,000 Lines of Code)</span>
+          </div>
+          <span class="report-section-badge">${(d.packageDebtHotspots || []).length} Packages</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Package Name</th>
+                <th>Classes</th>
+                <th>Lines of Code</th>
+                <th>Avg Complexity</th>
+                <th>Debt Hours</th>
+                <th>Debt Density (hrs/kLoC)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.packageDebtHotspots || []).map(p => `
+                <tr>
+                  <td>
+                    <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(p.packageName)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(p.packageName)}</a>
+                  </td>
+                  <td style="font-family:var(--font-mono);">${p.classCount}</td>
+                  <td style="font-family:var(--font-mono);">${p.totalLines}</td>
+                  <td style="font-family:var(--font-mono);">${p.avgComplexity}</td>
+                  <td><span class="risk-badge ${p.debtHours >= 10 ? 'risk-high' : 'risk-medium'}">${p.debtHours} hrs</span></td>
+                  <td style="font-family:var(--font-mono); font-weight:700;">${p.debtDensityPerKloc} hrs/kLoC</td>
+                  <td>
+                    <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportPackage('${esc(p.packageName)}');">KB →</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  enhanceInteractiveTables(container) {
+    if (!container) return;
+    const cards = container.querySelectorAll('.report-section-card');
+    cards.forEach((card, cardIdx) => {
+      const table = card.querySelector('.report-table');
+      const header = card.querySelector('.report-section-header');
+      if (!table || !header || card.dataset.enhanced === 'true') return;
+      card.dataset.enhanced = 'true';
+
+      const tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (rows.length <= 1) return;
+
+      // Check if table contains risk/severity badges for quick pill filtering
+      const hasRiskBadges = tbody.querySelector('.risk-critical, .risk-high, .risk-medium, .risk-low') !== null;
+
+      // Create interactive filter toolbar inside header
+      const controlsWrap = document.createElement('div');
+      controlsWrap.className = 'report-table-controls';
+      controlsWrap.innerHTML = `
+        ${hasRiskBadges ? `
+          <div class="report-severity-pills" role="group" aria-label="Filter by severity">
+            <button type="button" class="report-sev-pill active" data-sev="ALL">All (${rows.length})</button>
+            <button type="button" class="report-sev-pill sev-critical" data-sev="CRITICAL">Critical</button>
+            <button type="button" class="report-sev-pill sev-high" data-sev="HIGH">High</button>
+            <button type="button" class="report-sev-pill sev-medium" data-sev="MEDIUM">Medium</button>
+          </div>
+        ` : ''}
+        <div class="report-table-search-wrap">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" class="report-table-filter-input" placeholder="Filter ${rows.length} rows…" aria-label="Filter table rows" />
+        </div>
+      `;
+      header.appendChild(controlsWrap);
+
+      let activeSev = 'ALL';
+      let queryText = '';
+      const badgeEl = header.querySelector('.report-section-badge');
+      const origBadgeText = badgeEl ? badgeEl.textContent : `${rows.length} items`;
+
+      const applyFilter = () => {
+        let visibleCount = 0;
+        const q = queryText.trim().toLowerCase();
+        rows.forEach(tr => {
+          const textMatch = !q || tr.textContent.toLowerCase().includes(q);
+          let sevMatch = true;
+          if (activeSev !== 'ALL') {
+            const cls = activeSev === 'CRITICAL' ? '.risk-critical'
+                      : activeSev === 'HIGH' ? '.risk-high'
+                      : '.risk-medium';
+            sevMatch = tr.querySelector(cls) !== null || tr.textContent.toUpperCase().includes(activeSev);
+          }
+          const show = textMatch && sevMatch;
+          tr.style.display = show ? '' : 'none';
+          if (show) visibleCount++;
+        });
+        if (badgeEl) {
+          badgeEl.textContent = (visibleCount === rows.length)
+            ? origBadgeText
+            : `${visibleCount} / ${rows.length} shown`;
+        }
+      };
+
+      const searchInput = controlsWrap.querySelector('.report-table-filter-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          queryText = e.target.value || '';
+          applyFilter();
+        });
+      }
+
+      controlsWrap.querySelectorAll('.report-sev-pill').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          controlsWrap.querySelectorAll('.report-sev-pill').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeSev = btn.dataset.sev || 'ALL';
+          applyFilter();
+        });
+      });
+
+      // Add click-to-sort on table headers
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      ths.forEach((th, colIdx) => {
+        const label = th.textContent.trim();
+        if (!label || label === 'Actions' || label === 'Action') return;
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.title = `Click to sort by ${label}`;
+        const sortIcon = document.createElement('span');
+        sortIcon.className = 'report-sort-indicator';
+        sortIcon.style.marginLeft = '4px';
+        sortIcon.style.opacity = '0.45';
+        sortIcon.textContent = '⇅';
+        th.appendChild(sortIcon);
+
+        let asc = false;
+        th.addEventListener('click', () => {
+          asc = !asc;
+          ths.forEach(other => {
+            const ind = other.querySelector('.report-sort-indicator');
+            if (ind && other !== th) {
+              ind.textContent = '⇅';
+              ind.style.opacity = '0.45';
+            }
+          });
+          sortIcon.textContent = asc ? '▲' : '▼';
+          sortIcon.style.opacity = '1';
+
+          const sorted = rows.slice().sort((a, b) => {
+            const cellA = (a.children[colIdx]?.textContent || '').trim();
+            const cellB = (b.children[colIdx]?.textContent || '').trim();
+            const numA = parseFloat(cellA.replace(/[^0-9.-]+/g, ''));
+            const numB = parseFloat(cellB.replace(/[^0-9.-]+/g, ''));
+            if (!isNaN(numA) && !isNaN(numB) && /^[0-9.,%\s+-]+([a-zA-Z/-]*)?$/.test(cellA)) {
+              return asc ? (numA - numB) : (numB - numA);
+            }
+            return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+          });
+          sorted.forEach(r => tbody.appendChild(r));
+        });
+      });
+    });
   },
 
   async download() {
