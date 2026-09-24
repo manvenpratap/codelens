@@ -208,4 +208,62 @@ public class CallGraphAndReportTest {
         assertTrue(g.containsEdge(caller1, calleeA), "this.calculateCreditScore() should resolve to calculateCreditScore(String,int)");
         assertTrue(g.containsEdge(caller2, calleeB), "notifyUnderwriter() should resolve to notifyUnderwriter(String,String)");
     }
+
+    public void testMastercraftUbiquitousMethodResolution() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+
+        // 3 classes in same package com.tcs.bancs.AM, all generated with Get()
+        String accGet = "com.tcs.bancs.AM.AccountRecord.Get()";
+        String custGet = "com.tcs.bancs.AM.CustomerRecord.Get()";
+        String branchGet = "com.tcs.bancs.AM.BranchRecord.Get()";
+        String caller1 = "com.tcs.bancs.AM.AccountService.processAccount()";
+        String caller2 = "com.tcs.bancs.AM.GenericWorker.doWork()";
+
+        List<String> methods = List.of(accGet, custGet, branchGet, caller1, caller2);
+
+        List<CodeRelationship> rels = new ArrayList<>();
+        // Caller 1 calls ~accountRecord.Get - scope hint matches AccountRecord
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn(caller1);
+        r1.setToEntityFqn("~accountRecord.Get");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        // Caller 2 calls ~obj.Get - scope hint is generic 'obj' with 3 ambiguous Get() methods in same package
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn(caller2);
+        r2.setToEntityFqn("~obj.Get");
+        r2.setKind("CALLS");
+        rels.add(r2);
+
+        analyzer.rebuild(methods, rels);
+
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = analyzer.getCallGraph();
+        // Caller 1 should resolve to AccountRecord.Get()
+        assertTrue(g.containsEdge(caller1, accGet), "caller1 should resolve to AccountRecord.Get()");
+        assertFalse(g.containsEdge(caller1, custGet), "caller1 should not resolve to CustomerRecord.Get()");
+
+        // Caller 2 should NOT resolve to any of them (no false mega-hub)
+        assertFalse(g.containsEdge(caller2, accGet), "caller2 should NOT arbitrarily resolve to candidate 0");
+        assertFalse(g.containsEdge(caller2, custGet), "caller2 should NOT resolve to candidate 1");
+        assertFalse(g.containsEdge(caller2, branchGet), "caller2 should NOT resolve to candidate 2");
+    }
+
+    public void testMastercraftPojoFiltering() {
+        // Deepcopy, clone, reset, clear should be identified as POJO accessors
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.deepcopy()"), "deepcopy should be pojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.clone()"), "clone should be pojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.reset()"), "reset should be pojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.clear()"), "clear should be pojo");
+
+        // DTO / Buffer lifecycle methods should be identified as POJO accessors
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.Get()"), "DTO Get should be pojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.AccountDTO.Create()"), "DTO Create should be pojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.BF_PAYMENT.Modify()"), "BF_PAYMENT Modify should be pojo");
+
+        // Real persistent entities should NOT be filtered
+        assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.PC_AccountRecord.Get()"), "PC_AccountRecord Get should NOT be filtered");
+        assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.PC_AccountRecord.Create()"), "PC_AccountRecord Create should NOT be filtered");
+        assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.TradeEntity.Modify()"), "TradeEntity Modify should NOT be filtered");
+    }
 }

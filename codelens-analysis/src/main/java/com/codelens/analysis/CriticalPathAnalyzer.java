@@ -183,16 +183,33 @@ public class CriticalPathAnalyzer {
             boolean hasContract = hasGet && hasCreate && hasModify;
 
             String simple = type.getSimpleName() != null ? type.getSimpleName() : "";
-            // Message Objects (MO_INP_*, MO_OUT_*, MO_*) and DTOs/VOs are data transfer objects, not persistent entities
-            if (simple.startsWith("MO_") || (simple.startsWith("MO") && simple.length() > 2 && Character.isUpperCase(simple.charAt(2)))
-                    || simple.endsWith("DTO") || simple.endsWith("VO")) {
+            String upper = simple.toUpperCase(Locale.ROOT);
+
+            // Message Objects, Buffer Objects, Data Objects, Parameter/Transfer/Service/View/Business Objects
+            // and generic helpers are data structures or buffers, not persistent database entities.
+            if (upper.startsWith("MO_") || (upper.startsWith("MO") && upper.length() > 2 && Character.isUpperCase(upper.charAt(2)))
+                    || upper.startsWith("BF_") || upper.startsWith("DO_") || upper.startsWith("PO_")
+                    || upper.startsWith("TO_") || upper.startsWith("SO_") || upper.startsWith("VO_")
+                    || upper.startsWith("BO_") || upper.startsWith("RO_") || upper.startsWith("IO_")
+                    || upper.endsWith("DTO") || upper.endsWith("VO") || upper.endsWith("BUFFER")
+                    || upper.endsWith("DATA") || upper.endsWith("PARAM") || upper.endsWith("BEAN")
+                    || upper.endsWith("HELPER") || upper.endsWith("UTIL")) {
                 continue;
             }
 
-            boolean hasNaming = simple.startsWith("PC_") || simple.endsWith("Entity") || simple.endsWith("Record");
+            boolean hasNaming = upper.startsWith("PC_") || upper.endsWith("ENTITY") || upper.endsWith("RECORD")
+                    || upper.endsWith("TABLE") || upper.endsWith("DAO");
 
-            if (!hasContract && !hasNaming) {
+            // For BaNCS / Mastercraft, boilerplate Get/Create/Modify exists on almost every class.
+            // Only consider classes that either follow persistent naming (PC_*, *Entity, *Record)
+            // or have the full contract without being an excluded data transfer type.
+            if (!hasNaming && !hasContract) {
                 continue;
+            }
+
+            if (result.size() >= 250) {
+                // Keep top 250 candidates for fast responsive UI
+                break;
             }
 
             PersistentClassSummary summary = new PersistentClassSummary();

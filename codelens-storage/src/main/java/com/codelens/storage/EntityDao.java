@@ -140,6 +140,7 @@ public class EntityDao {
                     for (CodeMethod m : methods) {
                         if (m.getId() != null) unique.put(m.getId(), m);
                     }
+                    int methodCount = 0;
                     try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
                         for (CodeMethod m : unique.values()) {
                             ps.setString(1,  m.getId());
@@ -154,6 +155,9 @@ public class EntityDao {
                             ps.setInt(10,    m.getCyclomaticComplexity());
                             ps.setString(11, m.getBodyHash());
                             ps.addBatch();
+                            if (++methodCount % 5000 == 0) {
+                                ps.executeBatch();
+                            }
                         }
                         ps.executeBatch();
                     }
@@ -167,6 +171,7 @@ public class EntityDao {
                     for (CodeRelationship r : rels) {
                         if (r.getId() != null) unique.put(r.getId(), r);
                     }
+                    int relCount = 0;
                     try (PreparedStatement ps = c.prepareStatement(sqlRels)) {
                         for (CodeRelationship r : unique.values()) {
                             ps.setString(1, r.getId());
@@ -175,6 +180,9 @@ public class EntityDao {
                             ps.setString(4, r.getKind());
                             ps.setInt(5,    r.getSourceLine());
                             ps.addBatch();
+                            if (++relCount % 5000 == 0) {
+                                ps.executeBatch();
+                            }
                         }
                         ps.executeBatch();
                     }
@@ -594,6 +602,23 @@ public class EntityDao {
         List<CodeRelationship> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships WHERE kind <> 'CALLS'")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(relFromRs(rs));
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Efficiently fetches high-level structural type-level relationships (EXTENDS, IMPLEMENTS, OVERRIDES)
+     * without loading millions of method-level field reads/writes into memory.
+     */
+    public List<CodeRelationship> findStructuralRelationships() throws SQLException {
+        List<CodeRelationship> list = new ArrayList<>();
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships WHERE kind IN ('EXTENDS', 'IMPLEMENTS', 'OVERRIDES')")) {
             ps.setQueryTimeout(120);
             ps.setFetchSize(5000);
             try (ResultSet rs = ps.executeQuery()) {

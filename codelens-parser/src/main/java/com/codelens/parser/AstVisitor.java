@@ -528,6 +528,10 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
                     if ((targetType == null || targetType.isEmpty()) && scopeStr.matches("^[A-Z][a-zA-Z0-9_]*$")) {
                         targetType = scopeStr;
                     }
+                    // 4. Check if scopeStr follows naming convention matching an imported class (e.g. p_tradeRecord, accountMasterVO)
+                    if (targetType == null || targetType.isEmpty()) {
+                        targetType = inferTypeFromScopeName(scopeStr, ctx);
+                    }
                 }
 
                 if (targetType != null && !targetType.isEmpty()) {
@@ -566,7 +570,10 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     public void visit(AssignExpr n, VisitContext ctx) {
-        if (ctx.currentMethodFqn.isEmpty()) { super.visit(n, ctx); return; }
+        if (ctx.currentMethodFqn.isEmpty() || isBoilerplateFieldAccessMethod(ctx.currentMethodFqn)) {
+            super.visit(n, ctx);
+            return;
+        }
 
         String fieldName = null;
         Expression target = n.getTarget();
@@ -609,6 +616,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     @Override
     public void visit(NameExpr n, VisitContext ctx) {
         if (!ctx.currentMethodFqn.isEmpty()
+            && !isBoilerplateFieldAccessMethod(ctx.currentMethodFqn)
             && ctx.currentTypeFieldNames.contains(n.getNameAsString())) {
             int line = n.getRange().map(r -> r.begin.line).orElse(0);
             addRelationship(ctx, ctx.currentMethodFqn,
@@ -629,6 +637,50 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         "String", "StringBuilder", "StringBuffer",
         "Integer", "Long", "Double", "Float", "Boolean", "Byte", "Short", "Character"
     );
+
+    /**
+     * Identifies generated or trivial boilerplate methods whose field accesses
+     * (e.g. copying 200 fields in deepcopy, resetting 200 fields, or dumping in toString)
+     * create tens of millions of useless READS_FIELD/WRITES_FIELD rows that choke database ingestion.
+     */
+    public static boolean isBoilerplateFieldAccessMethod(String methodFqn) {
+        if (methodFqn == null || methodFqn.isEmpty()) return false;
+        int parenIdx = methodFqn.indexOf('(');
+        String sub = (parenIdx > 0) ? methodFqn.substring(0, parenIdx) : methodFqn;
+        int dotIdx = sub.lastIndexOf('.');
+        String name = (dotIdx >= 0) ? sub.substring(dotIdx + 1) : sub;
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.equals("deepcopy") || lower.equals("clone") || lower.equals("reset")
+            || lower.equals("clear") || lower.equals("tostring") || lower.equals("hashcode")
+            || lower.equals("equals") || lower.equals("canequal");
+    }
+
+    /**
+     * Infers receiver type from variable naming conventions matching imported types
+     * (e.g. p_tradeRecord -> TradeRecord, accountMasterVO -> AccountMasterVO).
+     */
+    private static String inferTypeFromScopeName(String scopeStr, VisitContext ctx) {
+        if (scopeStr == null || scopeStr.isEmpty() || ctx.imports == null || ctx.imports.isEmpty()) {
+            return null;
+        }
+        String clean = scopeStr;
+        if (clean.startsWith("p_") || clean.startsWith("m_") || clean.startsWith("v_")
+            || clean.startsWith("r_") || clean.startsWith("s_")) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith("in_") || clean.startsWith("out_")) {
+            clean = clean.substring(3);
+        }
+        String normalized = clean.replace("_", "").toLowerCase(Locale.ROOT);
+        if (normalized.length() < 3) return null;
+
+        for (String simpleImport : ctx.imports.keySet()) {
+            if (simpleImport.equalsIgnoreCase(clean)
+                || simpleImport.replace("_", "").toLowerCase(Locale.ROOT).equals(normalized)) {
+                return simpleImport;
+            }
+        }
+        return null;
+    }
 
     /**
      * Determines whether a call target should be ignored.
@@ -656,6 +708,14 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         if (lastDot > 0) {
             String scope = raw.substring(0, lastDot);
             if (IGNORED_SCOPE_NAMES.contains(scope)) {
+                return true;
+            }
+            String methodName = raw.substring(lastDot + 1);
+            String lowerMethod = methodName.toLowerCase(Locale.ROOT);
+            if (lowerMethod.equals("tostring") || lowerMethod.equals("hashcode")
+                || lowerMethod.equals("equals") || lowerMethod.equals("canequal")
+                || lowerMethod.equals("getclass") || lowerMethod.equals("clone")
+                || lowerMethod.equals("deepcopy")) {
                 return true;
             }
         }

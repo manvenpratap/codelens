@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.util.*;
 
 /**
  * Manages the embedded H2 database lifecycle.
@@ -30,7 +31,7 @@ public class DatabaseManager {
     private final java.util.concurrent.atomic.AtomicInteger totalLeaksDetected = new java.util.concurrent.atomic.AtomicInteger(0);
     private final java.util.concurrent.atomic.AtomicInteger totalLeaksRecovered = new java.util.concurrent.atomic.AtomicInteger(0);
     private volatile java.util.Map<String, Object> lastRecoveredLeak = null;
-    private volatile long leakThresholdMs = 60_000L; // 60s default leak timeout
+    private volatile long leakThresholdMs = 120_000L; // 120s default leak timeout
     private java.util.concurrent.ScheduledExecutorService leakWatchdog;
 
     public DatabaseManager(String dataDir) {
@@ -59,7 +60,7 @@ public class DatabaseManager {
         cfg.setConnectionTimeout(60_000);
         cfg.setValidationTimeout(5_000);
         cfg.setMaxLifetime(1800_000);
-        cfg.setLeakDetectionThreshold(60_000); // 60s - HikariCP log threshold matching auto-recovery watchdog
+        cfg.setLeakDetectionThreshold(180_000); // 180s - HikariCP log threshold matching auto-recovery watchdog
         cfg.setPoolName("CodeLens-H2");
         return cfg;
     }
@@ -581,6 +582,7 @@ public class DatabaseManager {
 
     /** Prepares H2 for high-throughput streaming inserts (drops secondary indexes, disables undo log). */
     public void prepareForBulkLoad() throws SQLException {
+        this.leakThresholdMs = 600_000L; // 10m threshold during bulk ingestion
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("SET WRITE_DELAY 2000");
@@ -660,17 +662,21 @@ public class DatabaseManager {
                           "CHECKPOINT SYNC", "h2 engine", "Compacting and defragmenting database file on disk")
         };
 
-        for (int i = 0; i < tasks.length; i++) {
-            IndexTask t = tasks[i];
-            if (listener != null) {
-                listener.onIndexProgress(i + 1, tasks.length, t.indexName, t.tableName, t.description);
+        try {
+            for (int i = 0; i < tasks.length; i++) {
+                IndexTask t = tasks[i];
+                if (listener != null) {
+                    listener.onIndexProgress(i + 1, tasks.length, t.indexName, t.tableName, t.description);
+                }
+                try (Connection conn = getConnection();
+                     Statement stmt = conn.createStatement()) {
+                    stmt.execute(t.sql);
+                }
             }
-            try (Connection conn = getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute(t.sql);
-            }
+            log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
+        } finally {
+            this.leakThresholdMs = 120_000L; // restore default
         }
-        log.info("H2 bulk ingestion finalized (indexes rebuilt and analyzed)");
     }
 
 
@@ -839,7 +845,7 @@ public class DatabaseManager {
             long idleMs = lease.getIdleDurationMs();
 
             boolean isDeadThread = !isThreadAlive(lease.threadId);
-            boolean isTimedOut = heldMs >= leakThresholdMs;
+            boolean isTimedOut = heldMs >= leakThresholdMs && idleMs >= leakThresholdMs && !isThreadActiveInJdbc(lease.threadId);
 
             if (isDeadThread || isTimedOut) {
                 String reason = isDeadThread
@@ -887,6 +893,24 @@ public class DatabaseManager {
         for (Thread t : Thread.getAllStackTraces().keySet()) {
             if (t.getId() == threadId) {
                 return t.isAlive();
+            }
+        }
+        return false;
+    }
+
+    private boolean isThreadActiveInJdbc(long threadId) {
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            if (t.getId() == threadId) {
+                if (t.getState() == Thread.State.RUNNABLE || t.getState() == Thread.State.BLOCKED) {
+                    for (StackTraceElement ste : t.getStackTrace()) {
+                        String cn = ste.getClassName();
+                        if (cn.contains("h2") || cn.contains("jdbc") || cn.contains("Hikari")
+                            || cn.contains("com.codelens.storage")) {
+                            return true; // Still actively running database operation!
+                        }
+                    }
+                }
+                return false;
             }
         }
         return false;
@@ -1092,8 +1116,9 @@ public class DatabaseManager {
                 return "TrackedConnection[" + rawConn.toString() + ", held " + lease.getHoldDurationMs() + "ms, site=" + lease.getAllocationSite() + "]";
             }
 
+            Object result;
             try {
-                return method.invoke(rawConn, args);
+                result = method.invoke(rawConn, args);
             } catch (java.lang.reflect.InvocationTargetException ite) {
                 Throwable target = ite.getTargetException();
                 if (target instanceof SQLException) {
@@ -1106,6 +1131,39 @@ public class DatabaseManager {
                 if (target instanceof Error) throw (Error) target;
                 throw new SQLException(target);
             }
+
+            if (result instanceof Statement) {
+                return wrapStatement((Statement) result, lease);
+            }
+            return result;
+        }
+
+        private Statement wrapStatement(Statement rawStmt, ConnectionLease lease) {
+            Class<?>[] ifaces = rawStmt.getClass().getInterfaces();
+            Set<Class<?>> allIfaces = new HashSet<>(Arrays.asList(ifaces));
+            if (rawStmt instanceof PreparedStatement) allIfaces.add(PreparedStatement.class);
+            if (rawStmt instanceof CallableStatement) allIfaces.add(CallableStatement.class);
+            allIfaces.add(Statement.class);
+
+            return (Statement) java.lang.reflect.Proxy.newProxyInstance(
+                Statement.class.getClassLoader(),
+                allIfaces.toArray(new Class<?>[0]),
+                (proxy, m, mArgs) -> {
+                    String name = m.getName();
+                    if (name.startsWith("execute") || name.startsWith("addBatch") || name.startsWith("set")) {
+                        lease.touch();
+                    }
+                    try {
+                        return m.invoke(rawStmt, mArgs);
+                    } catch (java.lang.reflect.InvocationTargetException ite) {
+                        Throwable t = ite.getTargetException();
+                        if (t instanceof SQLException) throw (SQLException) t;
+                        if (t instanceof RuntimeException) throw (RuntimeException) t;
+                        if (t instanceof Error) throw (Error) t;
+                        throw new SQLException(t);
+                    }
+                }
+            );
         }
     }
 }

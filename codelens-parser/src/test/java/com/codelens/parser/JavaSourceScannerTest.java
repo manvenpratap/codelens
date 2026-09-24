@@ -233,7 +233,77 @@ public class JavaSourceScannerTest {
             });
         }
 
+        System.out.println("Running testBoilerplateFieldAccessFiltered...");
+        Path tempDir6 = Files.createTempDirectory("codelens_boilerplate_filter_test");
+        try {
+            test.testBoilerplateFieldAccessFiltered(tempDir6);
+        } finally {
+            Files.walkFileTree(tempDir6, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
         System.out.println("ALL JAVA SOURCE SCANNER AND DELTA CHANGE TESTS PASSED SUCCESSFULLY!");
+    }
+
+    public void testBoilerplateFieldAccessFiltered(Path tempDir) throws IOException {
+        Path pkg = tempDir.resolve("src/main/java/com/tcs/bancs");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("SamplePOJO.java"),
+            "package com.tcs.bancs;\n" +
+            "public class SamplePOJO {\n" +
+            "    private String fieldOne;\n" +
+            "    private String fieldTwo;\n" +
+            "    public void deepcopy(SamplePOJO other) {\n" +
+            "        this.fieldOne = other.fieldOne;\n" +
+            "        this.fieldTwo = other.fieldTwo;\n" +
+            "    }\n" +
+            "    public void reset() {\n" +
+            "        this.fieldOne = null;\n" +
+            "        this.fieldTwo = null;\n" +
+            "    }\n" +
+            "    public String toString() {\n" +
+            "        return fieldOne + fieldTwo;\n" +
+            "    }\n" +
+            "    public void processBusinessData() {\n" +
+            "        this.fieldOne = \"active\";\n" +
+            "        String s = this.fieldTwo;\n" +
+            "    }\n" +
+            "}\n");
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        JavaSourceScanner.ScanResult res = scanner.scan(tempDir.toString(), null);
+
+        assertEquals(1, res.totalFiles, "1 file scanned");
+
+        // Verify that processBusinessData emits WRITES_FIELD and READS_FIELD
+        boolean businessWrites = res.relationships.stream().anyMatch(r ->
+            r.getFromEntityFqn().contains("processBusinessData") && "WRITES_FIELD".equals(r.getKind()));
+        boolean businessReads = res.relationships.stream().anyMatch(r ->
+            r.getFromEntityFqn().contains("processBusinessData") && "READS_FIELD".equals(r.getKind()));
+        assertTrue(businessWrites, "processBusinessData should write field");
+        assertTrue(businessReads, "processBusinessData should read field");
+
+        // Verify that deepcopy, reset, toString do NOT emit WRITES_FIELD or READS_FIELD
+        boolean deepcopyRels = res.relationships.stream().anyMatch(r ->
+            r.getFromEntityFqn().contains("deepcopy") && ("WRITES_FIELD".equals(r.getKind()) || "READS_FIELD".equals(r.getKind())));
+        boolean resetRels = res.relationships.stream().anyMatch(r ->
+            r.getFromEntityFqn().contains("reset") && ("WRITES_FIELD".equals(r.getKind()) || "READS_FIELD".equals(r.getKind())));
+        boolean toStringRels = res.relationships.stream().anyMatch(r ->
+            r.getFromEntityFqn().contains("toString") && ("WRITES_FIELD".equals(r.getKind()) || "READS_FIELD".equals(r.getKind())));
+
+        assertFalse(deepcopyRels, "deepcopy should NOT emit field access relationships");
+        assertFalse(resetRels, "reset should NOT emit field access relationships");
+        assertFalse(toStringRels, "toString should NOT emit field access relationships");
     }
 
     public void testDetectDiskChanges(Path tempDir) throws IOException {

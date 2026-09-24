@@ -321,6 +321,9 @@ public class CallGraphAnalyzer {
     /**
      * Identifies if a method FQN represents a trivial POJO accessor / getter / setter / boilerplate method.
      */
+    /**
+     * Identifies if a method FQN represents a trivial POJO accessor / getter / setter / boilerplate method.
+     */
     public static boolean isPojoOrAccessor(String methodFqn) {
         if (methodFqn == null || methodFqn.isEmpty()) return false;
         int paren = methodFqn.indexOf('(');
@@ -329,15 +332,26 @@ public class CallGraphAnalyzer {
         String name = (dot >= 0) ? base.substring(dot + 1) : base;
         if (name.isEmpty()) return false;
 
-        // Never filter core persistent lifecycle methods
-        if ("Get".equals(name) || "Create".equals(name) || "Modify".equals(name)
-                || "SModify".equals(name) || "MModify".equals(name) || "MModidy".equals(name)) {
-            return false;
+        String lowerName = name.toLowerCase(Locale.ROOT);
+
+        // Standard Object & Memory boilerplate
+        if ("tostring".equals(lowerName) || "hashcode".equals(lowerName)
+                || "equals".equals(lowerName) || "canequal".equals(lowerName)
+                || "getclass".equals(lowerName) || "clone".equals(lowerName)
+                || "deepcopy".equals(lowerName) || "reset".equals(lowerName)
+                || "clear".equals(lowerName)) {
+            return true;
         }
 
-        // Standard Object boilerplate
-        if ("toString".equals(name) || "hashCode".equals(name) || "equals".equals(name) || "canEqual".equals(name) || "getClass".equals(name)) {
+        // Custom configured POJO patterns checked first
+        if (customPojoExactNames.contains(lowerName)) {
             return true;
+        }
+        for (String pfx : customPojoPrefixes) {
+            if (lowerName.startsWith(pfx)) return true;
+        }
+        for (String sfx : customPojoSuffixes) {
+            if (lowerName.endsWith(sfx)) return true;
         }
 
         // Standard Getters / Setters / Is / Has
@@ -354,16 +368,21 @@ public class CallGraphAnalyzer {
             return true;
         }
 
-        // Custom configured POJO patterns
-        String lowerName = name.toLowerCase();
-        if (customPojoExactNames.contains(lowerName)) {
-            return true;
-        }
-        for (String pfx : customPojoPrefixes) {
-            if (lowerName.startsWith(pfx)) return true;
-        }
-        for (String sfx : customPojoSuffixes) {
-            if (lowerName.endsWith(sfx)) return true;
+        // For BaNCS / Mastercraft lifecycle methods (Get, Create, Modify, MModify, SModify):
+        // If the declaring class is a DTO/VO/Buffer/DO/PO/TO/SO, treat it as a POJO accessor to avoid cluttering architecture graphs.
+        if ("Get".equalsIgnoreCase(name) || "Create".equalsIgnoreCase(name) || "Modify".equalsIgnoreCase(name)
+                || "SModify".equalsIgnoreCase(name) || "MModify".equalsIgnoreCase(name) || "MModidy".equalsIgnoreCase(name)) {
+            String classFqn = (dot >= 0) ? base.substring(0, dot) : "";
+            int classDot = classFqn.lastIndexOf('.');
+            String simpleClass = (classDot >= 0) ? classFqn.substring(classDot + 1) : classFqn;
+            String upper = simpleClass.toUpperCase(Locale.ROOT);
+            if (upper.endsWith("DTO") || upper.endsWith("VO") || upper.endsWith("BUFFER")
+                    || upper.startsWith("BF_") || upper.startsWith("DO_") || upper.startsWith("PO_")
+                    || upper.startsWith("TO_") || upper.startsWith("SO_") || upper.startsWith("VO_")
+                    || upper.startsWith("BO_") || upper.startsWith("MO_")) {
+                return true;
+            }
+            return false;
         }
 
         return false;
@@ -1216,6 +1235,15 @@ public class CallGraphAnalyzer {
                         return samePkgCandidates.get(0);
                     }
                     if (samePkgCandidates.size() > 1) {
+                        String scopeMatch = disambiguateByScopeHint(scopeHint, samePkgCandidates);
+                        if (scopeMatch != null) return scopeMatch;
+
+                        // Never blindly assign ubiquitous POJO methods (like Get, Create, Modify) to an arbitrary class.
+                        // Blind fallback to candidate 0 creates artificial mega-hubs with tens of thousands of false edges.
+                        if (UBIQUITOUS_POJO_METHODS.contains(methodKey)) {
+                            return null;
+                        }
+
                         String best = disambiguateByCaller(from, samePkgCandidates);
                         if (best != null) return best;
                         return samePkgCandidates.get(0);
@@ -1224,7 +1252,7 @@ public class CallGraphAnalyzer {
             }
 
             // 5. Check caller module proximity for bounded candidate pools
-            if (candidates.size() <= 60) {
+            if (candidates.size() <= 60 && !UBIQUITOUS_POJO_METHODS.contains(methodKey)) {
                 String callerMod = extractModuleName(from);
                 if (callerMod != null && !callerMod.isEmpty() && !"default".equalsIgnoreCase(callerMod)) {
                     List<String> sameModCandidates = new ArrayList<>();
@@ -1246,6 +1274,43 @@ public class CallGraphAnalyzer {
         }
 
         return null;
+    }
+
+    private static final Set<String> UBIQUITOUS_POJO_METHODS = Set.of(
+        "get", "create", "modify", "smodify", "mmodify", "mmodidy", "deepcopy", "clone",
+        "reset", "clear", "tostring", "hashcode", "equals", "canequal", "read", "write"
+    );
+
+    private static String disambiguateByScopeHint(String scopeHint, List<String> candidates) {
+        if (scopeHint == null || scopeHint.isEmpty() || candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        String cleanScope = scopeHint;
+        if (cleanScope.startsWith("p_") || cleanScope.startsWith("m_") || cleanScope.startsWith("v_")
+            || cleanScope.startsWith("r_") || cleanScope.startsWith("s_")) {
+            cleanScope = cleanScope.substring(2);
+        } else if (cleanScope.startsWith("in_") || cleanScope.startsWith("out_")) {
+            cleanScope = cleanScope.substring(3);
+        }
+        String normScope = cleanScope.replace("_", "").toLowerCase(Locale.ROOT);
+        if (normScope.length() < 3) return null;
+
+        for (String c : candidates) {
+            String classFqn = extractClassFqnStatic(c);
+            String simple = classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : classFqn;
+            String normClass = simple.replace("_", "").toLowerCase(Locale.ROOT);
+            if (normScope.equals(normClass) || normScope.contains(normClass) || normClass.contains(normScope)) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private static String extractClassFqnStatic(String methodFqn) {
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        int dot = base.lastIndexOf('.');
+        return (dot >= 0) ? base.substring(0, dot) : base;
     }
 
     private static String disambiguateByCaller(String from, List<String> candidates) {

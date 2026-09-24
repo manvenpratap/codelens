@@ -312,7 +312,7 @@ public class CodeLensServer {
                     List<CodeMethod> methods = isHugeCodebase ? Collections.emptyList() : dao.findAllMethods();
                     List<CodeField> fields = isHugeCodebase ? Collections.emptyList() : dao.findAllFields();
                     List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-                        ? dao.findNonCallRelationships()
+                        ? (isHugeCodebase ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
                         : dao.findAllRelationships();
                     cachedModuleOverview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
                     log.info("Precomputed module overview: {} modules ready", cachedModuleOverview != null && cachedModuleOverview.modules != null ? cachedModuleOverview.modules.size() : 0);
@@ -1984,12 +1984,13 @@ public class CodeLensServer {
             return;
         }
 
+        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
         List<CodePackage> packages = dao.findAllPackages();
         List<CodeType> types = dao.findAllTypes();
-        List<CodeMethod> methods = dao.findAllMethods();
-        List<CodeField> fields = dao.findAllFields();
+        List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
+        List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
         List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-            ? dao.findNonCallRelationships()
+            ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
             : dao.findAllRelationships();
 
         ModuleDependencyAnalyzer.ModuleDependencyInsights insights = moduleDependencyAnalyzer.analyzeModule(
@@ -2025,12 +2026,13 @@ public class CodeLensServer {
             return;
         }
 
+        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
         List<CodePackage> packages = dao.findAllPackages();
         List<CodeType> types = dao.findAllTypes();
-        List<CodeMethod> methods = dao.findAllMethods();
-        List<CodeField> fields = dao.findAllFields();
+        List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
+        List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
         List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-            ? dao.findNonCallRelationships()
+            ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
             : dao.findAllRelationships();
 
         overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
