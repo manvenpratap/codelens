@@ -6036,11 +6036,9 @@ async function selectField(id) {
   try {
     const data = await api.field(id);
     App.selected = { kind: 'field', id, data };
-    if (data.field && data.field.sourceFile) {
-      App.currentFilePath = data.field.sourceFile;
-      App.currentLineNum = data.field.startLine || 1;
-    } else if (data.type && data.type.sourceFile) {
-      App.currentFilePath = data.type.sourceFile;
+    const srcFile = data.sourceFile || (data.field && data.field.sourceFile) || (data.type && data.type.sourceFile);
+    if (srcFile) {
+      App.currentFilePath = srcFile;
       App.currentLineNum = (data.field && data.field.startLine) || (data.type && data.type.startLine) || 1;
     }
     renderFieldDetail(data);
@@ -6256,7 +6254,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
     App.activeAltRenderer.destroy();
     App.activeAltRenderer = null;
   }
-  if (mountContainer) {
+  if (isAltViz && mountContainer) {
     mountContainer.innerHTML = '';
   }
 
@@ -10339,52 +10337,137 @@ async function loadGitHeatData() {
 window.loadGitHeatData = loadGitHeatData;
 window.loadClassDetails = selectType;
 window.loadMethodDetails = selectMethod;
+window.selectType = selectType;
+window.selectMethod = selectMethod;
+window.selectField = selectField;
+window.loadFieldImpact = loadFieldImpact;
 
-window.selectEntity = function(fqn) {
-  if (!fqn) return;
-  if (fqn.includes('(')) {
-    selectMethod(fqn);
-  } else if (fqn.includes('#')) {
-    selectField(fqn);
-  } else {
-    selectType(fqn);
-  }
-};
-window.selectClass = function(fqn) {
-  if (!fqn) return;
+function _resolveClassFqn(fqn) {
+  if (!fqn) return '';
   if (fqn.includes('(')) {
     const base = fqn.substring(0, fqn.indexOf('('));
     const lastDot = base.lastIndexOf('.');
-    const classFqn = lastDot > 0 ? base.substring(0, lastDot) : base;
-    selectType(classFqn);
-  } else if (fqn.includes('#')) {
-    const classFqn = fqn.substring(0, fqn.indexOf('#'));
-    selectType(classFqn);
+    return lastDot > 0 ? base.substring(0, lastDot) : base;
+  }
+  if (fqn.includes('#')) {
+    return fqn.substring(0, fqn.indexOf('#'));
+  }
+  const lastDot = fqn.lastIndexOf('.');
+  if (lastDot > 0 && /^[a-z]/.test(fqn.substring(lastDot + 1))) {
+    return fqn.substring(0, lastDot);
+  }
+  return fqn;
+}
+
+window.selectEntity = async function(fqn) {
+  if (!fqn) return;
+  if (fqn.includes('(')) {
+    await selectMethod(fqn);
+  } else if (fqn.includes('#') || (fqn.lastIndexOf('.') > 0 && /^[a-z]/.test(fqn.substring(fqn.lastIndexOf('.') + 1)))) {
+    await selectField(fqn.replace('#', '.'));
   } else {
-    selectType(fqn);
+    await selectType(fqn);
   }
 };
 
-window.jumpToGraphHeat = async function(fqn) {
-  App.codebaseLevel = 'graph2d';
-  switchTab('graph');
-  if (typeof loadWholeCodebaseGraph === 'function') {
-    await loadWholeCodebaseGraph('arch');
+window.selectClass = async function(fqn) {
+  if (!fqn) return;
+  const classFqn = _resolveClassFqn(fqn);
+  switchTab('knowledge');
+  await selectType(classFqn);
+};
+
+window.inspectReportEntity = async function(fqn, targetTab = 'knowledge') {
+  if (!fqn) return;
+  const classFqn = _resolveClassFqn(fqn);
+  const isMethod = fqn.includes('(');
+  const isField = !isMethod && (fqn.includes('#') || fqn !== classFqn);
+  const normalizedFieldFqn = fqn.replace('#', '.');
+
+  if (targetTab === 'graph') {
+    if (isMethod) {
+      await selectMethod(fqn);
+    } else if (isField) {
+      await selectField(normalizedFieldFqn);
+    } else {
+      switchTab('graph');
+      await selectType(classFqn);
+      if (App.graph) {
+        App.graph.selectNode(classFqn);
+        App.graph.focusNode(classFqn);
+      }
+    }
+    return;
   }
+
+  if (targetTab === 'review') {
+    await selectType(classFqn);
+    switchTab('review');
+    return;
+  }
+
+  // Default: Knowledge Base + Right Inspector
+  switchTab('knowledge');
+  await selectType(classFqn);
+  if (isMethod) {
+    api.method(fqn).then(mData => {
+      if (mData && mData.method) renderMethodDetail(mData);
+    }).catch(() => {});
+  } else if (isField) {
+    api.field(normalizedFieldFqn).then(fData => {
+      if (fData && fData.field) renderFieldDetail(fData);
+    }).catch(() => {});
+  }
+};
+
+window.inspectReportPackage = async function(pkgFqn) {
+  if (!pkgFqn) return;
+  switchTab('knowledge');
+  await loadKnowledgeBase(pkgFqn);
+  const pkgObj = (App.packages || []).find(p => p.fqn === pkgFqn) || { name: pkgFqn.split('.').pop() || pkgFqn, fqn: pkgFqn };
+  renderPackageDetail(pkgObj);
+};
+
+window.jumpToGraphHeat = async function(fqn) {
+  if (!fqn) return;
+  const classFqn = _resolveClassFqn(fqn);
+  switchTab('graph');
+  ensureGraph();
+
+  // Populate Right Inspector with the selected entity
+  api.type(classFqn).then(data => {
+    App.selected = { kind: 'type', id: classFqn, data };
+    renderTypeDetail(data);
+  }).catch(() => {});
+
+  // Ensure the 2D graph has architecture nodes containing this class
+  let targetGraph = App.graph || App.activeAltRenderer;
+  const hasNode = targetGraph && typeof targetGraph._findNodeByFqn === 'function' && targetGraph._findNodeByFqn(fqn);
+  if (!hasNode) {
+    try {
+      const view = await api.architectureGraph('classes');
+      if (view && view.nodes && view.nodes.length > 0 && App.graph) {
+        hideGraphEmpty();
+        App.graph.setData(view.nodes, view.edges);
+      }
+    } catch (_) {}
+  }
+
   await loadGitHeatData();
-  const targetGraph = App.graph || App.activeAltRenderer;
+  targetGraph = App.graph || App.activeAltRenderer;
   if (targetGraph) {
     if (!targetGraph._heatMode && typeof targetGraph.toggleHeat === 'function') {
       targetGraph.toggleHeat();
     }
-    if (fqn) {
+    qs('#btn-git-heat')?.classList.add('active');
+    setTimeout(() => {
       if (typeof targetGraph.selectNode === 'function') {
         targetGraph.selectNode(fqn);
       }
       if (typeof targetGraph.focusNode === 'function') {
         targetGraph.focusNode(fqn);
       }
-    }
+    }, 80);
   }
 };
 
@@ -13239,10 +13322,12 @@ const ReportsHub = {
         html += `
           <tr>
             <td>
-              <strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(h.simpleName)}</strong>
+              <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(h.entityFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Inspect ${esc(h.entityFqn)} in Knowledge Base">${esc(h.simpleName)}</a>
               <span style="font-size:10px; color:var(--text-muted); margin-left:4px;">(${esc(h.kind)})</span>
             </td>
-            <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(h.packageName)}">${esc(h.packageName)}</td>
+            <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Open package ${esc(h.packageName)}">
+              <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(h.packageName)}');" style="color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(h.packageName)}</a>
+            </td>
             <td><span class="risk-badge ${tierClass}">${Math.round(h.hotspotScore)} / 100</span></td>
             <td><span class="risk-badge ${tierClass}">${esc(h.riskTier)}</span></td>
             <td style="font-family:var(--font-mono);">${h.cyclomaticComplexity}</td>
@@ -13251,7 +13336,7 @@ const ReportsHub = {
             <td style="font-size:11px; color:var(--text-secondary); max-width:260px;">${esc(h.recommendation)}</td>
             <td>
               <div style="display:flex; align-items:center; gap:4px;">
-                <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectClass('${esc(h.entityFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
+                <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(h.entityFqn)}', 'knowledge');" title="Inspect in Knowledge Base">
                   KB →
                 </button>
                 <button class="btn-ghost" style="font-size:11px; padding:3px 7px; color:#ef4444;" onclick="jumpToGraphHeat('${esc(h.entityFqn)}');" title="View in Graph Heat Mode">
@@ -13308,17 +13393,26 @@ const ReportsHub = {
       const bClass = (c.riskLevel === 'CRITICAL') ? 'risk-critical' : (c.riskLevel === 'HIGH') ? 'risk-high' : 'risk-medium';
       html += `
         <tr>
-          <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(c.simpleName)}</strong></td>
-          <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c.packageName)}">${esc(c.packageName)}</td>
+          <td>
+            <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(c.classFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Inspect ${esc(c.classFqn)}">${esc(c.simpleName)}</a>
+          </td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Open package ${esc(c.packageName)}">
+            <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(c.packageName)}');" style="color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(c.packageName)}</a>
+          </td>
           <td><span class="risk-badge ${bClass}">${c.riskScore} / 100</span></td>
           <td><span class="risk-badge ${bClass}">${esc(c.riskLevel)}</span></td>
           <td style="font-family:var(--font-mono);">${c.afferentCoupling}</td>
           <td style="font-family:var(--font-mono);">${c.efferentCoupling}</td>
           <td style="font-family:var(--font-mono);">${c.fieldBlastRadius} readers</td>
           <td>
-            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(c.classFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
-              KB →
-            </button>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(c.classFqn)}', 'knowledge');" title="Inspect in Knowledge Base">
+                KB →
+              </button>
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(c.classFqn)}', 'graph');" title="View Call Graph">
+                Graph →
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -13356,14 +13450,23 @@ const ReportsHub = {
     (d.fieldMutationHotspots || []).slice(0, 20).forEach(f => {
       html += `
         <tr>
-          <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.fieldFqn)}"><strong style="font-family:var(--font-mono); color:#38bdf8;">${esc(f.fieldFqn)}</strong></td>
-          <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.writerMethodFqn)}"><code style="color:var(--text-muted); font-size:11.5px;">${esc(f.writerMethodFqn)}</code></td>
+          <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Trace field ${esc(f.fieldFqn)}">
+            <a href="#" onclick="event.preventDefault(); selectField('${esc(f.fieldFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(f.fieldFqn)}</a>
+          </td>
+          <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Inspect method ${esc(f.writerMethodFqn)}">
+            <a href="#" onclick="event.preventDefault(); selectMethod('${esc(f.writerMethodFqn)}');" style="color:var(--text-muted); font-family:var(--font-mono); font-size:11.5px; text-decoration:none; cursor:pointer;">${esc(f.writerMethodFqn)}</a>
+          </td>
           <td><span class="risk-badge risk-high">${f.readerMethodCount} methods</span></td>
           <td style="font-family:var(--font-mono);">${f.impactedModuleCount} modules</td>
           <td>
-            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="switchTab('graph'); loadFieldImpact('${esc(f.fieldFqn)}');" title="Trace Field Propagation on Graph">
-              Trace Graph →
-            </button>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(f.declaringClass || f.fieldFqn)}', 'knowledge');" title="Inspect Declaring Class in Knowledge Base">
+                KB →
+              </button>
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectField('${esc(f.fieldFqn)}');" title="Trace Field Propagation on Graph">
+                Trace Graph →
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -13435,17 +13538,29 @@ const ReportsHub = {
     `;
 
     (d.orphanedMethods || []).slice(0, 20).forEach(m => {
+      const methodTarget = m.methodFqn || (m.declaringClass + '.' + m.simpleName + '()');
       html += `
         <tr>
-          <td><strong style="font-family:var(--font-mono); color:#f59e0b;">${esc(m.simpleName)}</strong></td>
-          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(m.declaringClass)}</td>
-          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(m.packageName)}</td>
+          <td>
+            <a href="#" onclick="event.preventDefault(); selectMethod('${esc(methodTarget)}');" style="font-family:var(--font-mono); font-weight:700; color:#f59e0b; text-decoration:none; cursor:pointer;" title="Inspect method ${esc(methodTarget)}">${esc(m.simpleName)}</a>
+          </td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">
+            <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');" style="color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.declaringClass)}</a>
+          </td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">
+            <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(m.packageName)}');" style="color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.packageName)}</a>
+          </td>
           <td style="font-family:var(--font-mono);">${m.lineCount || 0}</td>
           <td><span class="risk-badge risk-low">${esc(m.reason || '0 callers')}</span></td>
           <td>
-            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(m.declaringClass)}'); switchTab('knowledge');" title="Inspect declaring class">
-              Inspect →
-            </button>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');" title="Inspect declaring class in Knowledge Base">
+                KB →
+              </button>
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectMethod('${esc(methodTarget)}');" title="Inspect method call graph">
+                Graph →
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -13484,15 +13599,24 @@ const ReportsHub = {
     (d.orphanedClasses || []).slice(0, 20).forEach(c => {
       html += `
         <tr>
-          <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(c.simpleName)}</strong></td>
-          <td style="color:var(--text-muted); font-family:var(--font-mono);">${esc(c.packageName)}</td>
+          <td>
+            <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(c.classFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(c.simpleName)}</a>
+          </td>
+          <td style="color:var(--text-muted); font-family:var(--font-mono);">
+            <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(c.packageName)}');" style="color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(c.packageName)}</a>
+          </td>
           <td style="font-family:var(--font-mono);">${c.lineCount || 0}</td>
           <td style="font-family:var(--font-mono);">${c.methodCount || 0}</td>
           <td style="color:var(--text-muted);">${esc(c.reason || 'Zero incoming references')}</td>
           <td>
-            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="selectClass('${esc(c.classFqn)}'); switchTab('knowledge');" title="Inspect in Knowledge Base">
-              KB →
-            </button>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(c.classFqn)}', 'knowledge');" title="Inspect in Knowledge Base">
+                KB →
+              </button>
+              <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(c.classFqn)}', 'graph');" title="View on Graph">
+                Graph →
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -13590,8 +13714,8 @@ const ReportsHub = {
               <span class="risk-badge risk-critical">RECURSIVE LOOP</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-primary); line-height:1.7;">
-              ${(c.path || []).map(p => `<span style="color:#38bdf8;">${esc(p)}</span>`).join(' <span style="color:#fbbf24;">➔</span> ')}
-              <span style="color:#fbbf24;">➔</span> <span style="color:#38bdf8;">${esc(c.path[0])}</span>
+              ${(c.path || []).map(p => `<a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(p)}', 'knowledge');" style="color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(p)}</a>`).join(' <span style="color:#fbbf24;">➔</span> ')}
+              <span style="color:#fbbf24;">➔</span> <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(c.path[0])}', 'knowledge');" style="color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(c.path[0])}</a>
             </div>
             <div style="margin-top:8px; font-size:12px; color:#34d399;">
               💡 <strong>Recommended Decoupling Cut:</strong> Break edge <code>${esc(c.recommendedCutEdge)}</code> via dependency injection or event bus.
@@ -13642,8 +13766,8 @@ const ReportsHub = {
       (d.packageTangles || []).forEach(t => {
         html += `
           <tr>
-            <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(t.packageA)}</strong></td>
-            <td><strong style="font-family:var(--font-mono); color:var(--text-primary);">${esc(t.packageB)}</strong></td>
+            <td><a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(t.packageA)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(t.packageA)}</a></td>
+            <td><a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(t.packageB)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(t.packageB)}</a></td>
             <td style="font-family:var(--font-mono); font-weight:700;">${t.callsAtoB}</td>
             <td style="font-family:var(--font-mono); font-weight:700;">${t.callsBtoA}</td>
             <td style="color:#34d399; font-weight:600; font-size:11.5px;">${esc(t.recommendedDecouplingDirection || 'Decouple weaker direction')}</td>
@@ -13713,6 +13837,7 @@ const ReportsHub = {
                 <th>Target Class / Method</th>
                 <th>Violation Detail</th>
                 <th>Recommended Fix</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -13721,7 +13846,7 @@ const ReportsHub = {
     if (!d.violations || d.violations.length === 0) {
       html += `
         <tr>
-          <td colspan="5" style="text-align:center; padding:24px; color:#34d399;">
+          <td colspan="6" style="text-align:center; padding:24px; color:#34d399;">
             <svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
             <div style="font-weight:700; margin-top:6px;">Zero Governance Violations</div>
             <div style="color:var(--text-muted); font-size:11.5px;">All transactions, data grabbers, and entity layers conform to governance policies.</div>
@@ -13735,9 +13860,21 @@ const ReportsHub = {
           <tr>
             <td><span class="risk-badge ${sClass}">${esc(v.severity)}</span></td>
             <td><strong style="color:var(--text-primary); font-size:11.5px; white-space:nowrap;">${esc(v.ruleName)}</strong></td>
-            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.entityFqn)}"><code style="color:#38bdf8; font-size:11px;">${esc(v.entityFqn)}</code></td>
+            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Inspect ${esc(v.entityFqn)}">
+              <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(v.entityFqn)}', 'knowledge');" style="color:#38bdf8; font-family:var(--font-mono); font-size:11px; text-decoration:none; cursor:pointer;">${esc(v.entityFqn)}</a>
+            </td>
             <td style="color:var(--text-muted); font-size:11.5px; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.violationDetails)}">${esc(v.violationDetails)}</td>
             <td style="color:#34d399; font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.architecturalRemediation)}">💡 ${esc(v.architecturalRemediation)}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(v.entityFqn)}', 'knowledge');" title="Inspect in Knowledge Base">
+                  KB →
+                </button>
+                <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(v.entityFqn)}', 'graph');" title="View on Call Graph">
+                  Graph →
+                </button>
+              </div>
+            </td>
           </tr>
         `;
       });
@@ -13799,7 +13936,7 @@ const ReportsHub = {
       <div class="report-kpi-grid">
         <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
           <span class="report-kpi-label">Indexed Types</span>
-          <div class="report-kpi-val">${d.totalTypes || 0}</div>
+          <div class="report-kpi-val">${d.totalClasses || d.totalTypes || 0}</div>
           <span class="report-kpi-sub">Classes, Interfaces, Enums</span>
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
@@ -13814,7 +13951,7 @@ const ReportsHub = {
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
           <span class="report-kpi-label">Coupling Relations</span>
-          <div class="report-kpi-val">${d.totalRelationships || 0}</div>
+          <div class="report-kpi-val">${d.totalDependencies || d.totalRelationships || 0}</div>
           <span class="report-kpi-sub">Calls, reads, writes, inheritance</span>
         </div>
       </div>
@@ -13822,31 +13959,45 @@ const ReportsHub = {
       <div class="report-section-card">
         <div class="report-section-header">
           <div class="report-section-title">Package Coupling Matrix (Ca / Ce / Instability)</div>
+          <span class="report-section-badge">${(d.packages || []).length} Packages</span>
         </div>
         <div class="report-table-wrap">
           <table class="report-table">
             <thead>
               <tr>
                 <th>Package Name</th>
+                <th>Classes</th>
                 <th>Afferent In (Ca)</th>
                 <th>Efferent Out (Ce)</th>
                 <th>Instability (I = Ce / (Ca + Ce))</th>
                 <th>Stability Classification</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
     `;
 
-    (d.packages || []).slice(0, 15).forEach(p => {
-      const iVal = p.instability != null ? p.instability : (p.efferent + p.afferent > 0 ? (p.efferent / (p.efferent + p.afferent)).toFixed(2) : 0);
-      const isStable = iVal < 0.3;
+    (d.packages || []).slice(0, 25).forEach(p => {
+      const pkgFqn = p.packageFqn || p.name || '';
+      const ca = p.afferentCoupling ?? p.afferent ?? p.ca ?? 0;
+      const ce = p.efferentCoupling ?? p.efferent ?? p.ce ?? 0;
+      const iVal = p.instability != null ? Number(p.instability).toFixed(2) : (ce + ca > 0 ? (ce / (ce + ca)).toFixed(2) : '0.00');
+      const isStable = parseFloat(iVal) < 0.3;
       html += `
         <tr>
-          <td><strong style="font-family:var(--font-mono);">${esc(p.name || p.packageFqn)}</strong></td>
-          <td style="font-family:var(--font-mono);">${p.afferent || p.ca || 0}</td>
-          <td style="font-family:var(--font-mono);">${p.efferent || p.ce || 0}</td>
+          <td>
+            <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(pkgFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Open package ${esc(pkgFqn)} in Knowledge Base">${esc(pkgFqn)}</a>
+          </td>
+          <td style="font-family:var(--font-mono);">${p.classCount ?? '-'}</td>
+          <td style="font-family:var(--font-mono);">${ca}</td>
+          <td style="font-family:var(--font-mono);">${ce}</td>
           <td><span class="risk-badge ${isStable ? 'risk-low' : 'risk-medium'}">${iVal}</span></td>
           <td style="color:var(--text-muted);">${isStable ? 'Stable Core' : 'Flexible / Dependent'}</td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportPackage('${esc(pkgFqn)}');" title="Inspect package in Knowledge Base">
+              KB →
+            </button>
+          </td>
         </tr>
       `;
     });
@@ -13857,6 +14008,55 @@ const ReportsHub = {
         </div>
       </div>
     `;
+
+    if (d.topCoupledClasses && d.topCoupledClasses.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">Top Coupled Classes</div>
+            <span class="report-section-badge">${d.topCoupledClasses.length} Classes</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Class Name</th>
+                  <th>Package</th>
+                  <th>Inbound (Ca)</th>
+                  <th>Outbound (Ce)</th>
+                  <th>Total Coupling</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.topCoupledClasses.slice(0, 15).map(c => {
+                  const fqn = c.classFqn || c.fqn || '';
+                  const simple = c.simpleName || fqn.split('.').pop() || fqn;
+                  const pkg = c.packageName || fqn.split('.').slice(0, -1).join('.');
+                  const ca = c.afferentCoupling ?? c.inDegree ?? 0;
+                  const ce = c.efferentCoupling ?? c.outDegree ?? 0;
+                  return `
+                    <tr>
+                      <td><a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(fqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(simple)}</a></td>
+                      <td><a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(pkg)}');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(pkg)}</a></td>
+                      <td style="font-family:var(--font-mono);">${ca}</td>
+                      <td style="font-family:var(--font-mono);">${ce}</td>
+                      <td style="font-family:var(--font-mono); font-weight:700;">${c.totalCoupling ?? (ca + ce)}</td>
+                      <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(fqn)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportEntity('${esc(fqn)}', 'graph');">Graph →</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
 
     container.innerHTML = html;
   },
@@ -13872,11 +14072,11 @@ const ReportsHub = {
         <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
           <span class="report-kpi-label">Critical / High</span>
           <div class="report-kpi-val">${d.criticalCount || 0}</div>
-          <span class="report-kpi-sub">Priority remediation</span>
+          <span class="report-kpi-sub">Warnings: <strong>${d.warningCount || 0}</strong></span>
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
           <span class="report-kpi-label">Audited Classes</span>
-          <div class="report-kpi-val">${d.auditedClassesCount || (d.types ? d.types.length : 0)}</div>
+          <div class="report-kpi-val">${d.totalFilesReviewed || d.auditedClassesCount || (d.types ? d.types.length : 0)}</div>
           <span class="report-kpi-sub">Index coverage</span>
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #10b981;">
@@ -13885,11 +14085,58 @@ const ReportsHub = {
           <span class="report-kpi-sub">Composite quality score</span>
         </div>
       </div>
-      <div class="report-section-card" style="padding:20px; text-align:center;">
-        <p style="color:var(--text-muted); margin-bottom:12px;">Detailed code review findings with inline code snippets and remediation instructions are available in the dedicated Code Review workspace.</p>
-        <button class="btn-primary" onclick="switchTab('review');">Open Code Review Workspace →</button>
+
+      <div style="margin-bottom:16px; padding:12px 16px; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.3); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <span style="color:var(--text-secondary); font-size:12.5px;">Detailed code review findings with inline code snippets and CWE remediation instructions are available in the dedicated Code Review workspace.</span>
+        <button class="btn btn-sm btn-primary" onclick="switchTab('review');">Open Code Review Workspace →</button>
       </div>
     `;
+
+    if (d.findings && d.findings.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">Top Code Quality &amp; Security Findings</div>
+            <span class="report-section-badge">${d.findings.length} Findings</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Rule / Check</th>
+                  <th>Target Entity</th>
+                  <th>Diagnostic Message</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.findings.slice(0, 25).map(f => {
+                  const sClass = f.severity === 'CRITICAL' || f.severity === 'ERROR' ? 'risk-critical' : (f.severity === 'WARNING' ? 'risk-high' : 'risk-medium');
+                  return `
+                    <tr>
+                      <td><span class="risk-badge ${sClass}">${esc(f.severity)}</span></td>
+                      <td><strong style="font-size:11.5px; color:var(--text-primary);">${esc(f.checkName || f.category)}</strong></td>
+                      <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.entityFqn)}">
+                        <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(f.entityFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-size:11px; color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(f.entityFqn)}</a>
+                      </td>
+                      <td style="font-size:11.5px; color:var(--text-muted); max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.message)}">${esc(f.message)}</td>
+                      <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(f.entityFqn)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(f.entityFqn)}', 'review');">Review →</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
     container.innerHTML = html;
   },
 
@@ -13898,7 +14145,7 @@ const ReportsHub = {
       <div class="report-kpi-grid">
         <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
           <span class="report-kpi-label">Total Classes</span>
-          <div class="report-kpi-val">${d.totalTypes || 0}</div>
+          <div class="report-kpi-val">${d.totalTypes || d.totalClasses || 0}</div>
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
           <span class="report-kpi-label">Total Methods</span>
@@ -13910,10 +14157,60 @@ const ReportsHub = {
         </div>
         <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
           <span class="report-kpi-label">Total Lines of Code</span>
-          <div class="report-kpi-val">${(d.totalLinesOfCode || 0).toLocaleString()}</div>
+          <div class="report-kpi-val">${(d.totalLines || d.totalLinesOfCode || 0).toLocaleString()}</div>
         </div>
       </div>
     `;
+
+    if (d.types && d.types.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">Class Inventory &amp; Structural Metrics</div>
+            <span class="report-section-badge">${d.types.length} Types</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Class Name</th>
+                  <th>Package</th>
+                  <th>Kind</th>
+                  <th>Methods</th>
+                  <th>Fields</th>
+                  <th>Lines</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.types.slice(0, 30).map(t => {
+                  const fqn = t.fqn || t.id || '';
+                  const simple = t.simpleName || t.name || fqn.split('.').pop() || fqn;
+                  const pkg = t.packageName || t.packageFqn || fqn.split('.').slice(0, -1).join('.');
+                  return `
+                    <tr>
+                      <td><a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(fqn)}', 'knowledge');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;">${esc(simple)}</a></td>
+                      <td><a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(pkg)}');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(pkg)}</a></td>
+                      <td><span class="risk-badge risk-low">${esc(t.kind || 'CLASS')}</span></td>
+                      <td style="font-family:var(--font-mono);">${t.methodCount ?? (t.methods ? t.methods.length : 0)}</td>
+                      <td style="font-family:var(--font-mono);">${t.fieldCount ?? (t.fields ? t.fields.length : 0)}</td>
+                      <td style="font-family:var(--font-mono);">${t.lineCount ?? t.lines ?? 0}</td>
+                      <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(fqn)}', 'knowledge');">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(fqn)}', 'graph');">Graph →</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
     container.innerHTML = html;
   },
 
