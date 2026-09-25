@@ -3173,6 +3173,87 @@
           </div>
         </div>
 
+        <!-- Diagnostic Incident Flight Recorder & Crash Logs Section -->
+        <div class="hub-jvm-autorecovery-card" id="hub-diagnostic-logs-card" style="margin-top:16px;">
+          <div class="hub-jvm-autorecovery-header">
+            <div class="hub-jvm-autorecovery-title-grp">
+              <span class="hub-jvm-autorecovery-icon">
+                <svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+              </span>
+              <div>
+                <div class="hub-jvm-autorecovery-title">Diagnostic Flight Recorder &amp; Incident Logs</div>
+                <div class="hub-jvm-autorecovery-sub">Automatic disk dumps on Failure, Thread Crash, DB Connection Leak &amp; Heap Space Exhaustion (<code id="diag-dir-path">./codelens-data/diagnostics</code>)</div>
+              </div>
+            </div>
+            <div class="hub-jvm-autorecovery-actions">
+              <span class="hub-jvm-chip chip-blue" id="diag-total-badge">0 Diagnostic Logs</span>
+              <button type="button" class="hub-btn-tool" id="btn-diag-capture" title="Capture an immediate full system diagnostic bundle (JVM Heap, GC, DB Pool Leases &amp; Thread Dump)">
+                <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Capture Diagnostic Snapshot</span>
+              </button>
+              <button type="button" class="hub-btn-tool" id="btn-diag-clear" title="Clear all saved diagnostic log files">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                <span>Clear Logs</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="hub-jvm-ar-metrics-strip">
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Heap Space Issues</span>
+              <span class="hub-ar-val font-mono text-amber" id="diag-count-heap">0 logs</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">DB Connection Leaks</span>
+              <span class="hub-ar-val font-mono text-cyan" id="diag-count-leak">0 logs</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">Uncaught Crashes</span>
+              <span class="hub-ar-val font-mono text-rose" id="diag-count-crash">0 logs</span>
+            </div>
+            <div class="hub-ar-stat-item">
+              <span class="hub-ar-lbl">API / Scan Failures</span>
+              <span class="hub-ar-val font-mono text-slate" id="diag-count-failure">0 logs</span>
+            </div>
+          </div>
+
+          <div class="hub-jvm-incidents-section">
+            <div class="hub-jvm-incidents-scroll" style="max-height:220px;">
+              <table class="hub-jvm-incidents-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Severity</th>
+                    <th>Timestamp</th>
+                    <th>Incident Title &amp; Summary</th>
+                    <th>Log File</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="hub-diag-logs-tbody">
+                  <tr>
+                    <td colspan="7" class="hub-incidents-empty">
+                      <div class="empty-state-p">
+                        <span>No diagnostic incident logs generated yet. Logs are automatically written on failure, crash, connection leak, or heap pressure.</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Inline Diagnostic Log Content Viewer -->
+          <div id="hub-diag-log-viewer-wrap" style="display:none; border-top:1px solid var(--border); padding:12px 16px; background:rgba(10,13,18,0.85);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <strong id="hub-diag-viewer-title" style="font-family:var(--font-mono); font-size:11.5px; color:#38bdf8;">incident.log</strong>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('hub-diag-log-viewer-wrap').style.display='none';">Close Viewer &times;</button>
+            </div>
+            <pre id="hub-diag-viewer-pre" style="margin:0; max-height:260px; overflow:auto; font-family:var(--font-mono); font-size:11px; line-height:1.45; color:#e2e8f0; padding:10px; background:#070a0e; border:1px solid var(--border); border-radius:6px; white-space:pre;"></pre>
+          </div>
+        </div>
+
         <!-- Memory Pools Breakdown Section -->
         <div class="hub-jvm-section">
           <div class="hub-jvm-section-header">
@@ -3839,7 +3920,7 @@
 <script src="/city3d.js?v=1.0.6"     defer></script>
 <script src="/galaxy3d.js?v=1.0.6"   defer></script>
 <script src="/hub-explorer.js?v=1.0.7" defer></script>
-<script src="/app.js?v=1.1.2"        defer></script>
+<script src="/app.js?v=1.1.3"        defer></script>
 
 
 

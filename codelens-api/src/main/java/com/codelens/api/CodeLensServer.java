@@ -404,7 +404,7 @@ public class CodeLensServer {
     public void start() {
         this.heapWatchdog.startWatchdog();
 
-        // Install JVM-wide default uncaught exception handler for any thread encountering OOM
+        // Install JVM-wide default uncaught exception handler for any thread encountering OOM or fatal crash
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             Throwable root = throwable;
             while (root.getCause() != null && root.getCause() != root) {
@@ -415,6 +415,16 @@ public class CodeLensServer {
                 heapWatchdog.handleTrappedOOM("Thread[" + thread.getName() + "]", root);
             } else {
                 log.error("Uncaught exception on thread [{}]: {}", thread.getName(), throwable.getMessage(), throwable);
+                com.codelens.storage.DiagnosticLogManager.recordCrashOrFailure(
+                    "CRASH",
+                    "UncaughtThreadException [" + thread.getName() + "]",
+                    throwable,
+                    Map.of(
+                        "threadName", thread.getName(),
+                        "threadId", thread.getId(),
+                        "threadState", thread.getState().toString()
+                    )
+                );
             }
         });
 
@@ -572,6 +582,12 @@ public class CodeLensServer {
         app.get("/api/readme",          this::getReadme);
 
 
+        // ── Diagnostic Flight Recorder & Incident Logs ────────────────────────
+        app.get("/api/diagnostics/logs",            this::listDiagnosticLogs);
+        app.get("/api/diagnostics/logs/{filename}", this::getDiagnosticLogContent);
+        app.post("/api/diagnostics/capture",        this::captureDiagnosticSnapshot);
+        app.delete("/api/diagnostics/logs",         this::clearDiagnosticLogs);
+
         // ── Global error handler & OOM Safety Net ────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
             Throwable root = e;
@@ -587,13 +603,24 @@ public class CodeLensServer {
                     "autoRecovered", true,
                     "reclaimedMb", inc.reclaimedMb,
                     "incident", inc.toMap(),
+                    "diagnosticLogFile", inc.diagnosticLogFile != null ? inc.diagnosticLogFile : "",
                     "message", "CodeLens auto-recovery routine intercepted the OutOfMemoryError, purged volatile caches, and restored memory.",
                     "suggestion", "Query was too large for current heap. Narrow down packages or allocate more heap (-Xmx)."
                 ));
                 return;
             }
             log.error("Unhandled error on {} {}: {}", ctx.method(), ctx.path(), e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", e.getMessage() != null ? e.getMessage() : e.toString()));
+            com.codelens.storage.DiagnosticLogManager.DiagnosticIncidentEntry diag =
+                com.codelens.storage.DiagnosticLogManager.recordCrashOrFailure(
+                    "FAILURE",
+                    "HTTP " + ctx.method() + " " + ctx.path(),
+                    e,
+                    Map.of("queryString", ctx.queryString() != null ? ctx.queryString() : "", "ip", ctx.ip())
+                );
+            ctx.status(500).json(Map.of(
+                "error", e.getMessage() != null ? e.getMessage() : e.toString(),
+                "diagnosticLogFile", diag != null ? diag.fileName : ""
+            ));
         });
 
         // Restore last scan progress state if available
@@ -760,6 +787,17 @@ public class CodeLensServer {
             line5 + "\n" +
             bottom);
         log.info("[PROCESS-{}] {} | Target: {} | Details: {}", eventType, processName, path, details);
+
+        if (eventType != null && eventType.endsWith("_FAILED")) {
+            try {
+                com.codelens.storage.DiagnosticLogManager.recordCrashOrFailure(
+                    "FAILURE",
+                    processName + " [" + eventType + "]",
+                    new RuntimeException(details != null ? details : eventType),
+                    Map.of("targetPath", path != null ? path : "-", "eventType", eventType)
+                );
+            } catch (Exception ignored) {}
+        }
     }
 
     private static String formatBannerField(String label, String value, int innerWidth, boolean truncateTail) {
@@ -3826,6 +3864,65 @@ public class CodeLensServer {
             if (fqn.startsWith(pkg + ".")) return true;
         }
         return false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Diagnostic Flight Recorder & Incident Log Endpoints
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void listDiagnosticLogs(Context ctx) {
+        try {
+            ctx.json(com.codelens.storage.DiagnosticLogManager.listDiagnosticsSummary());
+        } catch (Exception e) {
+            log.error("Failed to list diagnostic logs: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to list diagnostic logs: " + e.getMessage()));
+        }
+    }
+
+    private void getDiagnosticLogContent(Context ctx) {
+        try {
+            String filename = ctx.pathParam("filename");
+            String content = com.codelens.storage.DiagnosticLogManager.readDiagnosticFile(filename);
+            boolean download = "true".equalsIgnoreCase(ctx.queryParam("download"));
+            if (download) {
+                ctx.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+            }
+            ctx.contentType("text/plain; charset=UTF-8").result(content);
+        } catch (java.nio.file.NoSuchFileException e) {
+            ctx.status(404).json(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Failed to read diagnostic log: {}", e.getMessage(), e);
+            ctx.status(400).json(Map.of("error", "Failed to read diagnostic log: " + e.getMessage()));
+        }
+    }
+
+    private void captureDiagnosticSnapshot(Context ctx) {
+        try {
+            String reason = ctx.queryParam("reason");
+            if (reason == null || reason.isBlank()) {
+                reason = "Manual User Trigger";
+            }
+            com.codelens.storage.DiagnosticLogManager.DiagnosticIncidentEntry entry =
+                com.codelens.storage.DiagnosticLogManager.captureFullSnapshot(reason, db.getPoolStats());
+            ctx.json(Map.of(
+                "success", true,
+                "incident", entry.toMap(),
+                "message", "Captured full diagnostic snapshot to " + entry.filePath
+            ));
+        } catch (Exception e) {
+            log.error("Failed to capture diagnostic snapshot: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to capture diagnostic snapshot: " + e.getMessage()));
+        }
+    }
+
+    private void clearDiagnosticLogs(Context ctx) {
+        try {
+            int deleted = com.codelens.storage.DiagnosticLogManager.clearAllDiagnosticFiles();
+            ctx.json(Map.of("success", true, "deletedCount", deleted));
+        } catch (Exception e) {
+            log.error("Failed to clear diagnostic logs: {}", e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Failed to clear diagnostic logs: " + e.getMessage()));
+        }
     }
 }
 

@@ -1627,6 +1627,10 @@ function renderJvmAutoRecovery(data) {
         const actionsList = (inc.actions || []).map(a => `<span class="hub-action-chip font-mono" title="${esc(a)}">${esc(a)}</span>`).join('');
         const timeStr = formatIncidentTime(inc.timestamp);
 
+        const diagBtnHtml = inc.diagnosticLogFile
+          ? `<button type="button" class="btn btn-xs btn-ghost" style="margin-left:6px; font-size:10px; padding:1px 6px;" onclick="window.viewDiagnosticLog('${esc(inc.diagnosticLogFile)}');" title="Open diagnostic dump ${esc(inc.diagnosticLogFile)}">View Log</button>`
+          : '';
+
         return `
           <tr>
             <td><code class="font-mono text-cyan" style="font-size:11px;">${esc(inc.id || '-')}</code></td>
@@ -1638,13 +1642,132 @@ function renderJvmAutoRecovery(data) {
             <td><span class="font-mono text-emerald font-semibold" style="font-size:11px;">+${(inc.reclaimedMb || 0).toFixed(1)} MB</span></td>
             <td><span class="font-mono text-muted" style="font-size:11px;">${inc.durationMs || 0} ms</span></td>
             <td>${cbHtml}</td>
-            <td><div class="hub-incident-actions">${actionsList || '<span class="text-muted" style="font-size:11px;">Default GC cycle</span>'}</div></td>
+            <td><div class="hub-incident-actions">${actionsList || '<span class="text-muted" style="font-size:11px;">Default GC cycle</span>'}${diagBtnHtml}</div></td>
           </tr>
         `;
       }).join('');
     }
   }
+
+  loadDiagnosticLogs();
 }
+
+let diagButtonsWired = false;
+async function loadDiagnosticLogs() {
+  if (!diagButtonsWired) {
+    diagButtonsWired = true;
+    qs('#btn-diag-capture')?.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/diagnostics/capture?reason=Manual+UI+Trigger', { method: 'POST' });
+        const json = await res.json();
+        if (json.incident && json.incident.fileName) {
+          showJvmAlert('success', `Captured full diagnostic snapshot: ${json.incident.fileName}`);
+          await loadDiagnosticLogs();
+          window.viewDiagnosticLog(json.incident.fileName);
+        }
+      } catch (e) {
+        showJvmAlert('error', 'Failed to capture diagnostic snapshot: ' + e.message);
+      }
+    });
+    qs('#btn-diag-clear')?.addEventListener('click', async () => {
+      try {
+        await fetch('/api/diagnostics/logs', { method: 'DELETE' });
+        const viewer = qs('#hub-diag-log-viewer-wrap');
+        if (viewer) viewer.style.display = 'none';
+        showJvmAlert('success', 'Cleared saved diagnostic incident logs.');
+        await loadDiagnosticLogs();
+      } catch (e) {
+        showJvmAlert('error', 'Failed to clear diagnostic logs: ' + e.message);
+      }
+    });
+  }
+
+  try {
+    const res = await fetch('/api/diagnostics/logs');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    const dirEl = qs('#diag-dir-path');
+    if (dirEl && d.diagnosticsDir) dirEl.textContent = d.diagnosticsDir;
+
+    const totalBadge = qs('#diag-total-badge');
+    if (totalBadge) totalBadge.textContent = `${d.totalCount || 0} Diagnostic Log${d.totalCount === 1 ? '' : 's'}`;
+
+    const heapEl = qs('#diag-count-heap');
+    if (heapEl) heapEl.textContent = `${d.heapIssueCount || 0} logs`;
+    const leakEl = qs('#diag-count-leak');
+    if (leakEl) leakEl.textContent = `${d.connectionLeakCount || 0} logs`;
+    const crashEl = qs('#diag-count-crash');
+    if (crashEl) crashEl.textContent = `${d.crashCount || 0} logs`;
+    const failEl = qs('#diag-count-failure');
+    if (failEl) failEl.textContent = `${d.failureCount || 0} logs`;
+
+    const tbody = qs('#hub-diag-logs-tbody');
+    if (!tbody) return;
+    const incidents = d.incidents || [];
+    if (incidents.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="hub-incidents-empty">
+            <div class="empty-state-p">
+              <span>No diagnostic incident logs generated yet. Logs are automatically written on failure, crash, connection leak, or heap pressure.</span>
+            </div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = incidents.map(item => {
+      const catChip = item.category === 'HEAP_SPACE' ? 'chip-amber'
+                    : item.category === 'CONNECTION_LEAK' ? 'chip-blue'
+                    : item.category === 'CRASH' ? 'chip-rose'
+                    : item.category === 'SNAPSHOT' ? 'chip-green' : 'chip-purple';
+      const sevChip = item.severity === 'CRITICAL' || item.severity === 'ERROR' ? 'chip-rose'
+                    : item.severity === 'WARNING' ? 'chip-amber' : 'chip-blue';
+      const kbSize = item.sizeBytes ? `${(item.sizeBytes / 1024).toFixed(1)} KB` : '-';
+      return `
+        <tr>
+          <td><span class="hub-jvm-chip ${catChip} font-mono" style="font-size:10px;">${esc(item.category)}</span></td>
+          <td><span class="hub-jvm-chip ${sevChip} font-mono" style="font-size:10px;">${esc(item.severity)}</span></td>
+          <td class="font-mono text-secondary" style="font-size:11px; white-space:nowrap;">${esc(item.timestampFormatted || '')}</td>
+          <td style="max-width:320px;">
+            <div style="font-weight:700; font-size:11.5px; color:var(--text-primary);">${esc(item.title)}</div>
+            <div style="font-size:11px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(item.summary)}">${esc(item.summary)}</div>
+          </td>
+          <td><code class="font-mono text-cyan" style="font-size:10.5px;">${esc(item.fileName)}</code></td>
+          <td class="font-mono text-muted" style="font-size:11px;">${kbSize}</td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn btn-xs btn-ghost" style="font-size:10.5px; padding:2px 7px;" onclick="window.viewDiagnosticLog('${esc(item.fileName)}');">View</button>
+            <a class="btn btn-xs btn-ghost" style="font-size:10.5px; padding:2px 7px; text-decoration:none;" href="/api/diagnostics/logs/${encodeURIComponent(item.fileName)}?download=true" download="${esc(item.fileName)}">Download</a>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.warn('Failed to load diagnostic logs:', err);
+  }
+}
+
+window.viewDiagnosticLog = async function(fileName) {
+  if (!fileName) return;
+  try {
+    const res = await fetch(`/api/diagnostics/logs/${encodeURIComponent(fileName)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const content = await res.text();
+    const wrap = qs('#hub-diag-log-viewer-wrap');
+    const titleEl = qs('#hub-diag-viewer-title');
+    const preEl = qs('#hub-diag-viewer-pre');
+    if (wrap && titleEl && preEl) {
+      titleEl.textContent = `${fileName} (./codelens-data/diagnostics/${fileName})`;
+      preEl.textContent = content;
+      wrap.style.display = 'block';
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  } catch (e) {
+    showJvmAlert('error', 'Could not open diagnostic log: ' + e.message);
+  }
+};
 
 function renderJvmPanel(system) {
   if (!system) return;

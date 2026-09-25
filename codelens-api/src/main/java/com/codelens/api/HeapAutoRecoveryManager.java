@@ -95,6 +95,8 @@ public class HeapAutoRecoveryManager {
         public final long durationMs;
         public final boolean circuitBreakerActive;
         public final List<String> actions;
+        public String diagnosticLogFile;
+        public String diagnosticLogPath;
 
         public AutoRecoveryIncident(String id, long timestamp, String trigger,
                                     long heapBeforeMb, long heapMaxMb, long heapAfterMb,
@@ -130,6 +132,8 @@ public class HeapAutoRecoveryManager {
             map.put("durationMs", durationMs);
             map.put("circuitBreakerActive", circuitBreakerActive);
             map.put("actions", actions);
+            if (diagnosticLogFile != null) map.put("diagnosticLogFile", diagnosticLogFile);
+            if (diagnosticLogPath != null) map.put("diagnosticLogPath", diagnosticLogPath);
             return map;
         }
     }
@@ -390,6 +394,30 @@ public class HeapAutoRecoveryManager {
                 beforePct, afterPct, durationMs, cbActive, actions
         );
 
+        try {
+            com.codelens.storage.DiagnosticLogManager.DiagnosticIncidentEntry diagEntry =
+                com.codelens.storage.DiagnosticLogManager.recordHeapIssue(
+                    incidentId,
+                    trigger,
+                    incident.heapBeforeMb,
+                    incident.heapAfterMb,
+                    incident.heapMaxMb,
+                    beforePct,
+                    afterPct,
+                    freedMb,
+                    durationMs,
+                    cbActive,
+                    actions,
+                    null
+                );
+            if (diagEntry != null) {
+                incident.diagnosticLogFile = diagEntry.fileName;
+                incident.diagnosticLogPath = diagEntry.filePath;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to write heap diagnostic log: {}", e.getMessage());
+        }
+
         incidentHistory.addFirst(incident);
         while (incidentHistory.size() > MAX_INCIDENTS) {
             incidentHistory.removeLast();
@@ -397,7 +425,8 @@ public class HeapAutoRecoveryManager {
 
         log.info("════════════════════════════════════════════════════════════════════════════════");
         log.info("HEAP AUTO-RECOVERY COMPLETE [{}]", incidentId);
-        log.info("Trigger: {} | Duration: {} ms", trigger, durationMs);
+        log.info("Trigger: {} | Duration: {} ms | Diagnostic Log: {}", trigger, durationMs,
+                 incident.diagnosticLogFile != null ? incident.diagnosticLogFile : "N/A");
         log.info("Heap Before: {} MB ({}%) -> After: {} MB ({}%)",
                 incident.heapBeforeMb, beforePct, incident.heapAfterMb, afterPct);
         log.info("Reclaimed Memory: {} MB | Circuit Breaker: {}",

@@ -80,6 +80,7 @@ public class DatabaseManager {
     /** Initialises the connection pool and creates all tables. */
     public void initialize() throws Exception {
         Files.createDirectories(Paths.get(dataDir));
+        DiagnosticLogManager.configureDataDir(dataDir);
         HikariConfig cfg = createHikariConfig();
         dataSource = new HikariDataSource(cfg);
 
@@ -981,6 +982,27 @@ public class DatabaseManager {
             leakInfo.put("reason", reason);
             leakInfo.put("allocationSite", lease.getAllocationSite());
             leakInfo.put("recoveredAt", System.currentTimeMillis());
+
+            try {
+                DiagnosticLogManager.DiagnosticIncidentEntry diagEntry = DiagnosticLogManager.recordConnectionLeak(
+                    reason,
+                    lease.threadName,
+                    lease.threadId,
+                    lease.getHoldDurationMs(),
+                    lease.getIdleDurationMs(),
+                    lease.getAllocationSite(),
+                    lease.allocationStack,
+                    getPoolStats(),
+                    null
+                );
+                if (diagEntry != null) {
+                    leakInfo.put("diagnosticLogFile", diagEntry.fileName);
+                    leakInfo.put("diagnosticLogPath", diagEntry.filePath);
+                }
+            } catch (Exception e) {
+                log.warn("Could not write connection leak diagnostic log: {}", e.getMessage());
+            }
+
             lastRecoveredLeak = leakInfo;
 
             log.info("[LEAK-RECOVERY] Successfully auto-recovered and evicted leaked connection ({}) in {}ms.",
