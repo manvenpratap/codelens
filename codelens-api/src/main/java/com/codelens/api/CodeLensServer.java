@@ -245,7 +245,7 @@ public class CodeLensServer {
             }
 
             int methodCount = callGraph.vertexCount();
-            boolean isHugeCodebase = methodCount > 25_000;
+            boolean isHugeCodebase = methodCount > 8_000;
 
             List<LayoutTask> tasks = new ArrayList<>();
             // Always warm up macro architecture views
@@ -2272,6 +2272,27 @@ public class CodeLensServer {
     // Stats
     // ─────────────────────────────────────────────────────────────────────────
     private void getStats(Context ctx) throws Exception {
+        ScanProgress sp = scanState.get();
+        if ((sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) || db.isBulkLoadInProgress()) {
+            Map<String, Object> liveStats = new LinkedHashMap<>();
+            liveStats.put("modules", 0);
+            liveStats.put("packages", 0);
+            liveStats.put("types", sp != null ? sp.getTypesFound() : 0);
+            liveStats.put("classes", sp != null ? sp.getTypesFound() : 0);
+            liveStats.put("interfaces", 0);
+            liveStats.put("enums", 0);
+            liveStats.put("records", 0);
+            liveStats.put("fields", sp != null ? sp.getFieldsFound() : 0);
+            liveStats.put("methods", sp != null ? sp.getMethodsFound() : 0);
+            liveStats.put("relationships", sp != null ? sp.getRelationshipsFound() : 0);
+            liveStats.put("inconsistencies", 0);
+            liveStats.put("methodsList", Collections.emptyList());
+            liveStats.put("typesList", Collections.emptyList());
+            liveStats.put("persistentClasses", Collections.emptyList());
+            liveStats.put("scanning", true);
+            ctx.json(liveStats);
+            return;
+        }
         Map<String, Object> stats = dao.getStats();
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());
@@ -2327,7 +2348,7 @@ public class CodeLensServer {
             return;
         }
 
-        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
+        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 8_000);
         List<CodePackage> packages = dao.findAllPackages();
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();

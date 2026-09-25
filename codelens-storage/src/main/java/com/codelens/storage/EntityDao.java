@@ -54,162 +54,192 @@ public class EntityDao {
                                      List<CodeMethod> methods,
                                      List<CodeRelationship> rels,
                                      List<FileMeta> fileMetas) throws SQLException {
-        try (Connection c = db.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                if (pkgs != null && !pkgs.isEmpty()) {
-                    String sqlPkg = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
-                    try (PreparedStatement ps = c.prepareStatement(sqlPkg)) {
-                        for (CodePackage p : pkgs) {
-                            ps.setString(1, p.getId());
-                            ps.setString(2, p.getFqn());
-                            ps.setString(3, p.getName());
-                            ps.setString(4, p.getParentFqn());
-                            ps.setInt(5, p.getFileCount());
-                            ps.setInt(6, p.getTypeCount());
-                            ps.addBatch();
-                        }
-                        ps.executeBatch();
-                    }
-                }
-
-                if (types != null && !types.isEmpty()) {
-                    String sqlTypes =
-                        "MERGE INTO types " +
-                        "(id,fqn,simple_name,package_fqn,kind,modifiers,super_class,interfaces," +
-                        " source_file,start_line,end_line,line_count,field_count,method_count) " +
-                        "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-                    Map<String, CodeType> unique = new LinkedHashMap<>(types.size());
-                    for (CodeType t : types) {
-                        if (t.getId() != null) unique.put(t.getId(), t);
-                    }
-                    try (PreparedStatement ps = c.prepareStatement(sqlTypes)) {
-                        for (CodeType t : unique.values()) {
-                            ps.setString(1,  t.getId());
-                            ps.setString(2,  t.getFqn());
-                            ps.setString(3,  t.getSimpleName());
-                            ps.setString(4,  t.getPackageFqn());
-                            ps.setString(5,  t.getKind());
-                            ps.setString(6,  t.getModifiers());
-                            ps.setString(7,  t.getSuperClass());
-                            ps.setString(8,  toJson(t.getInterfaces()));
-                            ps.setString(9,  t.getSourceFile());
-                            ps.setInt(10,    t.getStartLine());
-                            ps.setInt(11,    t.getEndLine());
-                            ps.setInt(12,    t.getLineCount());
-                            ps.setInt(13,    t.getFieldCount());
-                            ps.setInt(14,    t.getMethodCount());
-                            ps.addBatch();
-                        }
-                        ps.executeBatch();
-                    }
-                }
-
-                if (fields != null && !fields.isEmpty()) {
-                    String sqlFields =
-                        "MERGE INTO fields " +
-                        "(id,fqn,simple_name,declaring_type_fqn,field_type,modifiers,initializer,start_line) " +
-                        "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
-                    Map<String, CodeField> unique = new LinkedHashMap<>(fields.size());
-                    for (CodeField f : fields) {
-                        if (f.getId() != null) unique.put(f.getId(), f);
-                    }
-                    try (PreparedStatement ps = c.prepareStatement(sqlFields)) {
-                        for (CodeField f : unique.values()) {
-                            ps.setString(1, f.getId());
-                            ps.setString(2, f.getFqn());
-                            ps.setString(3, f.getSimpleName());
-                            ps.setString(4, f.getDeclaringTypeFqn());
-                            ps.setString(5, f.getFieldType());
-                            ps.setString(6, f.getModifiers());
-                            ps.setString(7, f.getInitializer());
-                            ps.setInt(8,    f.getStartLine());
-                            ps.addBatch();
-                        }
-                        ps.executeBatch();
-                    }
-                }
-
-                if (methods != null && !methods.isEmpty()) {
-                    String sqlMethods =
-                        "MERGE INTO methods " +
-                        "(id,fqn,simple_name,declaring_type_fqn,return_type,parameters,modifiers," +
-                        " start_line,end_line,cyclomatic_complexity,body_hash) " +
-                        "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
-                    Map<String, CodeMethod> unique = new LinkedHashMap<>(methods.size());
-                    for (CodeMethod m : methods) {
-                        if (m.getId() != null) unique.put(m.getId(), m);
-                    }
-                    int methodCount = 0;
-                    try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
-                        for (CodeMethod m : unique.values()) {
-                            ps.setString(1,  m.getId());
-                            ps.setString(2,  m.getFqn());
-                            ps.setString(3,  m.getSimpleName());
-                            ps.setString(4,  m.getDeclaringTypeFqn());
-                            ps.setString(5,  m.getReturnType());
-                            ps.setString(6,  toJson(m.getParameters()));
-                            ps.setString(7,  m.getModifiers());
-                            ps.setInt(8,     m.getStartLine());
-                            ps.setInt(9,     m.getEndLine());
-                            ps.setInt(10,    m.getCyclomaticComplexity());
-                            ps.setString(11, m.getBodyHash());
-                            ps.addBatch();
-                            if (++methodCount % 5000 == 0) {
-                                ps.executeBatch();
+        SQLException lastEx = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try (Connection c = db.getConnection()) {
+                c.setAutoCommit(false);
+                try {
+                    if (pkgs != null && !pkgs.isEmpty()) {
+                        String sqlPkg = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
+                        try (PreparedStatement ps = c.prepareStatement(sqlPkg)) {
+                            for (CodePackage p : pkgs) {
+                                ps.setString(1, p.getId());
+                                ps.setString(2, p.getFqn());
+                                ps.setString(3, p.getName());
+                                ps.setString(4, p.getParentFqn());
+                                ps.setInt(5, p.getFileCount());
+                                ps.setInt(6, p.getTypeCount());
+                                ps.addBatch();
                             }
+                            ps.executeBatch();
                         }
-                        ps.executeBatch();
+                        c.commit();
                     }
-                }
 
-                if (rels != null && !rels.isEmpty()) {
-                    String sqlRels =
-                        "MERGE INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
-                        "KEY(id) VALUES (?,?,?,?,?)";
-                    Map<String, CodeRelationship> unique = new LinkedHashMap<>(rels.size());
-                    for (CodeRelationship r : rels) {
-                        if (r.getId() != null) unique.put(r.getId(), r);
-                    }
-                    int relCount = 0;
-                    try (PreparedStatement ps = c.prepareStatement(sqlRels)) {
-                        for (CodeRelationship r : unique.values()) {
-                            ps.setString(1, r.getId());
-                            ps.setString(2, r.getFromEntityFqn());
-                            ps.setString(3, r.getToEntityFqn());
-                            ps.setString(4, r.getKind());
-                            ps.setInt(5,    r.getSourceLine());
-                            ps.addBatch();
-                            if (++relCount % 5000 == 0) {
-                                ps.executeBatch();
+                    if (types != null && !types.isEmpty()) {
+                        String sqlTypes =
+                            "MERGE INTO types " +
+                            "(id,fqn,simple_name,package_fqn,kind,modifiers,super_class,interfaces," +
+                            " source_file,start_line,end_line,line_count,field_count,method_count) " +
+                            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                        Map<String, CodeType> unique = new LinkedHashMap<>(types.size());
+                        for (CodeType t : types) {
+                            if (t.getId() != null) unique.put(t.getId(), t);
+                        }
+                        int typeCount = 0;
+                        try (PreparedStatement ps = c.prepareStatement(sqlTypes)) {
+                            for (CodeType t : unique.values()) {
+                                ps.setString(1,  t.getId());
+                                ps.setString(2,  t.getFqn());
+                                ps.setString(3,  t.getSimpleName());
+                                ps.setString(4,  t.getPackageFqn());
+                                ps.setString(5,  t.getKind());
+                                ps.setString(6,  t.getModifiers());
+                                ps.setString(7,  t.getSuperClass());
+                                ps.setString(8,  toJson(t.getInterfaces()));
+                                ps.setString(9,  t.getSourceFile());
+                                ps.setInt(10,    t.getStartLine());
+                                ps.setInt(11,    t.getEndLine());
+                                ps.setInt(12,    t.getLineCount());
+                                ps.setInt(13,    t.getFieldCount());
+                                ps.setInt(14,    t.getMethodCount());
+                                ps.addBatch();
+                                if (++typeCount % 2500 == 0) {
+                                    ps.executeBatch();
+                                    c.commit();
+                                }
                             }
+                            ps.executeBatch();
                         }
-                        ps.executeBatch();
+                        c.commit();
                     }
-                }
 
-                if (fileMetas != null && !fileMetas.isEmpty()) {
-                    String sqlMeta = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
-                    try (PreparedStatement ps = c.prepareStatement(sqlMeta)) {
-                        for (FileMeta m : fileMetas) {
-                            ps.setString(1, m.getFilePath());
-                            ps.setLong(2, m.getLastModified());
-                            ps.setLong(3, m.getFileSize());
-                            ps.setInt(4, m.getTypeCount());
-                            ps.addBatch();
+                    if (fields != null && !fields.isEmpty()) {
+                        String sqlFields =
+                            "MERGE INTO fields " +
+                            "(id,fqn,simple_name,declaring_type_fqn,field_type,modifiers,initializer,start_line) " +
+                            "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
+                        Map<String, CodeField> unique = new LinkedHashMap<>(fields.size());
+                        for (CodeField f : fields) {
+                            if (f.getId() != null) unique.put(f.getId(), f);
                         }
-                        ps.executeBatch();
+                        int fieldCount = 0;
+                        try (PreparedStatement ps = c.prepareStatement(sqlFields)) {
+                            for (CodeField f : unique.values()) {
+                                ps.setString(1, f.getId());
+                                ps.setString(2, f.getFqn());
+                                ps.setString(3, f.getSimpleName());
+                                ps.setString(4, f.getDeclaringTypeFqn());
+                                ps.setString(5, f.getFieldType());
+                                ps.setString(6, f.getModifiers());
+                                ps.setString(7, f.getInitializer());
+                                ps.setInt(8,    f.getStartLine());
+                                ps.addBatch();
+                                if (++fieldCount % 2500 == 0) {
+                                    ps.executeBatch();
+                                    c.commit();
+                                }
+                            }
+                            ps.executeBatch();
+                        }
+                        c.commit();
                     }
-                }
 
-                c.commit();
-            } catch (Throwable t) {
-                try { c.rollback(); } catch (SQLException ignored) {}
-                if (t instanceof SQLException) throw (SQLException) t;
-                throw new SQLException("Transaction failed during consolidated chunk insert", t);
-            } finally {
-                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+                    if (methods != null && !methods.isEmpty()) {
+                        String sqlMethods =
+                            "MERGE INTO methods " +
+                            "(id,fqn,simple_name,declaring_type_fqn,return_type,parameters,modifiers," +
+                            " start_line,end_line,cyclomatic_complexity,body_hash) " +
+                            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
+                        Map<String, CodeMethod> unique = new LinkedHashMap<>(methods.size());
+                        for (CodeMethod m : methods) {
+                            if (m.getId() != null) unique.put(m.getId(), m);
+                        }
+                        int methodCount = 0;
+                        try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
+                            for (CodeMethod m : unique.values()) {
+                                ps.setString(1,  m.getId());
+                                ps.setString(2,  m.getFqn());
+                                ps.setString(3,  m.getSimpleName());
+                                ps.setString(4,  m.getDeclaringTypeFqn());
+                                ps.setString(5,  m.getReturnType());
+                                ps.setString(6,  toJson(m.getParameters()));
+                                ps.setString(7,  m.getModifiers());
+                                ps.setInt(8,     m.getStartLine());
+                                ps.setInt(9,     m.getEndLine());
+                                ps.setInt(10,    m.getCyclomaticComplexity());
+                                ps.setString(11, m.getBodyHash());
+                                ps.addBatch();
+                                if (++methodCount % 2500 == 0) {
+                                    ps.executeBatch();
+                                    c.commit();
+                                }
+                            }
+                            ps.executeBatch();
+                        }
+                        c.commit();
+                    }
+
+                    if (rels != null && !rels.isEmpty()) {
+                        String sqlRels =
+                            "MERGE INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
+                            "KEY(id) VALUES (?,?,?,?,?)";
+                        Map<String, CodeRelationship> unique = new LinkedHashMap<>(rels.size());
+                        for (CodeRelationship r : rels) {
+                            if (r.getId() != null) unique.put(r.getId(), r);
+                        }
+                        int relCount = 0;
+                        try (PreparedStatement ps = c.prepareStatement(sqlRels)) {
+                            for (CodeRelationship r : unique.values()) {
+                                ps.setString(1, r.getId());
+                                ps.setString(2, r.getFromEntityFqn());
+                                ps.setString(3, r.getToEntityFqn());
+                                ps.setString(4, r.getKind());
+                                ps.setInt(5,    r.getSourceLine());
+                                ps.addBatch();
+                                if (++relCount % 5000 == 0) {
+                                    ps.executeBatch();
+                                    c.commit();
+                                }
+                            }
+                            ps.executeBatch();
+                        }
+                        c.commit();
+                    }
+
+                    if (fileMetas != null && !fileMetas.isEmpty()) {
+                        String sqlMeta = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
+                        try (PreparedStatement ps = c.prepareStatement(sqlMeta)) {
+                            for (FileMeta m : fileMetas) {
+                                ps.setString(1, m.getFilePath());
+                                ps.setLong(2, m.getLastModified());
+                                ps.setLong(3, m.getFileSize());
+                                ps.setInt(4, m.getTypeCount());
+                                ps.addBatch();
+                            }
+                            ps.executeBatch();
+                        }
+                        c.commit();
+                    }
+
+                    return;
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    if (t instanceof SQLException) throw (SQLException) t;
+                    throw new SQLException("Transaction failed during consolidated chunk insert", t);
+                } finally {
+                    try { c.setAutoCommit(true); } catch (SQLException ignored) {}
+                }
+            } catch (SQLException ex) {
+                lastEx = ex;
+                if (attempt < 3) {
+                    log.warn("Transient SQL contention during batchInsertChunkFast (attempt {}/3): {}. Retrying...", attempt, ex.getMessage());
+                    try { Thread.sleep(200L * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw ex; }
+                }
             }
+        }
+        if (lastEx != null) {
+            throw lastEx;
         }
     }
 
