@@ -167,14 +167,15 @@ public class CallGraphAnalyzer {
                         }
                     }
                 }
-                if (to == null || to.startsWith("~")) return;
+                if (to == null || to.startsWith("~") || from.equals(to)) return;
                 to = dedup(dedupPool, to);
 
                 g.addVertex(from);
                 g.addVertex(to);
 
-                try { g.addEdge(from, to); }
-                catch (Exception ignored) { /* duplicate edge */ }
+                if (!g.containsEdge(from, to)) {
+                    g.addEdge(from, to);
+                }
 
                 edgeCount[0]++;
                 if (listener != null && edgeCount[0] % eStride == 0) {
@@ -1151,6 +1152,8 @@ public class CallGraphAnalyzer {
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    private static final int MAX_BFS_SUBGRAPH_NODES = 1500;
+
     private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
                                  int maxDepth, String role, boolean hideGetters) {
         if (!g.containsVertex(start)) return Collections.emptyList();
@@ -1159,7 +1162,7 @@ public class CallGraphAnalyzer {
         BreadthFirstIterator<String, DefaultEdge> it =
             new BreadthFirstIterator<>(g, start);
 
-        while (it.hasNext()) {
+        while (it.hasNext() && result.size() < MAX_BFS_SUBGRAPH_NODES) {
             String v    = it.next();
             int    depth = it.getDepth(v);
             if (v.equals(start)) continue;        // skip root itself
@@ -1321,6 +1324,11 @@ public class CallGraphAnalyzer {
         String callerPkg = extractPackageFqn(from);
         if (callerPkg != null && !callerPkg.isEmpty()) {
             for (String c : candidates) {
+                if (!c.equals(from) && callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
+                    return c;
+                }
+            }
+            for (String c : candidates) {
                 if (callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
                     return c;
                 }
@@ -1330,12 +1338,20 @@ public class CallGraphAnalyzer {
         String callerMod = extractModuleName(from);
         if (callerMod != null && !callerMod.isEmpty() && !"default".equalsIgnoreCase(callerMod)) {
             for (String c : candidates) {
+                if (!c.equals(from) && callerMod.equalsIgnoreCase(extractModuleName(c))) {
+                    return c;
+                }
+            }
+            for (String c : candidates) {
                 if (callerMod.equalsIgnoreCase(extractModuleName(c))) {
                     return c;
                 }
             }
         }
 
+        for (String c : candidates) {
+            if (!c.equals(from)) return c;
+        }
         return null;
     }
 
@@ -1413,8 +1429,10 @@ public class CallGraphAnalyzer {
                 ly[k] = Math.sin(ringAngle) * ringDist;
             }
 
-            // Intra-cluster collision & label bounding-box separation (25 passes)
-            for (int pass = 0; pass < 25 && count > 1; pass++) {
+            // Intra-cluster collision & label bounding-box separation
+            // Adaptively cap passes based on cluster size so giant packages don't incur O(N^2) stalls
+            int intraPasses = count > 800 ? 0 : (count > 300 ? 3 : (count > 120 ? 8 : 25));
+            for (int pass = 0; pass < intraPasses && count > 1; pass++) {
                 for (int i = 0; i < count; i++) {
                     for (int j = i + 1; j < count; j++) {
                         double dx = lx[j] - lx[i];
@@ -1476,9 +1494,10 @@ public class CallGraphAnalyzer {
             localNodeCoords.add(packed);
         }
 
-        // Phase 2: Circle-packing relaxation on cluster centers (80 passes)
+        // Phase 2: Circle-packing relaxation on cluster centers (adaptive passes)
         // Guarantees every community hull has at least 180px clearance from every other community
-        for (int pass = 0; pass < 80 && totalGroups > 1; pass++) {
+        int clusterPasses = totalGroups > 800 ? 8 : (totalGroups > 300 ? 20 : 80);
+        for (int pass = 0; pass < clusterPasses && totalGroups > 1; pass++) {
             for (int i = 0; i < totalGroups; i++) {
                 for (int j = i + 1; j < totalGroups; j++) {
                     double dx = clusterX[j] - clusterX[i];

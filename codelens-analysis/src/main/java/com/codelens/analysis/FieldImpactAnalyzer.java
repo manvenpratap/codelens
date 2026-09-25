@@ -41,8 +41,8 @@ public class FieldImpactAnalyzer {
      * Replaces heavyweight CodeRelationship objects with lightweight string lists.
      */
     public static class CompactFieldImpact {
-        public final List<String> readers = new ArrayList<>(2);
-        public final List<String> writers = new ArrayList<>(2);
+        public final Set<String> readers = new LinkedHashSet<>(4);
+        public final Set<String> writers = new LinkedHashSet<>(4);
     }
 
     private Set<String> callingMethods = Collections.emptySet();
