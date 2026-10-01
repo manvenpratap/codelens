@@ -2914,10 +2914,13 @@
             <button class="hub-tab-btn" data-filter="idle" role="tab" aria-selected="false">
               Idle <span class="hub-tab-count" id="hub-count-idle">0</span>
             </button>
+            <button class="hub-tab-btn hub-tab-btn-error" data-filter="error" role="tab" aria-selected="false" id="hub-tab-error" style="display:none;">
+              Failed <span class="hub-tab-count" id="hub-count-error">0</span>
+            </button>
           </div>
           <div class="hub-search-box">
             <svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input type="text" id="process-hub-search-input" placeholder="Filter tasks by name, type, phase…" aria-label="Filter background tasks" />
+            <input type="text" id="process-hub-search-input" placeholder="Filter tasks by name, status, phase…" aria-label="Filter background tasks" />
             <button class="hub-search-clear-btn" id="process-hub-search-clear-btn" title="Clear filter" aria-label="Clear filter" style="display:none;">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>

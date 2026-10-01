@@ -930,6 +930,9 @@ function openProcessHub() {
   const modal = qs('#process-hub-modal');
   if (!modal) return;
   showAccessibleModal(modal, qs('#btn-process-hub'));
+  if (processHubLastData?.processes) {
+    renderTasksPanel(processHubLastData.processes);
+  }
   loadProcessHubData();
   if (processHubPollInterval) clearInterval(processHubPollInterval);
   processHubPollInterval = setInterval(loadProcessHubData, 2000);
@@ -2054,14 +2057,21 @@ async function loadProcessHubData() {
     const apis = data.apis || {};
 
     // 1. Update pulse badge on header Tasks button
-    const hasRunning = procs.some(p => p.status === 'RUNNING');
+    const hasRunning = procs.some(p => {
+      const s = String(p.status || '').toUpperCase();
+      if (p.id === 'heap-watchdog' || p.id === 'db-watchdog') {
+        return s === 'ALERT' || s === 'RECOVERING';
+      }
+      return s === 'RUNNING' || s === 'SCANNING';
+    });
     const pulseEl = qs('#process-hub-pulse');
     if (pulseEl) pulseEl.style.display = hasRunning ? 'inline-block' : 'none';
 
-    // 2. Compute process counts for tabs and stats
-    const runningCount = procs.filter(p => p.status === 'RUNNING').length;
-    const completeCount = procs.filter(p => p.status === 'COMPLETE').length;
-    const idleCount = procs.filter(p => p.status === 'IDLE').length;
+    // 2. Compute process counts for tabs and stats using normalized categories
+    const runningCount = procs.filter(p => getTaskCategory(p.status) === 'running').length;
+    const completeCount = procs.filter(p => getTaskCategory(p.status) === 'complete').length;
+    const idleCount = procs.filter(p => getTaskCategory(p.status) === 'idle').length;
+    const errorCount = procs.filter(p => getTaskCategory(p.status) === 'error').length;
     const totalCount = procs.length;
 
     const countAllEl = qs('#hub-count-all');
@@ -2072,6 +2082,22 @@ async function loadProcessHubData() {
     if (countCompleteEl) countCompleteEl.textContent = completeCount;
     const countIdleEl = qs('#hub-count-idle');
     if (countIdleEl) countIdleEl.textContent = idleCount;
+
+    const errorTabBtn = qs('#hub-tab-error');
+    const countErrorEl = qs('#hub-count-error');
+    if (errorTabBtn && countErrorEl) {
+      countErrorEl.textContent = errorCount;
+      errorTabBtn.style.display = errorCount > 0 ? 'inline-flex' : 'none';
+      if (errorCount === 0 && processHubFilter === 'error') {
+        processHubFilter = 'all';
+        qsa('.hub-tab-btn').forEach(b => {
+          const isAll = (b.dataset.filter || 'all') === 'all';
+          b.classList.toggle('active', isAll);
+          b.setAttribute('aria-selected', isAll ? 'true' : 'false');
+        });
+      }
+    }
+
     const navTasksCount = qs('#hub-nav-count-tasks');
     if (navTasksCount) navTasksCount.textContent = totalCount;
 
@@ -2134,179 +2160,226 @@ async function loadProcessHubData() {
     renderDatabasePanel(db);
     renderApisPanel(apis);
     renderServerPanel(system);
-
-    if (!listEl) return;
-
-    // Filter processes by active tab and search query
-    const q = (processHubSearch || '').trim().toLowerCase();
-    const filteredProcs = procs.filter(p => {
-      // Tab filter
-      if (processHubFilter === 'running' && p.status !== 'RUNNING') return false;
-      if (processHubFilter === 'complete' && p.status !== 'COMPLETE') return false;
-      if (processHubFilter === 'idle' && p.status !== 'IDLE') return false;
-
-      // Search query filter
-      if (q) {
-        const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-
-    if (emptyEl) {
-      emptyEl.style.display = filteredProcs.length === 0 ? 'flex' : 'none';
-    }
-
-    // Keyed reconciliation for process cards
-    const existingCards = new Map();
-    listEl.querySelectorAll('.process-card[data-process-id]').forEach(c => {
-      existingCards.set(c.dataset.processId, c);
-    });
-
-    const activeIds = new Set(filteredProcs.map(p => p.id));
-    for (const [id, el] of existingCards.entries()) {
-      if (!activeIds.has(id)) {
-        el.remove();
-        existingCards.delete(id);
-      }
-    }
-
-    filteredProcs.forEach((p) => {
-      let card = existingCards.get(p.id);
-      const isNew = !card;
-
-      if (isNew) {
-        card = document.createElement('div');
-        card.dataset.processId = p.id;
-      }
-
-      card.className = 'process-card' + (p.status === 'RUNNING' ? ' is-running' : '');
-
-      const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
-      const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
-
-      const iconSvg = getProcessIconSvg(p.id, p.type);
-      const statusBadgeIcon = p.status === 'RUNNING' 
-        ? '<span class="hub-live-dot" style="width:5px;height:5px;"></span>' 
-        : (p.status === 'COMPLETE' 
-          ? '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' 
-          : '• ');
-
-      let rawDetail = p.currentDetail || '';
-      if (!rawDetail) {
-        if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
-        else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
-        else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
-        else if (p.status === 'IDLE') rawDetail = 'Idle · Waiting for trigger';
-        else if (p.status === 'COMPLETE') rawDetail = 'Execution complete · Ready';
-        else rawDetail = 'Ready';
-      }
-      const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
-
-      card.innerHTML = `
-        <div class="process-card-header">
-          <div class="process-card-title-group">
-            <div class="process-card-icon-wrap" title="${esc(p.type || p.id)}">
-              ${iconSvg}
-            </div>
-            <div class="process-card-title-col">
-              <div class="process-card-title">${esc(p.name || p.id)}</div>
-              <div class="process-card-type">${esc(p.type || '')}</div>
-            </div>
-          </div>
-          <div class="process-card-badges-actions">
-            <span class="process-card-badge status-${(p.status || 'IDLE').toLowerCase()}">${statusBadgeIcon}${esc(p.status || 'IDLE')}</span>
-            ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
-            ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
-          </div>
-        </div>
-
-        ${pct > 0 || p.status === 'RUNNING' ? `
-          <div class="process-card-progress">
-            <div class="process-card-bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(p.name || p.id)} Progress">
-              <div class="process-card-bar-fill" style="width:${pct}%;"></div>
-            </div>
-          </div>
-        ` : ''}
-
-        <div class="process-card-meta">
-          <div class="process-meta-col meta-col-phase">
-            <span class="meta-field-label">PHASE</span>
-            <span class="process-meta-chip meta-chip-phase" title="${esc(p.currentPhase || 'Idle')}">${esc(p.currentPhase || 'Idle')}</span>
-          </div>
-          <div class="process-meta-col meta-col-detail">
-            <span class="meta-field-label">ACTIVITY</span>
-            <span class="meta-detail-text" title="${esc(rawDetail)}">${esc(cleanDetail)}</span>
-          </div>
-          <div class="process-meta-col meta-col-thread">
-            <span class="meta-field-label">THREAD</span>
-            <span class="process-meta-chip meta-chip-thread font-mono" title="${esc(p.thread || '-')}">${esc(p.thread || '-')}</span>
-          </div>
-          <div class="process-meta-col meta-col-elapsed">
-            <span class="meta-field-label">TIME</span>
-            <span class="meta-elapsed-val font-mono">${durSec}</span>
-          </div>
-        </div>
-      `;
-
-      // Kill button handler with inline two-step confirmation
-      const killBtn = card.querySelector('.btn-kill-process');
-      if (killBtn) {
-        killBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (!killBtn.classList.contains('confirm-state')) {
-            killBtn.classList.add('confirm-state');
-            killBtn.textContent = 'Confirm Kill?';
-            const timer = setTimeout(() => {
-              killBtn.classList.remove('confirm-state');
-              killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
-            }, 3500);
-            killBtn._confirmTimer = timer;
-            return;
-          }
-          clearTimeout(killBtn._confirmTimer);
-          killBtn.classList.remove('confirm-state');
-          try {
-            killBtn.disabled = true;
-            killBtn.textContent = 'Terminating…';
-            await api.killProcess(p.id);
-            showBanner(`Process "${p.name || p.id}" killed.`);
-            loadProcessHubData();
-          } catch (err) {
-            showError(`Failed to kill process: ${err.message}`);
-            killBtn.disabled = false;
-            killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
-          }
-        });
-      }
-
-      // Restart button handler
-      const restartBtn = card.querySelector('.btn-restart-process');
-      if (restartBtn) {
-        restartBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          try {
-            restartBtn.disabled = true;
-            restartBtn.textContent = 'Restarting…';
-            await api.restartProcess(p.id);
-            showBanner(`Process "${p.name || p.id}" restarted.`);
-            loadProcessHubData();
-          } catch (err) {
-            showError(`Failed to restart process: ${err.message}`);
-            restartBtn.disabled = false;
-            restartBtn.textContent = 'Restart';
-          }
-        });
-      }
-
-      if (isNew) {
-        listEl.appendChild(card);
-      }
-    });
+    renderTasksPanel(procs);
 
   } catch (e) {
     console.warn('Failed to load process hub data:', e);
   }
+}
+
+function getTaskCategory(status) {
+  const s = String(status || '').trim().toUpperCase();
+  if (['RUNNING', 'ACTIVE', 'SCANNING', 'ALERT', 'MONITORING', 'IN_PROGRESS', 'BUILDING'].includes(s)) {
+    return 'running';
+  }
+  if (['COMPLETE', 'COMPLETED', 'FINISHED', 'DONE', 'SUCCESS'].includes(s)) {
+    return 'complete';
+  }
+  if (['ERROR', 'FAILED'].includes(s)) {
+    return 'error';
+  }
+  return 'idle'; // IDLE, WAITING, READY, STANDBY, CANCELLED, STOPPED, or empty
+}
+
+function renderTasksPanel(procs) {
+  const listEl = qs('#process-hub-list');
+  const emptyEl = qs('#process-hub-empty');
+  if (!listEl) return;
+
+  const q = (processHubSearch || '').trim().toLowerCase();
+  const searchTerms = q ? q.split(/\s+/).filter(Boolean) : [];
+
+  const filteredProcs = (procs || []).filter(p => {
+    const cat = getTaskCategory(p.status);
+
+    // 1. Tab filter
+    if (processHubFilter === 'running' && cat !== 'running') return false;
+    if (processHubFilter === 'complete' && cat !== 'complete') return false;
+    if (processHubFilter === 'idle' && cat !== 'idle') return false;
+    if (processHubFilter === 'error' && cat !== 'error') return false;
+
+    // 2. Search query filter
+    if (searchTerms.length > 0) {
+      const statusRaw = String(p.status || '').toLowerCase();
+      const statusCat = cat;
+      const statusAliases = [
+        statusRaw,
+        statusCat,
+        statusCat === 'complete' ? 'completed finish finished done success' : '',
+        statusCat === 'running' ? 'active alert scanning monitoring in-progress building' : '',
+        statusCat === 'idle' ? 'waiting ready standby stopped cancelled' : '',
+        statusCat === 'error' ? 'failed failure' : ''
+      ].join(' ');
+
+      const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${statusAliases} ${p.activeStage || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''}`.toLowerCase();
+
+      const matches = searchTerms.every(term => haystack.includes(term));
+      if (!matches) return false;
+    }
+    return true;
+  });
+
+  if (emptyEl) {
+    emptyEl.style.display = filteredProcs.length === 0 ? 'flex' : 'none';
+  }
+
+  // Keyed reconciliation for process cards
+  const existingCards = new Map();
+  listEl.querySelectorAll('.process-card[data-process-id]').forEach(c => {
+    existingCards.set(c.dataset.processId, c);
+  });
+
+  const activeIds = new Set(filteredProcs.map(p => p.id));
+  for (const [id, el] of existingCards.entries()) {
+    if (!activeIds.has(id)) {
+      el.remove();
+      existingCards.delete(id);
+    }
+  }
+
+  filteredProcs.forEach((p) => {
+    let card = existingCards.get(p.id);
+    const isNew = !card;
+
+    if (isNew) {
+      card = document.createElement('div');
+      card.dataset.processId = p.id;
+    }
+
+    const cat = getTaskCategory(p.status);
+    const isRunning = cat === 'running';
+    const isComplete = cat === 'complete';
+    const isError = cat === 'error';
+
+    card.className = 'process-card' + (isRunning ? ' is-running' : (isError ? ' is-error' : ''));
+
+    const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
+    const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
+
+    const iconSvg = getProcessIconSvg(p.id, p.type);
+    let statusBadgeIcon = '• ';
+    if (isRunning) {
+      const dotBg = String(p.status).toUpperCase() === 'ALERT' ? 'style="width:5px;height:5px;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"' : 'style="width:5px;height:5px;"';
+      statusBadgeIcon = `<span class="hub-live-dot" ${dotBg}></span>`;
+    } else if (isComplete) {
+      statusBadgeIcon = '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (isError) {
+      statusBadgeIcon = '<svg class="svg-icon icon-xs icon-rose" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
+
+    let rawDetail = p.currentDetail || '';
+    if (!rawDetail) {
+      if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
+      else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
+      else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
+      else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
+      else if (cat === 'idle') rawDetail = 'Idle · Waiting for trigger';
+      else if (cat === 'complete') rawDetail = 'Execution complete · Ready';
+      else if (cat === 'error') rawDetail = 'Task encountered an error';
+      else rawDetail = 'Ready';
+    }
+    const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
+
+    card.innerHTML = `
+      <div class="process-card-header">
+        <div class="process-card-title-group">
+          <div class="process-card-icon-wrap" title="${esc(p.type || p.id)}">
+            ${iconSvg}
+          </div>
+          <div class="process-card-title-col">
+            <div class="process-card-title">${esc(p.name || p.id)}</div>
+            <div class="process-card-type">${esc(p.type || '')}</div>
+          </div>
+        </div>
+        <div class="process-card-badges-actions">
+          <span class="process-card-badge status-${(p.status || 'idle').toLowerCase()}">${statusBadgeIcon}${esc(p.status || 'IDLE')}</span>
+          ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
+          ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
+        </div>
+      </div>
+
+      ${pct > 0 || isRunning ? `
+        <div class="process-card-progress">
+          <div class="process-card-bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(p.name || p.id)} Progress">
+            <div class="process-card-bar-fill" style="width:${pct}%;"></div>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="process-card-meta">
+        <div class="process-meta-col meta-col-phase">
+          <span class="meta-field-label">PHASE</span>
+          <span class="process-meta-chip meta-chip-phase" title="${esc(p.currentPhase || 'Idle')}">${esc(p.currentPhase || 'Idle')}</span>
+        </div>
+        <div class="process-meta-col meta-col-detail">
+          <span class="meta-field-label">ACTIVITY</span>
+          <span class="meta-detail-text" title="${esc(rawDetail)}">${esc(cleanDetail)}</span>
+        </div>
+        <div class="process-meta-col meta-col-thread">
+          <span class="meta-field-label">THREAD</span>
+          <span class="process-meta-chip meta-chip-thread font-mono" title="${esc(p.thread || '-')}">${esc(p.thread || '-')}</span>
+        </div>
+        <div class="process-meta-col meta-col-elapsed">
+          <span class="meta-field-label">TIME</span>
+          <span class="meta-elapsed-val font-mono">${durSec}</span>
+        </div>
+      </div>
+    `;
+
+    // Kill button handler with inline two-step confirmation
+    const killBtn = card.querySelector('.btn-kill-process');
+    if (killBtn) {
+      killBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!killBtn.classList.contains('confirm-state')) {
+          killBtn.classList.add('confirm-state');
+          killBtn.textContent = 'Confirm Kill?';
+          const timer = setTimeout(() => {
+            killBtn.classList.remove('confirm-state');
+            killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
+          }, 3500);
+          killBtn._confirmTimer = timer;
+          return;
+        }
+        clearTimeout(killBtn._confirmTimer);
+        killBtn.classList.remove('confirm-state');
+        try {
+          killBtn.disabled = true;
+          killBtn.textContent = 'Terminating…';
+          await api.killProcess(p.id);
+          showBanner(`Process "${p.name || p.id}" killed.`);
+          loadProcessHubData();
+        } catch (err) {
+          showError(`Failed to kill process: ${err.message}`);
+          killBtn.disabled = false;
+          killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
+        }
+      });
+    }
+
+    // Restart button handler
+    const restartBtn = card.querySelector('.btn-restart-process');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          restartBtn.disabled = true;
+          restartBtn.textContent = 'Restarting…';
+          await api.restartProcess(p.id);
+          showBanner(`Process "${p.name || p.id}" restarted.`);
+          loadProcessHubData();
+        } catch (err) {
+          showError(`Failed to restart process: ${err.message}`);
+          restartBtn.disabled = false;
+          restartBtn.textContent = 'Restart';
+        }
+      });
+    }
+
+    if (isNew) {
+      listEl.appendChild(card);
+    }
+  });
 }
 
 function initProcessHub() {
@@ -2364,7 +2437,8 @@ function initProcessHub() {
       }
 
       if (processHubLastData) {
-        if (processHubActiveTab === 'database') renderDatabasePanel(processHubLastData.database);
+        if (processHubActiveTab === 'tasks') renderTasksPanel(processHubLastData.processes);
+        else if (processHubActiveTab === 'database') renderDatabasePanel(processHubLastData.database);
         else if (processHubActiveTab === 'apis') renderApisPanel(processHubLastData.apis);
         else if (processHubActiveTab === 'jvm' || processHubActiveTab === 'server') renderJvmPanel(processHubLastData.system);
       }
@@ -2430,7 +2504,11 @@ function initProcessHub() {
       btn.classList.add('active');
       btn.setAttribute('aria-selected', 'true');
       processHubFilter = btn.dataset.filter || 'all';
-      loadProcessHubData();
+      if (processHubLastData?.processes) {
+        renderTasksPanel(processHubLastData.processes);
+      } else {
+        loadProcessHubData();
+      }
     });
   });
 
@@ -2441,7 +2519,11 @@ function initProcessHub() {
     searchInput.addEventListener('input', (e) => {
       processHubSearch = e.target.value;
       if (clearBtn) clearBtn.style.display = processHubSearch ? 'block' : 'none';
-      loadProcessHubData();
+      if (processHubLastData?.processes) {
+        renderTasksPanel(processHubLastData.processes);
+      } else {
+        loadProcessHubData();
+      }
     });
   }
   if (clearBtn) {
@@ -2451,7 +2533,11 @@ function initProcessHub() {
         processHubSearch = '';
         clearBtn.style.display = 'none';
         searchInput.focus();
-        loadProcessHubData();
+        if (processHubLastData?.processes) {
+          renderTasksPanel(processHubLastData.processes);
+        } else {
+          loadProcessHubData();
+        }
       }
     });
   }
@@ -2467,14 +2553,24 @@ function initProcessHub() {
       b.classList.toggle('active', isAll);
       b.setAttribute('aria-selected', isAll ? 'true' : 'false');
     });
-    loadProcessHubData();
+    if (processHubLastData?.processes) {
+      renderTasksPanel(processHubLastData.processes);
+    } else {
+      loadProcessHubData();
+    }
   });
 
   // Background check every 10 seconds to update header pulse badge
   setInterval(async () => {
     try {
       const data = await api.processes();
-      const hasRunning = data?.processes?.some(p => p.status === 'RUNNING');
+      const hasRunning = data?.processes?.some(p => {
+        const s = String(p.status || '').toUpperCase();
+        if (p.id === 'heap-watchdog' || p.id === 'db-watchdog') {
+          return s === 'ALERT' || s === 'RECOVERING';
+        }
+        return s === 'RUNNING' || s === 'SCANNING';
+      });
       const pulseEl = qs('#process-hub-pulse');
       if (pulseEl) pulseEl.style.display = hasRunning ? 'inline-block' : 'none';
     } catch (ignored) {}

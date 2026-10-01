@@ -14848,6 +14848,60 @@ body.theme-light .hub-tab-btn.active .hub-tab-count {
   color: #0f172a;
 }
 
+.hub-tab-btn.hub-tab-btn-error {
+  color: #fb7185;
+}
+.hub-tab-btn.hub-tab-btn-error .hub-tab-count {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fb7185;
+}
+.hub-tab-btn.hub-tab-btn-error:hover {
+  background: rgba(244, 63, 94, 0.12);
+  color: #fda4af;
+}
+.hub-tab-btn.hub-tab-btn-error.active {
+  background: rgba(244, 63, 94, 0.22);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.45);
+}
+.hub-tab-btn.hub-tab-btn-error.active .hub-tab-count {
+  background: rgba(244, 63, 94, 0.4);
+  color: #ffffff;
+}
+
+body.theme-light .hub-tab-btn.hub-tab-btn-error {
+  color: #e11d48;
+}
+body.theme-light .hub-tab-btn.hub-tab-btn-error .hub-tab-count {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+body.theme-light .hub-tab-btn.hub-tab-btn-error:hover {
+  background: #fff1f2;
+}
+body.theme-light .hub-tab-btn.hub-tab-btn-error.active {
+  background: #ffe4e6;
+  color: #9f1239;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+body.theme-swiss .hub-tab-btn.hub-tab-btn-error {
+  color: #ff453a;
+}
+body.theme-swiss .hub-tab-btn.hub-tab-btn-error .hub-tab-count {
+  background: rgba(255, 69, 58, 0.18);
+  color: #ff453a;
+}
+body.theme-swiss .hub-tab-btn.hub-tab-btn-error.active {
+  background: #ff453a;
+  color: #ffffff;
+  box-shadow: none;
+}
+body.theme-swiss .hub-tab-btn.hub-tab-btn-error.active .hub-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
 .hub-search-box {
   position: relative;
   display: flex;
@@ -15012,25 +15066,121 @@ body.theme-light .process-card-icon-wrap {
   text-align: center;
   gap: 5px;
 }
-.process-card-badge.status-running {
+.process-card-badge.status-running,
+.process-card-badge.status-active {
   background: rgba(59, 130, 246, 0.18);
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.4);
 }
-.process-card-badge.status-complete {
+.process-card-badge.status-alert {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.process-card-badge.status-complete,
+.process-card-badge.status-completed {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
   border: 1px solid rgba(16, 185, 129, 0.35);
 }
-.process-card-badge.status-idle {
+.process-card-badge.status-idle,
+.process-card-badge.status-standby,
+.process-card-badge.status-waiting,
+.process-card-badge.status-ready,
+.process-card-badge.status-stopped {
   background: rgba(148, 163, 184, 0.12);
   color: #94a3b8;
   border: 1px solid rgba(148, 163, 184, 0.25);
 }
-.process-card-badge.status-error {
+.process-card-badge.status-error,
+.process-card-badge.status-failed,
+.process-card-badge.status-cancelled {
   background: rgba(244, 63, 94, 0.15);
   color: #fb7185;
   border: 1px solid rgba(244, 63, 94, 0.35);
+}
+
+.process-card.is-error {
+  border-color: rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.04);
+}
+
+body.theme-light .process-card.is-error {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+body.theme-swiss .process-card.is-error {
+  border-color: #ff453a;
+  background: rgba(255, 69, 58, 0.04);
+}
+
+body.theme-light .process-card-badge.status-running,
+body.theme-light .process-card-badge.status-active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+body.theme-light .process-card-badge.status-alert {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+body.theme-light .process-card-badge.status-complete,
+body.theme-light .process-card-badge.status-completed {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+body.theme-light .process-card-badge.status-idle,
+body.theme-light .process-card-badge.status-standby,
+body.theme-light .process-card-badge.status-waiting,
+body.theme-light .process-card-badge.status-ready,
+body.theme-light .process-card-badge.status-stopped {
+  background: #f8fafc;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+body.theme-light .process-card-badge.status-error,
+body.theme-light .process-card-badge.status-failed,
+body.theme-light .process-card-badge.status-cancelled {
+  background: #fff1f2;
+  color: #be123c;
+  border-color: #fecdd3;
+}
+
+body.theme-swiss .process-card-badge.status-running,
+body.theme-swiss .process-card-badge.status-active {
+  background: rgba(0, 113, 227, 0.12);
+  color: #2997ff;
+  border-color: rgba(41, 151, 255, 0.3);
+}
+body.theme-swiss .process-card-badge.status-alert {
+  background: rgba(255, 159, 10, 0.12);
+  color: #ff9f0a;
+  border-color: rgba(255, 159, 10, 0.3);
+}
+body.theme-swiss .process-card-badge.status-complete,
+body.theme-swiss .process-card-badge.status-completed {
+  background: rgba(48, 209, 88, 0.12);
+  color: #30d158;
+  border-color: rgba(48, 209, 88, 0.3);
+}
+body.theme-swiss .process-card-badge.status-idle,
+body.theme-swiss .process-card-badge.status-standby,
+body.theme-swiss .process-card-badge.status-waiting,
+body.theme-swiss .process-card-badge.status-ready,
+body.theme-swiss .process-card-badge.status-stopped {
+  background: rgba(142, 142, 147, 0.12);
+  color: #8e8e93;
+  border-color: rgba(142, 142, 147, 0.25);
+}
+body.theme-swiss .process-card-badge.status-error,
+body.theme-swiss .process-card-badge.status-failed,
+body.theme-swiss .process-card-badge.status-cancelled {
+  background: rgba(255, 69, 58, 0.12);
+  color: #ff453a;
+  border-color: rgba(255, 69, 58, 0.3);
 }
 
 .process-card-progress {
