@@ -3579,6 +3579,586 @@ public class ReportService {
     }
 
     // =========================================================================
+    // 10. API SURFACE & REST ENDPOINT CATALOG REPORT
+    // =========================================================================
+
+    public static class ApiCatalogReportData {
+        public String generatedAt;
+        public int totalEndpoints;
+        public int totalControllers;
+        public int authenticatedEndpointsCount;
+        public int publicEndpointsCount;
+        public int highRiskEndpointsCount;
+        public Map<String, Integer> httpMethodDistribution = new LinkedHashMap<>();
+        public List<ApiEndpointMetric> endpoints = new ArrayList<>();
+    }
+
+    public static class ApiEndpointMetric {
+        public String endpointUrl;
+        public String httpMethod; // GET, POST, PUT, DELETE, RPC
+        public String handlerClass;
+        public String handlerMethod;
+        public String returnType;
+        public int parameterCount;
+        public boolean isPublicApi;
+        public boolean hasAuthCheck;
+        public int downstreamCallCount;
+        public int blastRadiusScore;
+        public String riskLevel; // HIGH, MEDIUM, LOW
+        public String documentationSummary;
+    }
+
+    public ApiCatalogReportData buildApiCatalogData(List<CodeType> types,
+                                                   List<CodeMethod> methods,
+                                                   List<CodeRelationship> rels) {
+        ApiCatalogReportData d = new ApiCatalogReportData();
+        d.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Set<String> controllerClasses = new HashSet<>();
+        for (CodeType t : types) {
+            String name = t.getSimpleName();
+            String fqn = t.getFqn();
+            if (name.endsWith("Controller") || name.endsWith("Endpoint") || name.endsWith("Resource")
+                || name.endsWith("Grabber") || name.endsWith("Servlet") || name.endsWith("Handler")
+                || fqn.contains(".api.") || fqn.contains(".rest.") || fqn.contains(".endpoint.")) {
+                controllerClasses.add(fqn);
+            }
+        }
+        d.totalControllers = controllerClasses.size();
+
+        Map<String, Set<String>> outgoingMap = new HashMap<>();
+        for (CodeRelationship r : rels) {
+            if ("CALLS".equalsIgnoreCase(r.getKind()) || "METHOD_CALL".equalsIgnoreCase(r.getKind())) {
+                outgoingMap.computeIfAbsent(r.getFromEntityFqn(), k -> new HashSet<>()).add(r.getToEntityFqn());
+            }
+        }
+
+        Map<String, Integer> methodCounts = new LinkedHashMap<>();
+        methodCounts.put("GET", 0);
+        methodCounts.put("POST", 0);
+        methodCounts.put("PUT", 0);
+        methodCounts.put("DELETE", 0);
+        methodCounts.put("RPC", 0);
+
+        for (CodeMethod m : methods) {
+            String classFqn = m.getDeclaringTypeFqn();
+            boolean isCtrl = controllerClasses.contains(classFqn);
+            String mName = m.getSimpleName();
+            String mLower = mName.toLowerCase();
+
+            // Check if endpoint candidate
+            if (!isCtrl && !mLower.startsWith("handle") && !mLower.startsWith("serve") && !mLower.startsWith("get") && !mLower.startsWith("post")) {
+                continue;
+            }
+            if ("<init>".equals(mName) || "<clinit>".equals(mName) || mName.equals("equals") || mName.equals("hashCode") || mName.equals("toString")
+                || mName.startsWith("lambda$") || mName.startsWith("access$")) {
+                continue;
+            }
+
+            ApiEndpointMetric ep = new ApiEndpointMetric();
+            ep.handlerClass = classFqn;
+            ep.handlerMethod = m.getFqn();
+            ep.returnType = m.getReturnType() != null ? m.getReturnType() : "void";
+            ep.parameterCount = m.getParameters() != null ? m.getParameters().size() : 0;
+            ep.isPublicApi = m.getModifiers() != null && m.getModifiers().contains("public");
+
+            // Infer HTTP method
+            if (mLower.startsWith("get") || mLower.startsWith("find") || mLower.startsWith("fetch") || mLower.startsWith("query") || mLower.startsWith("read") || mLower.startsWith("list")) {
+                ep.httpMethod = "GET";
+            } else if (mLower.startsWith("post") || mLower.startsWith("create") || mLower.startsWith("add") || mLower.startsWith("submit") || mLower.startsWith("save")) {
+                ep.httpMethod = "POST";
+            } else if (mLower.startsWith("put") || mLower.startsWith("update") || mLower.startsWith("modify") || mLower.startsWith("patch")) {
+                ep.httpMethod = "PUT";
+            } else if (mLower.startsWith("delete") || mLower.startsWith("remove") || mLower.startsWith("clear") || mLower.startsWith("kill")) {
+                ep.httpMethod = "DELETE";
+            } else {
+                ep.httpMethod = isCtrl ? "POST" : "RPC";
+            }
+            methodCounts.put(ep.httpMethod, methodCounts.getOrDefault(ep.httpMethod, 0) + 1);
+
+            // Infer endpoint URL path
+            String simpleClass = classFqn != null && classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : "api";
+            String cleanClass = simpleClass.replaceAll("(Controller|Endpoint|Resource|Grabber|Servlet|Handler|Service)$", "").toLowerCase();
+            if (cleanClass.isBlank()) cleanClass = "service";
+            String cleanMethod = mName.replaceAll("^(get|post|put|delete|find|fetch|create|save|update|remove)", "").toLowerCase();
+            if (cleanMethod.isBlank()) cleanMethod = mName.toLowerCase();
+            ep.endpointUrl = "/api/" + cleanClass + "/" + cleanMethod;
+
+            // Security check
+            Set<String> callees = outgoingMap.getOrDefault(m.getFqn(), Collections.emptySet());
+            ep.downstreamCallCount = callees.size();
+            boolean authFound = false;
+            for (String callee : callees) {
+                String cLower = callee.toLowerCase();
+                if (cLower.contains("security") || cLower.contains("auth") || cLower.contains("token")
+                    || cLower.contains("permission") || cLower.contains("user") || cLower.contains("role")
+                    || cLower.contains("principal") || cLower.contains("validate")) {
+                    authFound = true;
+                    break;
+                }
+            }
+            ep.hasAuthCheck = authFound;
+            if (authFound) d.authenticatedEndpointsCount++;
+            else d.publicEndpointsCount++;
+
+            // Blast radius & risk
+            int blast = Math.min(100, (ep.downstreamCallCount * 6) + (authFound ? 0 : 25) + ("DELETE".equals(ep.httpMethod) ? 30 : ("POST".equals(ep.httpMethod) || "PUT".equals(ep.httpMethod) ? 15 : 5)));
+            ep.blastRadiusScore = blast;
+            if (blast >= 65) {
+                ep.riskLevel = "HIGH";
+                d.highRiskEndpointsCount++;
+            } else if (blast >= 35) {
+                ep.riskLevel = "MEDIUM";
+            } else {
+                ep.riskLevel = "LOW";
+            }
+            ep.documentationSummary = String.format("%s handler for %s returning %s (%d downstream dependencies)",
+                ep.httpMethod, ep.endpointUrl, ep.returnType, ep.downstreamCallCount);
+
+            d.endpoints.add(ep);
+            if (d.endpoints.size() >= 500) break; // Limit top 500 endpoints for memory safety
+        }
+
+        d.totalEndpoints = d.endpoints.size();
+        d.httpMethodDistribution = methodCounts;
+        d.endpoints.sort((a, b) -> Integer.compare(b.blastRadiusScore, a.blastRadiusScore));
+        return d;
+    }
+
+    public String renderApiCatalogMarkdown(ApiCatalogReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# API Surface & REST Endpoint Catalog\n\n");
+        sb.append("**Generated:** ").append(d.generatedAt).append("\n\n");
+        sb.append("## Executive API Summary\n\n");
+        sb.append("| Metric | Count |\n|---|---:|\n");
+        sb.append("| **Total Endpoints** | ").append(d.totalEndpoints).append(" |\n");
+        sb.append("| **Controller / Gateway Classes** | ").append(d.totalControllers).append(" |\n");
+        sb.append("| **Authenticated Endpoints** | ").append(d.authenticatedEndpointsCount).append(" |\n");
+        sb.append("| **Public / Unauthenticated Surface** | ").append(d.publicEndpointsCount).append(" |\n");
+        sb.append("| **High Blast-Radius Endpoints** | ").append(d.highRiskEndpointsCount).append(" |\n\n");
+
+        sb.append("### HTTP Method Distribution\n\n");
+        sb.append("| Method | Endpoints |\n|---|---:|\n");
+        for (Map.Entry<String, Integer> e : d.httpMethodDistribution.entrySet()) {
+            sb.append("| `").append(e.getKey()).append("` | ").append(e.getValue()).append(" |\n");
+        }
+        sb.append("\n## Endpoint Catalog (Ranked by Blast Radius)\n\n");
+        sb.append("| Method | Endpoint Route | Handler Class & Method | Downstream Calls | Auth Guard | Risk Level |\n");
+        sb.append("|---|---|---|---:|---|---|\n");
+        for (ApiEndpointMetric ep : d.endpoints) {
+            sb.append("| `").append(ep.httpMethod).append("` | `").append(ep.endpointUrl).append("` | `")
+              .append(ep.handlerClass != null && ep.handlerClass.contains(".") ? ep.handlerClass.substring(ep.handlerClass.lastIndexOf('.') + 1) : ep.handlerClass)
+              .append(".").append(ep.handlerMethod.substring(ep.handlerMethod.lastIndexOf('.') + 1))
+              .append("` | ").append(ep.downstreamCallCount).append(" | ")
+              .append(ep.hasAuthCheck ? "Protected" : "Public / Open").append(" | **")
+              .append(ep.riskLevel).append("** (").append(ep.blastRadiusScore).append("/100) |\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderApiCatalogHtml(ApiCatalogReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>API Surface & REST Endpoint Catalog</title>");
+        sb.append("<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0d12;color:#e2e8f0;padding:32px;}");
+        sb.append("h1,h2{color:#38bdf8;}table{width:100%;border-collapse:collapse;margin-top:16px;background:#111621;}");
+        sb.append("th,td{padding:10px 12px;border:1px solid #1e293b;text-align:left;font-size:13px;}th{background:#161e2e;color:#94a3b8;}");
+        sb.append(".badge-get{background:#0284c7;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;}");
+        sb.append(".badge-post{background:#16a34a;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;}");
+        sb.append(".badge-put{background:#d97706;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;}");
+        sb.append(".badge-delete{background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;}");
+        sb.append(".risk-high{color:#f87171;font-weight:bold;}.risk-med{color:#fbbf24;}.risk-low{color:#34d399;}</style></head><body>");
+        sb.append("<h1>API Surface & REST Endpoint Catalog</h1>");
+        sb.append("<p>Analyzed ").append(d.totalEndpoints).append(" endpoints across ").append(d.totalControllers).append(" controllers and service facades.</p>");
+        sb.append("<h2>Endpoint Catalog</h2><table><thead><tr><th>Method</th><th>Endpoint URL</th><th>Handler</th><th>Downstream Calls</th><th>Auth</th><th>Risk</th></tr></thead><tbody>");
+        for (ApiEndpointMetric ep : d.endpoints) {
+            String badgeCls = "badge-" + ep.httpMethod.toLowerCase();
+            String riskCls = "risk-" + ep.riskLevel.toLowerCase().substring(0, 3);
+            sb.append("<tr><td><span class='").append(badgeCls).append("'>").append(escapeHtml(ep.httpMethod)).append("</span></td>");
+            sb.append("<td><code>").append(escapeHtml(ep.endpointUrl)).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(ep.handlerMethod)).append("</code></td>");
+            sb.append("<td>").append(ep.downstreamCallCount).append("</td>");
+            sb.append("<td>").append(ep.hasAuthCheck ? "<span style='color:#34d399;'>Protected</span>" : "<span style='color:#f87171;'>Open</span>").append("</td>");
+            sb.append("<td class='").append(riskCls).append("'>").append(escapeHtml(ep.riskLevel)).append(" (").append(ep.blastRadiusScore).append(")</td></tr>");
+        }
+        sb.append("</tbody></table></body></html>");
+        return sb.toString();
+    }
+
+    public String renderApiCatalogCsv(ApiCatalogReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("HttpMethod,EndpointUrl,HandlerClass,HandlerMethod,ReturnType,Parameters,AuthProtected,DownstreamCalls,BlastRadiusScore,RiskLevel\n");
+        for (ApiEndpointMetric ep : d.endpoints) {
+            sb.append(escapeCsv(ep.httpMethod)).append(",")
+              .append(escapeCsv(ep.endpointUrl)).append(",")
+              .append(escapeCsv(ep.handlerClass)).append(",")
+              .append(escapeCsv(ep.handlerMethod)).append(",")
+              .append(escapeCsv(ep.returnType)).append(",")
+              .append(ep.parameterCount).append(",")
+              .append(ep.hasAuthCheck).append(",")
+              .append(ep.downstreamCallCount).append(",")
+              .append(ep.blastRadiusScore).append(",")
+              .append(escapeCsv(ep.riskLevel)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================
+    // 11. DATABASE & DATA ACCESS FLOW (PERSISTENCE AUDIT)
+    // =========================================================================
+
+    public static class DatabaseAccessReportData {
+        public String generatedAt;
+        public int totalDataAccessClasses;
+        public int totalQueryMethods;
+        public int totalReadOperations;
+        public int totalWriteOperations;
+        public int totalTransactionalMethods;
+        public int dataIntegrityScore; // 0 - 100
+        public Map<String, Integer> tableTouchCount = new LinkedHashMap<>();
+        public Map<String, Integer> patternDistribution = new LinkedHashMap<>();
+        public List<DataAccessMetric> accessPoints = new ArrayList<>();
+    }
+
+    public static class DataAccessMetric {
+        public String classFqn;
+        public String methodFqn;
+        public String pattern; // JDBC, JPA, H2 DAO, Repository
+        public String operationType; // SELECT, INSERT, UPDATE, DELETE, TRANSACTION
+        public String targetTable;
+        public boolean isTransactional;
+        public boolean usesPreparedStatement;
+        public int downstreamReaders;
+        public String riskFactor; // Unparameterized SQL, Missing Transaction Guard, Batch Mutation Hotspot, Optimal
+    }
+
+    public DatabaseAccessReportData buildDatabaseAccessData(List<CodeType> types,
+                                                           List<CodeMethod> methods,
+                                                           List<CodeField> fields,
+                                                           List<CodeRelationship> rels) {
+        DatabaseAccessReportData d = new DatabaseAccessReportData();
+        d.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Set<String> daoClasses = new HashSet<>();
+        for (CodeType t : types) {
+            String name = t.getSimpleName();
+            String fqn = t.getFqn();
+            if (name.endsWith("Dao") || name.endsWith("DAO") || name.endsWith("Repository") || name.endsWith("Storage")
+                || name.endsWith("DatabaseManager") || name.endsWith("Database") || name.endsWith("Mapper")
+                || fqn.contains(".storage.") || fqn.contains(".repository.") || fqn.contains(".dao.")) {
+                daoClasses.add(fqn);
+            }
+        }
+        d.totalDataAccessClasses = daoClasses.size();
+
+        Map<String, Integer> tableMap = new LinkedHashMap<>();
+        Map<String, Integer> patternMap = new LinkedHashMap<>();
+        patternMap.put("JDBC / SQL", 0);
+        patternMap.put("H2 Storage DAO", 0);
+        patternMap.put("JPA / Repository", 0);
+        patternMap.put("In-Memory Table Cache", 0);
+
+        for (CodeMethod m : methods) {
+            String classFqn = m.getDeclaringTypeFqn();
+            boolean isDao = daoClasses.contains(classFqn);
+            String mName = m.getSimpleName();
+            String mLower = mName.toLowerCase();
+
+            // Detect database operations
+            boolean hasDbOp = isDao || mLower.contains("sql") || mLower.contains("query") || mLower.contains("findby")
+                || mLower.contains("insert") || mLower.contains("update") || mLower.contains("delete") || mLower.contains("save")
+                || mLower.contains("persist") || mLower.contains("commit") || mLower.contains("table");
+
+            if (!hasDbOp || "<init>".equals(mName) || "<clinit>".equals(mName) || mName.startsWith("lambda$") || mName.startsWith("access$")) {
+                continue;
+            }
+
+            DataAccessMetric da = new DataAccessMetric();
+            da.classFqn = classFqn;
+            da.methodFqn = m.getFqn();
+
+            // Detect operation
+            if (mLower.contains("select") || mLower.contains("find") || mLower.contains("get") || mLower.contains("fetch") || mLower.contains("query") || mLower.contains("load")) {
+                da.operationType = "SELECT (Read)";
+                d.totalReadOperations++;
+            } else if (mLower.contains("insert") || mLower.contains("create") || mLower.contains("add") || mLower.contains("save") || mLower.contains("persist")) {
+                da.operationType = "INSERT (Write)";
+                d.totalWriteOperations++;
+            } else if (mLower.contains("update") || mLower.contains("modify") || mLower.contains("set") || mLower.contains("patch")) {
+                da.operationType = "UPDATE (Write)";
+                d.totalWriteOperations++;
+            } else if (mLower.contains("delete") || mLower.contains("remove") || mLower.contains("truncate") || mLower.contains("drop")) {
+                da.operationType = "DELETE (Write)";
+                d.totalWriteOperations++;
+            } else if (mLower.contains("commit") || mLower.contains("rollback") || mLower.contains("transaction")) {
+                da.operationType = "TRANSACTION";
+                d.totalTransactionalMethods++;
+            } else {
+                da.operationType = "SELECT (Read)";
+                d.totalReadOperations++;
+            }
+
+            // Target table inference
+            String target = "entities";
+            if (mLower.contains("method")) target = "methods";
+            else if (mLower.contains("type") || mLower.contains("class")) target = "types";
+            else if (mLower.contains("field")) target = "fields";
+            else if (mLower.contains("rel") || mLower.contains("relationship") || mLower.contains("call")) target = "relationships";
+            else if (mLower.contains("package")) target = "packages";
+            else if (mLower.contains("git") || mLower.contains("commit")) target = "git_meta";
+            else if (mLower.contains("account")) target = "accounts";
+            else if (mLower.contains("trade") || mLower.contains("order")) target = "orders";
+            else if (mLower.contains("customer") || mLower.contains("party")) target = "parties";
+            else if (mLower.contains("loan")) target = "loans";
+            else if (mLower.contains("deposit")) target = "deposits";
+            else if (mLower.contains("settle")) target = "settlements";
+            else if (mLower.contains("ledger") || mLower.contains("journal")) target = "general_ledger";
+            else if (classFqn != null && classFqn.contains(".")) {
+                target = classFqn.substring(classFqn.lastIndexOf('.') + 1).replaceAll("(Dao|DAO|Repository|Storage)$", "").toLowerCase();
+                if (target.isBlank()) target = "system_data";
+            }
+            da.targetTable = target;
+            tableMap.put(target, tableMap.getOrDefault(target, 0) + 1);
+
+            // Pattern & risk
+            da.pattern = classFqn != null && classFqn.contains("codelens") ? "H2 Storage DAO" : "JDBC / SQL";
+            patternMap.put(da.pattern, patternMap.getOrDefault(da.pattern, 0) + 1);
+            da.usesPreparedStatement = true;
+            da.isTransactional = mLower.contains("transaction") || mLower.contains("commit") || mLower.contains("batch");
+
+            if (da.operationType.contains("Write") && !da.isTransactional) {
+                da.riskFactor = "Autocommit Single-Row Mutation";
+            } else if (da.operationType.contains("DELETE")) {
+                da.riskFactor = "Cascade Delete Risk";
+            } else {
+                da.riskFactor = "Optimal (Indexed Cursor)";
+            }
+
+            d.accessPoints.add(da);
+            if (d.accessPoints.size() >= 500) break;
+        }
+
+        d.totalQueryMethods = d.accessPoints.size();
+        d.tableTouchCount = tableMap;
+        d.patternDistribution = patternMap;
+        d.dataIntegrityScore = Math.max(40, 100 - (d.totalWriteOperations > 50 ? 15 : 0) - (tableMap.size() > 20 ? 10 : 0));
+        d.accessPoints.sort((a, b) -> a.targetTable.compareTo(b.targetTable));
+        return d;
+    }
+
+    public String renderDatabaseAccessMarkdown(DatabaseAccessReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# Database & Data Access Flow (Persistence Audit)\n\n");
+        sb.append("**Generated:** ").append(d.generatedAt).append("\n\n");
+        sb.append("## Persistence Summary\n\n");
+        sb.append("| Metric | Count |\n|---|---:|\n");
+        sb.append("| **Data Access & DAO Classes** | ").append(d.totalDataAccessClasses).append(" |\n");
+        sb.append("| **Persistence Query Methods** | ").append(d.totalQueryMethods).append(" |\n");
+        sb.append("| **Read Operations (SELECT)** | ").append(d.totalReadOperations).append(" |\n");
+        sb.append("| **Write Operations (INSERT/UPDATE/DELETE)** | ").append(d.totalWriteOperations).append(" |\n");
+        sb.append("| **Transactional Boundaries** | ").append(d.totalTransactionalMethods).append(" |\n");
+        sb.append("| **Data Access Integrity Score** | **").append(d.dataIntegrityScore).append("/100** |\n\n");
+
+        sb.append("### High-Touch Database Tables\n\n");
+        sb.append("| Table / Entity | Access Methods |\n|---|---:|\n");
+        for (Map.Entry<String, Integer> e : d.tableTouchCount.entrySet()) {
+            sb.append("| `").append(e.getKey()).append("` | ").append(e.getValue()).append(" |\n");
+        }
+
+        sb.append("\n## Data Access Methods\n\n");
+        sb.append("| Target Table | Operation | DAO Class & Method | Pattern | Risk Assessment |\n");
+        sb.append("|---|---|---|---|---|\n");
+        for (DataAccessMetric da : d.accessPoints) {
+            sb.append("| `").append(da.targetTable).append("` | `").append(da.operationType).append("` | `")
+              .append(da.methodFqn).append("` | ").append(da.pattern).append(" | ").append(da.riskFactor).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderDatabaseAccessHtml(DatabaseAccessReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Database & Data Access Flow</title>");
+        sb.append("<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0d12;color:#e2e8f0;padding:32px;}");
+        sb.append("h1,h2{color:#38bdf8;}table{width:100%;border-collapse:collapse;margin-top:16px;background:#111621;}");
+        sb.append("th,td{padding:10px 12px;border:1px solid #1e293b;text-align:left;font-size:13px;}th{background:#161e2e;color:#94a3b8;}</style></head><body>");
+        sb.append("<h1>Database & Data Access Flow — Integrity Score ").append(d.dataIntegrityScore).append("/100</h1>");
+        sb.append("<p>Persistence audit across ").append(d.totalDataAccessClasses).append(" DAO/Repository classes and ").append(d.totalQueryMethods).append(" query touchpoints.</p>");
+        sb.append("<h2>Data Access Touchpoints</h2><table><thead><tr><th>Target Table</th><th>Operation</th><th>Method</th><th>Pattern</th><th>Risk Factor</th></tr></thead><tbody>");
+        for (DataAccessMetric da : d.accessPoints) {
+            sb.append("<tr><td><code>").append(escapeHtml(da.targetTable)).append("</code></td>");
+            sb.append("<td><strong>").append(escapeHtml(da.operationType)).append("</strong></td>");
+            sb.append("<td><code>").append(escapeHtml(da.methodFqn)).append("</code></td>");
+            sb.append("<td>").append(escapeHtml(da.pattern)).append("</td>");
+            sb.append("<td>").append(escapeHtml(da.riskFactor)).append("</td></tr>");
+        }
+        sb.append("</tbody></table></body></html>");
+        return sb.toString();
+    }
+
+    public String renderDatabaseAccessCsv(DatabaseAccessReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("TargetTable,OperationType,ClassFqn,MethodFqn,Pattern,IsTransactional,RiskFactor\n");
+        for (DataAccessMetric da : d.accessPoints) {
+            sb.append(escapeCsv(da.targetTable)).append(",")
+              .append(escapeCsv(da.operationType)).append(",")
+              .append(escapeCsv(da.classFqn)).append(",")
+              .append(escapeCsv(da.methodFqn)).append(",")
+              .append(escapeCsv(da.pattern)).append(",")
+              .append(da.isTransactional).append(",")
+              .append(escapeCsv(da.riskFactor)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================
+    // 12. CONCURRENCY & THREAD SAFETY AUDIT REPORT
+    // =========================================================================
+
+    public static class ConcurrencyAuditReportData {
+        public String generatedAt;
+        public int threadSafetyScore; // 0 - 100
+        public String threadSafetyGrade; // A, B, C, D, F
+        public int synchronizedMethodCount;
+        public int volatileFieldCount;
+        public int concurrentCollectionCount;
+        public int unsafeSharedCollectionCount;
+        public int asyncConstructCount;
+        public int criticalConcurrencyRisksCount;
+        public List<ConcurrencyFindingMetric> findings = new ArrayList<>();
+    }
+
+    public static class ConcurrencyFindingMetric {
+        public String entityFqn;
+        public String category; // SHARED_MUTABLE_STATE, UNSAFE_COLLECTION, THREAD_CREATION, SYNCHRONIZATION_HOTSPOT, ATOMICITY_RISK
+        public String severity; // CRITICAL, HIGH, MEDIUM, LOW
+        public String findingDetail;
+        public String remediationAdvice;
+    }
+
+    public ConcurrencyAuditReportData buildConcurrencyAuditData(List<CodeType> types,
+                                                               List<CodeMethod> methods,
+                                                               List<CodeField> fields,
+                                                               List<CodeRelationship> rels) {
+        ConcurrencyAuditReportData d = new ConcurrencyAuditReportData();
+        d.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        for (CodeMethod m : methods) {
+            String mods = m.getModifiers() != null ? m.getModifiers().toLowerCase() : "";
+            if (mods.contains("synchronized")) {
+                d.synchronizedMethodCount++;
+                if (m.getCyclomaticComplexity() > 10) {
+                    ConcurrencyFindingMetric f = new ConcurrencyFindingMetric();
+                    f.entityFqn = m.getFqn();
+                    f.category = "SYNCHRONIZATION_HOTSPOT";
+                    f.severity = "MEDIUM";
+                    f.findingDetail = "Synchronized method with high cyclomatic complexity (" + m.getCyclomaticComplexity() + ") holds lock during lengthy execution";
+                    f.remediationAdvice = "Refactor into fine-grained synchronized block or ReentrantLock.lock() guarding only state mutations.";
+                    d.findings.add(f);
+                }
+            }
+            String mLower = m.getSimpleName().toLowerCase();
+            if (mLower.contains("executor") || mLower.contains("submit") || mLower.contains("async") || mLower.contains("threadpool") || mLower.contains("runasync")) {
+                d.asyncConstructCount++;
+            }
+        }
+
+        for (CodeField f : fields) {
+            String mods = f.getModifiers() != null ? f.getModifiers().toLowerCase() : "";
+            String typeName = f.getFieldType() != null ? f.getFieldType() : "";
+            if (mods.contains("volatile")) {
+                d.volatileFieldCount++;
+            }
+            if (typeName.contains("ConcurrentHashMap") || typeName.contains("CopyOnWriteArrayList")
+                || typeName.contains("BlockingQueue") || typeName.contains("Atomic")) {
+                d.concurrentCollectionCount++;
+            } else if ((typeName.contains("HashMap") || typeName.contains("ArrayList") || typeName.contains("HashSet") || typeName.contains("SimpleDateFormat"))
+                && (mods.contains("static") || !mods.contains("final"))) {
+                d.unsafeSharedCollectionCount++;
+                ConcurrencyFindingMetric finding = new ConcurrencyFindingMetric();
+                finding.entityFqn = f.getFqn();
+                finding.category = "UNSAFE_COLLECTION";
+                finding.severity = mods.contains("static") ? "HIGH" : "MEDIUM";
+                finding.findingDetail = "Non-thread-safe collection type (" + typeName + ") stored as mutable or static state in " + f.getDeclaringTypeFqn();
+                finding.remediationAdvice = "Replace with ConcurrentHashMap, CopyOnWriteArrayList, or wrap with Collections.synchronizedMap.";
+                d.findings.add(finding);
+            }
+        }
+
+        d.criticalConcurrencyRisksCount = (int) d.findings.stream().filter(f -> "CRITICAL".equals(f.severity) || "HIGH".equals(f.severity)).count();
+        int baseScore = 100 - (d.criticalConcurrencyRisksCount * 8) - (d.unsafeSharedCollectionCount * 3);
+        d.threadSafetyScore = Math.max(30, Math.min(100, baseScore));
+        if (d.threadSafetyScore >= 90) d.threadSafetyGrade = "A";
+        else if (d.threadSafetyScore >= 80) d.threadSafetyGrade = "B";
+        else if (d.threadSafetyScore >= 70) d.threadSafetyGrade = "C";
+        else if (d.threadSafetyScore >= 60) d.threadSafetyGrade = "D";
+        else d.threadSafetyGrade = "F";
+
+        d.findings.sort((a, b) -> {
+            int sa = "CRITICAL".equals(a.severity) ? 3 : ("HIGH".equals(a.severity) ? 2 : 1);
+            int sb = "CRITICAL".equals(b.severity) ? 3 : ("HIGH".equals(b.severity) ? 2 : 1);
+            return Integer.compare(sb, sa);
+        });
+        return d;
+    }
+
+    public String renderConcurrencyAuditMarkdown(ConcurrencyAuditReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# Concurrency & Thread Safety Audit\n\n");
+        sb.append("**Generated:** ").append(d.generatedAt).append("\n\n");
+        sb.append("## Thread Safety Score: **").append(d.threadSafetyScore).append("/100 (Grade ").append(d.threadSafetyGrade).append(")**\n\n");
+        sb.append("| Metric | Count |\n|---|---:|\n");
+        sb.append("| **Synchronized Methods** | ").append(d.synchronizedMethodCount).append(" |\n");
+        sb.append("| **Volatile Fields** | ").append(d.volatileFieldCount).append(" |\n");
+        sb.append("| **Concurrent Thread-Safe Collections** | ").append(d.concurrentCollectionCount).append(" |\n");
+        sb.append("| **Unsafe Mutable Shared Collections** | ").append(d.unsafeSharedCollectionCount).append(" |\n");
+        sb.append("| **Asynchronous Execution Constructs** | ").append(d.asyncConstructCount).append(" |\n");
+        sb.append("| **High/Critical Concurrency Risks** | ").append(d.criticalConcurrencyRisksCount).append(" |\n\n");
+
+        sb.append("## Concurrency Findings & Race Condition Hazards\n\n");
+        sb.append("| Severity | Category | Entity FQN | Hazard Detail | Remediation Advice |\n");
+        sb.append("|---|---|---|---|---|\n");
+        for (ConcurrencyFindingMetric f : d.findings) {
+            sb.append("| **").append(f.severity).append("** | `").append(f.category).append("` | `")
+              .append(f.entityFqn).append("` | ").append(f.findingDetail).append(" | ").append(f.remediationAdvice).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderConcurrencyAuditHtml(ConcurrencyAuditReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Concurrency & Thread Safety Audit</title>");
+        sb.append("<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0d12;color:#e2e8f0;padding:32px;}");
+        sb.append("h1,h2{color:#38bdf8;}table{width:100%;border-collapse:collapse;margin-top:16px;background:#111621;}");
+        sb.append("th,td{padding:10px 12px;border:1px solid #1e293b;text-align:left;font-size:13px;}th{background:#161e2e;color:#94a3b8;}");
+        sb.append(".sev-high{color:#f87171;font-weight:bold;}.sev-med{color:#fbbf24;}.sev-low{color:#34d399;}</style></head><body>");
+        sb.append("<h1>Concurrency & Thread Safety Audit — Grade ").append(escapeHtml(d.threadSafetyGrade)).append(" (").append(d.threadSafetyScore).append("/100)</h1>");
+        sb.append("<p>Detected ").append(d.synchronizedMethodCount).append(" synchronized methods, ").append(d.volatileFieldCount).append(" volatile fields, and ").append(d.criticalConcurrencyRisksCount).append(" high/critical concurrency hazards.</p>");
+        sb.append("<h2>Thread Safety Findings</h2><table><thead><tr><th>Severity</th><th>Category</th><th>Entity</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>");
+        for (ConcurrencyFindingMetric f : d.findings) {
+            String sevCls = "sev-" + f.severity.toLowerCase().substring(0, 3);
+            sb.append("<tr><td class='").append(sevCls).append("'>").append(escapeHtml(f.severity)).append("</td>");
+            sb.append("<td><code>").append(escapeHtml(f.category)).append("</code></td>");
+            sb.append("<td><code>").append(escapeHtml(f.entityFqn)).append("</code></td>");
+            sb.append("<td>").append(escapeHtml(f.findingDetail)).append("</td>");
+            sb.append("<td>").append(escapeHtml(f.remediationAdvice)).append("</td></tr>");
+        }
+        sb.append("</tbody></table></body></html>");
+        return sb.toString();
+    }
+
+    public String renderConcurrencyAuditCsv(ConcurrencyAuditReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Severity,Category,EntityFqn,FindingDetail,RemediationAdvice\n");
+        for (ConcurrencyFindingMetric f : d.findings) {
+            sb.append(escapeCsv(f.severity)).append(",")
+              .append(escapeCsv(f.category)).append(",")
+              .append(escapeCsv(f.entityFqn)).append(",")
+              .append(escapeCsv(f.findingDetail)).append(",")
+              .append(escapeCsv(f.remediationAdvice)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

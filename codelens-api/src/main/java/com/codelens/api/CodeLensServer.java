@@ -550,17 +550,17 @@ public class CodeLensServer {
     }
 
     public void precomputeAllReports(ScanProgress progress, boolean force) {
-        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 8) {
+        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
             return;
         }
 
         // 1. Try disk cache first if not forced
-        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 8) {
+        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 12) {
             return;
         }
 
         synchronized (reportsPrecomputeLock) {
-            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 8) {
+            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
                 return;
             }
 
@@ -570,15 +570,15 @@ public class CodeLensServer {
             }
 
             reportsPrecomputeRunning.set(true);
-            reportsPrecomputePercentage.set(5);
-            reportsPrecomputePhase.set("Reading entities from database snapshot");
-            long start = System.currentTimeMillis();
+            reportsPrecomputePercentage.set(2);
+            reportsPrecomputePhase.set("Reading entities snapshot from database");
+            long startTotal = System.currentTimeMillis();
             logProcessBanner("REPORTS_PRECOMPUTE_STARTED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
-                "Precomputing all 10 architecture and risk reports");
+                "Starting sequential precomputation of all 13 architecture, risk, persistence and concurrency reports");
 
             try {
                 if (progress != null) {
-                    progress.setCurrentDetail("Precomputing codebase reports & executive scorecard");
+                    progress.setCurrentDetail("Reading database entities for reports generator");
                 }
 
                 // Query DB entities snapshot once
@@ -589,117 +589,174 @@ public class CodeLensServer {
                     return;
                 }
 
-                reportsPrecomputePercentage.set(15);
+                reportsPrecomputePercentage.set(5);
                 reportsPrecomputePhase.set("Reading methods, fields, and relationships");
                 List<CodeMethod> methods = dao.findAllMethods();
                 List<CodeField> fields = dao.findAllFields();
                 List<CodeRelationship> rels = dao.findAllRelationships();
                 List<GitMeta> gitMetas = dao.findAllGitMeta();
 
+                final int TOTAL_REPORTS = 13;
+
+                // ── Helper runner for individual sequential report execution ─────────
+                class ReportTaskRunner {
+                    void run(int index, String reportKey, String title, Runnable action) {
+                        int pct = 5 + (int) (((double) index / TOTAL_REPORTS) * 92);
+                        reportsPrecomputePercentage.set(pct);
+                        String phaseText = String.format("[%d/%d] %s", index, TOTAL_REPORTS, title);
+                        reportsPrecomputePhase.set(phaseText);
+                        if (progress != null) progress.setCurrentDetail("Precomputing " + title);
+
+                        logProcessBanner("REPORT_BUILD_STARTED", phaseText, reportKey, "Computing analysis model and rendering artifacts");
+                        log.info("[REPORT {}/{}] Starting precomputation: {} ({})", index, TOTAL_REPORTS, title, reportKey);
+                        long repStart = System.currentTimeMillis();
+                        try {
+                            action.run();
+                            long repDuration = System.currentTimeMillis() - repStart;
+                            logProcessBanner("REPORT_BUILD_COMPLETED", phaseText, reportKey,
+                                String.format("Successfully precomputed & cached in %d ms", repDuration));
+                            log.info("[REPORT {}/{}] COMPLETED {} in {} ms", index, TOTAL_REPORTS, title, repDuration);
+                        } catch (Throwable t) {
+                            long repDuration = System.currentTimeMillis() - repStart;
+                            log.error("[REPORT {}/{}] FAILED {} after {} ms: {}", index, TOTAL_REPORTS, title, repDuration, t.getMessage(), t);
+                            logProcessBanner("REPORT_BUILD_FAILED", phaseText, reportKey, "Error: " + t.getMessage());
+                        }
+                    }
+                }
+
+                ReportTaskRunner runner = new ReportTaskRunner();
+
                 // 1. Architecture Report
-                reportsPrecomputePercentage.set(25);
-                reportsPrecomputePhase.set("Precomputing Architecture & Coupling Report");
-                ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
-                cacheReport("architecture", archData,
-                    reportService.renderArchitectureHtml(archData),
-                    reportService.renderArchitectureMarkdown(archData),
-                    null);
+                runner.run(1, "architecture", "Architecture & Coupling Report", () -> {
+                    ReportService.ArchitectureReportData data = reportService.buildArchitectureData(types, methods, fields, rels);
+                    cacheReport("architecture", data,
+                        reportService.renderArchitectureHtml(data),
+                        reportService.renderArchitectureMarkdown(data),
+                        null);
+                });
 
                 // 2. Change Risk & Blast Radius Matrix
-                reportsPrecomputePercentage.set(35);
-                reportsPrecomputePhase.set("Precomputing Change Risk & Blast Radius Matrix");
-                ReportService.ChangeRiskReportData crData = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
-                cacheReport("change-risk", crData,
-                    reportService.renderChangeRiskHtml(crData),
-                    reportService.renderChangeRiskMarkdown(crData),
-                    reportService.renderChangeRiskCsv(crData));
+                runner.run(2, "change-risk", "Change Risk & Blast Radius Matrix", () -> {
+                    ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
+                    cacheReport("change-risk", data,
+                        reportService.renderChangeRiskHtml(data),
+                        reportService.renderChangeRiskMarkdown(data),
+                        reportService.renderChangeRiskCsv(data));
+                });
 
                 // 3. Dead Code & Orphaned Entry Points
-                reportsPrecomputePercentage.set(45);
-                reportsPrecomputePhase.set("Precomputing Dead Code & Cleanup Report");
-                ReportService.DeadCodeReportData dcData = reportService.buildDeadCodeData(types, methods, fields, rels);
-                cacheReport("dead-code", dcData,
-                    reportService.renderDeadCodeHtml(dcData),
-                    reportService.renderDeadCodeMarkdown(dcData),
-                    reportService.renderDeadCodeCsv(dcData));
+                runner.run(3, "dead-code", "Dead Code & Reachability Analysis", () -> {
+                    ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
+                    cacheReport("dead-code", data,
+                        reportService.renderDeadCodeHtml(data),
+                        reportService.renderDeadCodeMarkdown(data),
+                        reportService.renderDeadCodeCsv(data));
+                });
 
-                // 4. Circular Dependencies & Architectural Tangling
-                reportsPrecomputePercentage.set(55);
-                reportsPrecomputePhase.set("Precomputing Circular Dependencies Report");
-                ReportService.CircularDependencyReportData cdData = reportService.buildCircularDependencyData(types, methods, rels);
-                cacheReport("circular-dependencies", cdData,
-                    reportService.renderCircularDependencyHtml(cdData),
-                    reportService.renderCircularDependencyMarkdown(cdData),
-                    reportService.renderCircularDependencyCsv(cdData));
+                // 4. Circular Dependencies & Tangling
+                runner.run(4, "circular-dependencies", "Circular Dependencies & Tangling", () -> {
+                    ReportService.CircularDependencyReportData data = reportService.buildCircularDependencyData(types, methods, rels);
+                    cacheReport("circular-dependencies", data,
+                        reportService.renderCircularDependencyHtml(data),
+                        reportService.renderCircularDependencyMarkdown(data),
+                        reportService.renderCircularDependencyCsv(data));
+                });
 
                 // 5. Archetype Governance & Compliance
-                reportsPrecomputePercentage.set(65);
-                reportsPrecomputePhase.set("Precomputing Archetype Governance Report");
-                ReportService.ArchetypeGovernanceReportData agData = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
-                cacheReport("archetype-governance", agData,
-                    reportService.renderArchetypeGovernanceHtml(agData),
-                    reportService.renderArchetypeGovernanceMarkdown(agData),
-                    reportService.renderArchetypeGovernanceCsv(agData));
+                runner.run(5, "archetype-governance", "Enterprise Archetype Governance", () -> {
+                    ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                    cacheReport("archetype-governance", data,
+                        reportService.renderArchetypeGovernanceHtml(data),
+                        reportService.renderArchetypeGovernanceMarkdown(data),
+                        reportService.renderArchetypeGovernanceCsv(data));
+                });
 
                 // 6. Technical Debt & SQALE Remediation ROI
-                reportsPrecomputePercentage.set(75);
-                reportsPrecomputePhase.set("Precomputing Technical Debt & SQALE Report");
-                ReportService.TechnicalDebtReportData tdData = reportService.buildTechnicalDebtData(types, methods, fields, rels);
-                cacheReport("technical-debt", tdData,
-                    reportService.renderTechnicalDebtHtml(tdData),
-                    reportService.renderTechnicalDebtMarkdown(tdData),
-                    reportService.renderTechnicalDebtCsv(tdData));
+                runner.run(6, "technical-debt", "Technical Debt & SQALE Remediation ROI", () -> {
+                    ReportService.TechnicalDebtReportData data = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+                    cacheReport("technical-debt", data,
+                        reportService.renderTechnicalDebtHtml(data),
+                        reportService.renderTechnicalDebtMarkdown(data),
+                        reportService.renderTechnicalDebtCsv(data));
+                });
 
                 // 7. Executive Architectural Health Scorecard
-                reportsPrecomputePercentage.set(85);
-                reportsPrecomputePhase.set("Precomputing Executive Summary Scorecard");
-                ReportService.ExecutiveSummaryReportData esData = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
-                cacheReport("executive-summary", esData,
-                    reportService.renderExecutiveSummaryHtml(esData),
-                    reportService.renderExecutiveSummaryMarkdown(esData),
-                    reportService.renderExecutiveSummaryCsv(esData));
+                runner.run(7, "executive-summary", "Executive Architectural Health Scorecard", () -> {
+                    ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
+                    cacheReport("executive-summary", data,
+                        reportService.renderExecutiveSummaryHtml(data),
+                        reportService.renderExecutiveSummaryMarkdown(data),
+                        reportService.renderExecutiveSummaryCsv(data));
+                });
 
-                // 8. Code Quality & Security Audit (Review)
-                reportsPrecomputePercentage.set(90);
-                reportsPrecomputePhase.set("Precomputing Code Quality & Security Audit");
-                ReportService.ReviewReportData rData = reportService.buildReviewReportData(types);
-                cacheReport("review", rData,
-                    reportService.renderReviewHtml(rData),
-                    reportService.renderReviewMarkdown(rData),
-                    reportService.renderReviewCsv(rData));
+                // 8. Code Quality & Security Audit
+                runner.run(8, "review", "Code Quality & Security Audit", () -> {
+                    ReportService.ReviewReportData data = reportService.buildReviewReportData(types);
+                    cacheReport("review", data,
+                        reportService.renderReviewHtml(data),
+                        reportService.renderReviewMarkdown(data),
+                        reportService.renderReviewCsv(data));
+                });
 
-                // 9. Codebase Inventory & Metrics
-                reportsPrecomputePercentage.set(95);
-                reportsPrecomputePhase.set("Precomputing Metrics Census Report");
-                ReportService.MetricsReportData mData = reportService.buildMetricsData(types, methods, fields);
-                cacheReport("metrics", mData,
-                    reportService.renderMetricsHtml(mData),
-                    reportService.renderMetricsMarkdown(mData),
-                    reportService.renderMetricsCsv(mData));
+                // 9. Codebase Inventory & Metrics Census
+                runner.run(9, "metrics", "Codebase Inventory & Metrics Census", () -> {
+                    ReportService.MetricsReportData data = reportService.buildMetricsData(types, methods, fields);
+                    cacheReport("metrics", data,
+                        reportService.renderMetricsHtml(data),
+                        reportService.renderMetricsMarkdown(data),
+                        reportService.renderMetricsCsv(data));
+                });
 
-                // 10. Standalone Offline Graph Snapshot
-                reportsPrecomputePercentage.set(98);
-                reportsPrecomputePhase.set("Generating Standalone Offline HTML Snapshot");
-                try {
+                // 10. API Surface & REST Endpoint Catalog
+                runner.run(10, "api-catalog", "API Surface & REST Endpoint Catalog", () -> {
+                    ReportService.ApiCatalogReportData data = reportService.buildApiCatalogData(types, methods, rels);
+                    cacheReport("api-catalog", data,
+                        reportService.renderApiCatalogHtml(data),
+                        reportService.renderApiCatalogMarkdown(data),
+                        reportService.renderApiCatalogCsv(data));
+                });
+
+                // 11. Database & Data Access Flow
+                runner.run(11, "database-access", "Database & Data Access Flow", () -> {
+                    ReportService.DatabaseAccessReportData data = reportService.buildDatabaseAccessData(types, methods, fields, rels);
+                    cacheReport("database-access", data,
+                        reportService.renderDatabaseAccessHtml(data),
+                        reportService.renderDatabaseAccessMarkdown(data),
+                        reportService.renderDatabaseAccessCsv(data));
+                });
+
+                // 12. Concurrency & Thread Safety Audit
+                runner.run(12, "concurrency-audit", "Concurrency & Thread Safety Audit", () -> {
+                    ReportService.ConcurrencyAuditReportData data = reportService.buildConcurrencyAuditData(types, methods, fields, rels);
+                    cacheReport("concurrency-audit", data,
+                        reportService.renderConcurrencyAuditHtml(data),
+                        reportService.renderConcurrencyAuditMarkdown(data),
+                        reportService.renderConcurrencyAuditCsv(data));
+                });
+
+                // 13. Standalone Offline Graph Snapshot
+                runner.run(13, "html-snapshot", "Standalone Offline HTML Snapshot", () -> {
                     Object fullGraph = callGraph.precomputedFullGraphView(false);
                     Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
                     String projectName = (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
+                    ReportService.ArchitectureReportData archData = (ReportService.ArchitectureReportData) cachedReportsJson.get("architecture");
+                    if (archData == null) {
+                        archData = reportService.buildArchitectureData(types, methods, fields, rels);
+                    }
                     String snapshotHtml = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
                     cachedReportsRendered.put("html-snapshot:html", snapshotHtml);
                     writeStringToFile(new File(getReportsCacheDir(), "html-snapshot.html"), snapshotHtml);
-                } catch (Exception ex) {
-                    log.warn("HTML snapshot precompute deferred: {}", ex.getMessage());
-                }
+                });
 
-                long duration = System.currentTimeMillis() - start;
+                long duration = System.currentTimeMillis() - startTotal;
                 reportsLastGeneratedTimestamp.set(System.currentTimeMillis());
                 reportsLastGenerationDurationMs.set(duration);
                 reportsPrecomputePercentage.set(100);
-                reportsPrecomputePhase.set("Ready (All 10 reports precomputed in " + duration + "ms)");
+                reportsPrecomputePhase.set(String.format("Ready (All %d reports precomputed in %dms)", TOTAL_REPORTS, duration));
 
                 logProcessBanner("REPORTS_PRECOMPUTE_COMPLETED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
-                    String.format("All 10 reports precomputed and cached in %d ms (%d artifacts)", duration, cachedReportsRendered.size()));
-                log.info("Finished precomputing all reports in {} ms ({} cache entries)", duration, cachedReportsRendered.size());
+                    String.format("All %d reports precomputed and cached in %d ms (%d artifacts)", TOTAL_REPORTS, duration, cachedReportsRendered.size()));
+                log.info("Finished precomputing all {} reports in {} ms ({} cache entries)", TOTAL_REPORTS, duration, cachedReportsRendered.size());
 
             } catch (Exception e) {
                 reportsPrecomputePhase.set("Error: " + e.getMessage());
@@ -946,6 +1003,9 @@ public class CodeLensServer {
         app.get("/api/reports/executive-summary",     this::getExecutiveSummaryReport);
         app.get("/api/reports/review",                this::getReviewReport);
         app.get("/api/reports/metrics",               this::getMetricsReport);
+        app.get("/api/reports/api-catalog",           this::getApiCatalogReport);
+        app.get("/api/reports/database-access",       this::getDatabaseAccessReport);
+        app.get("/api/reports/concurrency-audit",      this::getConcurrencyAuditReport);
         app.get("/api/reports/html-snapshot",         this::getHtmlSnapshotReport);
         app.get("/api/reports/download",              this::downloadReport);
         app.post("/api/reports/regenerate",           this::regenerateReports);
@@ -1289,23 +1349,59 @@ public class CodeLensServer {
         layoutProc.put("type", "Sunflower Spiral & Clustering Precomputer");
         boolean isScanLayoutActive = isScanning && sp != null && ("Precomputing Layouts".equals(sp.getCurrentPhase()) || "LAYOUT".equals(sp.getActiveStage()));
         boolean isWarmupLayoutActive = layoutWarmupRunning.get();
-        boolean isModuleActive = modulePrecomputeRunning.get();
-        boolean isLayoutBuilding = isScanLayoutActive || isWarmupLayoutActive || isModuleActive;
+        boolean isLayoutBuilding = isScanLayoutActive || isWarmupLayoutActive;
         int cachedLayouts = layoutCache.size();
-        int cachedModules = precomputedModuleInsights.size();
-        layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 || cachedModules > 0 ? "COMPLETE" : "IDLE"));
+        layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 ? "COMPLETE" : "IDLE"));
         layoutProc.put("activeStage", isLayoutBuilding ? "LAYOUT" : "IDLE");
-        String layoutPhase = isScanLayoutActive ? sp.getCurrentPhase() : (isWarmupLayoutActive ? layoutWarmupPhase.get() : (isModuleActive ? "Precomputing Module Dependencies" : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle")));
+        String layoutPhase = isScanLayoutActive ? sp.getCurrentPhase() : (isWarmupLayoutActive ? layoutWarmupPhase.get() : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle"));
         int layoutPct = isScanLayoutActive ? sp.getPercentage() : (isWarmupLayoutActive ? layoutWarmupPercentage.get() : (cachedLayouts > 0 ? 100 : 0));
         layoutProc.put("currentPhase", layoutPhase);
-        layoutProc.put("currentDetail", String.format("%d layouts, %d modules cached in memory (rev=%d)", cachedLayouts, cachedModules, scanRevision.get()));
+        layoutProc.put("currentDetail", String.format("%d graph layouts cached in memory (rev=%d)", cachedLayouts, scanRevision.get()));
         layoutProc.put("percentage", layoutPct);
         layoutProc.put("thread", isLayoutBuilding ? "codelens-layout-worker" : "-");
         layoutProc.put("canKill", isScanLayoutActive);
         layoutProc.put("canRestart", true);
         processes.add(layoutProc);
 
-        // 5. Git History & Hotspots
+        // 5. Module Dependency & Touchpoint Engine
+        Map<String, Object> moduleProc = new LinkedHashMap<>();
+        moduleProc.put("id", "module-analyzer");
+        moduleProc.put("name", "Module Dependency & Touchpoint Engine");
+        moduleProc.put("type", "Cross-Module Coupling & Architectural Touchpoints");
+        boolean isModuleActive = modulePrecomputeRunning.get();
+        boolean isModuleComplete = precomputedModuleResult != null;
+        int cachedModules = precomputedModuleInsights.size();
+        moduleProc.put("status", isModuleActive ? "RUNNING" : (isModuleComplete ? "COMPLETE" : "IDLE"));
+        moduleProc.put("activeStage", isModuleActive ? "MODULE_DEPENDENCIES" : "IDLE");
+        moduleProc.put("currentPhase", isModuleActive ? "Analyzing Module Dependencies & Touchpoints" : (isModuleComplete ? "Module Topology Ready" : "Idle"));
+        String modDetail = isModuleComplete
+            ? String.format("%d modules · %d package touchpoints analyzed", (precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null) ? precomputedModuleResult.overview.modules.size() : cachedModules, cachedModules)
+            : (isModuleActive ? "Analyzing cross-module dependencies and touchpoints..." : "Not computed yet");
+        moduleProc.put("currentDetail", modDetail);
+        moduleProc.put("percentage", isModuleActive ? 50 : (isModuleComplete ? 100 : 0));
+        moduleProc.put("thread", isModuleActive ? "codelens-module-worker" : "-");
+        moduleProc.put("canKill", false);
+        moduleProc.put("canRestart", true);
+        processes.add(moduleProc);
+
+        // 6. Lucene Full-Text Search Indexer
+        Map<String, Object> luceneProc = new LinkedHashMap<>();
+        luceneProc.put("id", "lucene-indexer");
+        luceneProc.put("name", "Lucene Full-Text Search Indexer");
+        luceneProc.put("type", "Inverted Index & Tokenised Codebase Search");
+        boolean isLuceneIndexing = isScanning && sp != null && "INDEX".equals(sp.getActiveStage());
+        int luceneDocs = lucene.getDocumentCount();
+        luceneProc.put("status", isLuceneIndexing ? "RUNNING" : (luceneDocs > 0 ? "COMPLETE" : "IDLE"));
+        luceneProc.put("activeStage", isLuceneIndexing ? "INDEX" : "IDLE");
+        luceneProc.put("currentPhase", isLuceneIndexing ? "Indexing Documents & Secondary Indexes" : (luceneDocs > 0 ? "Search Index Ready & Committed" : "Idle"));
+        luceneProc.put("currentDetail", String.format("%,d searchable documents in Lucene inverted index", luceneDocs));
+        luceneProc.put("percentage", isLuceneIndexing ? sp.getPercentage() : (luceneDocs > 0 ? 100 : 0));
+        luceneProc.put("thread", isLuceneIndexing ? "codelens-scanner" : "-");
+        luceneProc.put("canKill", false);
+        luceneProc.put("canRestart", true);
+        processes.add(luceneProc);
+
+        // 7. Git History & Hotspots
         Map<String, Object> gitProc = new LinkedHashMap<>();
         gitProc.put("id", "git-analyzer");
         gitProc.put("name", "Git Churn & Hotspot Analyzer");
@@ -1336,7 +1432,7 @@ public class CodeLensServer {
         gitProc.put("canRestart", true);
         processes.add(gitProc);
 
-        // 6. Database Connection Watchdog
+        // 8. Database Connection Watchdog
         Map<String, Object> watchdogProc = new LinkedHashMap<>();
         watchdogProc.put("id", "db-watchdog");
         watchdogProc.put("name", "Database Connection Watchdog");
@@ -1351,7 +1447,7 @@ public class CodeLensServer {
         watchdogProc.put("canRestart", true);
         processes.add(watchdogProc);
 
-        // 7. Scale & Stress Test Engine
+        // 9. Scale & Stress Test Engine
         Map<String, Object> stressProc = new LinkedHashMap<>();
         stressProc.put("id", "stress-test");
         stressProc.put("name", "Scale & Stress Test Runner");
@@ -1372,7 +1468,7 @@ public class CodeLensServer {
         stressProc.put("canRestart", true);
         processes.add(stressProc);
 
-        // 8. Heap Memory Watchdog & Auto-Recovery
+        // 10. Heap Memory Watchdog & Auto-Recovery
         Map<String, Object> autoRecMetrics = heapWatchdog.getStatusAndMetrics();
         Map<String, Object> heapProc = new LinkedHashMap<>();
         heapProc.put("id", "heap-watchdog");
@@ -1392,7 +1488,7 @@ public class CodeLensServer {
         heapProc.put("canRestart", true);
         processes.add(heapProc);
 
-        // 9. Codebase Intelligence Reports Generator
+        // 11. Codebase Intelligence Reports Generator
         Map<String, Object> reportsProc = new LinkedHashMap<>();
         reportsProc.put("id", "reports-generator");
         reportsProc.put("name", "Intelligence Reports Generator");
@@ -1407,7 +1503,7 @@ public class CodeLensServer {
                 cachedReportsJson.size(),
                 reportsLastGenerationDurationMs.get(),
                 new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)))
-            : (isReportsRunning ? "Precomputing all 10 reports in background..." : "Not generated yet");
+            : (isReportsRunning ? "Precomputing all 13 reports in background..." : "Not generated yet");
         reportsProc.put("currentDetail", genDetail);
         reportsProc.put("percentage", reportsPrecomputePercentage.get());
         reportsProc.put("durationMs", reportsLastGenerationDurationMs.get());
@@ -1614,6 +1710,27 @@ public class CodeLensServer {
             invalidateGraphCache();
             scanExecutor.submit(() -> warmupGraphCache());
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Layout precomputations queued"));
+            return;
+        } else if ("module-analyzer".equalsIgnoreCase(id)) {
+            scanExecutor.submit(() -> precomputeModuleDependencies(null));
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Module dependency analysis queued"));
+            return;
+        } else if ("lucene-indexer".equalsIgnoreCase(id)) {
+            scanExecutor.submit(() -> {
+                try {
+                    logProcessBanner("LUCENE_REINDEX_STARTED", "Lucene Search Indexer", currentPath, "Manual full re-indexing of types, methods, fields");
+                    List<CodeType> allTypes = dao.findAllTypes();
+                    List<CodeMethod> allMethods = dao.findAllMethods();
+                    List<CodeField> allFields = dao.findAllFields();
+                    lucene.rebuildIndex(allTypes, allMethods, allFields);
+                    logProcessBanner("LUCENE_REINDEX_COMPLETED", "Lucene Search Indexer", currentPath,
+                        String.format("Indexed %,d documents", lucene.getDocumentCount()));
+                } catch (Exception e) {
+                    log.error("Failed to reindex Lucene: {}", e.getMessage(), e);
+                    logProcessBanner("LUCENE_REINDEX_FAILED", "Lucene Search Indexer", currentPath, "Error: " + e.getMessage());
+                }
+            });
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Lucene full re-index queued"));
             return;
         } else if ("git-analyzer".equalsIgnoreCase(id)) {
             String repoPath = currentPath;
@@ -3712,6 +3829,18 @@ public class CodeLensServer {
 
     private void getExecutiveSummaryReport(Context ctx) {
         serveReport(ctx, "executive-summary", "json");
+    }
+
+    private void getApiCatalogReport(Context ctx) {
+        serveReport(ctx, "api-catalog", "json");
+    }
+
+    private void getDatabaseAccessReport(Context ctx) {
+        serveReport(ctx, "database-access", "json");
+    }
+
+    private void getConcurrencyAuditReport(Context ctx) {
+        serveReport(ctx, "concurrency-audit", "json");
     }
 
     private void regenerateReports(Context ctx) {

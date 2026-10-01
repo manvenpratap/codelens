@@ -1427,7 +1427,7 @@
               <span>Reports Catalog</span>
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
-              <span class="reports-catalog-badge">10 Reports</span>
+              <span class="reports-catalog-badge">13 Reports</span>
               <button type="button" id="btn-collapse-reports-sidebar" class="panel-collapse-btn" aria-label="Collapse Reports Catalog Sidebar" title="Collapse Reports Catalog">
                 <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
@@ -1505,6 +1505,33 @@
                 <div class="report-nav-title">Architecture &amp; Coupling</div>
                 <div class="report-nav-desc">Afferent/efferent coupling ($Ca/Ce$), Instability &amp; health</div>
               </div>
+            </div>
+
+            <div class="report-nav-item" data-report="api-catalog">
+              <div class="report-nav-icon icon-cyan-bg"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">API Surface &amp; REST Catalog</div>
+                <div class="report-nav-desc">Endpoints, HTTP verbs, auth guards &amp; blast radius</div>
+              </div>
+              <span class="report-nav-tag tag-arch">API SURFACE</span>
+            </div>
+
+            <div class="report-nav-item" data-report="database-access">
+              <div class="report-nav-icon icon-amber-bg"><svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Database &amp; Data Access Flow</div>
+                <div class="report-nav-desc">DAO touchpoints, CRUD operations &amp; table flow</div>
+              </div>
+              <span class="report-nav-tag tag-gov">PERSISTENCE</span>
+            </div>
+
+            <div class="report-nav-item" data-report="concurrency-audit">
+              <div class="report-nav-icon icon-rose-bg"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <div class="report-nav-info">
+                <div class="report-nav-title">Concurrency &amp; Thread Safety</div>
+                <div class="report-nav-desc">Synchronized locks, volatile state &amp; async hazards</div>
+              </div>
+              <span class="report-nav-tag tag-hot">THREAD SAFETY</span>
             </div>
 
             <div class="report-nav-item" data-report="review">

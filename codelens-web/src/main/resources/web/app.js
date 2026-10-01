@@ -862,12 +862,20 @@ function getProcessIconSvg(id, type) {
     return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`;
   } else if (id === 'layout-engine') {
     return `<svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+  } else if (id === 'module-analyzer') {
+    return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+  } else if (id === 'lucene-indexer') {
+    return `<svg class="svg-icon icon-sm icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`;
   } else if (id === 'git-analyzer') {
     return `<svg class="svg-icon icon-sm icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>`;
   } else if (id === 'db-watchdog') {
     return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`;
   } else if (id === 'stress-test') {
     return `<svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+  } else if (id === 'heap-watchdog') {
+    return `<svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+  } else if (id === 'reports-generator') {
+    return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
   }
   return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 }
@@ -13147,6 +13155,24 @@ const REPORTS_METADATA = {
     badge: 'METRICS',
     badgeClass: 'tag-arch'
   },
+  'api-catalog': {
+    title: 'API Surface & REST Endpoint Catalog',
+    subtitle: 'Comprehensive inventory of REST routes, controllers, HTTP verbs, security auth guards, and blast radius scores.',
+    badge: 'API SURFACE',
+    badgeClass: 'tag-arch'
+  },
+  'database-access': {
+    title: 'Database & Data Access Flow (Persistence Audit)',
+    subtitle: 'DAO touchpoints, CRUD read/write operations, target tables, transaction boundaries, and autocommit risks.',
+    badge: 'PERSISTENCE',
+    badgeClass: 'tag-gov'
+  },
+  'concurrency-audit': {
+    title: 'Concurrency & Thread Safety Audit',
+    subtitle: 'Synchronized locking hotspots, volatile state fields, thread-unsafe collections, and asynchronous race condition hazards.',
+    badge: 'THREAD SAFETY',
+    badgeClass: 'tag-hot'
+  },
   'html-snapshot': {
     title: 'Standalone Offline Graph Snapshot',
     subtitle: 'Self-contained zero-dependency HTML visualizer with interactive 2D graph, live physics, search, and embedded data.',
@@ -13449,6 +13475,12 @@ const ReportsHub = {
       ReportsHub.renderReviewDashboard(container, data);
     } else if (type === 'metrics') {
       ReportsHub.renderMetricsDashboard(container, data);
+    } else if (type === 'api-catalog') {
+      ReportsHub.renderApiCatalogDashboard(container, data);
+    } else if (type === 'database-access') {
+      ReportsHub.renderDatabaseAccessDashboard(container, data);
+    } else if (type === 'concurrency-audit') {
+      ReportsHub.renderConcurrencyAuditDashboard(container, data);
     } else {
       container.innerHTML = `<pre class="reports-code-output">${esc(JSON.stringify(data, null, 2))}</pre>`;
     }
@@ -14848,6 +14880,400 @@ const ReportsHub = {
       </div>
     `;
 
+    container.innerHTML = html;
+  },
+
+  renderApiCatalogDashboard(container, d) {
+    if (!d) return;
+    const dist = d.httpMethodDistribution || {};
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Total API Endpoints</span>
+          <div class="report-kpi-val">${d.totalEndpoints || 0}</div>
+          <span class="report-kpi-sub">Across <strong>${d.totalControllers || 0}</strong> Controllers / Gateways</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Authenticated Endpoints</span>
+          <div class="report-kpi-val">${d.authenticatedEndpointsCount || 0}</div>
+          <span class="report-kpi-sub">Security &amp; auth token guarded</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Public / Open Surface</span>
+          <div class="report-kpi-val">${d.publicEndpointsCount || 0}</div>
+          <span class="report-kpi-sub">Unauthenticated public API routes</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">High Blast-Radius Routes</span>
+          <div class="report-kpi-val">${d.highRiskEndpointsCount || 0}</div>
+          <span class="report-kpi-sub">Deep call fan-out / state mutation</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #8b5cf6;">
+          <span class="report-kpi-label">HTTP Methods</span>
+          <div class="report-kpi-val font-mono" style="font-size:18px;">
+            <span style="color:#0284c7;">G:${dist['GET'] || 0}</span> <span style="color:#16a34a;">P:${dist['POST'] || 0}</span> <span style="color:#d97706;">U:${dist['PUT'] || 0}</span> <span style="color:#dc2626;">D:${dist['DELETE'] || 0}</span>
+          </div>
+          <span class="report-kpi-sub">GET, POST, PUT, DELETE distribution</span>
+        </div>
+      </div>
+
+      <!-- HTTP Verbs Breakdown -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>HTTP Method Distribution &amp; Protocol Breakdown</span>
+          </div>
+          <span class="report-section-badge">${Object.keys(dist).length} HTTP Verbs</span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; padding:16px;">
+          ${Object.entries(dist).map(([verb, count]) => {
+            const verbColor = verb === 'GET' ? '#0284c7' : (verb === 'POST' ? '#16a34a' : (verb === 'PUT' ? '#d97706' : (verb === 'DELETE' ? '#dc2626' : '#8b5cf6')));
+            return `
+              <div style="flex:1; min-width:140px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px 16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-family:var(--font-mono); font-weight:700; font-size:13px; color:${verbColor};">${esc(verb)}</span>
+                  <span style="font-size:18px; font-weight:800; font-family:var(--font-mono); color:var(--text-primary);">${count}</span>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${count === 1 ? '1 route' : count + ' routes'} (${d.totalEndpoints > 0 ? Math.round((count / d.totalEndpoints) * 100) : 0}%)</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Main Endpoint Inventory -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>REST &amp; RPC Endpoint Inventory (Ranked by Blast Radius)</span>
+          </div>
+          <span class="report-section-badge">${(d.endpoints || []).length} Endpoints</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Endpoint Route</th>
+                <th>Handler Method</th>
+                <th>Controller Class</th>
+                <th>Auth Guard</th>
+                <th>Downstream Calls</th>
+                <th>Blast Radius</th>
+                <th>Risk Level</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.endpoints || []).map(ep => {
+                const badgeCls = ep.httpMethod === 'GET' ? 'badge-get' : (ep.httpMethod === 'POST' ? 'badge-post' : (ep.httpMethod === 'PUT' ? 'badge-put' : (ep.httpMethod === 'DELETE' ? 'badge-delete' : 'badge-rpc')));
+                const riskBadge = ep.riskLevel === 'HIGH' ? 'risk-critical' : (ep.riskLevel === 'MEDIUM' ? 'risk-medium' : 'risk-low');
+                const ctrlSimple = ep.handlerClass ? ep.handlerClass.split('.').pop() : '';
+                const methodSimple = ep.handlerMethod ? ep.handlerMethod.split('.').pop() : '';
+                return `
+                  <tr>
+                    <td><span class="report-method-badge ${badgeCls}">${esc(ep.httpMethod)}</span></td>
+                    <td>
+                      <code class="font-mono text-cyan" style="font-size:12px; font-weight:600;">${esc(ep.endpointUrl)}</code>
+                    </td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); selectMethod('${esc(ep.handlerMethod)}');" style="font-family:var(--font-mono); font-size:12px; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="${esc(ep.handlerMethod)}">${esc(methodSimple)}</a>
+                    </td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(ep.handlerClass)}', 'knowledge');" style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); text-decoration:none; cursor:pointer;" title="${esc(ep.handlerClass)}">${esc(ctrlSimple)}</a>
+                    </td>
+                    <td>
+                      ${ep.hasAuthCheck
+                        ? '<span class="status-badge" style="background:rgba(16,185,129,0.12); color:#34d399; font-size:10.5px; padding:2px 7px; border-radius:4px; font-weight:600;">PROTECTED</span>'
+                        : '<span class="status-badge" style="background:rgba(244,63,94,0.12); color:#f43f5e; font-size:10.5px; padding:2px 7px; border-radius:4px; font-weight:600;">PUBLIC / OPEN</span>'}
+                    </td>
+                    <td style="font-family:var(--font-mono); text-align:center;">${ep.downstreamCallCount}</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-family:var(--font-mono); font-weight:700;">${ep.blastRadiusScore}/100</span>
+                        <div style="width:48px; height:4px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden;">
+                          <div style="width:${ep.blastRadiusScore}%; height:100%; background:${ep.blastRadiusScore >= 65 ? '#f43f5e' : (ep.blastRadiusScore >= 35 ? '#f59e0b' : '#10b981')};"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span class="risk-badge ${riskBadge}">${esc(ep.riskLevel)}</span></td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(ep.handlerMethod)}');">Graph →</button>
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(ep.handlerClass)}', 'knowledge');">KB →</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    container.innerHTML = html;
+  },
+
+  renderDatabaseAccessDashboard(container, d) {
+    if (!d) return;
+    const tables = d.tableTouchCount || {};
+    const patterns = d.patternDistribution || {};
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Persistence Integrity Score</span>
+          <div class="report-kpi-val">${d.dataIntegrityScore || 0}<span style="font-size:14px; color:var(--text-muted);">/100</span></div>
+          <span class="report-kpi-sub">ACID boundaries &amp; prepared query safety</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Data Access Classes</span>
+          <div class="report-kpi-val">${d.totalDataAccessClasses || 0}</div>
+          <span class="report-kpi-sub">DAO, Repository &amp; Storage layers</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Persistence Operations</span>
+          <div class="report-kpi-val">${d.totalQueryMethods || 0}</div>
+          <span class="report-kpi-sub"><strong>${d.totalReadOperations || 0}</strong> Reads · <strong>${d.totalWriteOperations || 0}</strong> Writes</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #8b5cf6;">
+          <span class="report-kpi-label">Transactional Methods</span>
+          <div class="report-kpi-val">${d.totalTransactionalMethods || 0}</div>
+          <span class="report-kpi-sub">Explicit transaction or batch boundaries</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
+          <span class="report-kpi-label">Target Tables Touched</span>
+          <div class="report-kpi-val">${Object.keys(tables).length}</div>
+          <span class="report-kpi-sub">Database tables / persistent entities</span>
+        </div>
+      </div>
+
+      <!-- High-Touch Tables & Patterns -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:16px;">
+        <div class="report-section-card" style="margin-bottom:0;">
+          <div class="report-section-header">
+            <div class="report-section-title">
+              <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <span>High-Touch Database Tables</span>
+            </div>
+            <span class="report-section-badge">${Object.keys(tables).length} Tables</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead><tr><th>Target Table</th><th>Query Methods</th><th>Share</th></tr></thead>
+              <tbody>
+                ${Object.entries(tables).slice(0, 10).map(([tbl, count]) => `
+                  <tr>
+                    <td><code class="font-mono text-cyan" style="font-size:12px;">${esc(tbl)}</code></td>
+                    <td style="font-family:var(--font-mono); font-weight:700;">${count}</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:11px; color:var(--text-muted);">${d.totalQueryMethods > 0 ? Math.round((count / d.totalQueryMethods) * 100) : 0}%</span>
+                        <div style="width:40px; height:4px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden;">
+                          <div style="width:${d.totalQueryMethods > 0 ? Math.round((count / d.totalQueryMethods) * 100) : 0}%; height:100%; background:#f59e0b;"></div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="report-section-card" style="margin-bottom:0;">
+          <div class="report-section-header">
+            <div class="report-section-title">
+              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9M14 17H5M17 12H3"/></svg>
+              <span>Persistence Architectural Patterns</span>
+            </div>
+            <span class="report-section-badge">${Object.keys(patterns).length} Patterns</span>
+          </div>
+          <div style="padding:16px; display:flex; flex-direction:column; gap:10px;">
+            ${Object.entries(patterns).map(([pattern, count]) => `
+              <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="font-weight:700; font-size:12.5px; color:var(--text-primary);">${esc(pattern)}</div>
+                  <div style="font-size:11px; color:var(--text-muted);">${count} persistence access points</div>
+                </div>
+                <span class="risk-badge risk-low font-mono">${count}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Persistence Touchpoints Table -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Data Access Touchpoints &amp; SQL Mutation Flow</span>
+          </div>
+          <span class="report-section-badge">${(d.accessPoints || []).length} Access Points</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Target Table</th>
+                <th>Operation</th>
+                <th>Method Name</th>
+                <th>DAO / Repository Class</th>
+                <th>Storage Pattern</th>
+                <th>Transaction</th>
+                <th>Risk Factor</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.accessPoints || []).map(da => {
+                const isWrite = da.operationType && da.operationType.includes('Write');
+                const opCls = isWrite ? 'risk-high' : 'risk-low';
+                const mSimple = da.methodFqn ? da.methodFqn.split('.').pop() : '';
+                const cSimple = da.classFqn ? da.classFqn.split('.').pop() : '';
+                return `
+                  <tr>
+                    <td><code class="font-mono text-cyan" style="font-size:12px; font-weight:700;">${esc(da.targetTable)}</code></td>
+                    <td><span class="risk-badge ${opCls}">${esc(da.operationType)}</span></td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); selectMethod('${esc(da.methodFqn)}');" style="font-family:var(--font-mono); font-size:12px; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="${esc(da.methodFqn)}">${esc(mSimple)}</a>
+                    </td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(da.classFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); text-decoration:none; cursor:pointer;" title="${esc(da.classFqn)}">${esc(cSimple)}</a>
+                    </td>
+                    <td style="font-size:11.5px; color:var(--text-secondary);">${esc(da.pattern)}</td>
+                    <td>
+                      ${da.isTransactional
+                        ? '<span class="status-badge" style="background:rgba(16,185,129,0.12); color:#34d399; font-size:10px; padding:2px 6px; border-radius:4px; font-weight:600;">TX GUARD</span>'
+                        : '<span class="status-badge" style="background:rgba(148,163,184,0.12); color:#94a3b8; font-size:10px; padding:2px 6px; border-radius:4px;">AUTOCOMMIT</span>'}
+                    </td>
+                    <td><span style="font-size:11.5px; color:${da.riskFactor && da.riskFactor.includes('Risk') ? '#f43f5e' : 'var(--text-secondary)'};">${esc(da.riskFactor)}</span></td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(da.methodFqn)}');">Graph →</button>
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(da.classFqn)}', 'knowledge');">KB →</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    container.innerHTML = html;
+  },
+
+  renderConcurrencyAuditDashboard(container, d) {
+    if (!d) return;
+    const gradeColor = d.threadSafetyGrade === 'A' ? '#10b981' : (d.threadSafetyGrade === 'B' ? '#38bdf8' : (d.threadSafetyGrade === 'C' ? '#f59e0b' : '#f43f5e'));
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: ${gradeColor};">
+          <span class="report-kpi-label">Thread Safety Score</span>
+          <div class="report-kpi-val" style="color:${gradeColor};">
+            ${d.threadSafetyScore || 0}
+            <span class="risk-badge" style="background:rgba(255,255,255,0.08); color:${gradeColor}; font-size:12px; margin-left:6px;">GRADE ${esc(d.threadSafetyGrade || 'C')}</span>
+          </div>
+          <span class="report-kpi-sub">Composite concurrency safety evaluation</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Synchronized Locks</span>
+          <div class="report-kpi-val">${d.synchronizedMethodCount || 0}</div>
+          <span class="report-kpi-sub">Methods with synchronized monitor locks</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #06b6d4;">
+          <span class="report-kpi-label">Volatile State Fields</span>
+          <div class="report-kpi-val">${d.volatileFieldCount || 0}</div>
+          <span class="report-kpi-sub">Memory barrier &amp; visibility guarantees</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Concurrent Collections</span>
+          <div class="report-kpi-val">${d.concurrentCollectionCount || 0}</div>
+          <span class="report-kpi-sub">Atomic &amp; ConcurrentHashMap instances</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f43f5e;">
+          <span class="report-kpi-label">Unsafe Mutable Collections</span>
+          <div class="report-kpi-val" style="color:#f43f5e;">${d.unsafeSharedCollectionCount || 0}</div>
+          <span class="report-kpi-sub">Mutable non-thread-safe static collections</span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #8b5cf6;">
+          <span class="report-kpi-label">Async Constructs</span>
+          <div class="report-kpi-val">${d.asyncConstructCount || 0}</div>
+          <span class="report-kpi-sub">ThreadPool, Executor, CompletableFuture</span>
+        </div>
+      </div>
+
+      <!-- Concurrency Findings Table -->
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">
+            <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span>Concurrency Findings &amp; Race Condition Hazards</span>
+          </div>
+          <span class="report-section-badge">${(d.findings || []).length} Findings</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Category</th>
+                <th>Target Entity</th>
+                <th>Architectural Hazard Detail</th>
+                <th>Prescribed Remediation Advice</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(d.findings || []).length === 0 ? `
+                <tr><td colspan="6" style="text-align:center; padding:32px; color:#10b981;">
+                  <svg class="svg-icon icon-emerald icon-lg" style="margin-bottom:8px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <div>No critical thread-safety hazards or unsafe mutable static collections identified.</div>
+                </td></tr>
+              ` : (d.findings || []).map(f => {
+                const sevCls = f.severity === 'CRITICAL' ? 'risk-critical' : (f.severity === 'HIGH' ? 'risk-high' : 'risk-medium');
+                const catLabel = f.category ? f.category.replace(/_/g, ' ') : '';
+                const eSimple = f.entityFqn ? f.entityFqn.split('.').pop() : '';
+                return `
+                  <tr>
+                    <td><span class="risk-badge ${sevCls}">${esc(f.severity)}</span></td>
+                    <td><span class="font-mono" style="font-size:11px; font-weight:600; color:var(--text-secondary);">${esc(catLabel)}</span></td>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(f.entityFqn)}', 'knowledge');" style="font-family:var(--font-mono); font-size:12px; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="${esc(f.entityFqn)}">${esc(eSimple)}</a>
+                      <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; max-width:240px;" title="${esc(f.entityFqn)}">${esc(f.entityFqn)}</div>
+                    </td>
+                    <td style="font-size:12px; color:var(--text-secondary); max-width:300px;">${esc(f.findingDetail)}</td>
+                    <td style="font-size:12px; color:#34d399; max-width:320px;">💡 ${esc(f.remediationAdvice)}</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(f.entityFqn)}', 'knowledge');">KB →</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
     container.innerHTML = html;
   },
 

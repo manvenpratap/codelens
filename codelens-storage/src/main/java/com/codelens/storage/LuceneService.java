@@ -242,6 +242,22 @@ public class LuceneService {
         log.info("Deleted package and contents from Lucene index: {}", packageFqn);
     }
 
+    /**
+     * Returns total number of indexed documents currently searchable.
+     */
+    public int getDocumentCount() {
+        if (searcherManager == null) return 0;
+        try {
+            IndexSearcher searcher = searcherManager.acquire();
+            try {
+                return searcher.getIndexReader().numDocs();
+            } finally {
+                searcherManager.release(searcher);
+            }
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Search
