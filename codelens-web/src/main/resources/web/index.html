@@ -3100,15 +3100,15 @@
             <div class="hub-jvm-autorecovery-actions">
               <span class="hub-jvm-chip chip-green" id="jvm-ar-cb-status">CIRCUIT BREAKER: CLOSED</span>
               <span class="hub-jvm-chip chip-blue" id="jvm-ar-watchdog-status">WATCHDOG: ACTIVE</span>
-              <button class="hub-btn-tool" id="btn-jvm-test-autorecovery" title="Safely allocate transient memory spike and verify auto-recovery">
+              <button type="button" class="hub-btn-tool" id="btn-jvm-test-autorecovery" title="Safely allocate transient memory spike and verify auto-recovery">
                 <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 <span>Test Auto-Recovery</span>
               </button>
-              <button class="hub-btn-tool" id="btn-jvm-force-recovery" title="Trigger immediate auto-recovery pass">
+              <button type="button" class="hub-btn-tool" id="btn-jvm-force-recovery" title="Trigger immediate auto-recovery pass">
                 <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                 <span>Force Recovery Pass</span>
               </button>
-              <button class="hub-btn-tool btn-danger" id="btn-jvm-reset-cb" style="display:none;" title="Reset tripped circuit breaker">
+              <button type="button" class="hub-btn-tool btn-danger" id="btn-jvm-reset-cb" style="display:none;" title="Reset tripped circuit breaker">
                 <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 <span>Reset Circuit Breaker</span>
               </button>

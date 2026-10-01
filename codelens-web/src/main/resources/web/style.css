@@ -16014,14 +16014,103 @@ body.theme-light .card-fluid {
   color: #a855f7 !important;
   border: 1px solid rgba(168, 85, 247, 0.4) !important;
 }
-.hub-btn-tool.btn-danger {
-  border-color: rgba(244, 63, 94, 0.3);
-  color: #f43f5e;
-  background: rgba(244, 63, 94, 0.08);
+/* ── Hub Auto-Recovery Tool Buttons ── */
+.hub-btn-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display, inherit);
+  letter-spacing: 0.01em;
+  color: var(--text-secondary, #cbd5e1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: all var(--dur-fast, 150ms) cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
+
+.hub-btn-tool:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.hub-btn-tool:active {
+  transform: translateY(0.5px);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hub-btn-tool:focus-visible {
+  outline: 2px solid var(--primary, #00d2ff) !important;
+  outline-offset: 2px !important;
+}
+
+.hub-btn-tool:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.hub-btn-tool svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: currentColor;
+  transition: color 0.15s ease, transform 0.2s ease;
+}
+
+.hub-btn-tool:hover svg {
+  color: var(--primary, #00d2ff);
+}
+
+#btn-jvm-test-autorecovery:hover svg {
+  color: #f59e0b;
+}
+
+#btn-jvm-force-recovery:hover svg {
+  color: #10b981;
+}
+
+.hub-btn-tool.btn-danger {
+  border-color: rgba(244, 63, 94, 0.35);
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.1);
+}
+
 .hub-btn-tool.btn-danger:hover {
-  background: rgba(244, 63, 94, 0.18);
+  background: rgba(244, 63, 94, 0.22);
   border-color: #f43f5e;
+  color: #ffffff;
+}
+
+.hub-btn-tool.btn-danger:hover svg {
+  color: #ffffff;
+}
+
+/* Spinner support inside .hub-btn-tool */
+.hub-btn-tool .hub-btn-spinner,
+.hub-btn-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
 }
 .hub-jvm-ar-metrics-strip {
   display: grid;
@@ -16583,6 +16672,37 @@ body.theme-light .hub-action-chip {
   border-color: #cbd5e1;
   color: #334155;
 }
+
+body.theme-light .hub-btn-tool {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .hub-btn-tool:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .hub-btn-tool:active {
+  background: #f1f5f9;
+}
+
+body.theme-light .hub-btn-tool.btn-danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #e11d48;
+}
+
+body.theme-light .hub-btn-tool.btn-danger:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+  color: #be123c;
+}
+
 
 /* ── Process Hub Light Theme Overrides ── */
 body.theme-light .hub-db-overview-banner {
@@ -17445,8 +17565,38 @@ body.theme-swiss .scan-metrics-phase-pill {
   background: #eb0028;
   color: #ffffff;
   border-radius: 2px;
-  border-color: #eb0028;
 }
+
+body.theme-swiss .hub-btn-tool {
+  background: #1d1d1f;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 2px !important;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+body.theme-swiss .hub-btn-tool:hover {
+  background: #eb0028;
+  border-color: #eb0028;
+  color: #ffffff;
+}
+
+body.theme-swiss .hub-btn-tool:hover svg {
+  color: #ffffff;
+}
+
+body.theme-swiss .hub-btn-tool.btn-danger {
+  border-color: #eb0028;
+  color: #eb0028;
+  background: transparent;
+}
+
+body.theme-swiss .hub-btn-tool.btn-danger:hover {
+  background: #eb0028;
+  color: #ffffff;
+}
+
 
 /* ── Process Hub Responsive Layouts ──────────────────────────────── */
 @media (max-width: 768px) {
