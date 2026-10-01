@@ -1939,6 +1939,78 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         }
       }
 
+    } else if (themeKey === 'swiss' || (!themeKey && (document.body.classList.contains('theme-swiss') || (document.body.dataset && document.body.dataset.theme === 'swiss')))) {
+      // SWISS MINIMALIST: Bauhaus & International Typographic Style
+      // Pure matte charcoal plane, precision architectural modular grid, Swiss Vermilion crosshairs
+      ctx.fillStyle = '#0f0f10';
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle planar gradation
+      const grad = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) * 0.85);
+      grad.addColorStop(0, 'rgba(29, 29, 31, 0.40)');
+      grad.addColorStop(1, 'rgba(15, 15, 16, 0.98)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (this._showGrid) {
+        const step = 32;
+        const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
+        const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
+
+        // Architectural modular grid lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = offX; x < W; x += step * this._sc) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, H);
+        }
+        for (let y = offY; y < H; y += step * this._sc) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+        }
+        ctx.stroke();
+
+        // Swiss crosshairs (+) and major module accents every 4 units
+        const majorStep = step * 4 * this._sc;
+        const mOffX = (this._tx % majorStep + majorStep) % majorStep;
+        const mOffY = (this._ty % majorStep + majorStep) % majorStep;
+
+        ctx.strokeStyle = 'rgba(235, 0, 40, 0.40)'; // Swiss vermilion tick
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let x = mOffX; x < W; x += majorStep) {
+          for (let y = mOffY; y < H; y += majorStep) {
+            const arm = 4;
+            ctx.moveTo(x - arm, y);
+            ctx.lineTo(x + arm, y);
+            ctx.moveTo(x, y - arm);
+            ctx.lineTo(x, y + arm);
+          }
+        }
+        ctx.stroke();
+
+        // Hairline origin cross axes centered on canvas origin in screen space
+        const originX = this._tx;
+        const originY = this._ty;
+        if (originX >= 0 && originX <= W) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(originX, 0);
+          ctx.lineTo(originX, H);
+          ctx.stroke();
+        }
+        if (originY >= 0 && originY <= H) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, originY);
+          ctx.lineTo(W, originY);
+          ctx.stroke();
+        }
+      }
+
     } else {
       // MIDNIGHT: Refined, subtle dark obsidian background with soft micro-dots (zero plus signs)
       ctx.fillStyle = '#0b0f15';
@@ -2404,18 +2476,27 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     // Theme-specific label pill styling
     const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
-    const themeKey = this._activeTheme || (isBodyLight ? 'light' : 'dark');
+    const isSwiss = document.body.classList.contains('theme-swiss') || (document.body.dataset && document.body.dataset.theme === 'swiss');
+    const themeKey = this._activeTheme || (isSwiss ? 'swiss' : (isBodyLight ? 'light' : 'dark'));
     let pillBg, pillBorder, pillText;
     if (isCriticalNode) {
       if (isBodyLight || themeKey === 'light' || themeKey === 'arctic') {
         pillBg = 'rgba(255, 255, 255, 0.98)';
         pillBorder = isCurrentStep ? '#d97706' : '#f59e0b';
         pillText = isCurrentStep ? '#b45309' : '#0f172a';
+      } else if (themeKey === 'swiss' || isSwiss) {
+        pillBg = '#161617';
+        pillBorder = isCurrentStep ? '#eb0028' : '#ffffff';
+        pillText = '#ffffff';
       } else {
         pillBg = 'rgba(26, 21, 16, 0.96)';
         pillBorder = isCurrentStep ? '#fbbf24' : '#f59e0b';
         pillText = isCurrentStep ? '#ffffff' : '#fef3c7';
       }
+    } else if (themeKey === 'swiss' || isSwiss) {
+      pillBg = '#161617';
+      pillBorder = isSelected ? '#eb0028' : (isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.20)');
+      pillText = isSelected ? '#eb0028' : (isHovered ? '#ffffff' : '#f2f2f7');
     } else if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
       pillBg = 'rgba(255, 255, 255, 0.98)';
       pillBorder = isSelected ? '#059669' : (isHovered ? mainColor : 'rgba(0, 0, 0, 0.16)');
@@ -2442,7 +2523,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     ctx.strokeStyle = pillBorder;
     ctx.lineWidth = isSelected || isCriticalNode ? 1.8 : (isHovered ? 1.4 : 1.0);
     ctx.beginPath();
-    ctx.roundRect(px, lblY - ph / 2, pw, ph, 5);
+    const pillRadius = (themeKey === 'swiss' || isSwiss) ? 2 : 5;
+    ctx.roundRect(px, lblY - ph / 2, pw, ph, pillRadius);
     ctx.fill();
     ctx.stroke();
 
@@ -2468,9 +2550,14 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const MH = this._minimapCanvas.height;
 
     const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
-    const themeKey = this._activeTheme || (isBodyLight ? 'light' : 'dark');
+    const isSwiss = document.body.classList.contains('theme-swiss') || (document.body.dataset && document.body.dataset.theme === 'swiss');
+    const themeKey = this._activeTheme || (isSwiss ? 'swiss' : (isBodyLight ? 'light' : 'dark'));
     let mmBg, mmVpStroke, mmVpFill;
-    if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
+    if (themeKey === 'swiss' || isSwiss) {
+      mmBg = 'rgba(22, 22, 23, 0.98)';
+      mmVpStroke = '#eb0028';
+      mmVpFill = 'rgba(235, 0, 40, 0.12)';
+    } else if (themeKey === 'arctic' || themeKey === 'light' || isBodyLight) {
       mmBg = 'rgba(248, 250, 252, 0.96)';
       mmVpStroke = 'rgba(5, 150, 105, 0.9)';
       mmVpFill = 'rgba(5, 150, 105, 0.12)';

@@ -18045,6 +18045,418 @@ body.theme-swiss .hub-btn-tool.btn-danger:hover {
   color: #ffffff;
 }
 
+/* ═════════════════════════════════════════════════════════════════════════════
+   SWISS THEME: COMPREHENSIVE ARCHITECTURAL REFINEMENTS
+   International Typographic Style · Josef Müller-Brockmann & Armin Hofmann
+   Matte jet surfaces · Swiss Vermilion (#eb0028) · Razor 2px geometry · Helvetica
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Swiss: Command Palette (⌘K) ────────────────────────────────── */
+body.theme-swiss .cmdk-dialog {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
+}
+body.theme-swiss .cmdk-search-wrap {
+  background: #0f0f10;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+body.theme-swiss .cmdk-search-icon {
+  color: #eb0028;
+}
+body.theme-swiss .cmdk-input {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+body.theme-swiss .cmdk-esc-badge {
+  border-radius: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #a1a1a6;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+body.theme-swiss .cmdk-group-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #8e8e93;
+  text-transform: uppercase;
+}
+body.theme-swiss .cmdk-item {
+  border-radius: 1px;
+  border: 1px solid transparent;
+}
+body.theme-swiss .cmdk-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+body.theme-swiss .cmdk-item.selected {
+  background: rgba(235, 0, 40, 0.08);
+  border-left: 3px solid #eb0028;
+  border-color: rgba(235, 0, 40, 0.35);
+  outline: none;
+}
+body.theme-swiss .cmdk-item.selected .cmdk-item-title {
+  color: #eb0028;
+  font-weight: 600;
+}
+body.theme-swiss .cmdk-item-shortcut {
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #a1a1a6;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* ── Swiss: Sonner Toast System ─────────────────────────────────── */
+body.theme-swiss .sonner-toast {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body.theme-swiss .sonner-toast.sonner-success {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-left: 3px solid #eb0028;
+}
+body.theme-swiss .sonner-toast.sonner-error {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-left: 3px solid #ff3b30;
+}
+body.theme-swiss .sonner-toast.sonner-info {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-left: 3px solid #ffffff;
+}
+body.theme-swiss .sonner-toast.sonner-warning {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-left: 3px solid #a1a1a6;
+}
+body.theme-swiss .sonner-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+body.theme-swiss .sonner-action {
+  background: #eb0028;
+  color: #ffffff;
+  border: none;
+  border-radius: 1px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+body.theme-swiss .sonner-action:hover {
+  background: #d10023;
+}
+
+/* ── Swiss: Reports Hub (13 Intelligence Reports) ───────────────── */
+body.theme-swiss .reports-sidebar {
+  background: #161617;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+body.theme-swiss .reports-sidebar-header {
+  background: #0f0f10;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+body.theme-swiss .reports-sidebar-title {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11.5px;
+}
+body.theme-swiss .reports-expand-strip {
+  background: #161617;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+body.theme-swiss .reports-expand-strip:hover {
+  background: #1d1d1f;
+  color: #eb0028;
+}
+body.theme-swiss .report-nav-item {
+  border-radius: 2px;
+  border: 1px solid transparent;
+  margin: 1px 6px;
+}
+body.theme-swiss .report-nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+body.theme-swiss .report-nav-item.active {
+  background: rgba(235, 0, 40, 0.08);
+  border-left: 3px solid #eb0028;
+  border-color: rgba(235, 0, 40, 0.35);
+}
+body.theme-swiss .report-nav-item.active .report-nav-title {
+  color: #eb0028;
+  font-weight: 700;
+}
+body.theme-swiss .report-nav-icon {
+  border-radius: 2px;
+  background: #1d1d1f;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+body.theme-swiss .report-nav-item.active .report-nav-icon {
+  background: rgba(235, 0, 40, 0.12);
+  border-color: rgba(235, 0, 40, 0.40);
+  color: #eb0028;
+}
+body.theme-swiss .report-nav-tag {
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9px;
+  font-weight: 700;
+  color: #a1a1a6;
+}
+body.theme-swiss .report-kpi-card {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  box-shadow: none;
+}
+body.theme-swiss .report-kpi-card::before {
+  display: none;
+}
+body.theme-swiss .report-kpi-val {
+  font-family: var(--font-display);
+  font-feature-settings: "tnum" 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+body.theme-swiss .report-kpi-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #8e8e93;
+}
+body.theme-swiss .report-kpi-sub {
+  color: #6e6e73;
+  font-size: 11px;
+}
+body.theme-swiss .report-section-card {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  box-shadow: none;
+}
+body.theme-swiss .report-section-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: #1a1a1c;
+}
+body.theme-swiss .report-section-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+body.theme-swiss .report-section-badge {
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  text-transform: uppercase;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+body.theme-swiss .report-format-pill,
+body.theme-swiss .report-sev-pill {
+  border-radius: 1px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+body.theme-swiss .report-format-pill.active {
+  background: #eb0028;
+  color: #ffffff;
+  border-color: #eb0028;
+}
+body.theme-swiss .report-sev-pill.sev-critical.active {
+  background: #eb0028;
+  color: #ffffff;
+  border-color: #eb0028;
+}
+body.theme-swiss .report-table {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+body.theme-swiss .report-table th {
+  background: #161617;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #8e8e93;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+body.theme-swiss .report-table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-feature-settings: 'tnum' 1;
+}
+body.theme-swiss .report-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Swiss: Code Review Findings & AST Audit ────────────────────── */
+body.theme-swiss .review-finding-card {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+body.theme-swiss .review-finding-card:hover {
+  background: #1d1d1f;
+  border-color: rgba(255, 255, 255, 0.24);
+  transform: none;
+}
+body.theme-swiss .review-finding-card.sev-critical {
+  border-left: 3px solid #eb0028;
+  background: rgba(235, 0, 40, 0.04);
+}
+body.theme-swiss .review-finding-card.sev-critical:hover {
+  background: rgba(235, 0, 40, 0.08);
+}
+body.theme-swiss .review-finding-card.sev-warning {
+  border-left: 3px solid #ffffff;
+  background: rgba(255, 255, 255, 0.03);
+}
+body.theme-swiss .review-finding-card.sev-info {
+  border-left: 3px solid #8e8e93;
+  background: rgba(255, 255, 255, 0.02);
+}
+body.theme-swiss .finding-severity {
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+body.theme-swiss .finding-line {
+  border-radius: 1px;
+  background: rgba(235, 0, 40, 0.10);
+  color: #eb0028;
+  border: 1px solid rgba(235, 0, 40, 0.35);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Swiss: Project Pill & Header Toolbar ────────────────────────── */
+body.theme-swiss .project-pill {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
+}
+body.theme-swiss .project-pill:hover {
+  background: #1d1d1f;
+  border-color: #eb0028;
+  box-shadow: none;
+}
+body.theme-swiss .project-pill-name {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+}
+body.theme-swiss .project-pill-path {
+  color: #8e8e93;
+}
+body.theme-swiss .project-pill-status {
+  border-radius: 1px;
+}
+
+/* ── Swiss: Knowledge Base Member Rows & Badges ─────────────────── */
+body.theme-swiss .kb-member-row {
+  border-radius: 1px;
+  border: 1px solid transparent;
+}
+body.theme-swiss .kb-member-row:hover {
+  background: #1d1d1f;
+  border-color: rgba(255, 255, 255, 0.10);
+}
+body.theme-swiss .kb-mod-pill,
+body.theme-swiss .kb-kind-badge,
+body.theme-swiss .kb-chip {
+  border-radius: 1px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+body.theme-swiss .kb-row-name {
+  font-weight: 600;
+}
+body.theme-swiss .kb-row-type {
+  color: #ff6961;
+}
+
+/* ── Swiss: Critical Path Analysis Drawer ────────────────────────── */
+body.theme-swiss .critical-path-drawer {
+  background: #161617;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+body.theme-swiss .cp-step-card {
+  background: #1d1d1f;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 2px;
+}
+body.theme-swiss .cp-step-card.active {
+  border-left: 3px solid #eb0028;
+  border-color: rgba(235, 0, 40, 0.35);
+  background: rgba(235, 0, 40, 0.06);
+}
+
+/* ── Swiss: Architecture 3D Studio & City Map ───────────────────── */
+body.theme-swiss .studio-3d-toolbar,
+body.theme-swiss .city-3d-controls {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+body.theme-swiss .studio-3d-btn {
+  border-radius: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1d1d1f;
+}
+body.theme-swiss .studio-3d-btn:hover {
+  background: #eb0028;
+  border-color: #eb0028;
+  color: #ffffff;
+}
+body.theme-swiss .studio-3d-btn.active {
+  background: #eb0028;
+  color: #ffffff;
+}
+
+/* ── Swiss: Process Hub Tabs 2-4 (DB Health, APIs, JVM) ──────────── */
+body.theme-swiss .hub-db-health-card,
+body.theme-swiss .hub-api-card,
+body.theme-swiss .hub-jvm-meter-card {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+body.theme-swiss .hub-db-metric-chip,
+body.theme-swiss .hub-api-method-badge {
+  border-radius: 1px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+body.theme-swiss .hub-api-method-badge.get {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+}
+body.theme-swiss .hub-api-method-badge.post {
+  background: rgba(235, 0, 40, 0.12);
+  color: #eb0028;
+  border: 1px solid rgba(235, 0, 40, 0.35);
+}
 
 /* ── Process Hub Responsive Layouts ──────────────────────────────── */
 @media (max-width: 768px) {
