@@ -2718,11 +2718,21 @@ function initJvmManagerControls() {
 }
 
 /** Re-open scan modal when user clicks header badge or footer status */
-function reopenScanModal() {
+async function reopenScanModal() {
   App.scanModalDismissed = false;
   qs('#scan-status-bar')?.classList.add('visible');
   if (App.lastScanProgress) {
     updateScanProgress(App.lastScanProgress);
+  } else {
+    try {
+      const status = await api.scanStatus();
+      if (status) {
+        App.lastScanProgress = status;
+        updateScanProgress(status);
+      }
+    } catch (e) {
+      console.warn('Failed fetching scan status on modal reopen:', e);
+    }
   }
 }
 
@@ -3189,6 +3199,9 @@ async function onScanComplete(s) {
   // Footer update
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
+  const fPill = qs('#footer-scan-pill');
+  const fTrack = qs('#footer-scan-mini-track');
+  const fContainer = qs('#footer-status-container');
   if (fText) {
     fText.textContent = 'Analyzer Idle · Scan complete';
     fText.title = 'Analyzer Idle · All graphs ready';
@@ -3196,6 +3209,17 @@ async function onScanComplete(s) {
   if (fInd) {
     fInd.className = 'status-indicator live';
     fInd.title = 'System Ready';
+  }
+  if (fPill) {
+    fPill.style.display = 'inline-flex';
+    fPill.textContent = 'READY';
+    fPill.className = 'footer-scan-pill footer-scan-pill-complete';
+  }
+  if (fTrack) {
+    fTrack.style.display = 'none';
+  }
+  if (fContainer) {
+    fContainer.classList.remove('footer-status-scanning');
   }
 
   // Check git branch
@@ -8815,6 +8839,21 @@ function updateScanSummaryUI(s) {
     }
   }
 
+  // 4b. Sync Footer Scan Pill
+  const fPill = qs('#footer-scan-pill');
+  if (fPill) {
+    if (s.status === 'COMPLETE') {
+      fPill.style.display = 'inline-flex';
+      fPill.textContent = 'READY';
+      fPill.className = 'footer-scan-pill footer-scan-pill-complete';
+    } else if (s.status === 'SCANNING') {
+      fPill.style.display = 'inline-flex';
+      const stg = s.activeStage || 'PARSE';
+      fPill.textContent = stg;
+      fPill.className = `footer-scan-pill footer-scan-pill-${stg.toLowerCase()}`;
+    }
+  }
+
   // 5. Update Advice Banner
   const adviceBanner = qs('#scan-advice-banner');
   const adviceIcon = qs('#scan-advice-icon');
@@ -9759,6 +9798,7 @@ async function init() {
     try {
       const status = await api.scanStatus();
       if (status && status.sourcePath) {
+        App.lastScanProgress = status;
         updateHeaderProjectBar(status.sourcePath);
         updateScanSummaryUI(status);
         if (status.status === 'ERROR') {

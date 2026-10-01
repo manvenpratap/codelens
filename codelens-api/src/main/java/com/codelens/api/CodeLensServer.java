@@ -126,6 +126,32 @@ public class CodeLensServer {
     private final java.util.concurrent.atomic.AtomicLong reportsLastGeneratedTimestamp = new java.util.concurrent.atomic.AtomicLong(0L);
     private final java.util.concurrent.atomic.AtomicLong reportsLastGenerationDurationMs = new java.util.concurrent.atomic.AtomicLong(0L);
 
+    // ── Transient Entity Snapshot for Pipeline Inter-Stage Re-use ───────────
+    private static class ScanEntitySnapshot {
+        final List<CodePackage> packages;
+        final List<CodeType> types;
+        final List<CodeMethod> methods;
+        final List<CodeField> fields;
+        final List<CodeRelationship> relationships;
+        final List<GitMeta> gitMetas;
+
+        ScanEntitySnapshot(List<CodePackage> packages, List<CodeType> types, List<CodeMethod> methods,
+                           List<CodeField> fields, List<CodeRelationship> relationships, List<GitMeta> gitMetas) {
+            this.packages = packages != null ? packages : Collections.emptyList();
+            this.types = types != null ? types : Collections.emptyList();
+            this.methods = methods != null ? methods : Collections.emptyList();
+            this.fields = fields != null ? fields : Collections.emptyList();
+            this.relationships = relationships != null ? relationships : Collections.emptyList();
+            this.gitMetas = gitMetas != null ? gitMetas : Collections.emptyList();
+        }
+    }
+
+    private volatile ScanEntitySnapshot transientScanSnapshot = null;
+
+    public void clearTransientScanSnapshot() {
+        this.transientScanSnapshot = null;
+    }
+
     // ── Dedicated lifecycle tracking for background engines (independent of scanState) ──
     private final java.util.concurrent.atomic.AtomicBoolean graphWarmupRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicReference<String> graphWarmupPhase = new java.util.concurrent.atomic.AtomicReference<>("Ready");
@@ -220,6 +246,7 @@ public class CodeLensServer {
         precomputedModuleInsights.clear();
         cachedReportsJson.clear();
         cachedReportsRendered.clear();
+        clearTransientScanSnapshot();
         scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
@@ -374,6 +401,7 @@ public class CodeLensServer {
             log.warn("Graph layout warm-up encountered an error: {}", e.getMessage());
         } finally {
             layoutWarmupRunning.set(false);
+            clearTransientScanSnapshot();
         }
     }
 
@@ -431,13 +459,36 @@ public class CodeLensServer {
             try {
                 log.info("Auto-triggering background precomputation of module dependencies...");
                 boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
-                List<CodePackage> packages = dao.findAllPackages();
-                List<CodeType> types = dao.findAllTypes();
-                List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
-                List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
-                List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-                    ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
-                    : dao.findAllRelationships();
+                List<CodePackage> packages;
+                List<CodeType> types;
+                List<CodeMethod> methods;
+                List<CodeField> fields;
+                List<CodeRelationship> relationships;
+
+                ScanEntitySnapshot snapshot = this.transientScanSnapshot;
+                if (snapshot != null && snapshot.types != null && !snapshot.types.isEmpty()) {
+                    packages = (snapshot.packages != null && !snapshot.packages.isEmpty()) ? snapshot.packages : dao.findAllPackages();
+                    types = snapshot.types;
+                    methods = isHuge ? Collections.emptyList() : ((snapshot.methods != null && !snapshot.methods.isEmpty()) ? snapshot.methods : dao.findAllMethods());
+                    fields = isHuge ? Collections.emptyList() : ((snapshot.fields != null && !snapshot.fields.isEmpty()) ? snapshot.fields : dao.findAllFields());
+                    relationships = (callGraph != null && callGraph.getCallGraph() != null)
+                        ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
+                        : ((snapshot.relationships != null && !snapshot.relationships.isEmpty()) ? snapshot.relationships : dao.findAllRelationships());
+                    log.info("Module dependency analyzer reused transient entity snapshot ({} types, {} methods, {} fields)",
+                        types.size(), methods.size(), fields.size());
+                } else {
+                    packages = dao.findAllPackages();
+                    types = dao.findAllTypes();
+                    methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
+                    fields = isHuge ? Collections.emptyList() : dao.findAllFields();
+                    relationships = (callGraph != null && callGraph.getCallGraph() != null)
+                        ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
+                        : dao.findAllRelationships();
+                    if (!isHuge && types.size() <= 100_000) {
+                        this.transientScanSnapshot = new ScanEntitySnapshot(packages, types, methods, fields,
+                            (relationships != null && !(callGraph != null && callGraph.getCallGraph() != null)) ? relationships : null, null);
+                    }
+                }
 
                 if (progress != null) {
                     progress.setActiveStage("MODULES");
@@ -555,6 +606,9 @@ public class CodeLensServer {
                     String reportKey = name.substring(0, name.length() - 5);
                     String html = Files.readString(f.toPath(), StandardCharsets.UTF_8);
                     cachedReportsRendered.put(reportKey + ":html", html);
+                    if ("html-snapshot".equals(reportKey)) {
+                        cachedReportsJson.putIfAbsent("html-snapshot", Map.of("report", "html-snapshot", "name", "Standalone Offline HTML Snapshot", "status", "ready"));
+                    }
                     loadedAny = true;
                 } else if (name.endsWith(".md")) {
                     String reportKey = name.substring(0, name.length() - 3);
@@ -600,7 +654,7 @@ public class CodeLensServer {
     }
 
     public void precomputeAllReports(ScanProgress progress, boolean force) {
-        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
+        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 13) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -611,7 +665,7 @@ public class CodeLensServer {
         }
 
         // 1. Try disk cache first if not forced
-        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 12) {
+        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 13) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -622,7 +676,7 @@ public class CodeLensServer {
         }
 
         synchronized (reportsPrecomputeLock) {
-            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
+            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 13) {
                 if (progress != null) {
                     progress.setActiveStage("REPORTS");
                     progress.setReportsFound(cachedReportsJson.size());
@@ -660,20 +714,44 @@ public class CodeLensServer {
                     );
                 }
 
-                // Query DB entities snapshot once
-                List<CodeType> types = dao.findAllTypes();
-                if (types.isEmpty()) {
-                    reportsPrecomputePhase.set("Idle (No scanned types)");
-                    reportsPrecomputePercentage.set(0);
-                    return;
-                }
+                ScanEntitySnapshot snapshot = this.transientScanSnapshot;
+                List<CodeType> types;
+                List<CodeMethod> methods;
+                List<CodeField> fields;
+                List<CodeRelationship> rels;
+                List<GitMeta> gitMetas;
 
-                reportsPrecomputePercentage.set(5);
-                reportsPrecomputePhase.set("Reading methods, fields, and relationships");
-                List<CodeMethod> methods = dao.findAllMethods();
-                List<CodeField> fields = dao.findAllFields();
-                List<CodeRelationship> rels = dao.findAllRelationships();
-                List<GitMeta> gitMetas = dao.findAllGitMeta();
+                if (snapshot != null && snapshot.types != null && !snapshot.types.isEmpty()) {
+                    types = snapshot.types;
+                    if (types.isEmpty()) {
+                        reportsPrecomputePhase.set("Idle (No scanned types)");
+                        reportsPrecomputePercentage.set(0);
+                        return;
+                    }
+                    reportsPrecomputePercentage.set(5);
+                    reportsPrecomputePhase.set("Reusing entities snapshot from pipeline");
+                    methods = (snapshot.methods != null && !snapshot.methods.isEmpty()) ? snapshot.methods : dao.findAllMethods();
+                    fields = (snapshot.fields != null && !snapshot.fields.isEmpty()) ? snapshot.fields : dao.findAllFields();
+                    rels = (snapshot.relationships != null && !snapshot.relationships.isEmpty()) ? snapshot.relationships : dao.findAllRelationships();
+                    gitMetas = (snapshot.gitMetas != null && !snapshot.gitMetas.isEmpty()) ? snapshot.gitMetas : dao.findAllGitMeta();
+                    log.info("Reports generator reused transient entity snapshot ({} types, {} methods, {} fields, {} rels)",
+                        types.size(), methods.size(), fields.size(), rels.size());
+                } else {
+                    // Query DB entities snapshot once
+                    types = dao.findAllTypes();
+                    if (types.isEmpty()) {
+                        reportsPrecomputePhase.set("Idle (No scanned types)");
+                        reportsPrecomputePercentage.set(0);
+                        return;
+                    }
+
+                    reportsPrecomputePercentage.set(5);
+                    reportsPrecomputePhase.set("Reading methods, fields, and relationships");
+                    methods = dao.findAllMethods();
+                    fields = dao.findAllFields();
+                    rels = dao.findAllRelationships();
+                    gitMetas = dao.findAllGitMeta();
+                }
 
                 final int TOTAL_REPORTS = 13;
 
@@ -842,13 +920,27 @@ public class CodeLensServer {
                     Object fullGraph = callGraph.precomputedFullGraphView(false);
                     Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
                     String projectName = (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
-                    ReportService.ArchitectureReportData archData = (ReportService.ArchitectureReportData) cachedReportsJson.get("architecture");
+                    Object cachedArch = cachedReportsJson.get("architecture");
+                    ReportService.ArchitectureReportData archData = null;
+                    if (cachedArch instanceof ReportService.ArchitectureReportData ard) {
+                        archData = ard;
+                    } else if (cachedArch instanceof Map) {
+                        try {
+                            archData = jsonMapper.convertValue(cachedArch, ReportService.ArchitectureReportData.class);
+                        } catch (Exception ignored) {}
+                    }
                     if (archData == null) {
                         archData = reportService.buildArchitectureData(types, methods, fields, rels);
                     }
                     String snapshotHtml = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
-                    cachedReportsRendered.put("html-snapshot:html", snapshotHtml);
-                    writeStringToFile(new File(getReportsCacheDir(), "html-snapshot.html"), snapshotHtml);
+                    Map<String, Object> snapshotMeta = new LinkedHashMap<>();
+                    snapshotMeta.put("report", "html-snapshot");
+                    snapshotMeta.put("name", "Standalone Offline HTML Snapshot");
+                    snapshotMeta.put("status", "ready");
+                    snapshotMeta.put("file", "html-snapshot.html");
+                    snapshotMeta.put("sizeBytes", snapshotHtml.length());
+                    snapshotMeta.put("generatedAt", System.currentTimeMillis());
+                    cacheReport("html-snapshot", snapshotMeta, snapshotHtml, null, null);
                 });
 
                 long duration = System.currentTimeMillis() - startTotal;
@@ -880,6 +972,7 @@ public class CodeLensServer {
                 logProcessBanner("REPORTS_PRECOMPUTE_FAILED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(), "Error: " + e.getMessage());
             } finally {
                 reportsPrecomputeRunning.set(false);
+                clearTransientScanSnapshot();
             }
         }
     }
@@ -943,6 +1036,7 @@ public class CodeLensServer {
             layoutCache.clear();
             precomputedModuleInsights.clear();
             precomputedModuleResult = null;
+            clearTransientScanSnapshot();
             log.info("Heap Auto-Recovery: evicted {} layout and {} module in-memory caches", layouts, modules);
         });
         this.heapWatchdog.registerRecoveryHook("H2 Database Page Cache Shrink (16MB)", () -> {
@@ -1986,6 +2080,7 @@ public class CodeLensServer {
             layoutCache.clear();
             precomputedModuleInsights.clear();
             precomputedModuleResult = null;
+            clearTransientScanSnapshot();
             log.info("Trimmed in-memory layout & module caches (cleared {} layouts, {} modules)", beforeLayouts, beforeModules);
         });
         logProcessBanner("JVM_TRIM", "Memory Optimizer", "Caches + GC",
@@ -2647,6 +2742,8 @@ public class CodeLensServer {
             progress.setErrorDetail(e.getMessage());
             progress.setEndTime(System.currentTimeMillis());
             try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+        } finally {
+            clearTransientScanSnapshot();
         }
     }
 
@@ -3045,6 +3142,8 @@ public class CodeLensServer {
             progress.setErrorDetail(e.getMessage());
             progress.setEndTime(System.currentTimeMillis());
             try { dao.saveScanMeta(progress); } catch (Exception ignored) {}
+        } finally {
+            clearTransientScanSnapshot();
         }
     }
 
