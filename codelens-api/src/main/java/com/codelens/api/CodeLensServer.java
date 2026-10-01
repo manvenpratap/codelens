@@ -86,6 +86,7 @@ public class CodeLensServer {
     private final StressTestService  stressTestService = new StressTestService();
     private final JvmManagerService  jvmManager = new JvmManagerService();
     private final HeapAutoRecoveryManager heapWatchdog = new HeapAutoRecoveryManager();
+    private final BackgroundTaskOrchestrator orchestrator = new BackgroundTaskOrchestrator();
     private final int                port;
 
     // ── Scan state (updated by background thread, read by poll endpoint) ──────
@@ -639,8 +640,8 @@ public class CodeLensServer {
     }
 
     public void triggerReportsPrecomputeAsync(ScanProgress progress, boolean force) {
-        if (reportsPrecomputeRunning.get()) return;
-        scanExecutor.submit(() -> {
+        if (reportsPrecomputeRunning.get() || orchestrator.isQueued("reports-generator")) return;
+        orchestrator.submit("reports-generator", BackgroundTaskOrchestrator.Priority.NORMAL, () -> {
             try {
                 precomputeAllReports(progress, force);
             } catch (Throwable t) {
@@ -1044,7 +1045,9 @@ public class CodeLensServer {
         });
         this.heapWatchdog.setOnCircuitBreakerReset(() -> {
             this.db.restoreDefaultCache();
+            this.orchestrator.dispatch();
         });
+        this.orchestrator.setHeapAutoRecoveryManager(this.heapWatchdog);
         this.stressTestService.setHeapAutoRecoveryManager(this.heapWatchdog);
     }
 
@@ -1373,6 +1376,7 @@ public class CodeLensServer {
     public void stop() {
         cancelRequested = true;
         heapWatchdog.stopWatchdog();
+        orchestrator.shutdown();
         if (app != null) {
             try { app.stop(); } catch (Exception ignored) {}
         }
@@ -1727,6 +1731,39 @@ public class CodeLensServer {
         reportsProc.put("canRestart", true);
         processes.add(reportsProc);
 
+        // Enrich process entries with orchestrator queue, load weight, and dependency status
+        for (Map<String, Object> proc : processes) {
+            String id = (String) proc.get("id");
+            BackgroundTaskOrchestrator.TaskSnapshot snap = orchestrator.getTaskSnapshot(id);
+            if (snap != null) {
+                proc.put("loadWeight", snap.loadUnits);
+                proc.put("loadTier", snap.loadTier);
+                proc.put("mutexGroup", snap.mutexGroup);
+                if (snap.status == BackgroundTaskOrchestrator.TaskStatus.QUEUED) {
+                    proc.put("status", "QUEUED");
+                    proc.put("queueStatus", "QUEUED");
+                    proc.put("queuePosition", snap.queuePosition);
+                    proc.put("currentPhase", "Queued in background (position #" + snap.queuePosition + ")");
+                } else if (snap.status == BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY) {
+                    proc.put("status", "WAITING");
+                    proc.put("queueStatus", "WAITING_DEPENDENCY");
+                    proc.put("queuePosition", snap.queuePosition);
+                    proc.put("waitingFor", snap.waitingFor);
+                    String waitMsg = snap.waitingFor.isEmpty() ? "Prerequisites" : String.join(", ", snap.waitingFor);
+                    proc.put("currentPhase", "Waiting on dependency: " + waitMsg);
+                } else if (snap.status == BackgroundTaskOrchestrator.TaskStatus.THROTTLED) {
+                    proc.put("status", "THROTTLED");
+                    proc.put("queueStatus", "THROTTLED");
+                    proc.put("queuePosition", snap.queuePosition);
+                    proc.put("throttleReason", snap.throttleReason);
+                    proc.put("currentPhase", snap.throttleReason != null ? snap.throttleReason : "Throttled (Memory High)");
+                } else {
+                    proc.put("queueStatus", snap.status.name());
+                    proc.put("queuePosition", snap.queuePosition);
+                }
+            }
+        }
+
         // System resources, JVM telemetry & Pool metrics
         Map<String, Object> jvmMetrics = jvmManager.getComprehensiveMetrics();
         long freeMem = Runtime.getRuntime().freeMemory();
@@ -1744,6 +1781,7 @@ public class CodeLensServer {
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("processes", processes);
+        resp.put("orchestrator", orchestrator.getOrchestratorSnapshot());
         resp.put("system", system);
         resp.put("database", db.getDiagnostics());
         resp.put("apis", Map.of(
@@ -1763,6 +1801,17 @@ public class CodeLensServer {
             body = ctx.bodyAsClass(Map.class);
         } catch (Exception ignored) {}
         String action = body != null && body.containsKey("action") ? String.valueOf(body.get("action")) : "health_check";
+
+        if (("restart".equalsIgnoreCase(action) || "compact".equalsIgnoreCase(action) || "reindex".equalsIgnoreCase(action)) &&
+            (orchestrator.isRunning("scanner") || orchestrator.isRunning("delta-scanner") || orchestrator.isRunning("stress-test"))) {
+            Map<String, Object> errResp = new LinkedHashMap<>();
+            errResp.put("success", false);
+            errResp.put("action", action);
+            errResp.put("message", "Cannot execute database maintenance '" + action + "' while a database scan or stress test is actively running. Stop the active process or wait for completion.");
+            errResp.put("diagnostics", db.getDiagnostics());
+            ctx.status(409).json(errResp);
+            return;
+        }
 
         String message;
         boolean success = true;
@@ -1805,6 +1854,7 @@ public class CodeLensServer {
 
     private void killProcess(Context ctx) {
         String id = ctx.pathParam("id");
+        orchestrator.cancel(id);
         logProcessBanner("KILL_REQUESTED", id.toUpperCase(), resolveCurrentSourcePath(), "User requested process termination");
         if ("scanner".equalsIgnoreCase(id) || "delta-scanner".equalsIgnoreCase(id) || "all".equalsIgnoreCase(id)) {
             cancelRequested = true;
@@ -1846,8 +1896,24 @@ public class CodeLensServer {
             int f = lastP != null && lastP.getTargetFields() > 0 ? lastP.getTargetFields() : 150_000;
             long r = lastP != null && lastP.getTargetRelationships() > 0 ? lastP.getTargetRelationships() : 15_000_000L;
             String dir = lastP != null && lastP.getTargetDir() != null ? lastP.getTargetDir() : "/Volumes/Study/Projects/codelens/codelens-stress-data";
-            boolean started = stressTestService.startStressTest(c, f, r, dir);
-            ctx.json(Map.of("status", started ? "restarted" : "running", "processId", id, "message", started ? "Stress test restarted." : "Stress test is already running."));
+
+            if (stressTestService.isRunning()) {
+                stressTestService.stopStressTest();
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            }
+
+            orchestrator.submit("stress-test", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
+                stressTestService.startStressTest(c, f, r, dir);
+                while (stressTestService.isRunning()) {
+                    try {
+                        Thread.sleep(250);
+                    } catch (InterruptedException e) {
+                        stressTestService.stopStressTest();
+                        break;
+                    }
+                }
+            });
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Stress test queued in background orchestrator."));
             return;
         }
 
@@ -1868,7 +1934,7 @@ public class CodeLensServer {
             progress.setStartTime(System.currentTimeMillis());
             progress.setMessage("Restarting full scan…");
             scanState.set(progress);
-            scanExecutor.submit(() -> runScan(currentPath, resolveCurrentExcludePatterns(), progress));
+            orchestrator.submit("scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runScan(currentPath, resolveCurrentExcludePatterns(), progress));
             ctx.json(Map.of("status", "restarted", "processId", id, "sourcePath", currentPath));
             return;
         } else if ("delta-scanner".equalsIgnoreCase(id)) {
@@ -1878,15 +1944,15 @@ public class CodeLensServer {
             progress.setCurrentPhase("Delta Change Detection");
             progress.setMessage("Resuming & rescanning changed files…");
             scanState.set(progress);
-            scanExecutor.submit(() -> runIncrementalScan(currentPath, resolveCurrentExcludePatterns(), progress));
+            orchestrator.submit("delta-scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runIncrementalScan(currentPath, resolveCurrentExcludePatterns(), progress));
             ctx.json(Map.of("status", "restarted", "processId", id, "sourcePath", currentPath));
             return;
         } else if ("call-graph".equalsIgnoreCase(id)) {
-            graphWarmupRunning.set(true);
-            graphWarmupPhase.set("Call Graph Analysis");
-            graphWarmupPercentage.set(10);
-            logProcessBanner("GRAPH_BUILD_STARTED", "Call Graph & Topology Engine", currentPath, "Manual rebuild of call graph & field impact requested");
-            scanExecutor.submit(() -> {
+            orchestrator.submit("call-graph", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
+                graphWarmupRunning.set(true);
+                graphWarmupPhase.set("Call Graph Analysis");
+                graphWarmupPercentage.set(10);
+                logProcessBanner("GRAPH_BUILD_STARTED", "Call Graph & Topology Engine", currentPath, "Manual rebuild of call graph & field impact requested");
                 try {
                     log.info("Manual rebuild of call graph & field impact requested");
                     List<String> allMethodFqns = dao.findAllMethodFqns();
@@ -1918,19 +1984,21 @@ public class CodeLensServer {
                     graphWarmupRunning.set(false);
                 }
             });
-            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Call graph rebuild queued"));
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Call graph rebuild queued in orchestrator"));
             return;
         } else if ("layout-engine".equalsIgnoreCase(id)) {
-            invalidateGraphCache();
-            scanExecutor.submit(() -> warmupGraphCache());
-            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Layout precomputations queued"));
+            orchestrator.submit("layout-engine", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
+                invalidateGraphCache();
+                warmupGraphCache();
+            });
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Layout precomputations queued in orchestrator"));
             return;
         } else if ("module-analyzer".equalsIgnoreCase(id)) {
-            scanExecutor.submit(() -> precomputeModuleDependencies(null));
-            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Module dependency analysis queued"));
+            orchestrator.submit("module-analyzer", BackgroundTaskOrchestrator.Priority.HIGH, () -> precomputeModuleDependencies(null));
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Module dependency analysis queued in orchestrator"));
             return;
         } else if ("lucene-indexer".equalsIgnoreCase(id)) {
-            scanExecutor.submit(() -> {
+            orchestrator.submit("lucene-indexer", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
                 try {
                     logProcessBanner("LUCENE_REINDEX_STARTED", "Lucene Search Indexer", currentPath, "Manual full re-indexing of types, methods, fields");
                     List<CodeType> allTypes = dao.findAllTypes();
@@ -1944,7 +2012,7 @@ public class CodeLensServer {
                     logProcessBanner("LUCENE_REINDEX_FAILED", "Lucene Search Indexer", currentPath, "Error: " + e.getMessage());
                 }
             });
-            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Lucene full re-index queued"));
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Lucene full re-index queued in orchestrator"));
             return;
         } else if ("git-analyzer".equalsIgnoreCase(id)) {
             String repoPath = currentPath;
@@ -1957,7 +2025,7 @@ public class CodeLensServer {
                 ctx.status(400).json(Map.of("error", "Source path is not a valid Git repository: " + validation.getError()));
                 return;
             }
-            triggerGitAnalysis(validation.getRepoPath(), validation.getBranch());
+            orchestrator.submit("git-analyzer", BackgroundTaskOrchestrator.Priority.HIGH, () -> triggerGitAnalysis(validation.getRepoPath(), validation.getBranch()));
             ctx.json(Map.of("status", "restarted", "processId", id, "repoPath", validation.getRepoPath()));
             return;
         } else if ("db-watchdog".equalsIgnoreCase(id)) {
@@ -1970,11 +2038,12 @@ public class CodeLensServer {
             heapWatchdog.stopWatchdog();
             heapWatchdog.startWatchdog();
             HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.triggerAutoRecovery("PROCESS_RESTART_REQUEST");
+            orchestrator.dispatch();
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Heap Watchdog restarted & memory auto-recovered (" + inc.reclaimedMb + " MB freed)"));
             return;
         } else if ("reports-generator".equalsIgnoreCase(id)) {
-            triggerReportsPrecomputeAsync(null, true);
-            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Reports regeneration triggered in background"));
+            orchestrator.submit("reports-generator", BackgroundTaskOrchestrator.Priority.HIGH, () -> triggerReportsPrecomputeAsync(null, true));
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Reports regeneration queued in orchestrator"));
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
@@ -1998,14 +2067,42 @@ public class CodeLensServer {
             if (body.get("targetDir") instanceof String s && !s.isBlank()) dir = s;
         }
 
-        boolean started = stressTestService.startStressTest(classes, fields, rels, dir);
-        if (started) {
-            logProcessBanner("STRESS_TEST_STARTED", "Stress Test Runner", dir,
-                String.format("Target: %,d classes, %,d fields, %,d relationships", classes, fields, rels));
-            ctx.json(Map.of("success", true, "message", "Stress test started successfully", "progress", stressTestService.getProgress()));
-        } else {
-            ctx.status(409).json(Map.of("success", false, "message", "A stress test is already running", "progress", stressTestService.getProgress()));
+        final int targetClasses = classes;
+        final int targetFields = fields;
+        final long targetRels = rels;
+        final String targetDir = dir;
+
+        if (stressTestService.isRunning() || orchestrator.isQueued("stress-test")) {
+            ctx.status(409).json(Map.of("success", false, "message", "A stress test is already running or queued in orchestrator", "progress", stressTestService.getProgress()));
+            return;
         }
+
+        orchestrator.submit("stress-test", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
+            logProcessBanner("STRESS_TEST_STARTED", "Stress Test Runner", targetDir,
+                String.format("Target: %,d classes, %,d fields, %,d relationships", targetClasses, targetFields, targetRels));
+            stressTestService.startStressTest(targetClasses, targetFields, targetRels, targetDir);
+            while (stressTestService.isRunning()) {
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    stressTestService.stopStressTest();
+                    break;
+                }
+            }
+        });
+
+        BackgroundTaskOrchestrator.TaskSnapshot snap = orchestrator.getTaskSnapshot("stress-test");
+        boolean isQueued = snap != null && (snap.status == BackgroundTaskOrchestrator.TaskStatus.QUEUED || snap.status == BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY);
+        String msg = isQueued
+            ? "Stress test submitted and queued (waiting for active database task or capacity slot)."
+            : "Stress test started successfully.";
+
+        Map<String, Object> respMap = new LinkedHashMap<>();
+        respMap.put("success", true);
+        respMap.put("message", msg);
+        respMap.put("progress", stressTestService.getProgress());
+        if (snap != null) respMap.put("orchestrator", snap.toMap());
+        ctx.json(respMap);
     }
 
     private void getStressTestStatus(Context ctx) {
@@ -2175,9 +2272,9 @@ public class CodeLensServer {
         if (isResume) {
             progress.setCurrentPhase("Delta Change Detection");
             progress.setMessage("Resuming scan — detecting modified & remaining source files…");
-            scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
+            orchestrator.submit("delta-scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runIncrementalScan(finalPath, finalExcludes, progress));
         } else {
-            scanExecutor.submit(() -> runScan(finalPath, finalExcludes, progress));
+            orchestrator.submit("scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runScan(finalPath, finalExcludes, progress));
         }
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath, "resumed", isResume));
@@ -2280,7 +2377,7 @@ public class CodeLensServer {
         final String finalPath = sourcePath;
         logProcessBanner("INCREMENTAL_TRIGGERED", "Delta Change Detection & Rescan", sourcePath,
             "Excludes: " + (finalExcludes != null && !finalExcludes.isEmpty() ? String.join(", ", finalExcludes) : "default"));
-        scanExecutor.submit(() -> runIncrementalScan(finalPath, finalExcludes, progress));
+        orchestrator.submit("delta-scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runIncrementalScan(finalPath, finalExcludes, progress));
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath));
     }
@@ -3782,7 +3879,7 @@ public class CodeLensServer {
         logProcessBanner("GIT_ANALYSIS_STARTED", "Git Churn & Hotspot Analyzer", canonicalRepoPath,
             "Starting background Git blame & churn analysis" + (branch != null ? " (branch: " + branch + ")" : ""));
 
-        CompletableFuture.runAsync(() -> {
+        orchestrator.submit("git-analyzer", BackgroundTaskOrchestrator.Priority.NORMAL, () -> {
             try {
                 List<CodeType> types = dao.findAllTypes();
                 List<CodeMethod> methods = dao.findAllMethods();

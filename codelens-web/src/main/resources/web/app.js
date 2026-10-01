@@ -2068,16 +2068,19 @@ async function loadProcessHubData() {
     if (pulseEl) pulseEl.style.display = hasRunning ? 'inline-block' : 'none';
 
     // 2. Compute process counts for tabs and stats using normalized categories
-    const runningCount = procs.filter(p => getTaskCategory(p.status) === 'running').length;
-    const completeCount = procs.filter(p => getTaskCategory(p.status) === 'complete').length;
-    const idleCount = procs.filter(p => getTaskCategory(p.status) === 'idle').length;
-    const errorCount = procs.filter(p => getTaskCategory(p.status) === 'error').length;
+    const runningCount = procs.filter(p => getTaskCategory(p) === 'running').length;
+    const queuedCount = procs.filter(p => getTaskCategory(p) === 'queued').length;
+    const completeCount = procs.filter(p => getTaskCategory(p) === 'complete').length;
+    const idleCount = procs.filter(p => getTaskCategory(p) === 'idle').length;
+    const errorCount = procs.filter(p => getTaskCategory(p) === 'error').length;
     const totalCount = procs.length;
 
     const countAllEl = qs('#hub-count-all');
     if (countAllEl) countAllEl.textContent = totalCount;
     const countRunningEl = qs('#hub-count-running');
     if (countRunningEl) countRunningEl.textContent = runningCount;
+    const countQueuedEl = qs('#hub-count-queued');
+    if (countQueuedEl) countQueuedEl.textContent = queuedCount;
     const countCompleteEl = qs('#hub-count-complete');
     if (countCompleteEl) countCompleteEl.textContent = completeCount;
     const countIdleEl = qs('#hub-count-idle');
@@ -2105,7 +2108,16 @@ async function loadProcessHubData() {
     const hudTasks = qs('#hub-hud-tasks');
     if (hudTasks) hudTasks.textContent = `${runningCount}/${totalCount} Active`;
     const hudTasksSub = qs('#hub-hud-tasks-sub');
-    if (hudTasksSub) hudTasksSub.textContent = '';
+    if (hudTasksSub) {
+      const orch = data.orchestrator || {};
+      const loadUnits = orch.activeLoadUnits != null ? orch.activeLoadUnits : (runningCount > 0 ? runningCount * 2 : 0);
+      const maxUnits = orch.maxLoadUnits || 10;
+      if (queuedCount > 0) {
+        hudTasksSub.textContent = `(${loadUnits}/${maxUnits} load · ${queuedCount} queued)`;
+      } else {
+        hudTasksSub.textContent = `(${loadUnits}/${maxUnits} load)`;
+      }
+    }
 
     const hudDb = qs('#hub-hud-db');
     if (hudDb) hudDb.textContent = `H2 · ${db.fileSizeMb ?? 0} MB`;
@@ -2167,10 +2179,16 @@ async function loadProcessHubData() {
   }
 }
 
-function getTaskCategory(status) {
-  const s = String(status || '').trim().toUpperCase();
+function getTaskCategory(target) {
+  const s = typeof target === 'object' && target !== null
+    ? String(target.queueStatus || target.status || '').trim().toUpperCase()
+    : String(target || '').trim().toUpperCase();
+
   if (['RUNNING', 'ACTIVE', 'SCANNING', 'ALERT', 'MONITORING', 'IN_PROGRESS', 'BUILDING'].includes(s)) {
     return 'running';
+  }
+  if (['QUEUED', 'WAITING', 'WAITING_DEPENDENCY', 'THROTTLED', 'PENDING'].includes(s)) {
+    return 'queued';
   }
   if (['COMPLETE', 'COMPLETED', 'FINISHED', 'DONE', 'SUCCESS'].includes(s)) {
     return 'complete';
@@ -2178,7 +2196,7 @@ function getTaskCategory(status) {
   if (['ERROR', 'FAILED'].includes(s)) {
     return 'error';
   }
-  return 'idle'; // IDLE, WAITING, READY, STANDBY, CANCELLED, STOPPED, or empty
+  return 'idle'; // IDLE, READY, STANDBY, CANCELLED, STOPPED, or empty
 }
 
 function renderTasksPanel(procs) {
@@ -2190,10 +2208,11 @@ function renderTasksPanel(procs) {
   const searchTerms = q ? q.split(/\s+/).filter(Boolean) : [];
 
   const filteredProcs = (procs || []).filter(p => {
-    const cat = getTaskCategory(p.status);
+    const cat = getTaskCategory(p);
 
     // 1. Tab filter
     if (processHubFilter === 'running' && cat !== 'running') return false;
+    if (processHubFilter === 'queued' && cat !== 'queued') return false;
     if (processHubFilter === 'complete' && cat !== 'complete') return false;
     if (processHubFilter === 'idle' && cat !== 'idle') return false;
     if (processHubFilter === 'error' && cat !== 'error') return false;
@@ -2207,8 +2226,13 @@ function renderTasksPanel(procs) {
         statusCat,
         statusCat === 'complete' ? 'completed finish finished done success' : '',
         statusCat === 'running' ? 'active alert scanning monitoring in-progress building' : '',
-        statusCat === 'idle' ? 'waiting ready standby stopped cancelled' : '',
-        statusCat === 'error' ? 'failed failure' : ''
+        statusCat === 'queued' ? 'queued waiting dependency throttled pending delay deferred' : '',
+        statusCat === 'idle' ? 'ready standby stopped cancelled' : '',
+        statusCat === 'error' ? 'failed failure' : '',
+        p.loadTier ? `${p.loadTier.toLowerCase()} load tier` : '',
+        p.mutexGroup ? `${p.mutexGroup.toLowerCase()} mutex` : '',
+        p.throttleReason ? p.throttleReason.toLowerCase() : '',
+        p.waitingFor && p.waitingFor.length > 0 ? `waiting ${p.waitingFor.join(' ')}` : ''
       ].join(' ');
 
       const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${statusAliases} ${p.activeStage || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''}`.toLowerCase();
@@ -2246,25 +2270,49 @@ function renderTasksPanel(procs) {
       card.dataset.processId = p.id;
     }
 
-    const cat = getTaskCategory(p.status);
+    const cat = getTaskCategory(p);
     const isRunning = cat === 'running';
     const isComplete = cat === 'complete';
     const isError = cat === 'error';
+    const isQueued = cat === 'queued';
+    const statusUpper = String(p.status || '').toUpperCase();
 
-    card.className = 'process-card' + (isRunning ? ' is-running' : (isError ? ' is-error' : ''));
+    const isThrottled = statusUpper === 'THROTTLED' || p.queueStatus === 'THROTTLED';
+    const isWaiting = statusUpper === 'WAITING' || statusUpper === 'WAITING_DEPENDENCY' || p.queueStatus === 'WAITING_DEPENDENCY';
+
+    card.className = 'process-card' +
+      (isRunning ? ' is-running' : '') +
+      (isError ? ' is-error' : '') +
+      (isQueued ? (isThrottled ? ' is-throttled' : (isWaiting ? ' is-waiting' : ' is-queued')) : '');
 
     const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
     const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
 
     const iconSvg = getProcessIconSvg(p.id, p.type);
     let statusBadgeIcon = '• ';
+    let statusBadgeText = esc(p.status || 'IDLE');
+
     if (isRunning) {
-      const dotBg = String(p.status).toUpperCase() === 'ALERT' ? 'style="width:5px;height:5px;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"' : 'style="width:5px;height:5px;"';
+      const dotBg = statusUpper === 'ALERT' ? 'style="width:5px;height:5px;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"' : 'style="width:5px;height:5px;"';
       statusBadgeIcon = `<span class="hub-live-dot" ${dotBg}></span>`;
+      statusBadgeText = esc(p.status || 'RUNNING');
     } else if (isComplete) {
       statusBadgeIcon = '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+      statusBadgeText = esc(p.status || 'COMPLETE');
     } else if (isError) {
       statusBadgeIcon = '<svg class="svg-icon icon-xs icon-rose" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+      statusBadgeText = esc(p.status || 'ERROR');
+    } else if (isQueued) {
+      if (isThrottled) {
+        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-amber" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        statusBadgeText = 'THROTTLED';
+      } else if (isWaiting) {
+        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>';
+        statusBadgeText = 'WAITING';
+      } else {
+        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        statusBadgeText = p.queuePosition ? `QUEUED #${p.queuePosition}` : 'QUEUED';
+      }
     }
 
     let rawDetail = p.currentDetail || '';
@@ -2273,12 +2321,30 @@ function renderTasksPanel(procs) {
       else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
       else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
       else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
+      else if (isQueued) {
+        if (p.waitingFor && p.waitingFor.length > 0) {
+          rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
+        } else if (p.throttleReason) {
+          rawDetail = p.throttleReason;
+        } else if (p.currentPhase) {
+          rawDetail = p.currentPhase;
+        } else {
+          rawDetail = `Queued in orchestrator (#${p.queuePosition || 1})`;
+        }
+      }
       else if (cat === 'idle') rawDetail = 'Idle · Waiting for trigger';
       else if (cat === 'complete') rawDetail = 'Execution complete · Ready';
       else if (cat === 'error') rawDetail = 'Task encountered an error';
       else rawDetail = 'Ready';
+    } else if (isQueued) {
+      if (p.waitingFor && p.waitingFor.length > 0) {
+        rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
+      } else if (p.throttleReason) {
+        rawDetail = p.throttleReason;
+      }
     }
     const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
+    const badgeStatusClass = (p.status || 'idle').toLowerCase().replace(/\s+/g, '_');
 
     card.innerHTML = `
       <div class="process-card-header">
@@ -2292,7 +2358,8 @@ function renderTasksPanel(procs) {
           </div>
         </div>
         <div class="process-card-badges-actions">
-          <span class="process-card-badge status-${(p.status || 'idle').toLowerCase()}">${statusBadgeIcon}${esc(p.status || 'IDLE')}</span>
+          ${p.loadTier ? `<span class="meta-chip-load tier-${(p.loadTier).toLowerCase()}" title="Load weight: ${p.loadWeight ?? 0} unit(s)${p.mutexGroup && p.mutexGroup !== 'NONE' ? ` · Mutex: ${p.mutexGroup}` : ''}">${esc(p.loadTier)} · ${p.loadWeight ?? 0}u</span>` : ''}
+          <span class="process-card-badge status-${badgeStatusClass}">${statusBadgeIcon}${statusBadgeText}</span>
           ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
           ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
         </div>
