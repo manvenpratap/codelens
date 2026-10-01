@@ -249,7 +249,7 @@ public class CodeLensServer {
         logProcessBanner("LAYOUT_WARMUP_STARTED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(), "Precomputing graph layouts and module overview");
         try {
             if (progress != null) {
-                progress.recordStageStart("LAYOUT", "Graph Layout & Topology Precomputation", "Precomputing sunflower spiral cluster layouts and module dependencies");
+                progress.recordStageStart("LAYOUT", "Graph Layout & Topology Precomputation", "Precomputing sunflower spiral cluster layouts");
             }
             log.info("Starting graph layout precomputation & warm-up...");
             long start = System.currentTimeMillis();
@@ -316,7 +316,7 @@ public class CodeLensServer {
                         "Clusters", "Calculating…",
                         "Placed Nodes", "In progress"
                     );
-                    progress.setPercentage(92 + (int) ((i / (float) total) * 7.0));
+                    progress.setPercentage(82 + (int) ((i / (float) total) * 6.0));
                 }
                 getOrComputeLayout(task.key, task.supplier);
                 if (progress != null) {
@@ -332,32 +332,30 @@ public class CodeLensServer {
             if (progress != null) {
                 progress.setCurrentDetail(String.format("Precomputed all %d graph layouts", total));
                 progress.setSubProgress(total, total, "All layouts ready");
+                progress.setPercentage(88);
+                Map<String, String> layoutMetrics = new LinkedHashMap<>();
+                layoutMetrics.put("Layouts Cached", String.valueOf(total));
+                layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
+                layoutMetrics.put("Placed Nodes", "Ready");
+                layoutMetrics.put("Status", "Complete");
+                progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts", total), layoutMetrics);
             }
 
-            if (precomputedModuleResult == null && !cancelRequested) {
+            // Standalone fallback: only trigger module and report background precomputation if not running under a scan
+            if (progress == null && precomputedModuleResult == null && !cancelRequested) {
                 try {
-                    precomputeModuleDependencies(progress);
+                    precomputeModuleDependencies(null);
                 } catch (Exception e) {
                     log.warn("Module dependency precomputation deferred: {}", e.getMessage());
                 }
             }
 
-            if (!cancelRequested) {
+            if (progress == null && !cancelRequested) {
                 try {
-                    precomputeAllReports(progress);
+                    precomputeAllReports(null);
                 } catch (Exception e) {
                     log.warn("Report precomputation deferred: {}", e.getMessage());
                 }
-            }
-
-            if (progress != null) {
-                Map<String, String> layoutMetrics = new LinkedHashMap<>();
-                layoutMetrics.put("Layouts Cached", String.valueOf(total));
-                layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
-                layoutMetrics.put("Modules Cached", precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null ? String.valueOf(precomputedModuleResult.overview.modules.size()) : "Complete");
-                layoutMetrics.put("Reports Cached", String.valueOf(cachedReportsJson.size()));
-                layoutMetrics.put("Placed Nodes", "Ready");
-                progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts, modules & reports", total), layoutMetrics);
             }
 
             layoutWarmupPhase.set("Ready");
@@ -385,6 +383,12 @@ public class CodeLensServer {
 
     public ModuleDependencyAnalyzer.FullModuleDependencyResult precomputeModuleDependencies(ScanProgress progress) {
         if (precomputedModuleResult != null && !precomputedModuleInsights.isEmpty()) {
+            if (progress != null) {
+                int modCount = (precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null) ? precomputedModuleResult.overview.modules.size() : precomputedModuleInsights.size();
+                progress.setModulesFound(modCount);
+                progress.setPercentage(93);
+                progress.setCurrentDetail(String.format("Precomputed %,d modules ready in memory", modCount));
+            }
             return precomputedModuleResult;
         }
 
@@ -396,6 +400,12 @@ public class CodeLensServer {
                     jsonMapper.readValue(diskCache, ModuleDependencyAnalyzer.FullModuleDependencyResult.class);
                 if (diskResult != null && diskResult.overview != null) {
                     populateModuleDependencyCaches(diskResult);
+                    int modCount = (diskResult.overview.modules != null) ? diskResult.overview.modules.size() : precomputedModuleInsights.size();
+                    if (progress != null) {
+                        progress.setModulesFound(modCount);
+                        progress.setPercentage(93);
+                        progress.setCurrentDetail(String.format("Loaded %,d modules from disk cache", modCount));
+                    }
                     log.info("Loaded precomputed module dependencies from disk cache: {} modules",
                         precomputedModuleInsights.size());
                     return diskResult;
@@ -407,6 +417,12 @@ public class CodeLensServer {
 
         synchronized (modulePrecomputeLock) {
             if (precomputedModuleResult != null && !precomputedModuleInsights.isEmpty()) {
+                if (progress != null) {
+                    int modCount = (precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null) ? precomputedModuleResult.overview.modules.size() : precomputedModuleInsights.size();
+                    progress.setModulesFound(modCount);
+                    progress.setPercentage(93);
+                    progress.setCurrentDetail(String.format("Precomputed %,d modules ready in memory", modCount));
+                }
                 return precomputedModuleResult;
             }
 
@@ -414,10 +430,6 @@ public class CodeLensServer {
             long start = System.currentTimeMillis();
             try {
                 log.info("Auto-triggering background precomputation of module dependencies...");
-                if (progress != null) {
-                    progress.setCurrentDetail("Precomputing module dependencies & touch points");
-                }
-
                 boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
                 List<CodePackage> packages = dao.findAllPackages();
                 List<CodeType> types = dao.findAllTypes();
@@ -427,10 +439,48 @@ public class CodeLensServer {
                     ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
                     : dao.findAllRelationships();
 
+                if (progress != null) {
+                    progress.setActiveStage("MODULES");
+                    progress.setCurrentPhase("Module Dependencies");
+                    progress.setMessage("Analyzing package architecture & module boundaries…");
+                    progress.setPercentage(89);
+                    progress.setCurrentDetail(String.format("Extracting %,d packages, %,d types & %,d relationships…", packages.size(), types.size(), relationships.size()));
+                    progress.setSubProgress(1, 4, "Extracting entity couplings");
+                    progress.setDynamicMetrics(
+                        "Packages", String.format("%,d", packages.size()),
+                        "Types", String.format("%,d", types.size()),
+                        "Cross Links", "Analyzing…",
+                        "Cycles", "Checking…"
+                    );
+                }
+
+                if (progress != null) {
+                    progress.setPercentage(91);
+                    progress.setCurrentDetail("Analyzing module boundaries and inter-package couplings…");
+                    progress.setSubProgress(2, 4, "Module topology analysis");
+                }
+
                 ModuleDependencyAnalyzer.FullModuleDependencyResult result =
                     moduleDependencyAnalyzer.analyzeAllModules(packages, types, methods, fields, relationships, callGraph);
 
                 populateModuleDependencyCaches(result);
+
+                int modCount = (result != null && result.overview != null && result.overview.modules != null) ? result.overview.modules.size() : 0;
+                int interLinks = (result != null && result.overview != null) ? result.overview.totalInterModuleTouchPoints : 0;
+                boolean hasHighEfferent = (result != null && result.overview != null && result.overview.modules != null && result.overview.modules.stream().anyMatch(m -> "High Efferent".equals(m.stabilityRating)));
+
+                if (progress != null) {
+                    progress.setPercentage(93);
+                    progress.setModulesFound(modCount);
+                    progress.setCurrentDetail(String.format("Identified %,d architectural modules across %,d packages", modCount, packages.size()));
+                    progress.setSubProgress(4, 4, "Complete");
+                    progress.setDynamicMetrics(
+                        "Modules", String.format("%,d", modCount),
+                        "Packages", String.format("%,d", packages.size()),
+                        "Cross Links", String.format("%,d", interLinks),
+                        "Stability", hasHighEfferent ? "Efferent Risk" : "Stable Core"
+                    );
+                }
 
                 // Persist to disk cache
                 try {
@@ -551,16 +601,34 @@ public class CodeLensServer {
 
     public void precomputeAllReports(ScanProgress progress, boolean force) {
         if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
+            if (progress != null) {
+                progress.setActiveStage("REPORTS");
+                progress.setReportsFound(cachedReportsJson.size());
+                progress.setPercentage(99);
+                progress.setCurrentDetail(String.format("Loaded %,d intelligence reports from memory cache", cachedReportsJson.size()));
+            }
             return;
         }
 
         // 1. Try disk cache first if not forced
         if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 12) {
+            if (progress != null) {
+                progress.setActiveStage("REPORTS");
+                progress.setReportsFound(cachedReportsJson.size());
+                progress.setPercentage(99);
+                progress.setCurrentDetail(String.format("Loaded %,d intelligence reports from disk cache", cachedReportsJson.size()));
+            }
             return;
         }
 
         synchronized (reportsPrecomputeLock) {
             if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 12) {
+                if (progress != null) {
+                    progress.setActiveStage("REPORTS");
+                    progress.setReportsFound(cachedReportsJson.size());
+                    progress.setPercentage(99);
+                    progress.setCurrentDetail(String.format("Loaded %,d intelligence reports from memory cache", cachedReportsJson.size()));
+                }
                 return;
             }
 
@@ -578,7 +646,18 @@ public class CodeLensServer {
 
             try {
                 if (progress != null) {
-                    progress.setCurrentDetail("Reading database entities for reports generator");
+                    progress.setActiveStage("REPORTS");
+                    progress.setCurrentPhase("Generating Reports [0/13]");
+                    progress.setMessage("Reading entities snapshot from database for reports generator…");
+                    progress.setCurrentDetail("Reading database entities for reports generator…");
+                    progress.setPercentage(93);
+                    progress.setSubProgress(0, 13, "Reading entities snapshot");
+                    progress.setDynamicMetrics(
+                        "Reports Ready", "0 / 13",
+                        "Active Report", "Initializing…",
+                        "Artifacts", "0",
+                        "Snapshot", "Pending"
+                    );
                 }
 
                 // Query DB entities snapshot once
@@ -605,7 +684,21 @@ public class CodeLensServer {
                         reportsPrecomputePercentage.set(pct);
                         String phaseText = String.format("[%d/%d] %s", index, TOTAL_REPORTS, title);
                         reportsPrecomputePhase.set(phaseText);
-                        if (progress != null) progress.setCurrentDetail("Precomputing " + title);
+                        if (progress != null) {
+                            int scanPct = 93 + (int) (((double) (index - 1) / TOTAL_REPORTS) * 6.0);
+                            progress.setActiveStage("REPORTS");
+                            progress.setPercentage(Math.min(99, scanPct));
+                            progress.setCurrentPhase(String.format("Generating Reports [%d/%d]", index, TOTAL_REPORTS));
+                            progress.setMessage(String.format("Precomputing %s (%d of %d)…", title, index, TOTAL_REPORTS));
+                            progress.setCurrentDetail(String.format("[%d/%d] %s", index, TOTAL_REPORTS, title));
+                            progress.setSubProgress(index, TOTAL_REPORTS, title);
+                            progress.setDynamicMetrics(
+                                "Reports Ready", String.format("%d / %d", index - 1, TOTAL_REPORTS),
+                                "Active Report", title,
+                                "Artifacts", String.valueOf(cachedReportsRendered.size()),
+                                "Snapshot", index == 13 ? "Compiling" : (cachedReportsRendered.containsKey("html-snapshot:html") ? "Ready" : "Pending")
+                            );
+                        }
 
                         logProcessBanner("REPORT_BUILD_STARTED", phaseText, reportKey, "Computing analysis model and rendering artifacts");
                         log.info("[REPORT {}/{}] Starting precomputation: {} ({})", index, TOTAL_REPORTS, title, reportKey);
@@ -616,6 +709,16 @@ public class CodeLensServer {
                             logProcessBanner("REPORT_BUILD_COMPLETED", phaseText, reportKey,
                                 String.format("Successfully precomputed & cached in %d ms", repDuration));
                             log.info("[REPORT {}/{}] COMPLETED {} in {} ms", index, TOTAL_REPORTS, title, repDuration);
+                            if (progress != null) {
+                                int afterScanPct = 93 + (int) (((double) index / TOTAL_REPORTS) * 6.0);
+                                progress.setPercentage(Math.min(99, afterScanPct));
+                                progress.setDynamicMetrics(
+                                    "Reports Ready", String.format("%d / %d", index, TOTAL_REPORTS),
+                                    "Active Report", title,
+                                    "Artifacts", String.valueOf(cachedReportsRendered.size()),
+                                    "Snapshot", index == 13 ? "Ready" : (cachedReportsRendered.containsKey("html-snapshot:html") ? "Ready" : "Pending")
+                                );
+                            }
                         } catch (Throwable t) {
                             long repDuration = System.currentTimeMillis() - repStart;
                             log.error("[REPORT {}/{}] FAILED {} after {} ms: {}", index, TOTAL_REPORTS, title, repDuration, t.getMessage(), t);
@@ -753,6 +856,19 @@ public class CodeLensServer {
                 reportsLastGenerationDurationMs.set(duration);
                 reportsPrecomputePercentage.set(100);
                 reportsPrecomputePhase.set(String.format("Ready (All %d reports precomputed in %dms)", TOTAL_REPORTS, duration));
+
+                if (progress != null) {
+                    progress.setPercentage(99);
+                    progress.setReportsFound(TOTAL_REPORTS);
+                    progress.setCurrentDetail(String.format("Precomputed all %d codebase intelligence reports & artifacts", TOTAL_REPORTS));
+                    progress.setSubProgress(TOTAL_REPORTS, TOTAL_REPORTS, "All reports precomputed");
+                    progress.setDynamicMetrics(
+                        "Reports Ready", "13 / 13",
+                        "Active Report", "All Reports Complete",
+                        "Artifacts", String.valueOf(cachedReportsRendered.size()),
+                        "Snapshot", "Ready"
+                    );
+                }
 
                 logProcessBanner("REPORTS_PRECOMPUTE_COMPLETED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
                     String.format("All %d reports precomputed and cached in %d ms (%d artifacts)", TOTAL_REPORTS, duration, cachedReportsRendered.size()));
@@ -1368,19 +1484,20 @@ public class CodeLensServer {
         moduleProc.put("id", "module-analyzer");
         moduleProc.put("name", "Module Dependency & Touchpoint Engine");
         moduleProc.put("type", "Cross-Module Coupling & Architectural Touchpoints");
-        boolean isModuleActive = modulePrecomputeRunning.get();
+        boolean isScanModuleActive = isScanning && sp != null && "MODULES".equals(sp.getActiveStage());
+        boolean isModuleActive = modulePrecomputeRunning.get() || isScanModuleActive;
         boolean isModuleComplete = precomputedModuleResult != null;
         int cachedModules = precomputedModuleInsights.size();
         moduleProc.put("status", isModuleActive ? "RUNNING" : (isModuleComplete ? "COMPLETE" : "IDLE"));
         moduleProc.put("activeStage", isModuleActive ? "MODULE_DEPENDENCIES" : "IDLE");
-        moduleProc.put("currentPhase", isModuleActive ? "Analyzing Module Dependencies & Touchpoints" : (isModuleComplete ? "Module Topology Ready" : "Idle"));
+        moduleProc.put("currentPhase", isScanModuleActive ? sp.getCurrentPhase() : (isModuleActive ? "Analyzing Module Dependencies & Touchpoints" : (isModuleComplete ? "Module Topology Ready" : "Idle")));
         String modDetail = isModuleComplete
             ? String.format("%d modules · %d package touchpoints analyzed", (precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null) ? precomputedModuleResult.overview.modules.size() : cachedModules, cachedModules)
-            : (isModuleActive ? "Analyzing cross-module dependencies and touchpoints..." : "Not computed yet");
+            : (isScanModuleActive ? sp.getCurrentDetail() : (isModuleActive ? "Analyzing cross-module dependencies and touchpoints..." : "Not computed yet"));
         moduleProc.put("currentDetail", modDetail);
-        moduleProc.put("percentage", isModuleActive ? 50 : (isModuleComplete ? 100 : 0));
-        moduleProc.put("thread", isModuleActive ? "codelens-module-worker" : "-");
-        moduleProc.put("canKill", false);
+        moduleProc.put("percentage", isScanModuleActive ? sp.getPercentage() : (isModuleActive ? 50 : (isModuleComplete ? 100 : 0)));
+        moduleProc.put("thread", isScanModuleActive ? "codelens-scanner" : (isModuleActive ? "codelens-module-worker" : "-"));
+        moduleProc.put("canKill", isScanModuleActive);
         moduleProc.put("canRestart", true);
         processes.add(moduleProc);
 
@@ -1493,23 +1610,26 @@ public class CodeLensServer {
         reportsProc.put("id", "reports-generator");
         reportsProc.put("name", "Intelligence Reports Generator");
         reportsProc.put("type", "Deep Architecture, Risk & Metrics Precomputation");
-        boolean isReportsRunning = reportsPrecomputeRunning.get();
-        reportsProc.put("status", isReportsRunning ? "RUNNING" : "IDLE");
-        reportsProc.put("activeStage", isReportsRunning ? "PRECOMPUTING" : "CACHED");
-        reportsProc.put("currentPhase", reportsPrecomputePhase.get());
+        boolean isScanReportsActive = isScanning && sp != null && "REPORTS".equals(sp.getActiveStage());
+        boolean isReportsRunning = reportsPrecomputeRunning.get() || isScanReportsActive;
+        reportsProc.put("status", isReportsRunning ? "RUNNING" : (cachedReportsJson.size() > 0 ? "COMPLETE" : "IDLE"));
+        reportsProc.put("activeStage", isReportsRunning ? "PRECOMPUTING" : (cachedReportsJson.size() > 0 ? "CACHED" : "IDLE"));
+        reportsProc.put("currentPhase", isScanReportsActive ? sp.getCurrentPhase() : reportsPrecomputePhase.get());
         long lastGen = reportsLastGeneratedTimestamp.get();
-        String genDetail = lastGen > 0
-            ? String.format("%d reports cached · Last precomputed in %d ms (%s)",
-                cachedReportsJson.size(),
-                reportsLastGenerationDurationMs.get(),
-                new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)))
-            : (isReportsRunning ? "Precomputing all 13 reports in background..." : "Not generated yet");
+        String genDetail = isScanReportsActive
+            ? sp.getCurrentDetail()
+            : (lastGen > 0
+                ? String.format("%d reports cached · Last precomputed in %d ms (%s)",
+                    cachedReportsJson.size(),
+                    reportsLastGenerationDurationMs.get(),
+                    new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)))
+                : (isReportsRunning ? "Precomputing all 13 reports in background..." : "Not generated yet"));
         reportsProc.put("currentDetail", genDetail);
-        reportsProc.put("percentage", reportsPrecomputePercentage.get());
+        reportsProc.put("percentage", isScanReportsActive ? sp.getPercentage() : reportsPrecomputePercentage.get());
         reportsProc.put("durationMs", reportsLastGenerationDurationMs.get());
-        reportsProc.put("startTime", isReportsRunning ? reportsLastGeneratedTimestamp.get() : 0);
-        reportsProc.put("thread", isReportsRunning ? "codelens-reports-worker" : "-");
-        reportsProc.put("canKill", false);
+        reportsProc.put("startTime", isReportsRunning ? (isScanReportsActive ? sp.getStartTime() : reportsLastGeneratedTimestamp.get()) : 0);
+        reportsProc.put("thread", isScanReportsActive ? "codelens-scanner" : (isReportsRunning ? "codelens-reports-worker" : "-"));
+        reportsProc.put("canKill", isScanReportsActive);
         reportsProc.put("canRestart", true);
         processes.add(reportsProc);
 
@@ -2325,7 +2445,7 @@ public class CodeLensServer {
             callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
-                    progress.setPercentage(75 + (int)(f * 6)); // 75% -> 81%
+                    progress.setPercentage(70 + (int)(f * 6)); // 70% -> 76%
                     progress.setSubProgress(curr, total, "Indexing vertices");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d / %,d", curr, total),
@@ -2335,7 +2455,7 @@ public class CodeLensServer {
                     );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
                     float f = totalCallEdges > 0 ? (float) curr / totalCallEdges : 1f;
-                    progress.setPercentage(81 + (int)(f * 6)); // 81% -> 87%
+                    progress.setPercentage(76 + (int)(f * 6)); // 76% -> 82%
                     progress.setSubProgress(curr, totalCallEdges, "Mapping edges");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d", totalMethods),
@@ -2356,7 +2476,7 @@ public class CodeLensServer {
             // Field Impact Analysis
             progress.setCurrentPhase("Field Impact Analysis");
             progress.setMessage("Indexing field dependencies & propagation…");
-            progress.setPercentage(87);
+            progress.setPercentage(76);
             progress.setCurrentDetail("Querying field relationships from database…");
             progress.setSubProgress(3, 4, "Querying field relationships");
             progress.setDynamicMetrics(
@@ -2374,7 +2494,7 @@ public class CodeLensServer {
             progress.setSubProgress(4, 4, "Indexing field relations");
             fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
-                progress.setPercentage(87 + (int)(f * 5)); // 87% -> 92%
+                progress.setPercentage(76 + (int)(f * 6)); // 76% -> 82%
                 progress.setCurrentDetail(detail);
                 progress.setSubProgress(curr, total, "Indexing field relations");
                 progress.setDynamicMetrics(
@@ -2411,11 +2531,77 @@ public class CodeLensServer {
                 return;
             }
 
-            // Phase 6: Complete
+            // Phase 6: Module Dependency Analysis
+            progress.setActiveStage("MODULES");
+            progress.recordStageStart("MODULES", "Module Dependency Analysis", "Analyzing package architecture, coupling, and circular dependencies");
+            progress.setCurrentPhase("Module Dependencies");
+            progress.setMessage("Analyzing inter-module relationships & architecture…");
+            progress.setPercentage(88);
+            progress.setCurrentDetail("Computing module boundaries and touch points…");
+            progress.setSubProgress(1, 4, "Analyzing module architecture");
+            progress.setDynamicMetrics(
+                "Modules", "Analyzing…",
+                "Coupling", "Calculating…",
+                "Cycles", "Detecting…",
+                "Status", "In progress"
+            );
+
+            ModuleDependencyAnalyzer.FullModuleDependencyResult moduleResult = precomputeModuleDependencies(progress);
+            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null)
+                ? moduleResult.overview.modules.size() : 0;
+            progress.setModulesFound(modulesCount);
+            progress.setPercentage(93);
+
+            Map<String, String> moduleMetrics = new LinkedHashMap<>();
+            moduleMetrics.put("Modules Indexed", String.valueOf(modulesCount));
+            moduleMetrics.put("Inter-Module Links", moduleResult != null && moduleResult.overview != null ? String.valueOf(moduleResult.overview.totalInterModuleTouchPoints) : "0");
+            boolean hasEfferentRisk = moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null &&
+                moduleResult.overview.modules.stream().anyMatch(m -> "High Efferent".equals(m.stabilityRating));
+            moduleMetrics.put("Stability Risk", hasEfferentRisk ? "Efferent Risk" : "Stable Core");
+            moduleMetrics.put("Status", "Complete");
+            progress.recordStageEnd("MODULES", "COMPLETE", String.format("Analyzed %,d modules and inter-package dependencies", modulesCount), moduleMetrics);
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 7: Codebase Intelligence Reports Precomputation
+            progress.setActiveStage("REPORTS");
+            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", "Generating all 13 architecture, risk, quality, and concurrency reports");
+            progress.setCurrentPhase("Generating Reports");
+            progress.setMessage("Generating codebase intelligence reports…");
+            progress.setPercentage(93);
+            progress.setCurrentDetail("Initializing sequential report generation pipeline…");
+            progress.setSubProgress(0, 13, "Reports Generation");
+            progress.setDynamicMetrics(
+                "Reports Ready", "0 / 13",
+                "Active Report", "Starting…",
+                "Artifacts", "0",
+                "Snapshot", "Pending"
+            );
+
+            precomputeAllReports(progress, true);
+
+            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13;
+            progress.setReportsFound(reportsCount);
+            progress.setPercentage(99);
+
+            Map<String, String> reportMetrics = new LinkedHashMap<>();
+            reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
+            reportMetrics.put("Artifacts", String.valueOf(cachedReportsRendered.size()));
+            reportMetrics.put("Snapshot", "Ready");
+            reportMetrics.put("Status", "Complete");
+            progress.recordStageEnd("REPORTS", "COMPLETE", String.format("Generated %,d codebase intelligence reports", reportsCount), reportMetrics);
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 8: Complete
             progress.setActiveStage("COMPLETE");
             progress.setPercentage(100);
             progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("All graphs and indexes precomputed and ready");
+            progress.setCurrentDetail("All graphs, modules, and intelligence reports ready");
             progress.setMessage("Scan complete");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
@@ -2664,7 +2850,7 @@ public class CodeLensServer {
             callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
-                    progress.setPercentage(75 + (int)(f * 6));
+                    progress.setPercentage(70 + (int)(f * 6)); // 70% -> 76%
                     progress.setSubProgress(curr, total, "Indexing vertices");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d / %,d", curr, total),
@@ -2674,7 +2860,7 @@ public class CodeLensServer {
                     );
                 } else if ("Call Graph: Mapping Edges".equals(phase)) {
                     float f = totalCallEdges > 0 ? (float) curr / totalCallEdges : 1f;
-                    progress.setPercentage(81 + (int)(f * 6));
+                    progress.setPercentage(76 + (int)(f * 6)); // 76% -> 82%
                     progress.setSubProgress(curr, totalCallEdges, "Mapping edges");
                     progress.setDynamicMetrics(
                         "Graph Vertices", String.format("%,d", totalMethods),
@@ -2692,7 +2878,7 @@ public class CodeLensServer {
 
             progress.setCurrentPhase("Field Impact Analysis");
             progress.setMessage("Indexing field dependencies & propagation…");
-            progress.setPercentage(87);
+            progress.setPercentage(76);
             progress.setSubProgress(3, 4, "Querying field relationships");
             progress.setDynamicMetrics(
                 "Graph Vertices", String.format("%,d", totalMethods),
@@ -2709,7 +2895,7 @@ public class CodeLensServer {
             progress.setSubProgress(4, 4, "Indexing field relations");
             fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callingMethods, (phase, curr, total, detail) -> {
                 float f = total > 0 ? (float) curr / total : 1f;
-                progress.setPercentage(87 + (int)(f * 5));
+                progress.setPercentage(76 + (int)(f * 6)); // 76% -> 82%
                 progress.setCurrentDetail(detail);
                 progress.setSubProgress(curr, total, "Indexing field relations");
                 progress.setDynamicMetrics(
@@ -2751,10 +2937,72 @@ public class CodeLensServer {
 
             if (cancelRequested) return;
 
-            // Phase 6: Complete
+            // Phase 6: Module Dependency Analysis
+            progress.setActiveStage("MODULES");
+            progress.recordStageStart("MODULES", "Module Dependency Analysis", "Analyzing package architecture, coupling, and circular dependencies");
+            progress.setCurrentPhase("Module Dependencies");
+            progress.setMessage("Analyzing inter-module relationships & architecture…");
+            progress.setPercentage(88);
+            progress.setCurrentDetail("Computing module boundaries and touch points…");
+            progress.setSubProgress(1, 4, "Analyzing module architecture");
+            progress.setDynamicMetrics(
+                "Modules", "Analyzing…",
+                "Coupling", "Calculating…",
+                "Cycles", "Detecting…",
+                "Status", "In progress"
+            );
+
+            ModuleDependencyAnalyzer.FullModuleDependencyResult moduleResult = precomputeModuleDependencies(progress);
+            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null)
+                ? moduleResult.overview.modules.size() : 0;
+            progress.setModulesFound(modulesCount);
+            progress.setPercentage(93);
+
+            Map<String, String> moduleMetrics = new LinkedHashMap<>();
+            moduleMetrics.put("Modules Indexed", String.valueOf(modulesCount));
+            moduleMetrics.put("Inter-Module Links", moduleResult != null && moduleResult.overview != null ? String.valueOf(moduleResult.overview.totalInterModuleTouchPoints) : "0");
+            boolean hasEfferentRisk = moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null &&
+                moduleResult.overview.modules.stream().anyMatch(m -> "High Efferent".equals(m.stabilityRating));
+            moduleMetrics.put("Stability Risk", hasEfferentRisk ? "Efferent Risk" : "Stable Core");
+            moduleMetrics.put("Status", "Complete");
+            progress.recordStageEnd("MODULES", "COMPLETE", String.format("Analyzed %,d modules and inter-package dependencies", modulesCount), moduleMetrics);
+
+            if (cancelRequested) return;
+
+            // Phase 7: Codebase Intelligence Reports Precomputation
+            progress.setActiveStage("REPORTS");
+            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", "Generating all 13 architecture, risk, quality, and concurrency reports");
+            progress.setCurrentPhase("Generating Reports");
+            progress.setMessage("Generating codebase intelligence reports…");
+            progress.setPercentage(93);
+            progress.setCurrentDetail("Initializing sequential report generation pipeline…");
+            progress.setSubProgress(0, 13, "Reports Generation");
+            progress.setDynamicMetrics(
+                "Reports Ready", "0 / 13",
+                "Active Report", "Starting…",
+                "Artifacts", "0",
+                "Snapshot", "Pending"
+            );
+
+            precomputeAllReports(progress, true);
+
+            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13;
+            progress.setReportsFound(reportsCount);
+            progress.setPercentage(99);
+
+            Map<String, String> reportMetrics = new LinkedHashMap<>();
+            reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
+            reportMetrics.put("Artifacts", String.valueOf(cachedReportsRendered.size()));
+            reportMetrics.put("Snapshot", "Ready");
+            reportMetrics.put("Status", "Complete");
+            progress.recordStageEnd("REPORTS", "COMPLETE", String.format("Generated %,d codebase intelligence reports", reportsCount), reportMetrics);
+
+            if (cancelRequested) return;
+
+            // Phase 8: Complete
             progress.setActiveStage("COMPLETE");
             progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("Ready");
+            progress.setCurrentDetail("All graphs, modules, and intelligence reports ready");
             progress.setMessage("Incremental scan complete");
             progress.setPercentage(100);
             progress.setEndTime(System.currentTimeMillis());
@@ -2811,7 +3059,8 @@ public class CodeLensServer {
         ScanProgress sp = scanState.get();
         if ((sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) || db.isBulkLoadInProgress()) {
             Map<String, Object> liveStats = new LinkedHashMap<>();
-            liveStats.put("modules", 0);
+            liveStats.put("modules", sp != null ? sp.getModulesFound() : 0);
+            liveStats.put("reports", sp != null ? sp.getReportsFound() : 0);
             liveStats.put("packages", 0);
             liveStats.put("types", sp != null ? sp.getTypesFound() : 0);
             liveStats.put("classes", sp != null ? sp.getTypesFound() : 0);
@@ -2830,6 +3079,11 @@ public class CodeLensServer {
             return;
         }
         Map<String, Object> stats = dao.getStats();
+        int modCount = precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null
+            ? precomputedModuleResult.overview.modules.size()
+            : (stats.containsKey("modules") ? ((Number) stats.get("modules")).intValue() : dao.findAllPackages().size());
+        stats.put("modules", modCount);
+        stats.put("reports", cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13);
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());
         stats.put("persistentClasses", dao.findPersistentClassFqns());

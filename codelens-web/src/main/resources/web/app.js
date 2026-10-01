@@ -428,7 +428,7 @@ async function startScan(targetPath) {
   if (qs('#scan-pct')) qs('#scan-pct').textContent = '0%';
   if (qs('#scan-card-bar-fill')) qs('#scan-card-bar-fill').style.width = '0%';
   if (qs('#scan-files-ratio')) qs('#scan-files-ratio').textContent = 'Preparing scanner…';
-  if (qs('#scan-remaining-files')) qs('#scan-remaining-files').textContent = 'Stage 1 of 4';
+  if (qs('#scan-remaining-files')) qs('#scan-remaining-files').textContent = 'Stage 1 of 6';
   if (qs('#scan-detail-text')) qs('#scan-detail-text').textContent = 'Preparing storage & file list…';
   qs('#scan-status-bar')?.classList.add('visible');
   showBanner(`Rescanning codebase at "${path}"…`);
@@ -627,12 +627,11 @@ function getPhaseMetricsData(stageKey, s) {
       };
 
     case 'LAYOUT':
-    default:
       return {
         pill: 'Phase 4',
         name: 'Layout Precomputation',
         summary: stepInfo.summary || '2D and 3D graph layout warm-up & module overview precomputation',
-        detailText: stepInfo.detail || 'Precomputed 6 topology layouts & module overview ready for instant interactive exploration.',
+        detailText: stepInfo.detail || 'Precomputed 6 topology layouts ready for instant interactive exploration.',
         duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'LAYOUT' ? 'RUNNING' : 'PENDING')),
         cards: [
@@ -667,6 +666,97 @@ function getPhaseMetricsData(stageKey, s) {
             iconColor: 'icon-purple',
             valColor: '#c084fc',
             iconSvg: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+          }
+        ]
+      };
+
+    case 'MODULES':
+      const modulesCount = s.modulesFound || stats.modules || (metrics['Modules Indexed'] ? parseInt(metrics['Modules Indexed']) : 0);
+      return {
+        pill: 'Phase 5',
+        name: 'Module Dependencies',
+        summary: stepInfo.summary || (modulesCount > 0 ? `Analyzed ${modulesCount.toLocaleString()} modules & inter-module dependencies.` : 'Computing module dependencies & coupling metrics.'),
+        detailText: stepInfo.detail || `Analyzed ${modulesCount.toLocaleString()} modules and package boundaries with instability ratings.`,
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'MODULES' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Modules Indexed'] || (modulesCount > 0 ? modulesCount.toLocaleString() : 'Ready'),
+            lbl: 'Modules Indexed',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="8" y="14" width="8" height="8" rx="2"/><line x1="6" y1="10" x2="12" y2="14"/><line x1="18" y1="10" x2="12" y2="14"/>'
+          },
+          {
+            val: metrics['Inter-Module Links'] || (s.relationshipsFound ? s.relationshipsFound.toLocaleString() : 'Indexed'),
+            lbl: 'Inter-Module Links',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
+          },
+          {
+            val: metrics['Stability Risk'] || metrics['Cycles Detected'] || 'Stable Core',
+            lbl: 'Coupling Stability',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
+          },
+          {
+            val: metrics['Status'] || (stepInfo.status === 'COMPLETE' ? 'Complete' : 'Ready'),
+            lbl: 'Analysis Status',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<polyline points="20 6 9 17 4 12"/>'
+          }
+        ]
+      };
+
+    case 'REPORTS':
+    default:
+      const reportsCount = s.reportsFound || stats.reports || 13;
+      return {
+        pill: 'Phase 6',
+        name: 'Codebase Intelligence Reports',
+        summary: stepInfo.summary || 'Precomputing all 13 architecture, risk, quality, and concurrency reports',
+        detailText: stepInfo.detail || 'Generated all 13 intelligence reports with offline standalone HTML snapshot.',
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'REPORTS' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Reports Ready'] || `${reportsCount} / 13`,
+            lbl: 'Reports Generated',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'
+          },
+          {
+            val: metrics['Active Report'] || (s.status === 'COMPLETE' ? 'All 13 Ready' : 'In Progress'),
+            lbl: 'Active Report',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+          },
+          {
+            val: metrics['Artifacts'] || '13 Reports',
+            lbl: 'Audit Artifacts',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'
+          },
+          {
+            val: metrics['Snapshot'] || 'HTML Snapshot',
+            lbl: 'Offline Export',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
           }
         ]
       };
@@ -770,7 +860,9 @@ function inspectScanStep(stepName, toggleIfSame = false) {
     'PARSE': '1. AST Parsing & Extraction',
     'INDEX': '2. Search & DB Indexes',
     'GRAPH': '3. Call & Field Graph',
-    'LAYOUT': '4. Layout Precomputation'
+    'LAYOUT': '4. Layout Precomputation',
+    'MODULES': '5. Module Dependencies',
+    'REPORTS': '6. Codebase Intelligence Reports'
   };
 
   const titleEl = qs('#step-detail-title');
@@ -2656,7 +2748,7 @@ function updateScanProgress(s) {
 
   // Stage resolution & Heading
   const stage = s.activeStage || 'PARSE';
-  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
+  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'REPORTS': 6, 'COMPLETE': 7 };
   const currentStepNum = stageOrder[stage] || 1;
   const headingEl = qs('#scan-card-heading');
   const modalCard = qs('.scan-modal-card');
@@ -2683,6 +2775,10 @@ function updateScanProgress(s) {
   if (statusText) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       statusText.textContent = 'Codebase analysis complete';
+    } else if (stage === 'REPORTS' || (s.currentPhase && s.currentPhase.includes('Reports'))) {
+      statusText.textContent = s.message || 'Generating codebase intelligence reports…';
+    } else if (stage === 'MODULES' || (s.currentPhase && s.currentPhase.includes('Module'))) {
+      statusText.textContent = s.message || 'Analyzing module dependencies & couplings…';
     } else if (stage === 'LAYOUT' || (s.currentPhase && s.currentPhase.includes('Layout'))) {
       statusText.textContent = 'Precomputing graph layouts…';
     } else if (stage === 'GRAPH' || (s.currentPhase && s.currentPhase.includes('Graph'))) {
@@ -2747,6 +2843,12 @@ function updateScanProgress(s) {
     const pData = getPhaseMetricsData(App.selectedScanPhase || 'PARSE', s);
     if (detailLabel) detailLabel.textContent = `${pData.pill} · ${pData.name}`;
     if (detailIcon) detailIcon.innerHTML = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
+  } else if (stage === 'REPORTS' || phase.includes('Reports') || phase.includes('Report')) {
+    if (detailLabel) detailLabel.textContent = 'Codebase Intelligence Reports';
+    if (detailIcon) detailIcon.innerHTML = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>';
+  } else if (stage === 'MODULES' || phase.includes('Module')) {
+    if (detailLabel) detailLabel.textContent = 'Module Dependencies & Couplings';
+    if (detailIcon) detailIcon.innerHTML = '<rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="8" y="14" width="8" height="8" rx="2"/><line x1="6" y1="10" x2="12" y2="14"/><line x1="18" y1="10" x2="12" y2="14"/>';
   } else if (stage === 'LAYOUT' || phase.includes('Layout')) {
     if (detailLabel) detailLabel.textContent = 'Layout Precomputation';
     if (detailIcon) detailIcon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>';
@@ -2779,6 +2881,10 @@ function updateScanProgress(s) {
   if (filesRatio) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files indexed` : 'Scan complete';
+    } else if (stage === 'REPORTS') {
+      filesRatio.textContent = s.stageItem ? `Report: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Generating intelligence reports` : 'Generating intelligence reports…');
+    } else if (stage === 'MODULES') {
+      filesRatio.textContent = s.stageItem ? `Module: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing module dependencies` : 'Analyzing module dependencies…');
     } else if (stage === 'LAYOUT') {
       filesRatio.textContent = s.stageItem ? `Computing: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Precomputing layouts` : 'Precomputing layouts…');
     } else if (stage === 'GRAPH') {
@@ -2792,31 +2898,43 @@ function updateScanProgress(s) {
   const remainingFiles = qs('#scan-remaining-files');
   if (remainingFiles) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
-      remainingFiles.textContent = 'All 4 stages complete';
+      remainingFiles.textContent = 'All 6 stages complete';
+    } else if (stage === 'REPORTS') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Report ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 6 of 6`;
+      } else {
+        remainingFiles.textContent = 'Stage 6 of 6';
+      }
+    } else if (stage === 'MODULES') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Module ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 5 of 6`;
+      } else {
+        remainingFiles.textContent = 'Stage 5 of 6';
+      }
     } else if (stage === 'LAYOUT') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Layout ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 4 of 4`;
+        remainingFiles.textContent = `Layout ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 4 of 6`;
       } else {
-        remainingFiles.textContent = 'Stage 4 of 4';
+        remainingFiles.textContent = 'Stage 4 of 6';
       }
     } else if (stage === 'GRAPH') {
       if (s.stageTotal > 10) {
-        remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} links · Stage 3 of 4`;
+        remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} links · Stage 3 of 6`;
       } else if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Pass ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 3 of 4`;
+        remainingFiles.textContent = `Pass ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 3 of 6`;
       } else {
-        remainingFiles.textContent = 'Stage 3 of 4';
+        remainingFiles.textContent = 'Stage 3 of 6';
       }
     } else if (stage === 'INDEX') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Index ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 2 of 4`;
+        remainingFiles.textContent = `Index ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 2 of 6`;
       } else {
-        remainingFiles.textContent = 'Stage 2 of 4';
+        remainingFiles.textContent = 'Stage 2 of 6';
       }
     } else {
       // PARSE / PREPARE
       const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
-      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining · Stage 1 of 4` : 'Stage 1 of 4';
+      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining · Stage 1 of 6` : 'Stage 1 of 6';
     }
   }
 
@@ -2908,9 +3026,49 @@ function updateScanProgress(s) {
     qs('#scan-status-bar')?.classList.add('visible');
   }
   
-  // Footer update with title tooltip to prevent jitter and allow click-to-reopen
+  // Footer update with title tooltip, stage pill, and mini progress bar
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
+  const fPill = qs('#footer-scan-pill');
+  const fTrack = qs('#footer-scan-mini-track');
+  const fBar = qs('#footer-scan-mini-bar');
+  const fContainer = qs('#footer-status-container');
+
+  if (s.status === 'SCANNING') {
+    if (fPill) {
+      fPill.style.display = 'inline-flex';
+      const pillLabel = stage === 'REPORTS' ? 'REPORTS' : (stage === 'MODULES' ? 'MODULES' : stage);
+      fPill.textContent = pillLabel;
+      fPill.className = `footer-scan-pill footer-scan-pill-${stage.toLowerCase()}`;
+    }
+    if (fTrack) {
+      fTrack.style.display = 'inline-flex';
+    }
+    if (fBar) {
+      fBar.style.width = pct + '%';
+    }
+    if (fContainer) {
+      fContainer.classList.add('footer-status-scanning');
+      fContainer.style.cursor = 'pointer';
+    }
+  } else {
+    if (fPill) {
+      if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
+        fPill.style.display = 'inline-flex';
+        fPill.textContent = 'READY';
+        fPill.className = 'footer-scan-pill footer-scan-pill-complete';
+      } else {
+        fPill.style.display = 'none';
+      }
+    }
+    if (fTrack) {
+      fTrack.style.display = 'none';
+    }
+    if (fContainer) {
+      fContainer.classList.remove('footer-status-scanning');
+    }
+  }
+
   if (fText) {
     const detailSnippet = s.currentDetail ? ` · ${s.currentDetail}` : '';
     const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''}${detailSnippet} (${pct}%)`;
@@ -2968,7 +3126,7 @@ function updateProgressiveFeatureReadiness(s) {
   }
 
   const stage = s.activeStage || 'PARSE';
-  const stageOrder = { 'PREPARE': 0, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'COMPLETE': 5 };
+  const stageOrder = { 'PREPARE': 0, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'REPORTS': 6, 'COMPLETE': 7 };
   const currentLevel = stageOrder[stage] !== undefined ? stageOrder[stage] : 1;
 
   const tabRequirements = {
@@ -2988,7 +3146,7 @@ function updateProgressiveFeatureReadiness(s) {
         tabEl.classList.add('tab-stage-pending');
       }
       tabEl.setAttribute('data-stage-reason', req.name);
-      tabEl.title = `${tabEl.getAttribute('aria-label') || tabName} available after ${req.name} completes (Stage ${req.level} of 4)`;
+      tabEl.title = `${tabEl.getAttribute('aria-label') || tabName} available after ${req.name} completes (Stage ${req.level} of 6)`;
     } else {
       if (tabEl.classList.contains('tab-stage-pending')) {
         tabEl.classList.remove('tab-stage-pending');
@@ -8640,6 +8798,8 @@ function updateScanSummaryUI(s) {
   setNum('scan-stat-methods', s.methodsFound || App.stats?.methods || 0);
   setNum('scan-stat-fields', s.fieldsFound || App.stats?.fields || 0);
   setNum('scan-stat-rels', s.relationshipsFound || 0);
+  setNum('scan-stat-modules', s.modulesFound || App.stats?.modules || 0);
+  setNum('scan-stat-reports', s.reportsFound || App.stats?.reports || (s.status === 'COMPLETE' ? 13 : 0));
 
   // Format Duration
   const durEl = qs('#scan-stat-duration');
@@ -9196,10 +9356,13 @@ async function init() {
     }
   });
 
-  // Re-open scan modal when clicking header badge, progress bar, or footer indicator
+  // Re-open scan modal when clicking header badge, progress bar, or footer indicator / pill
   qs('#scan-status-badge')?.addEventListener('click', () => reopenScanModal());
   qs('#scan-progress-bar')?.addEventListener('click', () => reopenScanModal());
   qs('#footer-status-text')?.addEventListener('click', () => reopenScanModal());
+  qs('#footer-status-container')?.addEventListener('click', () => reopenScanModal());
+  qs('#footer-scan-pill')?.addEventListener('click', () => reopenScanModal());
+  qs('#footer-scan-mini-track')?.addEventListener('click', () => reopenScanModal());
   qs('.status-indicator')?.addEventListener('click', () => reopenScanModal());
 
   // Interactive scan pipeline step inspection (clickable anytime, with Arrow key navigation)

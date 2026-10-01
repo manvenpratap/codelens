@@ -1429,9 +1429,9 @@ public class EntityDao {
     public void saveScanMeta(ScanProgress sp) throws SQLException {
         if (sp == null) return;
         String sql = "MERGE INTO scan_meta (id, status, source_path, total_files, processed_files, parsed_files, " +
-                     "error_files, types_found, methods_found, fields_found, relationships_found, " +
+                     "error_files, types_found, methods_found, fields_found, relationships_found, modules_found, reports_found, " +
                      "start_time, end_time, message, error_detail) KEY(id) " +
-                     "VALUES ('latest', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                     "VALUES ('latest', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection c = db.getConnection()) {
             c.setAutoCommit(false);
             try (PreparedStatement ps = c.prepareStatement(sql)) {
@@ -1445,10 +1445,12 @@ public class EntityDao {
                 ps.setInt(8, sp.getMethodsFound());
                 ps.setInt(9, sp.getFieldsFound());
                 ps.setInt(10, sp.getRelationshipsFound());
-                ps.setLong(11, sp.getStartTime());
-                ps.setLong(12, sp.getEndTime());
-                ps.setString(13, sp.getMessage());
-                ps.setString(14, sp.getErrorDetail());
+                ps.setInt(11, sp.getModulesFound());
+                ps.setInt(12, sp.getReportsFound());
+                ps.setLong(13, sp.getStartTime());
+                ps.setLong(14, sp.getEndTime());
+                ps.setString(15, sp.getMessage());
+                ps.setString(16, sp.getErrorDetail());
                 ps.executeUpdate();
                 c.commit();
             } catch (Throwable t) {
@@ -1481,6 +1483,8 @@ public class EntityDao {
                 sp.setMethodsFound(rs.getInt("methods_found"));
                 sp.setFieldsFound(rs.getInt("fields_found"));
                 sp.setRelationshipsFound(rs.getInt("relationships_found"));
+                try { sp.setModulesFound(rs.getInt("modules_found")); } catch (Exception ignored) {}
+                try { sp.setReportsFound(rs.getInt("reports_found")); } catch (Exception ignored) {}
                 sp.setStartTime(rs.getLong("start_time"));
                 sp.setEndTime(rs.getLong("end_time"));
                 sp.setMessage(rs.getString("message"));

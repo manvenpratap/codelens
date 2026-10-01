@@ -121,6 +121,10 @@ public class DatabaseManager {
                     stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
                 }
             }
+
+            // Self-healing columns for scan metadata
+            try { stmt.execute("ALTER TABLE scan_meta ADD COLUMN IF NOT EXISTS modules_found INTEGER DEFAULT 0"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE scan_meta ADD COLUMN IF NOT EXISTS reports_found INTEGER DEFAULT 0"); } catch (Exception ignored) {}
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'RELATIONSHIPS' AND INDEX_NAME = 'IDX_RELS_FIELDS_COVERING'")) {
                 if (rs.next() && rs.getInt(1) == 0) {
                     stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_fields_covering ON relationships(kind, id, to_entity_fqn, from_entity_fqn)");
@@ -617,6 +621,8 @@ public class DatabaseManager {
                 "  methods_found       INTEGER DEFAULT 0," +
                 "  fields_found        INTEGER DEFAULT 0," +
                 "  relationships_found INTEGER DEFAULT 0," +
+                "  modules_found       INTEGER DEFAULT 0," +
+                "  reports_found       INTEGER DEFAULT 0," +
                 "  start_time          BIGINT DEFAULT 0," +
                 "  end_time            BIGINT DEFAULT 0," +
                 "  message             VARCHAR," +

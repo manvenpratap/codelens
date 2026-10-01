@@ -242,6 +242,14 @@
                 <span class="stat-card-num" id="scan-stat-rels">0</span>
                 <span class="stat-card-lbl">Relationships</span>
               </div>
+              <div class="scan-stat-card">
+                <span class="stat-card-num" id="scan-stat-modules">0</span>
+                <span class="stat-card-lbl">Modules</span>
+              </div>
+              <div class="scan-stat-card">
+                <span class="stat-card-num" id="scan-stat-reports">0</span>
+                <span class="stat-card-lbl">Reports Ready</span>
+              </div>
             </div>
 
             <!-- Detected Disk Changes Section (Shown when delta changes exist) -->
@@ -1720,8 +1728,12 @@
 
 <!-- Useful status/shortcut interactive footer -->
 <footer id="app-footer" role="contentinfo">
-  <div class="footer-segment footer-status">
-    <span class="status-indicator live"></span>
+  <div class="footer-segment footer-status" id="footer-status-container" title="Click to view scan progress details">
+    <span class="status-indicator live" id="footer-status-indicator"></span>
+    <span id="footer-scan-pill" class="footer-scan-pill" style="display:none;">MODULES</span>
+    <div id="footer-scan-mini-track" class="footer-scan-mini-track" style="display:none;" title="Scan progress">
+      <div id="footer-scan-mini-bar" class="footer-scan-mini-bar" style="width:0%;"></div>
+    </div>
     <span id="footer-status-text">Analyzer Idle</span>
   </div>
   <div class="footer-segment footer-info">
@@ -3835,6 +3847,16 @@
         <span class="step-dot"><span class="step-dot-num">4</span></span>
         <span class="step-label">4. Layouts</span>
       </div>
+      <div class="scan-step-divider" data-after="LAYOUT"></div>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="MODULES" tabindex="0" role="tab" aria-selected="false" title="Click to view Module Dependency analysis details">
+        <span class="step-dot"><span class="step-dot-num">5</span></span>
+        <span class="step-label">5. Modules</span>
+      </div>
+      <div class="scan-step-divider" data-after="MODULES"></div>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="REPORTS" tabindex="0" role="tab" aria-selected="false" title="Click to view Codebase Intelligence Reports details">
+        <span class="step-dot"><span class="step-dot-num">6</span></span>
+        <span class="step-label">6. Reports</span>
+      </div>
     </div>
 
     <!-- Interactive Step History & Detail Inspector -->
@@ -3870,7 +3892,7 @@
       </div>
       <div class="scan-card-counts" id="scan-card-counts">
         <span id="scan-files-ratio">0 of 0 files processed</span>
-        <span id="scan-remaining-files">Stage 1 of 4</span>
+        <span id="scan-remaining-files">Stage 1 of 6</span>
       </div>
     </div>
 

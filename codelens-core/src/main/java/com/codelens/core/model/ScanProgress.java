@@ -19,6 +19,8 @@ public class ScanProgress {
     private int methodsFound;
     private int fieldsFound;
     private int relationshipsFound;
+    private int modulesFound;
+    private int reportsFound;
     private String message;
     private long startTime;
     private long endTime;
@@ -51,7 +53,7 @@ public class ScanProgress {
         this.percentage = p;
     }
 
-    /** Pipeline stage: IDLE, PREPARE, PARSE, INDEX, GRAPH, LAYOUT, COMPLETE */
+    /** Pipeline stage: IDLE, PREPARE, PARSE, INDEX, GRAPH, LAYOUT, MODULES, REPORTS, COMPLETE */
     public String getActiveStage() {
         return activeStage != null ? activeStage : "IDLE";
     }
@@ -108,6 +110,10 @@ public class ScanProgress {
     public void setFieldsFound(int n)          { this.fieldsFound = n; }
     public int getRelationshipsFound()          { return relationshipsFound; }
     public void setRelationshipsFound(int n)   { this.relationshipsFound = n; }
+    public int getModulesFound()                { return modulesFound; }
+    public void setModulesFound(int n)         { this.modulesFound = n; }
+    public int getReportsFound()                { return reportsFound; }
+    public void setReportsFound(int n)         { this.reportsFound = n; }
     public String getMessage()                  { return message; }
     public void setMessage(String m)           { this.message = m; }
     public long getStartTime()                  { return startTime; }
