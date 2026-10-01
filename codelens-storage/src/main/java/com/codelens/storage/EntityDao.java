@@ -286,9 +286,12 @@ public class EntityDao {
         List<CodePackage> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT * FROM packages ORDER BY fqn");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(pkgFromRs(rs));
+                 "SELECT * FROM packages ORDER BY fqn")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(pkgFromRs(rs));
+            }
         }
         return list;
     }
@@ -348,7 +351,7 @@ public class EntityDao {
     }
 
     public List<CodeType> findAllTypes() throws SQLException {
-        return queryTypes("SELECT * FROM types ORDER BY fqn");
+        return queryTypes("SELECT * FROM types");
     }
 
     public List<CodeType> findTypesByPackage(String packageFqn) throws SQLException {
@@ -465,9 +468,12 @@ public class EntityDao {
     public List<CodeField> findAllFields() throws SQLException {
         List<CodeField> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT * FROM fields ORDER BY fqn");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(fieldFromRs(rs));
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM fields")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(fieldFromRs(rs));
+            }
         }
         return list;
     }
@@ -550,19 +556,36 @@ public class EntityDao {
     public List<CodeMethod> findAllMethods() throws SQLException {
         List<CodeMethod> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT * FROM methods ORDER BY fqn");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(methodFromRs(rs));
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM methods")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(methodFromRs(rs));
+            }
         }
         return list;
+    }
+
+    public void streamAllMethods(java.util.function.Consumer<CodeMethod> consumer) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM methods")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) consumer.accept(methodFromRs(rs));
+            }
+        }
     }
 
     public List<String> findAllMethodFqns() throws SQLException {
         List<String> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT fqn FROM methods");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(rs.getString("fqn"));
+             PreparedStatement ps = c.prepareStatement("SELECT fqn FROM methods")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(rs.getString("fqn"));
+            }
         }
         return list;
     }
@@ -1036,9 +1059,12 @@ public class EntityDao {
     public List<GitMeta> findAllGitMeta() throws SQLException {
         List<GitMeta> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT * FROM git_meta");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(gitMetaFromRs(rs));
+             PreparedStatement ps = c.prepareStatement("SELECT * FROM git_meta")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(gitMetaFromRs(rs));
+            }
         }
         return list;
     }
@@ -1606,9 +1632,12 @@ public class EntityDao {
     private List<CodeType> queryTypes(String sql) throws SQLException {
         List<CodeType> list = new ArrayList<>();
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(typeFromRs(rs));
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(typeFromRs(rs));
+            }
         }
         return list;
     }
@@ -1617,6 +1646,8 @@ public class EntityDao {
         List<CodeType> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
             for (int i = 0; i < params.length; i++) ps.setString(i + 1, params[i]);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) list.add(typeFromRs(rs));

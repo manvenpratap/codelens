@@ -13161,6 +13161,7 @@ const ReportsHub = {
   cache: {},
   loading: false,
   initialized: false,
+  pollTimer: null,
 
   init() {
     if (ReportsHub.initialized) return;
@@ -13187,6 +13188,7 @@ const ReportsHub = {
     });
 
     // Header actions
+    qs('#btn-reports-regenerate')?.addEventListener('click', () => ReportsHub.regenerate());
     qs('#btn-reports-copy')?.addEventListener('click', () => ReportsHub.copy());
     qs('#btn-reports-open')?.addEventListener('click', () => ReportsHub.openTab());
     qs('#btn-reports-download')?.addEventListener('click', () => ReportsHub.download());
@@ -13210,7 +13212,43 @@ const ReportsHub = {
     });
   },
 
+  async regenerate() {
+    try {
+      ReportsHub.cache = {};
+      if (ReportsHub.pollTimer) {
+        clearTimeout(ReportsHub.pollTimer);
+        ReportsHub.pollTimer = null;
+      }
+      const btn = qs('#btn-reports-regenerate');
+      if (btn) {
+        btn.classList.add('loading');
+        btn.disabled = true;
+      }
+      if (typeof showToast === 'function') {
+        showToast('Regenerating all 10 reports in background...', 'info');
+      }
+      const res = await fetch('/api/reports/regenerate', { method: 'POST' });
+      if (res.ok) {
+        ReportsHub.loadActiveReport();
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') {
+        showToast('Failed to trigger report regeneration: ' + err.message, 'error');
+      }
+    } finally {
+      const btn = qs('#btn-reports-regenerate');
+      if (btn) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+  },
+
   activate(reportKey, format) {
+    if (ReportsHub.pollTimer) {
+      clearTimeout(ReportsHub.pollTimer);
+      ReportsHub.pollTimer = null;
+    }
     if (reportKey && REPORTS_METADATA[reportKey]) {
       ReportsHub.activeReport = reportKey;
     }
@@ -13225,6 +13263,10 @@ const ReportsHub = {
   },
 
   setFormat(format) {
+    if (ReportsHub.pollTimer) {
+      clearTimeout(ReportsHub.pollTimer);
+      ReportsHub.pollTimer = null;
+    }
     ReportsHub.activeFormat = format;
     ReportsHub.syncUI();
     ReportsHub.loadActiveReport();
@@ -13285,12 +13327,25 @@ const ReportsHub = {
       dashContainer.innerHTML = `
         <div class="reports-loading-state">
           <div class="loading-spinner"></div>
-          <div class="loading-text">Analyzing ${esc(REPORTS_METADATA[ReportsHub.activeReport].title)}…</div>
+          <div class="loading-text">Analyzing ${esc(REPORTS_METADATA[ReportsHub.activeReport]?.title || 'Report')}…</div>
         </div>
       `;
 
       try {
         const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=json`);
+        if (res.status === 202) {
+          const statusData = await res.json().catch(() => ({}));
+          dashContainer.innerHTML = `
+            <div class="reports-loading-state">
+              <div class="loading-spinner"></div>
+              <div class="loading-text">${esc(statusData.message || 'Precomputing reports in background…')}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">${esc(statusData.phase || '')} (${statusData.percentage || 0}%)</div>
+            </div>
+          `;
+          if (ReportsHub.pollTimer) clearTimeout(ReportsHub.pollTimer);
+          ReportsHub.pollTimer = setTimeout(() => ReportsHub.loadActiveReport(), 1500);
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const data = await res.json();
         ReportsHub.cache[cacheKey] = data;
@@ -13319,6 +13374,13 @@ const ReportsHub = {
 
       try {
         const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=html`);
+        if (res.status === 202) {
+          const html = await res.text();
+          htmlFrame.srcdoc = html;
+          if (ReportsHub.pollTimer) clearTimeout(ReportsHub.pollTimer);
+          ReportsHub.pollTimer = setTimeout(() => ReportsHub.loadActiveReport(), 1500);
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const html = await res.text();
         ReportsHub.cache[cacheKey] = html;
@@ -13344,6 +13406,13 @@ const ReportsHub = {
 
     try {
       const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=${ReportsHub.activeFormat}`);
+      if (res.status === 202) {
+        let text = await res.text();
+        codeOutput.textContent = text;
+        if (ReportsHub.pollTimer) clearTimeout(ReportsHub.pollTimer);
+        ReportsHub.pollTimer = setTimeout(() => ReportsHub.loadActiveReport(), 1500);
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       let text = await res.text();
       if (ReportsHub.activeFormat === 'json') {

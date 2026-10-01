@@ -116,6 +116,16 @@ public class CodeLensServer {
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
     private final ApiTracker apiTracker = new ApiTracker();
 
+    // ── Precomputed Reports Cache & Disk Persistence ────────────────────────
+    private final Map<String, Object> cachedReportsJson = new ConcurrentHashMap<>();
+    private final Map<String, String> cachedReportsRendered = new ConcurrentHashMap<>();
+    private final Object reportsPrecomputeLock = new Object();
+    private final java.util.concurrent.atomic.AtomicBoolean reportsPrecomputeRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicReference<String> reportsPrecomputePhase = new java.util.concurrent.atomic.AtomicReference<>("Idle");
+    private final java.util.concurrent.atomic.AtomicInteger reportsPrecomputePercentage = new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicLong reportsLastGeneratedTimestamp = new java.util.concurrent.atomic.AtomicLong(0L);
+    private final java.util.concurrent.atomic.AtomicLong reportsLastGenerationDurationMs = new java.util.concurrent.atomic.AtomicLong(0L);
+
     // ── Dedicated lifecycle tracking for background engines (independent of scanState) ──
     private final java.util.concurrent.atomic.AtomicBoolean graphWarmupRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicReference<String> graphWarmupPhase = new java.util.concurrent.atomic.AtomicReference<>("Ready");
@@ -208,6 +218,8 @@ public class CodeLensServer {
         layoutCache.clear();
         precomputedModuleResult = null;
         precomputedModuleInsights.clear();
+        cachedReportsJson.clear();
+        cachedReportsRendered.clear();
         scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
@@ -217,9 +229,16 @@ public class CodeLensServer {
                     f.delete();
                 }
             }
-            log.info("Cleared in-memory and disk graph layout cache (rev={})", scanRevision.get());
+            File repDir = getReportsCacheDir();
+            File[] repFiles = repDir.listFiles();
+            if (repFiles != null) {
+                for (File f : repFiles) {
+                    f.delete();
+                }
+            }
+            log.info("Cleared in-memory and disk graph layout and reports cache (rev={})", scanRevision.get());
         } catch (Exception e) {
-            log.warn("Error invalidating graph cache: {}", e.getMessage());
+            log.warn("Error invalidating graph and reports cache: {}", e.getMessage());
         }
     }
 
@@ -323,13 +342,22 @@ public class CodeLensServer {
                 }
             }
 
+            if (!cancelRequested) {
+                try {
+                    precomputeAllReports(progress);
+                } catch (Exception e) {
+                    log.warn("Report precomputation deferred: {}", e.getMessage());
+                }
+            }
+
             if (progress != null) {
                 Map<String, String> layoutMetrics = new LinkedHashMap<>();
                 layoutMetrics.put("Layouts Cached", String.valueOf(total));
                 layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
                 layoutMetrics.put("Modules Cached", precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null ? String.valueOf(precomputedModuleResult.overview.modules.size()) : "Complete");
+                layoutMetrics.put("Reports Cached", String.valueOf(cachedReportsJson.size()));
                 layoutMetrics.put("Placed Nodes", "Ready");
-                progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts & module overview", total), layoutMetrics);
+                progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts, modules & reports", total), layoutMetrics);
             }
 
             layoutWarmupPhase.set("Ready");
@@ -444,6 +472,277 @@ public class CodeLensServer {
             for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : result.insightsByPackage.entrySet()) {
                 precomputedModuleInsights.put(entry.getKey().toLowerCase(), entry.getValue());
             }
+        }
+    }
+
+    public File getReportsCacheDir() {
+        File dir = new File(getGraphCacheDir(), "reports");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    public boolean loadReportsFromDiskCache() {
+        File dir = getReportsCacheDir();
+        File[] files = dir.listFiles();
+        if (files == null || files.length == 0) return false;
+
+        boolean loadedAny = false;
+        for (File f : files) {
+            String name = f.getName();
+            try {
+                if (name.endsWith(".json")) {
+                    String reportKey = name.substring(0, name.length() - 5);
+                    String jsonStr = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                    cachedReportsRendered.put(reportKey + ":json", jsonStr);
+                    try {
+                        Object parsed = jsonMapper.readValue(jsonStr, Object.class);
+                        cachedReportsJson.put(reportKey, parsed);
+                    } catch (Exception ignored) {}
+                    loadedAny = true;
+                } else if (name.endsWith(".html")) {
+                    String reportKey = name.substring(0, name.length() - 5);
+                    String html = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                    cachedReportsRendered.put(reportKey + ":html", html);
+                    loadedAny = true;
+                } else if (name.endsWith(".md")) {
+                    String reportKey = name.substring(0, name.length() - 3);
+                    String md = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                    cachedReportsRendered.put(reportKey + ":markdown", md);
+                    cachedReportsRendered.put(reportKey + ":md", md);
+                    loadedAny = true;
+                } else if (name.endsWith(".csv")) {
+                    String reportKey = name.substring(0, name.length() - 4);
+                    String csv = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                    cachedReportsRendered.put(reportKey + ":csv", csv);
+                    loadedAny = true;
+                }
+            } catch (Exception e) {
+                log.debug("Error reading cached report {}: {}", name, e.getMessage());
+            }
+        }
+        if (loadedAny) {
+            reportsPrecomputePhase.set("Ready (Loaded from disk cache)");
+            reportsPrecomputePercentage.set(100);
+            log.info("Loaded {} precomputed report artifacts from disk cache ({})", cachedReportsRendered.size(), dir.getAbsolutePath());
+        }
+        return loadedAny;
+    }
+
+    public void triggerReportsPrecomputeAsync(ScanProgress progress) {
+        triggerReportsPrecomputeAsync(progress, false);
+    }
+
+    public void triggerReportsPrecomputeAsync(ScanProgress progress, boolean force) {
+        if (reportsPrecomputeRunning.get()) return;
+        scanExecutor.submit(() -> {
+            try {
+                precomputeAllReports(progress, force);
+            } catch (Throwable t) {
+                log.warn("Background report precomputation failed: {}", t.getMessage());
+            }
+        });
+    }
+
+    public void precomputeAllReports(ScanProgress progress) {
+        precomputeAllReports(progress, false);
+    }
+
+    public void precomputeAllReports(ScanProgress progress, boolean force) {
+        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 8) {
+            return;
+        }
+
+        // 1. Try disk cache first if not forced
+        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 8) {
+            return;
+        }
+
+        synchronized (reportsPrecomputeLock) {
+            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 8) {
+                return;
+            }
+
+            if (force) {
+                cachedReportsJson.clear();
+                cachedReportsRendered.clear();
+            }
+
+            reportsPrecomputeRunning.set(true);
+            reportsPrecomputePercentage.set(5);
+            reportsPrecomputePhase.set("Reading entities from database snapshot");
+            long start = System.currentTimeMillis();
+            logProcessBanner("REPORTS_PRECOMPUTE_STARTED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
+                "Precomputing all 10 architecture and risk reports");
+
+            try {
+                if (progress != null) {
+                    progress.setCurrentDetail("Precomputing codebase reports & executive scorecard");
+                }
+
+                // Query DB entities snapshot once
+                List<CodeType> types = dao.findAllTypes();
+                if (types.isEmpty()) {
+                    reportsPrecomputePhase.set("Idle (No scanned types)");
+                    reportsPrecomputePercentage.set(0);
+                    return;
+                }
+
+                reportsPrecomputePercentage.set(15);
+                reportsPrecomputePhase.set("Reading methods, fields, and relationships");
+                List<CodeMethod> methods = dao.findAllMethods();
+                List<CodeField> fields = dao.findAllFields();
+                List<CodeRelationship> rels = dao.findAllRelationships();
+                List<GitMeta> gitMetas = dao.findAllGitMeta();
+
+                // 1. Architecture Report
+                reportsPrecomputePercentage.set(25);
+                reportsPrecomputePhase.set("Precomputing Architecture & Coupling Report");
+                ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
+                cacheReport("architecture", archData,
+                    reportService.renderArchitectureHtml(archData),
+                    reportService.renderArchitectureMarkdown(archData),
+                    null);
+
+                // 2. Change Risk & Blast Radius Matrix
+                reportsPrecomputePercentage.set(35);
+                reportsPrecomputePhase.set("Precomputing Change Risk & Blast Radius Matrix");
+                ReportService.ChangeRiskReportData crData = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
+                cacheReport("change-risk", crData,
+                    reportService.renderChangeRiskHtml(crData),
+                    reportService.renderChangeRiskMarkdown(crData),
+                    reportService.renderChangeRiskCsv(crData));
+
+                // 3. Dead Code & Orphaned Entry Points
+                reportsPrecomputePercentage.set(45);
+                reportsPrecomputePhase.set("Precomputing Dead Code & Cleanup Report");
+                ReportService.DeadCodeReportData dcData = reportService.buildDeadCodeData(types, methods, fields, rels);
+                cacheReport("dead-code", dcData,
+                    reportService.renderDeadCodeHtml(dcData),
+                    reportService.renderDeadCodeMarkdown(dcData),
+                    reportService.renderDeadCodeCsv(dcData));
+
+                // 4. Circular Dependencies & Architectural Tangling
+                reportsPrecomputePercentage.set(55);
+                reportsPrecomputePhase.set("Precomputing Circular Dependencies Report");
+                ReportService.CircularDependencyReportData cdData = reportService.buildCircularDependencyData(types, methods, rels);
+                cacheReport("circular-dependencies", cdData,
+                    reportService.renderCircularDependencyHtml(cdData),
+                    reportService.renderCircularDependencyMarkdown(cdData),
+                    reportService.renderCircularDependencyCsv(cdData));
+
+                // 5. Archetype Governance & Compliance
+                reportsPrecomputePercentage.set(65);
+                reportsPrecomputePhase.set("Precomputing Archetype Governance Report");
+                ReportService.ArchetypeGovernanceReportData agData = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                cacheReport("archetype-governance", agData,
+                    reportService.renderArchetypeGovernanceHtml(agData),
+                    reportService.renderArchetypeGovernanceMarkdown(agData),
+                    reportService.renderArchetypeGovernanceCsv(agData));
+
+                // 6. Technical Debt & SQALE Remediation ROI
+                reportsPrecomputePercentage.set(75);
+                reportsPrecomputePhase.set("Precomputing Technical Debt & SQALE Report");
+                ReportService.TechnicalDebtReportData tdData = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+                cacheReport("technical-debt", tdData,
+                    reportService.renderTechnicalDebtHtml(tdData),
+                    reportService.renderTechnicalDebtMarkdown(tdData),
+                    reportService.renderTechnicalDebtCsv(tdData));
+
+                // 7. Executive Architectural Health Scorecard
+                reportsPrecomputePercentage.set(85);
+                reportsPrecomputePhase.set("Precomputing Executive Summary Scorecard");
+                ReportService.ExecutiveSummaryReportData esData = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
+                cacheReport("executive-summary", esData,
+                    reportService.renderExecutiveSummaryHtml(esData),
+                    reportService.renderExecutiveSummaryMarkdown(esData),
+                    reportService.renderExecutiveSummaryCsv(esData));
+
+                // 8. Code Quality & Security Audit (Review)
+                reportsPrecomputePercentage.set(90);
+                reportsPrecomputePhase.set("Precomputing Code Quality & Security Audit");
+                ReportService.ReviewReportData rData = reportService.buildReviewReportData(types);
+                cacheReport("review", rData,
+                    reportService.renderReviewHtml(rData),
+                    reportService.renderReviewMarkdown(rData),
+                    reportService.renderReviewCsv(rData));
+
+                // 9. Codebase Inventory & Metrics
+                reportsPrecomputePercentage.set(95);
+                reportsPrecomputePhase.set("Precomputing Metrics Census Report");
+                ReportService.MetricsReportData mData = reportService.buildMetricsData(types, methods, fields);
+                cacheReport("metrics", mData,
+                    reportService.renderMetricsHtml(mData),
+                    reportService.renderMetricsMarkdown(mData),
+                    reportService.renderMetricsCsv(mData));
+
+                // 10. Standalone Offline Graph Snapshot
+                reportsPrecomputePercentage.set(98);
+                reportsPrecomputePhase.set("Generating Standalone Offline HTML Snapshot");
+                try {
+                    Object fullGraph = callGraph.precomputedFullGraphView(false);
+                    Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
+                    String projectName = (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
+                    String snapshotHtml = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
+                    cachedReportsRendered.put("html-snapshot:html", snapshotHtml);
+                    writeStringToFile(new File(getReportsCacheDir(), "html-snapshot.html"), snapshotHtml);
+                } catch (Exception ex) {
+                    log.warn("HTML snapshot precompute deferred: {}", ex.getMessage());
+                }
+
+                long duration = System.currentTimeMillis() - start;
+                reportsLastGeneratedTimestamp.set(System.currentTimeMillis());
+                reportsLastGenerationDurationMs.set(duration);
+                reportsPrecomputePercentage.set(100);
+                reportsPrecomputePhase.set("Ready (All 10 reports precomputed in " + duration + "ms)");
+
+                logProcessBanner("REPORTS_PRECOMPUTE_COMPLETED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
+                    String.format("All 10 reports precomputed and cached in %d ms (%d artifacts)", duration, cachedReportsRendered.size()));
+                log.info("Finished precomputing all reports in {} ms ({} cache entries)", duration, cachedReportsRendered.size());
+
+            } catch (Exception e) {
+                reportsPrecomputePhase.set("Error: " + e.getMessage());
+                log.error("Failed precomputing reports: {}", e.getMessage(), e);
+                logProcessBanner("REPORTS_PRECOMPUTE_FAILED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(), "Error: " + e.getMessage());
+            } finally {
+                reportsPrecomputeRunning.set(false);
+            }
+        }
+    }
+
+    private void cacheReport(String reportKey, Object jsonData, String html, String md, String csv) {
+        if (jsonData != null) {
+            cachedReportsJson.put(reportKey, jsonData);
+            try {
+                String jsonStr = jsonMapper.writeValueAsString(jsonData);
+                cachedReportsRendered.put(reportKey + ":json", jsonStr);
+                writeStringToFile(new File(getReportsCacheDir(), reportKey + ".json"), jsonStr);
+            } catch (Exception e) {
+                log.debug("Failed saving {}.json: {}", reportKey, e.getMessage());
+            }
+        }
+        if (html != null) {
+            cachedReportsRendered.put(reportKey + ":html", html);
+            writeStringToFile(new File(getReportsCacheDir(), reportKey + ".html"), html);
+        }
+        if (md != null) {
+            cachedReportsRendered.put(reportKey + ":markdown", md);
+            cachedReportsRendered.put(reportKey + ":md", md);
+            writeStringToFile(new File(getReportsCacheDir(), reportKey + ".md"), md);
+        }
+        if (csv != null) {
+            cachedReportsRendered.put(reportKey + ":csv", csv);
+            writeStringToFile(new File(getReportsCacheDir(), reportKey + ".csv"), csv);
+        }
+    }
+
+    private void writeStringToFile(File file, String content) {
+        if (file == null || content == null) return;
+        try {
+            Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.debug("Failed writing file {}: {}", file.getName(), e.getMessage());
         }
     }
 
@@ -649,6 +948,8 @@ public class CodeLensServer {
         app.get("/api/reports/metrics",               this::getMetricsReport);
         app.get("/api/reports/html-snapshot",         this::getHtmlSnapshotReport);
         app.get("/api/reports/download",              this::downloadReport);
+        app.post("/api/reports/regenerate",           this::regenerateReports);
+        app.get("/api/reports/status",                this::getReportsStatus);
 
         // ── Configuration & Deployment Settings (.conf) ──────────────────────
         app.get("/api/config",          this::getConfig);
@@ -785,6 +1086,7 @@ public class CodeLensServer {
 
                 CompletableFuture.runAsync(() -> {
                     try {
+                        loadReportsFromDiskCache();
                         warmupGraphCache();
                     } catch (Throwable t) {
                         log.warn("Error during startup layout warmup: {}", t.getMessage());
@@ -1090,6 +1392,31 @@ public class CodeLensServer {
         heapProc.put("canRestart", true);
         processes.add(heapProc);
 
+        // 9. Codebase Intelligence Reports Generator
+        Map<String, Object> reportsProc = new LinkedHashMap<>();
+        reportsProc.put("id", "reports-generator");
+        reportsProc.put("name", "Intelligence Reports Generator");
+        reportsProc.put("type", "Deep Architecture, Risk & Metrics Precomputation");
+        boolean isReportsRunning = reportsPrecomputeRunning.get();
+        reportsProc.put("status", isReportsRunning ? "RUNNING" : "IDLE");
+        reportsProc.put("activeStage", isReportsRunning ? "PRECOMPUTING" : "CACHED");
+        reportsProc.put("currentPhase", reportsPrecomputePhase.get());
+        long lastGen = reportsLastGeneratedTimestamp.get();
+        String genDetail = lastGen > 0
+            ? String.format("%d reports cached · Last precomputed in %d ms (%s)",
+                cachedReportsJson.size(),
+                reportsLastGenerationDurationMs.get(),
+                new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)))
+            : (isReportsRunning ? "Precomputing all 10 reports in background..." : "Not generated yet");
+        reportsProc.put("currentDetail", genDetail);
+        reportsProc.put("percentage", reportsPrecomputePercentage.get());
+        reportsProc.put("durationMs", reportsLastGenerationDurationMs.get());
+        reportsProc.put("startTime", isReportsRunning ? reportsLastGeneratedTimestamp.get() : 0);
+        reportsProc.put("thread", isReportsRunning ? "codelens-reports-worker" : "-");
+        reportsProc.put("canKill", false);
+        reportsProc.put("canRestart", true);
+        processes.add(reportsProc);
+
         // System resources, JVM telemetry & Pool metrics
         Map<String, Object> jvmMetrics = jvmManager.getComprehensiveMetrics();
         long freeMem = Runtime.getRuntime().freeMemory();
@@ -1313,6 +1640,10 @@ public class CodeLensServer {
             heapWatchdog.startWatchdog();
             HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.triggerAutoRecovery("PROCESS_RESTART_REQUEST");
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Heap Watchdog restarted & memory auto-recovered (" + inc.reclaimedMb + " MB freed)"));
+            return;
+        } else if ("reports-generator".equalsIgnoreCase(id)) {
+            triggerReportsPrecomputeAsync(null, true);
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Reports regeneration triggered in background"));
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
@@ -3216,271 +3547,198 @@ public class CodeLensServer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Reports & Exports
+    // Reports & Exports (Instant Precomputed & Caching Engine)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void getArchitectureReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "markdown";
-            else format = format.trim().toLowerCase();
+    private void serveReport(Context ctx, String reportKey, String defaultFormat) {
+        String format = ctx.queryParam("format");
+        if (format == null || format.isBlank()) format = defaultFormat;
+        else format = format.trim().toLowerCase();
+        if ("md".equals(format)) format = "markdown";
 
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-
-            ReportService.ArchitectureReportData data = reportService.buildArchitectureData(types, methods, fields, rels);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderArchitectureHtml(data));
-            } else if ("json".equals(format)) {
-                ctx.json(data);
-            } else {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderArchitectureMarkdown(data));
+        // 1. Check in-memory precomputed cache first (<1ms)
+        if ("json".equals(format)) {
+            Object jsonData = cachedReportsJson.get(reportKey);
+            if (jsonData != null) {
+                ctx.json(jsonData);
+                return;
             }
-        } catch (Exception e) {
-            log.error("Failed to generate architecture report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate architecture report: " + e.getMessage()));
+        } else {
+            String rendered = cachedReportsRendered.get(reportKey + ":" + format);
+            if (rendered != null) {
+                if ("html".equals(format)) {
+                    ctx.contentType("text/html; charset=UTF-8").result(rendered);
+                } else if ("csv".equals(format)) {
+                    ctx.contentType("text/csv; charset=UTF-8").result(rendered);
+                } else {
+                    ctx.contentType("text/markdown; charset=UTF-8").result(rendered);
+                }
+                return;
+            }
         }
+
+        // 2. Check if reports precomputation is actively running in background
+        if (reportsPrecomputeRunning.get()) {
+            if ("json".equals(format)) {
+                ctx.status(202).json(Map.of(
+                    "status", "generating",
+                    "phase", reportsPrecomputePhase.get(),
+                    "percentage", reportsPrecomputePercentage.get(),
+                    "message", "Reports are currently being generated in background: " + reportsPrecomputePhase.get() + " (" + reportsPrecomputePercentage.get() + "%)"
+                ));
+            } else if ("html".equals(format)) {
+                ctx.status(202).contentType("text/html; charset=UTF-8").result(
+                    "<div class=\"reports-loading-state\" style=\"padding:40px; text-align:center; font-family:sans-serif; color:#94a3b8;\">" +
+                    "<h3>Precomputing Report in Background</h3>" +
+                    "<p>" + reportsPrecomputePhase.get() + " (" + reportsPrecomputePercentage.get() + "%)</p>" +
+                    "</div>"
+                );
+            } else {
+                ctx.status(202).contentType("text/plain; charset=UTF-8").result(
+                    "Report is being precomputed in background: " + reportsPrecomputePhase.get() + " (" + reportsPrecomputePercentage.get() + "%)"
+                );
+            }
+            return;
+        }
+
+        // 3. Not cached and not running: check disk cache or trigger async precomputation
+        if (loadReportsFromDiskCache()) {
+            if ("json".equals(format)) {
+                Object jsonData = cachedReportsJson.get(reportKey);
+                if (jsonData != null) {
+                    ctx.json(jsonData);
+                    return;
+                }
+            } else {
+                String rendered = cachedReportsRendered.get(reportKey + ":" + format);
+                if (rendered != null) {
+                    if ("html".equals(format)) {
+                        ctx.contentType("text/html; charset=UTF-8").result(rendered);
+                    } else if ("csv".equals(format)) {
+                        ctx.contentType("text/csv; charset=UTF-8").result(rendered);
+                    } else {
+                        ctx.contentType("text/markdown; charset=UTF-8").result(rendered);
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Trigger background precomputation and return 202
+        triggerReportsPrecomputeAsync(null, false);
+        if ("json".equals(format)) {
+            ctx.status(202).json(Map.of(
+                "status", "generating",
+                "phase", "Initializing Precomputation",
+                "percentage", 0,
+                "message", "Reports generation queued in background..."
+            ));
+        } else if ("html".equals(format)) {
+            ctx.status(202).contentType("text/html; charset=UTF-8").result(
+                "<div style=\"padding:40px; text-align:center; font-family:sans-serif; color:#94a3b8;\">" +
+                "<h3>Initializing Precomputation</h3>" +
+                "<p>Reports generation queued in background...</p>" +
+                "</div>"
+            );
+        } else {
+            ctx.status(202).contentType("text/plain; charset=UTF-8").result(
+                "Reports generation queued in background..."
+            );
+        }
+    }
+
+    private void getArchitectureReport(Context ctx) {
+        serveReport(ctx, "architecture", "markdown");
     }
 
     private void getReviewReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "markdown";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            ReportService.ReviewReportData data = reportService.buildReviewReportData(types);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderReviewHtml(data));
-            } else if ("json".equals(format)) {
-                ctx.json(data);
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderReviewCsv(data));
-            } else {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderReviewMarkdown(data));
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate review report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate review report: " + e.getMessage()));
-        }
+        serveReport(ctx, "review", "markdown");
     }
 
     private void getMetricsReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "csv";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            ReportService.MetricsReportData data = reportService.buildMetricsData(types, methods, fields);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderMetricsHtml(data));
-            } else if ("json".equals(format)) {
-                ctx.json(data);
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderMetricsMarkdown(data));
-            } else {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderMetricsCsv(data));
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate metrics report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate metrics report: " + e.getMessage()));
-        }
+        serveReport(ctx, "metrics", "csv");
     }
 
     private void getHtmlSnapshotReport(Context ctx) {
-        try {
-            String scope = ctx.queryParam("scope");
-            String filter = ctx.queryParam("filter");
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-
-            ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
-            Object fullGraph = callGraph.precomputedFullGraphView(false);
-            Object archGraph = callGraph.precomputedArchitectureGraphView(scope, filter);
-
-            String projectName = types.isEmpty() ? "Codebase"
-                : (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
-
-            String html = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
-            ctx.contentType("text/html; charset=UTF-8").result(html);
-        } catch (Exception e) {
-            log.error("Failed to generate HTML graph snapshot: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate HTML graph snapshot: " + e.getMessage()));
+        String cachedHtml = cachedReportsRendered.get("html-snapshot:html");
+        if (cachedHtml != null) {
+            ctx.contentType("text/html; charset=UTF-8").result(cachedHtml);
+            return;
         }
+        if (loadReportsFromDiskCache()) {
+            cachedHtml = cachedReportsRendered.get("html-snapshot:html");
+            if (cachedHtml != null) {
+                ctx.contentType("text/html; charset=UTF-8").result(cachedHtml);
+                return;
+            }
+        }
+        if (reportsPrecomputeRunning.get()) {
+            ctx.status(202).contentType("text/html; charset=UTF-8").result(
+                "<div style=\"padding:40px; text-align:center; font-family:sans-serif; color:#94a3b8;\">" +
+                "<h3>Generating Interactive Graph Snapshot</h3>" +
+                "<p>" + reportsPrecomputePhase.get() + " (" + reportsPrecomputePercentage.get() + "%)</p>" +
+                "</div>"
+            );
+            return;
+        }
+        triggerReportsPrecomputeAsync(null, false);
+        ctx.status(202).contentType("text/html; charset=UTF-8").result(
+            "<div style=\"padding:40px; text-align:center; font-family:sans-serif; color:#94a3b8;\">" +
+            "<h3>Initializing Snapshot Generation</h3>" +
+            "<p>Offline graph snapshot is being generated in background...</p>" +
+            "</div>"
+        );
     }
 
     private void getChangeRiskReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "json";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-            List<GitMeta> gitMetas = dao.findAllGitMeta();
-
-            ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderChangeRiskHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderChangeRiskMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderChangeRiskCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate change risk report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate change risk report: " + e.getMessage()));
-        }
+        serveReport(ctx, "change-risk", "json");
     }
 
     private void getDeadCodeReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "json";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-
-            ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderDeadCodeHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderDeadCodeMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderDeadCodeCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate dead code report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate dead code report: " + e.getMessage()));
-        }
+        serveReport(ctx, "dead-code", "json");
     }
 
     private void getCircularDependenciesReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "json";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-
-            ReportService.CircularDependencyReportData data = reportService.buildCircularDependencyData(types, methods, rels);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderCircularDependencyHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderCircularDependencyMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderCircularDependencyCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate circular dependencies report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate circular dependencies report: " + e.getMessage()));
-        }
+        serveReport(ctx, "circular-dependencies", "json");
     }
 
     private void getArchetypeGovernanceReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format == null || format.isBlank()) format = "json";
-            else format = format.trim().toLowerCase();
-
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-
-            ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderArchetypeGovernanceHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderArchetypeGovernanceMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderArchetypeGovernanceCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate archetype governance report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate archetype governance report: " + e.getMessage()));
-        }
+        serveReport(ctx, "archetype-governance", "json");
     }
 
     private void getTechnicalDebtReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format != null) format = format.trim().toLowerCase();
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-            ReportService.TechnicalDebtReportData data = reportService.buildTechnicalDebtData(types, methods, fields, rels);
-
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderTechnicalDebtHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderTechnicalDebtMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderTechnicalDebtCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate technical debt report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate technical debt report: " + e.getMessage()));
-        }
+        serveReport(ctx, "technical-debt", "json");
     }
 
     private void getExecutiveSummaryReport(Context ctx) {
-        try {
-            String format = ctx.queryParam("format");
-            if (format != null) format = format.trim().toLowerCase();
-            List<CodeType> types = dao.findAllTypes();
-            List<CodeMethod> methods = dao.findAllMethods();
-            List<CodeField> fields = dao.findAllFields();
-            List<CodeRelationship> rels = dao.findAllRelationships();
-            List<GitMeta> gitMetas = dao.findAllGitMeta();
-            ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
+        serveReport(ctx, "executive-summary", "json");
+    }
 
-            if ("html".equals(format)) {
-                ctx.contentType("text/html; charset=UTF-8").result(reportService.renderExecutiveSummaryHtml(data));
-            } else if ("markdown".equals(format) || "md".equals(format)) {
-                ctx.contentType("text/markdown; charset=UTF-8").result(reportService.renderExecutiveSummaryMarkdown(data));
-            } else if ("csv".equals(format)) {
-                ctx.contentType("text/csv; charset=UTF-8").result(reportService.renderExecutiveSummaryCsv(data));
-            } else {
-                ctx.json(data);
-            }
-        } catch (Exception e) {
-            log.error("Failed to generate executive summary report: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", "Failed to generate executive summary report: " + e.getMessage()));
+    private void regenerateReports(Context ctx) {
+        triggerReportsPrecomputeAsync(null, true);
+        ctx.json(Map.of(
+            "status", "queued",
+            "message", "Reports regeneration started in background",
+            "running", reportsPrecomputeRunning.get(),
+            "phase", reportsPrecomputePhase.get(),
+            "percentage", reportsPrecomputePercentage.get()
+        ));
+    }
+
+    private void getReportsStatus(Context ctx) {
+        long lastGen = reportsLastGeneratedTimestamp.get();
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("running", reportsPrecomputeRunning.get());
+        status.put("phase", reportsPrecomputePhase.get());
+        status.put("percentage", reportsPrecomputePercentage.get());
+        status.put("cachedCount", cachedReportsJson.size());
+        status.put("cachedKeys", cachedReportsJson.keySet());
+        status.put("lastGeneratedTimestamp", lastGen);
+        status.put("lastGenerationDurationMs", reportsLastGenerationDurationMs.get());
+        if (lastGen > 0) {
+            status.put("lastGeneratedFormatted", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)));
         }
+        ctx.json(status);
     }
 
     private void downloadReport(Context ctx) {
@@ -3503,25 +3761,7 @@ public class CodeLensServer {
             String filename = "codelens-" + type + "-report." + ext;
             ctx.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
 
-            if ("review".equals(type)) {
-                getReviewReport(ctx);
-            } else if ("metrics".equals(type)) {
-                getMetricsReport(ctx);
-            } else if ("change-risk".equals(type)) {
-                getChangeRiskReport(ctx);
-            } else if ("dead-code".equals(type)) {
-                getDeadCodeReport(ctx);
-            } else if ("circular-dependencies".equals(type) || "cycles".equals(type)) {
-                getCircularDependenciesReport(ctx);
-            } else if ("archetype-governance".equals(type) || "governance".equals(type)) {
-                getArchetypeGovernanceReport(ctx);
-            } else if ("technical-debt".equals(type) || "debt".equals(type)) {
-                getTechnicalDebtReport(ctx);
-            } else if ("executive-summary".equals(type) || "scorecard".equals(type)) {
-                getExecutiveSummaryReport(ctx);
-            } else {
-                getArchitectureReport(ctx);
-            }
+            serveReport(ctx, type, format);
         } catch (Exception e) {
             log.error("Failed to download report: {}", e.getMessage(), e);
             ctx.status(500).json(Map.of("error", "Failed to download report: " + e.getMessage()));
