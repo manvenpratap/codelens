@@ -132,6 +132,34 @@ public class ModuleDependencyAnalyzer {
         public List<ModuleOverviewItem> modules = new ArrayList<>();
     }
 
+    public static class FullModuleDependencyResult {
+        public ModuleOverviewPayload overview;
+        public Map<String, ModuleDependencyInsights> insightsByModule;
+        public Map<String, ModuleDependencyInsights> insightsByPackage;
+
+        public FullModuleDependencyResult() {
+            this.overview = new ModuleOverviewPayload();
+            this.insightsByModule = new LinkedHashMap<>();
+            this.insightsByPackage = new LinkedHashMap<>();
+        }
+
+        public FullModuleDependencyResult(ModuleOverviewPayload overview,
+                                          Map<String, ModuleDependencyInsights> insightsByModule,
+                                          Map<String, ModuleDependencyInsights> insightsByPackage) {
+            this.overview = overview != null ? overview : new ModuleOverviewPayload();
+            this.insightsByModule = insightsByModule != null ? insightsByModule : Collections.emptyMap();
+            this.insightsByPackage = insightsByPackage != null ? insightsByPackage : Collections.emptyMap();
+        }
+    }
+
+    @FunctionalInterface
+    public interface EdgeConsumer {
+        void accept(String fromEntity, String toEntity, String kind, int sourceLine);
+    }
+
+    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_MODULE = 50;
+    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE = 20;
+
     // ─────────────────────────────────────────────────────────────────────────
     // Analysis Methods
     // ─────────────────────────────────────────────────────────────────────────
@@ -146,331 +174,220 @@ public class ModuleDependencyAnalyzer {
         return s;
     }
 
-    private static class RawEdge {
-        final String fromEntity;
-        final String toEntity;
-        final String kind;
-        final int sourceLine;
-
-        RawEdge(String fromEntity, String toEntity, String kind, int sourceLine) {
-            this.fromEntity = fromEntity;
-            this.toEntity   = toEntity;
-            this.kind       = kind;
-            this.sourceLine = sourceLine;
-        }
-    }
-
-    /**
-     * Analyze module dependencies and touch points for a specific module or package.
-     */
-    public ModuleDependencyInsights analyzeModule(String targetModuleOrPkg,
-                                                  List<CodePackage> packages,
-                                                  List<CodeType> types,
-                                                  List<CodeMethod> methods,
-                                                  List<CodeField> fields,
-                                                  List<CodeRelationship> relationships) {
-        return analyzeModule(targetModuleOrPkg, packages, types, methods, fields, relationships, null);
-    }
-
-    public ModuleDependencyInsights analyzeModule(String targetModuleOrPkg,
-                                                  List<CodePackage> packages,
-                                                  List<CodeType> types,
-                                                  List<CodeMethod> methods,
-                                                  List<CodeField> fields,
-                                                  List<CodeRelationship> relationships,
-                                                  CallGraphAnalyzer callGraph) {
-        if (targetModuleOrPkg == null || targetModuleOrPkg.isBlank()) {
-            return null;
-        }
-
-        AnalysisContext ctx = buildContext(packages, types, methods, fields);
-        String resolvedModule = ctx.resolveTargetModule(targetModuleOrPkg);
-        if (resolvedModule == null) {
-            return null;
-        }
-
-        ModuleDependencyInsights insights = new ModuleDependencyInsights();
-        insights.moduleName = resolvedModule;
-        insights.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(resolvedModule, resolvedModule);
-
-        CodePackage primaryPkg = ctx.packageByFqn.get(insights.packageFqn);
-        if (primaryPkg != null) {
-            insights.fileCount = primaryPkg.getFileCount();
-            insights.typeCount = primaryPkg.getTypeCount();
-        } else {
-            insights.typeCount = (int) types.stream()
-                .filter(t -> resolvedModule.equalsIgnoreCase(ctx.getModuleForType(t.getFqn())))
-                .count();
-        }
-
-        List<RawEdge> allEdges = collectRawEdges(relationships, callGraph);
-
-        // Aggregate touch points
-        Map<String, ConnectedModule> outgoingMap = new LinkedHashMap<>();
-        Map<String, ConnectedModule> incomingMap = new LinkedHashMap<>();
-        Map<String, ConnectedModule> externalMap = new LinkedHashMap<>();
-        Map<String, Map<String, ClassUsageSummary>> outgoingClassUsage = new LinkedHashMap<>();
-        Map<String, Map<String, ClassUsageSummary>> incomingClassUsage = new LinkedHashMap<>();
-
-        for (RawEdge rel : allEdges) {
-            String srcFqn = cleanFqn(rel.fromEntity);
-            String tgtFqn = cleanFqn(rel.toEntity);
-            String kind = rel.kind;
-            int line = rel.sourceLine;
-
-            String srcType = ctx.getTypeForEntity(srcFqn);
-            String tgtType = ctx.getTypeForEntity(tgtFqn);
-
-            String srcModule = ctx.getModuleForEntity(srcFqn);
-            String tgtModule = ctx.getModuleForEntity(tgtFqn);
-
-            if (srcModule == null || tgtModule == null) continue;
-
-            boolean isSrc = resolvedModule.equalsIgnoreCase(srcModule);
-            boolean isTgt = resolvedModule.equalsIgnoreCase(tgtModule);
-
-            if (isSrc && isTgt) {
-                // Internal touch point
-                insights.internalTouchPoints++;
-                continue;
-            }
-
-            boolean isTargetProjectModule = ctx.isProjectModule(tgtModule);
-            boolean isSourceProjectModule = ctx.isProjectModule(srcModule);
-
-            if (isSrc) {
-                // Outgoing touch point: resolvedModule -> tgtModule
-                if (!isTargetProjectModule) {
-                    // External / Third-party dependency (e.g. java.io.Serializable)
-                    ConnectedModule cm = externalMap.computeIfAbsent(tgtModule, k -> {
-                        ConnectedModule m = new ConnectedModule(k, tgtType != null ? tgtType : k);
-                        m.isExternal = true;
-                        return m;
-                    });
-                    cm.totalTouchPoints++;
-                    if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
-                    increment(cm.kinds, kind);
-                    TouchPointDetail tp = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line);
-                    cm.touchPoints.add(tp);
-                    continue;
-                }
-
-                insights.totalOutboundTouchPoints++;
-                insights.totalTouchPoints++;
-                increment(insights.outboundByKind, kind);
-                increment(insights.totalByKind, kind);
-
-                ConnectedModule cm = outgoingMap.computeIfAbsent(tgtModule, k ->
-                    new ConnectedModule(k, ctx.moduleToPrimaryPackage.getOrDefault(k, k)));
-                cm.totalTouchPoints++;
-                if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
-                increment(cm.kinds, kind);
-
-                TouchPointDetail tp = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line);
-                cm.touchPoints.add(tp);
-
-                // Class usage aggregation
-                if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
-                    String classPairKey = srcType + "->" + tgtType;
-                    ClassUsageSummary cus = outgoingClassUsage
-                        .computeIfAbsent(tgtModule, k -> new LinkedHashMap<>())
-                        .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
-                    cus.touchPointCount++;
-                    increment(cus.kinds, kind);
-                    cus.touchPoints.add(tp);
-                }
-            } else if (isTgt) {
-                if (!isSourceProjectModule) continue;
-
-                // Incoming touch point: srcModule -> resolvedModule
-                insights.totalInboundTouchPoints++;
-                insights.totalTouchPoints++;
-                increment(insights.inboundByKind, kind);
-                increment(insights.totalByKind, kind);
-
-                ConnectedModule cm = incomingMap.computeIfAbsent(srcModule, k ->
-                    new ConnectedModule(k, ctx.moduleToPrimaryPackage.getOrDefault(k, k)));
-                cm.totalTouchPoints++;
-                if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
-                increment(cm.kinds, kind);
-
-                TouchPointDetail tp = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line);
-                cm.touchPoints.add(tp);
-
-                // Class usage aggregation
-                if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
-                    String classPairKey = srcType + "->" + tgtType;
-                    ClassUsageSummary cus = incomingClassUsage
-                        .computeIfAbsent(srcModule, k -> new LinkedHashMap<>())
-                        .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
-                    cus.touchPointCount++;
-                    increment(cus.kinds, kind);
-                    cus.touchPoints.add(tp);
-                }
-            }
-        }
-
-        // Finalize outgoing modules
-        for (Map.Entry<String, ConnectedModule> entry : outgoingMap.entrySet()) {
-            ConnectedModule cm = entry.getValue();
-            Map<String, ClassUsageSummary> cMap = outgoingClassUsage.get(entry.getKey());
-            if (cMap != null) {
-                cm.classUsages = new ArrayList<>(cMap.values());
-                cm.classUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
-                cm.classUsageCount = (int) cm.classUsages.stream().map(c -> c.targetClassFqn).distinct().count();
-            }
-            insights.outgoingModules.add(cm);
-        }
-        insights.outgoingModules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
-
-        // Finalize incoming modules
-        for (Map.Entry<String, ConnectedModule> entry : incomingMap.entrySet()) {
-            ConnectedModule cm = entry.getValue();
-            Map<String, ClassUsageSummary> cMap = incomingClassUsage.get(entry.getKey());
-            if (cMap != null) {
-                cm.classUsages = new ArrayList<>(cMap.values());
-                cm.classUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
-                cm.classUsageCount = (int) cm.classUsages.stream().map(c -> c.sourceClassFqn).distinct().count();
-            }
-            insights.incomingModules.add(cm);
-        }
-        insights.incomingModules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
-
-        // Finalize external dependencies
-        insights.externalDependencies = new ArrayList<>(externalMap.values());
-        insights.externalDependencies.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
-
-        // Top class usages for this module overall
-        List<ClassUsageSummary> allClassUsages = new ArrayList<>();
-        for (ConnectedModule cm : insights.outgoingModules) {
-            allClassUsages.addAll(cm.classUsages);
-        }
-        allClassUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
-        insights.topClassUsages = allClassUsages.stream().limit(15).collect(Collectors.toList());
-
-        // Coupling & Instability calculations
-        insights.afferentCoupling = insights.incomingModules.size();
-        insights.efferentCoupling = insights.outgoingModules.size();
-
-        int totalCoupling = insights.afferentCoupling + insights.efferentCoupling;
-        if (totalCoupling > 0) {
-            insights.instability = Math.round(((double) insights.efferentCoupling / totalCoupling) * 100.0) / 100.0;
-        } else {
-            insights.instability = 0.0;
-        }
-
-        if (insights.afferentCoupling >= 3 && insights.efferentCoupling <= 1) {
-            insights.stabilityRating = "Stable Core (High Afferent)";
-        } else if (insights.instability <= 0.3) {
-            insights.stabilityRating = "Highly Stable";
-        } else if (insights.instability >= 0.7) {
-            insights.stabilityRating = "Flexible / High Efferent";
-        } else {
-            insights.stabilityRating = "Balanced";
-        }
-
-        return insights;
-    }
-
-    private List<RawEdge> collectRawEdges(List<CodeRelationship> relationships, CallGraphAnalyzer callGraph) {
-        List<RawEdge> edges = new ArrayList<>();
+    private void forEachEdge(List<CodeRelationship> relationships,
+                            CallGraphAnalyzer callGraph,
+                            EdgeConsumer consumer) {
         if (callGraph != null && callGraph.getCallGraph() != null) {
             org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = callGraph.getCallGraph();
             for (org.jgrapht.graph.DefaultEdge e : g.edgeSet()) {
                 String src = g.getEdgeSource(e);
                 String tgt = g.getEdgeTarget(e);
                 if (src != null && tgt != null) {
-                    edges.add(new RawEdge(src, tgt, "CALLS", 0));
+                    consumer.accept(src, tgt, "CALLS", 0);
                 }
             }
             if (relationships != null) {
                 for (CodeRelationship rel : relationships) {
                     if ("CALLS".equalsIgnoreCase(rel.getKind())) continue;
-                    edges.add(new RawEdge(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine()));
+                    consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
                 }
             }
         } else if (relationships != null) {
             for (CodeRelationship rel : relationships) {
-                edges.add(new RawEdge(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine()));
+                consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
             }
         }
-        return edges;
     }
 
     /**
-     * Compute overview metrics and inter-module touch point matrix across all modules in the codebase.
+     * Unified single-pass analysis computing ModuleOverviewPayload AND deep ModuleDependencyInsights
+     * for all modules and packages simultaneously without quadratic full-graph rescans.
      */
-    public ModuleOverviewPayload analyzeAll(List<CodePackage> packages,
-                                            List<CodeType> types,
-                                            List<CodeMethod> methods,
-                                            List<CodeField> fields,
-                                            List<CodeRelationship> relationships) {
-        return analyzeAll(packages, types, methods, fields, relationships, null);
-    }
-
-    public ModuleOverviewPayload analyzeAll(List<CodePackage> packages,
-                                            List<CodeType> types,
-                                            List<CodeMethod> methods,
-                                            List<CodeField> fields,
-                                            List<CodeRelationship> relationships,
-                                            CallGraphAnalyzer callGraph) {
+    public FullModuleDependencyResult analyzeAllModules(List<CodePackage> packages,
+                                                        List<CodeType> types,
+                                                        List<CodeMethod> methods,
+                                                        List<CodeField> fields,
+                                                        List<CodeRelationship> relationships,
+                                                        CallGraphAnalyzer callGraph) {
         AnalysisContext ctx = buildContext(packages, types, methods, fields);
-        ModuleOverviewPayload payload = new ModuleOverviewPayload();
+        ModuleOverviewPayload overview = new ModuleOverviewPayload();
 
         Map<String, ModuleOverviewItem> moduleMap = new LinkedHashMap<>();
-        for (String mod : ctx.allModules) {
-            ModuleOverviewItem item = new ModuleOverviewItem();
-            item.moduleName = mod;
-            item.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(mod, mod);
-            CodePackage pkg = ctx.packageByFqn.get(item.packageFqn);
-            if (pkg != null) {
-                item.fileCount = pkg.getFileCount();
-                item.typeCount = pkg.getTypeCount();
+        Map<String, ModuleDependencyInsights> insightsByModule = new LinkedHashMap<>();
+
+        Map<String, Integer> typesCountPerModule = new HashMap<>();
+        if (types != null) {
+            for (CodeType t : types) {
+                String mod = ctx.getModuleForType(t.getFqn());
+                if (mod != null) {
+                    typesCountPerModule.merge(mod.toLowerCase(), 1, Integer::sum);
+                }
             }
-            moduleMap.put(mod, item);
+        }
+
+        for (String mod : ctx.allModules) {
+            String modLower = mod.toLowerCase();
+            String primaryPkg = ctx.moduleToPrimaryPackage.getOrDefault(mod, mod);
+            CodePackage pkg = ctx.packageByFqn.get(primaryPkg);
+            int fileCount = pkg != null ? pkg.getFileCount() : 0;
+            int typeCount = pkg != null ? pkg.getTypeCount() : typesCountPerModule.getOrDefault(modLower, 0);
+
+            ModuleOverviewItem ovItem = new ModuleOverviewItem();
+            ovItem.moduleName = mod;
+            ovItem.packageFqn = primaryPkg;
+            ovItem.fileCount = fileCount;
+            ovItem.typeCount = typeCount;
+            moduleMap.put(mod, ovItem);
+
+            ModuleDependencyInsights mi = new ModuleDependencyInsights();
+            mi.moduleName = mod;
+            mi.packageFqn = primaryPkg;
+            mi.fileCount = fileCount;
+            mi.typeCount = typeCount;
+            insightsByModule.put(modLower, mi);
         }
 
         Map<String, Map<String, Integer>> outMap = new HashMap<>();
         Map<String, Map<String, Integer>> inMap = new HashMap<>();
-        List<RawEdge> allEdges = collectRawEdges(relationships, callGraph);
 
-        for (RawEdge rel : allEdges) {
-            String srcFqn = cleanFqn(rel.fromEntity);
-            String tgtFqn = cleanFqn(rel.toEntity);
-            String kind = rel.kind;
+        Map<String, Map<String, ConnectedModule>> outgoingMapByMod = new HashMap<>();
+        Map<String, Map<String, ConnectedModule>> incomingMapByMod = new HashMap<>();
+        Map<String, Map<String, ConnectedModule>> externalMapByMod = new HashMap<>();
+        Map<String, Map<String, Map<String, ClassUsageSummary>>> outgoingClassUsageByMod = new HashMap<>();
+        Map<String, Map<String, Map<String, ClassUsageSummary>>> incomingClassUsageByMod = new HashMap<>();
+
+        forEachEdge(relationships, callGraph, (fromEntity, toEntity, kind, line) -> {
+            String srcFqn = cleanFqn(fromEntity);
+            String tgtFqn = cleanFqn(toEntity);
 
             String srcMod = ctx.getModuleForEntity(srcFqn);
             String tgtMod = ctx.getModuleForEntity(tgtFqn);
 
-            if (srcMod == null || tgtMod == null || srcMod.equalsIgnoreCase(tgtMod)) continue;
-            if (!ctx.isProjectModule(srcMod) || !ctx.isProjectModule(tgtMod)) continue;
+            if (srcMod == null || tgtMod == null) return;
 
-            payload.totalInterModuleTouchPoints++;
-            increment(payload.totalByKind, kind);
+            String srcModLower = srcMod.toLowerCase();
+            String tgtModLower = tgtMod.toLowerCase();
 
-            ModuleOverviewItem srcItem = moduleMap.computeIfAbsent(srcMod, k -> {
-                ModuleOverviewItem m = new ModuleOverviewItem();
-                m.moduleName = k;
-                m.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(k, k);
-                return m;
-            });
-            srcItem.totalOutboundTouchPoints++;
-            srcItem.totalTouchPoints++;
-            increment(srcItem.touchPointsByKind, kind);
-            outMap.computeIfAbsent(srcMod, k -> new HashMap<>()).merge(tgtMod, 1, Integer::sum);
+            if (srcModLower.equals(tgtModLower)) {
+                ModuleDependencyInsights mi = insightsByModule.get(srcModLower);
+                if (mi != null) mi.internalTouchPoints++;
+                return;
+            }
 
-            ModuleOverviewItem tgtItem = moduleMap.computeIfAbsent(tgtMod, k -> {
-                ModuleOverviewItem m = new ModuleOverviewItem();
-                m.moduleName = k;
-                m.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(k, k);
-                return m;
-            });
-            tgtItem.totalInboundTouchPoints++;
-            tgtItem.totalTouchPoints++;
-            increment(tgtItem.touchPointsByKind, kind);
-            inMap.computeIfAbsent(tgtMod, k -> new HashMap<>()).merge(srcMod, 1, Integer::sum);
-        }
+            boolean isSrcProject = ctx.isProjectModule(srcMod);
+            boolean isTgtProject = ctx.isProjectModule(tgtMod);
 
+            if (isSrcProject && isTgtProject) {
+                overview.totalInterModuleTouchPoints++;
+                increment(overview.totalByKind, kind);
+
+                ModuleOverviewItem srcOv = moduleMap.computeIfAbsent(srcMod, k -> {
+                    ModuleOverviewItem m = new ModuleOverviewItem();
+                    m.moduleName = k;
+                    m.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(k, k);
+                    return m;
+                });
+                srcOv.totalOutboundTouchPoints++;
+                srcOv.totalTouchPoints++;
+                increment(srcOv.touchPointsByKind, kind);
+                outMap.computeIfAbsent(srcMod, k -> new HashMap<>()).merge(tgtMod, 1, Integer::sum);
+
+                ModuleOverviewItem tgtOv = moduleMap.computeIfAbsent(tgtMod, k -> {
+                    ModuleOverviewItem m = new ModuleOverviewItem();
+                    m.moduleName = k;
+                    m.packageFqn = ctx.moduleToPrimaryPackage.getOrDefault(k, k);
+                    return m;
+                });
+                tgtOv.totalInboundTouchPoints++;
+                tgtOv.totalTouchPoints++;
+                increment(tgtOv.touchPointsByKind, kind);
+                inMap.computeIfAbsent(tgtMod, k -> new HashMap<>()).merge(srcMod, 1, Integer::sum);
+            }
+
+            String srcType = ctx.getTypeForEntity(srcFqn);
+            String tgtType = ctx.getTypeForEntity(tgtFqn);
+
+            // Update source module deep insights
+            if (isSrcProject) {
+                ModuleDependencyInsights miSrc = insightsByModule.get(srcModLower);
+                if (miSrc != null) {
+                    if (!isTgtProject) {
+                        ConnectedModule cm = externalMapByMod.computeIfAbsent(srcModLower, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(tgtMod, k -> {
+                                ConnectedModule m = new ConnectedModule(k, tgtType != null ? tgtType : k);
+                                m.isExternal = true;
+                                return m;
+                            });
+                        cm.totalTouchPoints++;
+                        if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
+                        increment(cm.kinds, kind);
+                        if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
+                            cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        }
+                    } else {
+                        miSrc.totalOutboundTouchPoints++;
+                        miSrc.totalTouchPoints++;
+                        increment(miSrc.outboundByKind, kind);
+                        increment(miSrc.totalByKind, kind);
+
+                        ConnectedModule cm = outgoingMapByMod.computeIfAbsent(srcModLower, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(tgtMod, k -> new ConnectedModule(k, ctx.moduleToPrimaryPackage.getOrDefault(k, k)));
+                        cm.totalTouchPoints++;
+                        if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
+                        increment(cm.kinds, kind);
+                        if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
+                            cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        }
+
+                        if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
+                            String classPairKey = srcType + "->" + tgtType;
+                            ClassUsageSummary cus = outgoingClassUsageByMod.computeIfAbsent(srcModLower, k -> new LinkedHashMap<>())
+                                .computeIfAbsent(tgtMod, k -> new LinkedHashMap<>())
+                                .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
+                            cus.touchPointCount++;
+                            increment(cus.kinds, kind);
+                            if (cus.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE) {
+                                cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update target module deep insights
+            if (isTgtProject && isSrcProject) {
+                ModuleDependencyInsights miTgt = insightsByModule.get(tgtModLower);
+                if (miTgt != null) {
+                    miTgt.totalInboundTouchPoints++;
+                    miTgt.totalTouchPoints++;
+                    increment(miTgt.inboundByKind, kind);
+                    increment(miTgt.totalByKind, kind);
+
+                    ConnectedModule cm = incomingMapByMod.computeIfAbsent(tgtModLower, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(srcMod, k -> new ConnectedModule(k, ctx.moduleToPrimaryPackage.getOrDefault(k, k)));
+                    cm.totalTouchPoints++;
+                    if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
+                    increment(cm.kinds, kind);
+                    if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
+                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                    }
+
+                    if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
+                        String classPairKey = srcType + "->" + tgtType;
+                        ClassUsageSummary cus = incomingClassUsageByMod.computeIfAbsent(tgtModLower, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(srcMod, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
+                        cus.touchPointCount++;
+                        increment(cus.kinds, kind);
+                        if (cus.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE) {
+                            cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        }
+                    }
+                }
+            }
+        });
+
+        // Finalize overview modules
         for (Map.Entry<String, ModuleOverviewItem> entry : moduleMap.entrySet()) {
             String mod = entry.getKey();
             ModuleOverviewItem item = entry.getValue();
@@ -506,13 +423,155 @@ public class ModuleDependencyAnalyzer {
                 .map(e -> e.getKey() + " (" + e.getValue() + ")")
                 .collect(Collectors.toList());
 
-            payload.modules.add(item);
+            overview.modules.add(item);
+        }
+        overview.modules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
+        overview.totalModules = overview.modules.size();
+
+        // Finalize each module insights
+        for (Map.Entry<String, ModuleDependencyInsights> entry : insightsByModule.entrySet()) {
+            String modLower = entry.getKey();
+            ModuleDependencyInsights insights = entry.getValue();
+
+            // Outgoing modules
+            Map<String, ConnectedModule> outModMap = outgoingMapByMod.getOrDefault(modLower, Collections.emptyMap());
+            Map<String, Map<String, ClassUsageSummary>> outClassMap = outgoingClassUsageByMod.getOrDefault(modLower, Collections.emptyMap());
+            for (Map.Entry<String, ConnectedModule> e : outModMap.entrySet()) {
+                ConnectedModule cm = e.getValue();
+                Map<String, ClassUsageSummary> cMap = outClassMap.get(e.getKey());
+                if (cMap != null) {
+                    cm.classUsages = new ArrayList<>(cMap.values());
+                    cm.classUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
+                    cm.classUsageCount = (int) cm.classUsages.stream().map(c -> c.targetClassFqn).distinct().count();
+                }
+                insights.outgoingModules.add(cm);
+            }
+            insights.outgoingModules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
+
+            // Incoming modules
+            Map<String, ConnectedModule> inModMap = incomingMapByMod.getOrDefault(modLower, Collections.emptyMap());
+            Map<String, Map<String, ClassUsageSummary>> inClassMap = incomingClassUsageByMod.getOrDefault(modLower, Collections.emptyMap());
+            for (Map.Entry<String, ConnectedModule> e : inModMap.entrySet()) {
+                ConnectedModule cm = e.getValue();
+                Map<String, ClassUsageSummary> cMap = inClassMap.get(e.getKey());
+                if (cMap != null) {
+                    cm.classUsages = new ArrayList<>(cMap.values());
+                    cm.classUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
+                    cm.classUsageCount = (int) cm.classUsages.stream().map(c -> c.sourceClassFqn).distinct().count();
+                }
+                insights.incomingModules.add(cm);
+            }
+            insights.incomingModules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
+
+            // External dependencies
+            Map<String, ConnectedModule> extModMap = externalMapByMod.getOrDefault(modLower, Collections.emptyMap());
+            insights.externalDependencies = new ArrayList<>(extModMap.values());
+            insights.externalDependencies.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
+
+            // Top class usages overall for this module
+            List<ClassUsageSummary> allClassUsages = new ArrayList<>();
+            for (ConnectedModule cm : insights.outgoingModules) {
+                allClassUsages.addAll(cm.classUsages);
+            }
+            allClassUsages.sort((a, b) -> Integer.compare(b.touchPointCount, a.touchPointCount));
+            insights.topClassUsages = allClassUsages.stream().limit(15).collect(Collectors.toList());
+
+            // Coupling & instability
+            insights.afferentCoupling = insights.incomingModules.size();
+            insights.efferentCoupling = insights.outgoingModules.size();
+            int totalC = insights.afferentCoupling + insights.efferentCoupling;
+            insights.instability = totalC > 0 ? Math.round(((double) insights.efferentCoupling / totalC) * 100.0) / 100.0 : 0.0;
+
+            if (insights.afferentCoupling >= 3 && insights.efferentCoupling <= 1) {
+                insights.stabilityRating = "Stable Core (High Afferent)";
+            } else if (insights.instability <= 0.3) {
+                insights.stabilityRating = "Highly Stable";
+            } else if (insights.instability >= 0.7) {
+                insights.stabilityRating = "Flexible / High Efferent";
+            } else {
+                insights.stabilityRating = "Balanced";
+            }
         }
 
-        payload.modules.sort((a, b) -> Integer.compare(b.totalTouchPoints, a.totalTouchPoints));
-        payload.totalModules = payload.modules.size();
-        return payload;
+        // Map packages to their module's insights
+        Map<String, ModuleDependencyInsights> insightsByPackage = new LinkedHashMap<>();
+        if (packages != null) {
+            for (CodePackage p : packages) {
+                String mod = ctx.packageToModule.get(p.getFqn());
+                if (mod == null) mod = ctx.findModuleByPackagePrefix(p.getFqn());
+                if (mod == null) mod = CallGraphAnalyzer.extractModuleName(p.getFqn());
+                if (mod != null) {
+                    ModuleDependencyInsights mi = insightsByModule.get(mod.toLowerCase());
+                    if (mi != null) {
+                        insightsByPackage.put(p.getFqn().toLowerCase(), mi);
+                    }
+                }
+            }
+        }
+
+        return new FullModuleDependencyResult(overview, insightsByModule, insightsByPackage);
     }
+
+    /**
+     * Analyze module dependencies and touch points for a specific module or package.
+     */
+    public ModuleDependencyInsights analyzeModule(String targetModuleOrPkg,
+                                                  List<CodePackage> packages,
+                                                  List<CodeType> types,
+                                                  List<CodeMethod> methods,
+                                                  List<CodeField> fields,
+                                                  List<CodeRelationship> relationships) {
+        return analyzeModule(targetModuleOrPkg, packages, types, methods, fields, relationships, null);
+    }
+
+    public ModuleDependencyInsights analyzeModule(String targetModuleOrPkg,
+                                                  List<CodePackage> packages,
+                                                  List<CodeType> types,
+                                                  List<CodeMethod> methods,
+                                                  List<CodeField> fields,
+                                                  List<CodeRelationship> relationships,
+                                                  CallGraphAnalyzer callGraph) {
+        if (targetModuleOrPkg == null || targetModuleOrPkg.isBlank()) {
+            return null;
+        }
+
+        FullModuleDependencyResult result = analyzeAllModules(packages, types, methods, fields, relationships, callGraph);
+        String q = targetModuleOrPkg.trim().toLowerCase();
+        ModuleDependencyInsights insights = result.insightsByModule.get(q);
+        if (insights != null) return insights;
+        insights = result.insightsByPackage.get(q);
+        if (insights != null) return insights;
+
+        // Try prefix match on package
+        for (Map.Entry<String, ModuleDependencyInsights> entry : result.insightsByPackage.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(q) || entry.getKey().startsWith(q + ".") || q.startsWith(entry.getKey() + ".")) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Compute overview metrics and inter-module touch point matrix across all modules in the codebase.
+     */
+    public ModuleOverviewPayload analyzeAll(List<CodePackage> packages,
+                                            List<CodeType> types,
+                                            List<CodeMethod> methods,
+                                            List<CodeField> fields,
+                                            List<CodeRelationship> relationships) {
+        return analyzeAll(packages, types, methods, fields, relationships, null);
+    }
+
+    public ModuleOverviewPayload analyzeAll(List<CodePackage> packages,
+                                            List<CodeType> types,
+                                            List<CodeMethod> methods,
+                                            List<CodeField> fields,
+                                            List<CodeRelationship> relationships,
+                                            CallGraphAnalyzer callGraph) {
+        return analyzeAllModules(packages, types, methods, fields, relationships, callGraph).overview;
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Internal Helper Context
@@ -679,8 +738,21 @@ public class ModuleDependencyAnalyzer {
             return mod;
         }
 
+        // Memoization caches for fast high-throughput edge traversal
+        private final Map<String, String> entityToTypeCache = new HashMap<>(8192);
+        private final Map<String, String> entityToModuleCache = new HashMap<>(8192);
+
         String getTypeForEntity(String entityFqn) {
             if (entityFqn == null || entityFqn.isBlank()) return null;
+            String cached = entityToTypeCache.get(entityFqn);
+            if (cached != null) return cached.isEmpty() ? null : cached;
+
+            String res = resolveTypeForEntity(entityFqn);
+            entityToTypeCache.put(entityFqn, res != null ? res : "");
+            return res;
+        }
+
+        private String resolveTypeForEntity(String entityFqn) {
             String cleaned = cleanFqn(entityFqn);
 
             if (typeMap.containsKey(cleaned)) return cleaned;
@@ -758,6 +830,15 @@ public class ModuleDependencyAnalyzer {
 
         String getModuleForEntity(String entityFqn) {
             if (entityFqn == null || entityFqn.isBlank()) return null;
+            String cached = entityToModuleCache.get(entityFqn);
+            if (cached != null) return cached.isEmpty() ? null : cached;
+
+            String res = resolveModuleForEntity(entityFqn);
+            entityToModuleCache.put(entityFqn, res != null ? res : "");
+            return res;
+        }
+
+        private String resolveModuleForEntity(String entityFqn) {
             String cleaned = cleanFqn(entityFqn);
 
             String type = getTypeForEntity(cleaned);

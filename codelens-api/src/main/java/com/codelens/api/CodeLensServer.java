@@ -107,8 +107,10 @@ public class CodeLensServer {
     // ── Graph Layout Cache & Disk Persistence (SoftReference backed for automatic JVM GC cooperative eviction) ──
     private final Map<String, java.lang.ref.SoftReference<CallGraphAnalyzer.GraphView>> layoutCache = new ConcurrentHashMap<>();
     private final ModuleDependencyAnalyzer moduleDependencyAnalyzer;
-    private final Map<String, java.lang.ref.SoftReference<ModuleDependencyAnalyzer.ModuleDependencyInsights>> moduleDependencyCache = new ConcurrentHashMap<>();
-    private volatile ModuleDependencyAnalyzer.ModuleOverviewPayload cachedModuleOverview = null;
+    private volatile ModuleDependencyAnalyzer.FullModuleDependencyResult precomputedModuleResult = null;
+    private final Map<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> precomputedModuleInsights = new ConcurrentHashMap<>();
+    private final Object modulePrecomputeLock = new Object();
+    private final java.util.concurrent.atomic.AtomicBoolean modulePrecomputeRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
@@ -204,8 +206,8 @@ public class CodeLensServer {
 
     public void invalidateGraphCache() {
         layoutCache.clear();
-        moduleDependencyCache.clear();
-        cachedModuleOverview = null;
+        precomputedModuleResult = null;
+        precomputedModuleInsights.clear();
         scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
@@ -313,20 +315,11 @@ public class CodeLensServer {
                 progress.setSubProgress(total, total, "All layouts ready");
             }
 
-            if (cachedModuleOverview == null && !cancelRequested) {
+            if (precomputedModuleResult == null && !cancelRequested) {
                 try {
-                    log.info("Precomputing module dependency overview during warm-up...");
-                    List<CodePackage> packages = dao.findAllPackages();
-                    List<CodeType> types = dao.findAllTypes();
-                    List<CodeMethod> methods = isHugeCodebase ? Collections.emptyList() : dao.findAllMethods();
-                    List<CodeField> fields = isHugeCodebase ? Collections.emptyList() : dao.findAllFields();
-                    List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-                        ? (isHugeCodebase ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
-                        : dao.findAllRelationships();
-                    cachedModuleOverview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
-                    log.info("Precomputed module overview: {} modules ready", cachedModuleOverview != null && cachedModuleOverview.modules != null ? cachedModuleOverview.modules.size() : 0);
+                    precomputeModuleDependencies(progress);
                 } catch (Exception e) {
-                    log.warn("Module overview precomputation deferred: {}", e.getMessage());
+                    log.warn("Module dependency precomputation deferred: {}", e.getMessage());
                 }
             }
 
@@ -334,7 +327,7 @@ public class CodeLensServer {
                 Map<String, String> layoutMetrics = new LinkedHashMap<>();
                 layoutMetrics.put("Layouts Cached", String.valueOf(total));
                 layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
-                layoutMetrics.put("Modules Cached", cachedModuleOverview != null && cachedModuleOverview.modules != null ? String.valueOf(cachedModuleOverview.modules.size()) : "Complete");
+                layoutMetrics.put("Modules Cached", precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null ? String.valueOf(precomputedModuleResult.overview.modules.size()) : "Complete");
                 layoutMetrics.put("Placed Nodes", "Ready");
                 progress.recordStageEnd("LAYOUT", "COMPLETE", String.format("Precomputed %d topology layouts & module overview", total), layoutMetrics);
             }
@@ -362,6 +355,98 @@ public class CodeLensServer {
         warmupGraphCache(null);
     }
 
+    public ModuleDependencyAnalyzer.FullModuleDependencyResult precomputeModuleDependencies(ScanProgress progress) {
+        if (precomputedModuleResult != null && !precomputedModuleInsights.isEmpty()) {
+            return precomputedModuleResult;
+        }
+
+        // 1. Try disk cache first
+        File diskCache = new File(getGraphCacheDir(), "module-dependencies.json");
+        if (diskCache.exists() && diskCache.length() > 2) {
+            try {
+                ModuleDependencyAnalyzer.FullModuleDependencyResult diskResult =
+                    jsonMapper.readValue(diskCache, ModuleDependencyAnalyzer.FullModuleDependencyResult.class);
+                if (diskResult != null && diskResult.overview != null) {
+                    populateModuleDependencyCaches(diskResult);
+                    log.info("Loaded precomputed module dependencies from disk cache: {} modules",
+                        precomputedModuleInsights.size());
+                    return diskResult;
+                }
+            } catch (Exception e) {
+                log.warn("Failed reading module dependency disk cache: {}", e.getMessage());
+            }
+        }
+
+        synchronized (modulePrecomputeLock) {
+            if (precomputedModuleResult != null && !precomputedModuleInsights.isEmpty()) {
+                return precomputedModuleResult;
+            }
+
+            modulePrecomputeRunning.set(true);
+            long start = System.currentTimeMillis();
+            try {
+                log.info("Auto-triggering background precomputation of module dependencies...");
+                if (progress != null) {
+                    progress.setCurrentDetail("Precomputing module dependencies & touch points");
+                }
+
+                boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
+                List<CodePackage> packages = dao.findAllPackages();
+                List<CodeType> types = dao.findAllTypes();
+                List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
+                List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
+                List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
+                    ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
+                    : dao.findAllRelationships();
+
+                ModuleDependencyAnalyzer.FullModuleDependencyResult result =
+                    moduleDependencyAnalyzer.analyzeAllModules(packages, types, methods, fields, relationships, callGraph);
+
+                populateModuleDependencyCaches(result);
+
+                // Persist to disk cache
+                try {
+                    jsonMapper.writeValue(diskCache, result);
+                    log.info("Persisted module dependency result to disk cache ({} bytes)", diskCache.length());
+                } catch (Exception e) {
+                    log.warn("Failed writing module dependency disk cache: {}", e.getMessage());
+                }
+
+                log.info("Finished background precomputation of module dependencies in {} ms ({} modules indexed)",
+                    System.currentTimeMillis() - start, precomputedModuleInsights.size());
+                return result;
+            } catch (Exception e) {
+                log.error("Failed precomputing module dependencies: {}", e.getMessage(), e);
+                return null;
+            } finally {
+                modulePrecomputeRunning.set(false);
+            }
+        }
+    }
+
+    private void populateModuleDependencyCaches(ModuleDependencyAnalyzer.FullModuleDependencyResult result) {
+        if (result == null) return;
+        this.precomputedModuleResult = result;
+        this.precomputedModuleInsights.clear();
+
+        if (result.insightsByModule != null) {
+            for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : result.insightsByModule.entrySet()) {
+                precomputedModuleInsights.put(entry.getKey().toLowerCase(), entry.getValue());
+                if (entry.getValue().moduleName != null) {
+                    precomputedModuleInsights.put(entry.getValue().moduleName.toLowerCase(), entry.getValue());
+                }
+                if (entry.getValue().packageFqn != null) {
+                    precomputedModuleInsights.put(entry.getValue().packageFqn.toLowerCase(), entry.getValue());
+                }
+            }
+        }
+        if (result.insightsByPackage != null) {
+            for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : result.insightsByPackage.entrySet()) {
+                precomputedModuleInsights.put(entry.getKey().toLowerCase(), entry.getValue());
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
     // ─────────────────────────────────────────────────────────────────────────
@@ -382,10 +467,10 @@ public class CodeLensServer {
         // ── Initialize Heap Auto-Recovery Watchdog & Hooks ─────────────────────
         this.heapWatchdog.registerRecoveryHook("In-Memory Graph & Module Layout Caches", () -> {
             int layouts = layoutCache.size();
-            int modules = moduleDependencyCache.size();
+            int modules = precomputedModuleInsights.size();
             layoutCache.clear();
-            moduleDependencyCache.clear();
-            cachedModuleOverview = null;
+            precomputedModuleInsights.clear();
+            precomputedModuleResult = null;
             log.info("Heap Auto-Recovery: evicted {} layout and {} module in-memory caches", layouts, modules);
         });
         this.heapWatchdog.registerRecoveryHook("H2 Database Page Cache Shrink (16MB)", () -> {
@@ -902,14 +987,16 @@ public class CodeLensServer {
         layoutProc.put("type", "Sunflower Spiral & Clustering Precomputer");
         boolean isScanLayoutActive = isScanning && sp != null && ("Precomputing Layouts".equals(sp.getCurrentPhase()) || "LAYOUT".equals(sp.getActiveStage()));
         boolean isWarmupLayoutActive = layoutWarmupRunning.get();
-        boolean isLayoutBuilding = isScanLayoutActive || isWarmupLayoutActive;
+        boolean isModuleActive = modulePrecomputeRunning.get();
+        boolean isLayoutBuilding = isScanLayoutActive || isWarmupLayoutActive || isModuleActive;
         int cachedLayouts = layoutCache.size();
-        layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 ? "COMPLETE" : "IDLE"));
+        int cachedModules = precomputedModuleInsights.size();
+        layoutProc.put("status", isLayoutBuilding ? "RUNNING" : (cachedLayouts > 0 || cachedModules > 0 ? "COMPLETE" : "IDLE"));
         layoutProc.put("activeStage", isLayoutBuilding ? "LAYOUT" : "IDLE");
-        String layoutPhase = isScanLayoutActive ? sp.getCurrentPhase() : (isWarmupLayoutActive ? layoutWarmupPhase.get() : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle"));
+        String layoutPhase = isScanLayoutActive ? sp.getCurrentPhase() : (isWarmupLayoutActive ? layoutWarmupPhase.get() : (isModuleActive ? "Precomputing Module Dependencies" : (cachedLayouts > 0 ? "Cached Layouts Ready" : "Idle")));
         int layoutPct = isScanLayoutActive ? sp.getPercentage() : (isWarmupLayoutActive ? layoutWarmupPercentage.get() : (cachedLayouts > 0 ? 100 : 0));
         layoutProc.put("currentPhase", layoutPhase);
-        layoutProc.put("currentDetail", String.format("%d layouts cached in memory (rev=%d)", cachedLayouts, scanRevision.get()));
+        layoutProc.put("currentDetail", String.format("%d layouts, %d modules cached in memory (rev=%d)", cachedLayouts, cachedModules, scanRevision.get()));
         layoutProc.put("percentage", layoutPct);
         layoutProc.put("thread", isLayoutBuilding ? "codelens-layout-worker" : "-");
         layoutProc.put("canKill", isScanLayoutActive);
@@ -1327,10 +1414,11 @@ public class CodeLensServer {
     private void trimJvmMemory(Context ctx) {
         Map<String, Object> res = jvmManager.trimMemory(() -> {
             int beforeLayouts = layoutCache.size();
+            int beforeModules = precomputedModuleInsights.size();
             layoutCache.clear();
-            moduleDependencyCache.clear();
-            cachedModuleOverview = null;
-            log.info("Trimmed in-memory layout & module caches (cleared {} layouts)", beforeLayouts);
+            precomputedModuleInsights.clear();
+            precomputedModuleResult = null;
+            log.info("Trimmed in-memory layout & module caches (cleared {} layouts, {} modules)", beforeLayouts, beforeModules);
         });
         logProcessBanner("JVM_TRIM", "Memory Optimizer", "Caches + GC",
                 String.format("Reclaimed %s MB (duration: %d ms)", res.get("freedMb"), res.get("durationMs")));
@@ -2329,58 +2417,55 @@ public class CodeLensServer {
         }
 
         String cacheKey = query.trim().toLowerCase();
-        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = null;
-        java.lang.ref.SoftReference<ModuleDependencyAnalyzer.ModuleDependencyInsights> ref = moduleDependencyCache.get(cacheKey);
-        if (ref != null) {
-            cached = ref.get();
-            if (cached == null) {
-                moduleDependencyCache.remove(cacheKey);
-            }
-        }
+
+        // 1. Direct O(1) in-memory cache hit (precomputed, strong-referenced)
+        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = precomputedModuleInsights.get(cacheKey);
         if (cached != null) {
             ctx.json(cached);
             return;
         }
 
-        ScanProgress sp = scanState.get();
-        if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
-            ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency analysis pending"));
-            return;
+        // 2. Prefix or substring lookup across precomputed insights
+        for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : precomputedModuleInsights.entrySet()) {
+            String k = entry.getKey();
+            if (k.equalsIgnoreCase(cacheKey) || k.startsWith(cacheKey + ".") || cacheKey.startsWith(k + ".")
+                || k.endsWith("." + cacheKey) || cacheKey.endsWith("." + k)) {
+                precomputedModuleInsights.put(cacheKey, entry.getValue());
+                ctx.json(entry.getValue());
+                return;
+            }
         }
 
-        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 8_000);
-        List<CodePackage> packages = dao.findAllPackages();
-        List<CodeType> types = dao.findAllTypes();
-        List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
-        List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
-        List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-            ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
-            : dao.findAllRelationships();
+        // 3. If precomputed cache has not run yet, load from disk cache or auto-trigger background precompute
+        if (precomputedModuleResult == null) {
+            ScanProgress sp = scanState.get();
+            if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+                ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency analysis pending"));
+                return;
+            }
 
-        ModuleDependencyAnalyzer.ModuleDependencyInsights insights = moduleDependencyAnalyzer.analyzeModule(
-            query, packages, types, methods, fields, relationships, callGraph
-        );
-
-        if (insights == null) {
-            ctx.status(404).json(Map.of("error", "Module or package not found: " + query));
-            return;
+            precomputeModuleDependencies(null);
+            cached = precomputedModuleInsights.get(cacheKey);
+            if (cached != null) {
+                ctx.json(cached);
+                return;
+            }
+            for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : precomputedModuleInsights.entrySet()) {
+                String k = entry.getKey();
+                if (k.equalsIgnoreCase(cacheKey) || k.startsWith(cacheKey + ".") || cacheKey.startsWith(k + ".")) {
+                    precomputedModuleInsights.put(cacheKey, entry.getValue());
+                    ctx.json(entry.getValue());
+                    return;
+                }
+            }
         }
 
-        moduleDependencyCache.put(cacheKey, new java.lang.ref.SoftReference<>(insights));
-        if (insights.moduleName != null) {
-            moduleDependencyCache.put(insights.moduleName.toLowerCase(), new java.lang.ref.SoftReference<>(insights));
-        }
-        if (insights.packageFqn != null) {
-            moduleDependencyCache.put(insights.packageFqn.toLowerCase(), new java.lang.ref.SoftReference<>(insights));
-        }
-
-        ctx.json(insights);
+        ctx.status(404).json(Map.of("error", "Module or package not found: " + query));
     }
 
     private void getAllModuleDependencies(Context ctx) throws Exception {
-        ModuleDependencyAnalyzer.ModuleOverviewPayload overview = cachedModuleOverview;
-        if (overview != null) {
-            ctx.json(overview);
+        if (precomputedModuleResult != null && precomputedModuleResult.overview != null) {
+            ctx.json(precomputedModuleResult.overview);
             return;
         }
 
@@ -2390,18 +2475,12 @@ public class CodeLensServer {
             return;
         }
 
-        boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
-        List<CodePackage> packages = dao.findAllPackages();
-        List<CodeType> types = dao.findAllTypes();
-        List<CodeMethod> methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
-        List<CodeField> fields = isHuge ? Collections.emptyList() : dao.findAllFields();
-        List<CodeRelationship> relationships = (callGraph != null && callGraph.getCallGraph() != null)
-            ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
-            : dao.findAllRelationships();
-
-        overview = moduleDependencyAnalyzer.analyzeAll(packages, types, methods, fields, relationships, callGraph);
-        cachedModuleOverview = overview;
-        ctx.json(overview);
+        ModuleDependencyAnalyzer.FullModuleDependencyResult result = precomputeModuleDependencies(null);
+        if (result != null && result.overview != null) {
+            ctx.json(result.overview);
+        } else {
+            ctx.json(new ModuleDependencyAnalyzer.ModuleOverviewPayload());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
