@@ -9259,19 +9259,7 @@ async function init() {
     });
   }
 
-  // Hero theme toggle (mirrors main toggle - cycles dark → swiss → light)
-  qs('#hero-theme-toggle-btn')?.addEventListener('click', () => {
-    const s = loadSettings();
-    const THEME_CYCLE = ['dark', 'swiss', 'light'];
-    const curIdx = THEME_CYCLE.indexOf(s.theme);
-    const newTheme = THEME_CYCLE[(curIdx + 1) % THEME_CYCLE.length];
-    s.theme = newTheme;
-    saveSettings(s);
-    applyAllSettings(s);
-    syncSettingsUI(s);
-    const labels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
-    showBanner(`Theme: ${labels[newTheme] || newTheme}`);
-  });
+  // Note: Hero theme toggle is initialized by initThemeDropdowns() with interactive dropdown menu
 
   // Hero settings button
   qs('#hero-settings-btn')?.addEventListener('click', (e) => {
@@ -9449,19 +9437,7 @@ async function init() {
 
 
 
-  // Wire up quick theme toggle in header toolbar (cycles dark → swiss → light)
-  qs('#theme-toggle-btn')?.addEventListener('click', () => {
-    const s = loadSettings();
-    const THEME_CYCLE = ['dark', 'swiss', 'light'];
-    const curIdx = THEME_CYCLE.indexOf(s.theme);
-    const newTheme = THEME_CYCLE[(curIdx + 1) % THEME_CYCLE.length];
-    s.theme = newTheme;
-    saveSettings(s);
-    applyAllSettings(s);
-    syncSettingsUI(s);
-    const labels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
-    showBanner(`Theme switched to ${labels[newTheme] || newTheme}`);
-  });
+  // Note: Quick theme toggle in header toolbar is initialized by initThemeDropdowns() with interactive dropdown menu
 
   const browseBtn = qs('#browse-btn');
   const folderPicker = qs('#folder-picker');
@@ -12313,39 +12289,61 @@ function applyTheme(themeKey) {
   else if (themeKey === 'swiss') document.body.classList.add('theme-swiss');
   document.body.dataset.theme = themeKey;
 
-  // Update top-bar theme toggle button (cycles: dark→swiss→light→dark)
+  // Update top-bar & hero theme toggle buttons to show the CURRENT active theme
+  const themeLabels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
+  const currentFullName = themeLabels[themeKey] || theme.label;
+
   const toggleIcon = qs('#theme-toggle-icon');
   const toggleLabel = qs('#theme-toggle-label');
+  const toggleBtn = qs('#theme-toggle-btn');
   if (toggleIcon) {
-    // Show the icon for the NEXT theme in cycle
     if (themeKey === 'dark') {
-      // Next is swiss – show swiss cross icon
-      if (window.Icons) {
-        toggleIcon.innerHTML = window.Icons.get('swiss', { color: 'red' });
-      } else {
-        toggleIcon.innerHTML = '<svg class="svg-icon icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>';
-      }
+      toggleIcon.innerHTML = window.Icons ? window.Icons.get('moon', { color: 'purple' }) : '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
     } else if (themeKey === 'swiss') {
-      // Next is light – show sun icon
-      if (window.Icons) {
-        toggleIcon.innerHTML = window.Icons.get('sun', { color: 'amber' });
-      } else {
-        toggleIcon.innerHTML = '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
-      }
+      toggleIcon.innerHTML = window.Icons ? window.Icons.get('swiss', { color: 'red' }) : '<svg class="svg-icon icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>';
     } else {
-      // themeKey === 'light', next is dark – show moon icon
-      if (window.Icons) {
-        toggleIcon.innerHTML = window.Icons.get('moon', { color: 'purple' });
-      } else {
-        toggleIcon.innerHTML = '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
-      }
+      toggleIcon.innerHTML = window.Icons ? window.Icons.get('sun', { color: 'amber' }) : '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
     }
   }
   if (toggleLabel) {
-    if (themeKey === 'dark') toggleLabel.textContent = 'Swiss';
-    else if (themeKey === 'swiss') toggleLabel.textContent = 'Light';
-    else toggleLabel.textContent = 'Dark';
+    toggleLabel.textContent = theme.label;
   }
+  if (toggleBtn) {
+    toggleBtn.title = `Theme: ${theme.label} (${currentFullName}) · Click to choose theme`;
+    toggleBtn.setAttribute('aria-label', `Current theme: ${theme.label}. Click to choose theme.`);
+  }
+
+  // Update hero page theme toggle button
+  const heroToggleIcon = qs('#hero-theme-toggle-icon');
+  const heroToggleLabel = qs('#hero-theme-toggle-label');
+  const heroToggleBtn = qs('#hero-theme-toggle-btn');
+  if (heroToggleIcon) {
+    if (themeKey === 'dark') {
+      heroToggleIcon.innerHTML = window.Icons ? window.Icons.get('moon', { color: 'purple' }) : '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+    } else if (themeKey === 'swiss') {
+      heroToggleIcon.innerHTML = window.Icons ? window.Icons.get('swiss', { color: 'red' }) : '<svg class="svg-icon icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>';
+    } else {
+      heroToggleIcon.innerHTML = window.Icons ? window.Icons.get('sun', { color: 'amber' }) : '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+    }
+  }
+  if (heroToggleLabel) {
+    heroToggleLabel.textContent = theme.label;
+  }
+  if (heroToggleBtn) {
+    heroToggleBtn.title = `Theme: ${theme.label} (${currentFullName}) · Click to choose theme`;
+    heroToggleBtn.setAttribute('aria-label', `Current theme: ${theme.label}. Click to choose theme.`);
+  }
+
+  // Update theme dropdown active states & badges
+  qsa('.theme-dropdown-item').forEach(item => {
+    const isSelected = item.dataset.themeOpt === themeKey;
+    item.classList.toggle('active', isSelected);
+    item.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+  });
+  const headerBadge = qs('#theme-dropdown-current-badge');
+  if (headerBadge) headerBadge.textContent = theme.label;
+  const heroBadge = qs('#hero-theme-dropdown-current-badge');
+  if (heroBadge) heroBadge.textContent = theme.label;
 
   // Apply graph canvas theme
   if (App.graph) {
@@ -12716,6 +12714,172 @@ function renderArchetypeRulesList() {
   populateArchetypeDropdowns();
 }
 
+/**
+ * Switch active application theme and broadcast state change
+ */
+function selectTheme(themeKey) {
+  const s = loadSettings();
+  s.theme = themeKey;
+  saveSettings(s);
+  applyAllSettings(s);
+  syncSettingsUI(s);
+  const labels = { dark: 'Midnight Obsidian', swiss: 'Swiss Minimalist', light: 'Pure Daylight' };
+  const label = labels[themeKey] || themeKey;
+  if (typeof toast !== 'undefined' && toast.success) {
+    toast.success(`Theme switched to ${label}`, { id: 'theme-switch' });
+  } else {
+    showBanner(`Theme switched to ${label}`);
+  }
+}
+
+/**
+ * Initialize interactive theme dropdown menus for Header and Hero page
+ */
+function initThemeDropdowns() {
+  const configs = [
+    {
+      btn: qs('#theme-toggle-btn'),
+      menu: qs('#theme-dropdown-menu'),
+      wrap: qs('#theme-dropdown-wrap'),
+      settingsLink: qs('#theme-dropdown-open-settings')
+    },
+    {
+      btn: qs('#hero-theme-toggle-btn'),
+      menu: qs('#hero-theme-dropdown-menu'),
+      wrap: qs('#hero-theme-dropdown-wrap'),
+      settingsLink: qs('#hero-theme-dropdown-open-settings')
+    }
+  ];
+
+  function closeAll() {
+    configs.forEach(cfg => {
+      if (cfg.wrap && cfg.menu) {
+        cfg.wrap.classList.remove('is-open');
+        cfg.menu.style.display = 'none';
+        if (cfg.btn) cfg.btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  function openDropdown(cfg) {
+    if (!cfg.wrap || !cfg.menu || !cfg.btn) return;
+    closeAll();
+    cfg.wrap.classList.add('is-open');
+    cfg.menu.style.display = 'flex';
+    cfg.btn.setAttribute('aria-expanded', 'true');
+
+    // Focus active or first item for accessible keyboard navigation
+    const activeItem = cfg.menu.querySelector('.theme-dropdown-item.active') || cfg.menu.querySelector('.theme-dropdown-item');
+    if (activeItem) {
+      setTimeout(() => activeItem.focus(), 25);
+    }
+  }
+
+  configs.forEach(cfg => {
+    if (!cfg.btn || !cfg.menu || !cfg.wrap) return;
+
+    // Toggle button click
+    cfg.btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = cfg.wrap.classList.contains('is-open');
+      if (isOpen) {
+        closeAll();
+      } else {
+        openDropdown(cfg);
+      }
+    });
+
+    // Theme options
+    const items = Array.from(cfg.menu.querySelectorAll('.theme-dropdown-item'));
+    items.forEach((item, index) => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const themeOpt = item.dataset.themeOpt;
+        if (themeOpt) {
+          selectTheme(themeOpt);
+        }
+        closeAll();
+        cfg.btn.focus();
+      });
+
+      // Keyboard navigation
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const next = items[(index + 1) % items.length];
+          next?.focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prev = items[(index - 1 + items.length) % items.length];
+          prev?.focus();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          items[0]?.focus();
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          items[items.length - 1]?.focus();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeAll();
+          cfg.btn.focus();
+        }
+      });
+    });
+
+    // Deep link to appearance settings
+    if (cfg.settingsLink) {
+      cfg.settingsLink.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeAll();
+        openSettings(e);
+      });
+      cfg.settingsLink.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeAll();
+          cfg.btn.focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          items[items.length - 1]?.focus();
+        }
+      });
+    }
+
+    // Toggle button keyboard triggers (down arrow opens menu)
+    cfg.btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        if (!cfg.wrap.classList.contains('is-open')) {
+          e.preventDefault();
+          openDropdown(cfg);
+        }
+      } else if (e.key === 'Escape') {
+        if (cfg.wrap.classList.contains('is-open')) {
+          e.preventDefault();
+          closeAll();
+        }
+      }
+    });
+  });
+
+  // Dismiss on clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.theme-dropdown-wrap')) {
+      closeAll();
+    }
+  });
+
+  // Dismiss on global escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const anyOpen = configs.find(c => c.wrap && c.wrap.classList.contains('is-open'));
+      if (anyOpen) {
+        closeAll();
+        anyOpen.btn?.focus();
+      }
+    }
+  });
+}
+
 function openSettings(e) {
   const modal = qs('#settings-modal');
   if (!modal) return;
@@ -12745,6 +12909,9 @@ function initSettings() {
   // Apply stored settings on load
   const settings = loadSettings();
   applyAllSettings(settings);
+
+  // Initialize interactive theme dropdown menus
+  initThemeDropdowns();
 
   // Wire settings button
   const settingsBtn = qs('#settings-btn');
@@ -16298,8 +16465,8 @@ function initCommandPalette() {
     // Preferences & Theme
     {
       id: 'pref-theme',
-      title: 'Toggle Dark / Light Theme',
-      subtitle: 'Switch application color palette and glass materials',
+      title: 'Change Theme (Dark / Swiss / Light)',
+      subtitle: 'Open theme selector menu to switch between Obsidian, Swiss, and Light',
       group: 'Preferences',
       shortcut: '⌥T',
       icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg>',
@@ -16307,6 +16474,30 @@ function initCommandPalette() {
         const toggleBtn = qs('#theme-toggle-btn');
         if (toggleBtn) toggleBtn.click();
       }
+    },
+    {
+      id: 'pref-theme-dark',
+      title: 'Theme: Midnight Obsidian (Dark)',
+      subtitle: 'Pure dark mode optimized for deep work & graph neon highlights',
+      group: 'Preferences',
+      icon: '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+      action: () => selectTheme('dark')
+    },
+    {
+      id: 'pref-theme-swiss',
+      title: 'Theme: Swiss Minimalist (High-Contrast)',
+      subtitle: 'Swiss design aesthetic with bold crimson accents and stark geometry',
+      group: 'Preferences',
+      icon: '<svg class="svg-icon icon-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="9 3 15 3 15 9 21 9 21 15 15 15 15 21 9 21 9 15 3 15 3 9 9 9" fill="currentColor" stroke="none"/></svg>',
+      action: () => selectTheme('swiss')
+    },
+    {
+      id: 'pref-theme-light',
+      title: 'Theme: Pure Daylight (Light)',
+      subtitle: 'Clean high-readability daytime canvas with emerald accents',
+      group: 'Preferences',
+      icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg>',
+      action: () => selectTheme('light')
     },
 
     // Help & Documentation
