@@ -1,22 +1,30 @@
 # CodeLens — Java Codebase Intelligence Platform
 
+[![Wiki](https://img.shields.io/badge/docs-GitHub%20Wiki-blue.svg)](https://github.com/manvenpratap/codelens/wiki)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://adoptium.net/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Offline](https://img.shields.io/badge/100%25-Offline-emerald.svg)]()
+
 A high-performance, **100% offline**, self-contained Java codebase intelligence and architectural exploration tool. Scan any Java source repository to extract Abstract Syntax Trees (AST), map dependency and call hierarchies, investigate repository-wide field mutation impacts, identify structural drift, audit Git author churn, and inspect source files with syntax highlighting — all served locally through an interactive cyber-dark web interface.
+
+> 📖 **Comprehensive Guides & Architecture Blueprints**: Browse the [**Official GitHub Documentation Wiki**](https://github.com/manvenpratap/codelens/wiki) for in-depth subsystem guides, ADRs, process specifications, and REST API references.
 
 ---
 
 ## Table of Contents
 
+- [Official GitHub Documentation Wiki](https://github.com/manvenpratap/codelens/wiki)
 - [Overview & Core Capabilities](#overview--core-capabilities)
 - [Architecture & Tech Stack](#architecture--tech-stack)
   - [System Architecture](#system-architecture)
   - [Architectural Decisions (ADRs)](#architectural-decisions-adrs)
 - [System Requirements & Zero-Admin Execution](#system-requirements--zero-admin-execution)
 - [Build & Quick Start](#build--quick-start)
-  - [1. Build the Fat JAR](#1-build-the-fat-jar)
+  - [1. Build the Modular Two-JAR Distribution](#1-build-the-modular-two-jar-distribution)
   - [2. Launch the Application](#2-launch-the-application)
   - [3. Headless CLI Scan Mode (Direct Ingestion)](#3-headless-cli-scan-mode-direct-ingestion)
 - [Shipping & Deployment Handbook](#shipping--deployment-handbook)
-  - [Method 1: Standalone Single-File Fat JAR (Fastest)](#method-1-standalone-single-file-fat-jar-fastest)
+  - [Method 1: Lightweight Two-JAR Deployment (Recommended)](#method-1-lightweight-two-jar-deployment-recommended)
   - [Method 2: Building from Source on the New Machine](#method-2-building-from-source-on-the-new-machine)
   - [Method 3: Docker Container Deployment](#method-3-docker-container-deployment)
   - [Method 4: Production Linux Systemd Service](#method-4-production-linux-systemd-service)
@@ -43,7 +51,8 @@ A high-performance, **100% offline**, self-contained Java codebase intelligence 
     - [F. Integrated Monaco Source Code Editor](#f-integrated-monaco-source-code-editor)
   - [4. Right Inspector Panel & Multi-Hop Propagation](#4-right-inspector-panel--multi-hop-propagation)
   - [5. Analyst Notes Engine](#5-analyst-notes-engine)
-  - [6. Export Reports Hub (Markdown, HTML, JSON, CSV, PDF)](#6-export-reports-hub-markdown-html-json-csv-pdf)
+  - [6. Export Reports Hub (13 Reports & 57 Export Artifacts)](#6-export-reports-hub-13-reports--57-export-artifacts)
+  - [7. Background Tasks & Process Manager (11 Engines)](#7-background-tasks--process-manager-11-engines)
 - [Critical Path Trace & Execution Analysis](#critical-path-trace--execution-analysis)
   - [Persistent Entity Identification](#persistent-entity-identification)
   - [Interactive Stepper Dock & Step Traversal](#interactive-stepper-dock--step-traversal)
@@ -79,11 +88,12 @@ A high-performance, **100% offline**, self-contained Java codebase intelligence 
 | 9 | **Structural Inconsistency Detection** | 3-pass heuristic engine identifying signature divergences, naming drift, and duplicate AST body hashes across classes. | Levenshtein distance + AST Normalizer + SHA-256 body hashing |
 | 10 | **Git Blame & Churn Heatmap** | Computes commit counts, top contributing authors, and churn frequency per entity, rendering commit heat directly on graph nodes. | JGit 6.9 engine + Dynamic Canvas Color Shaders |
 | 11 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
-| 12 | **Reports Hub & Compliance Audits** | 11 comprehensive enterprise reports (Change Risk, Circular Dependencies, Dead Code, API Surface, etc.) with CSV, standalone HTML, and Markdown exports. | ReportService + REST export endpoints + Standalone HTML templates |
+| 12 | **Reports Hub & Compliance Audits** | 13 comprehensive enterprise reports (Change Risk, Circular Dependencies, Dead Code, API Surface, Database Access Flow, Concurrency Audit, etc.) with 57 pre-rendered artifacts (CSV, standalone HTML, Markdown, and JSON). | ReportService + REST export endpoints + Standalone HTML templates |
 | 13 | **Modular Two-JAR Distribution** | Lightweight `codelens-app.jar` (~1.1 MB) referencing pre-extracted `codelens-deps.jar` (~22 MB) for ~4-second fast rebuilds and seamless enterprise distribution. | Maven Shade + Class-Path manifest isolation |
 | 14 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
 | 15 | **Storage Compression & Compaction** | LZF compressed H2 page storage with single-transaction chunk commits and MVStore tuning, eliminating leaks and reducing disk footprints by ~95%. | H2 MVStore Compression + HikariCP Transaction Safety |
 | 16 | **Headless CLI Scan Mode** | High-throughput headless command-line scanning directly into H2 & Lucene without launching a web server, ideal for CI/CD batch pipelines. | Dedicated CLI mode + Fast bulk ingestion |
+| 17 | **11-Engine Background Task Manager** | Real-time monitoring and lifecycle controls over 11 background engines (AST Ingestion, Delta Watcher, Call Graph, Layout Engine, Module Coupling, Lucene Indexer, Git Churn, DB Sentinel, Stress Tester, Heap Watchdog, and Reports Precomputer). | Dedicated Process Hub + JMX Thresholds + REST lifecycle APIs |
 
 ---
 
@@ -627,7 +637,7 @@ Click the **Reports Hub** button in the header (<kbd>R</kbd>) to access 11 enter
 
 ---
 
-### 6. Right Inspector Panel & Multi-Hop Propagation
+### 4. Right Inspector Panel & Multi-Hop Propagation
 
 - **Metadata Card**: Displays modifiers, inheritance, implemented interfaces, lines, and Git history.
 - **Action Triggers**:
@@ -638,20 +648,76 @@ Click the **Reports Hub** button in the header (<kbd>R</kbd>) to access 11 enter
 
 ---
 
-### 7. Analyst Notes Engine
+### 5. Analyst Notes Engine
 
 - Free-text markdown notes attached to any class, interface, method, or field.
 - Persisted locally in the H2 database and included in exported reports.
 
 ---
 
-### 6. Export Reports Hub (Markdown, HTML, JSON, CSV, PDF)
+### 6. Export Reports Hub (13 Reports & 57 Export Artifacts)
 
-Generate and export executive and technical reports in multiple formats:
-- **Architecture & Coupling Report**: Package quotient metrics, cyclic dependency audits, afferent/efferent coupling ($C_a$, $C_e$), and instability metrics ($I = C_e / (C_a + C_e)$).
-- **Code Quality & Security Audit**: Complete list of all 32-rule violations, severities, and line references.
-- **Inventory & Metrics Report**: Detailed breakdown of LOC, cyclomatic complexity, and member counts.
-- **Export Formats**: Markdown (`.md`), Standalone HTML (`.html`), Structured JSON (`.json`), Tabular CSV (`.csv`), and browser-native Print to PDF.
+CodeLens automatically precomputes a comprehensive suite of **13 deep architectural, risk, persistence, and concurrency reports**, generating **57 pre-rendered artifacts** in CSV, standalone HTML, Markdown, and JSON stored in `./codelens-data/graph-cache/reports/`:
+
+| # | Report Key | Report Title | Focus & Primary Indicators |
+|---|---|---|---|
+| 1 | `architecture` | Architecture & Coupling Report | Robert C. Martin's Package Coupling ($C_a$, $C_e$, Instability $I$, Distance from Main Sequence $D$) |
+| 2 | `change-risk` | Change Risk & Blast Radius Matrix | Behavioral Hotspots ($CC \times Churn \times LOC$) and highest downstream blast radius classes |
+| 3 | `dead-code` | Dead Code & Reachability Analysis | Private & package-private methods with 0 incoming call edges and orphan subsystems |
+| 4 | `circular-dependencies` | Circular Dependencies & Tangling | Tarjan strongly connected components / cycles at package and class level |
+| 5 | `archetype-governance` | Enterprise Archetype Governance | Architectural layer compliance (Controllers $\to$ Services $\to$ DAOs) and naming consistency |
+| 6 | `technical-debt` | Technical Debt & SQALE Remediation ROI | SQALE remediation hours, debt ratio, and prioritized refactoring opportunities |
+| 7 | `executive-summary` | Executive Architectural Scorecard | Unified architectural health grade (**A**–**F**) across 5 core dimensional indices |
+| 8 | `review` | Code Quality & Security Audit | Consolidated list of all 32 AST static rule findings with precise file and line numbers |
+| 9 | `metrics` | Codebase Inventory & Metrics Census | Comprehensive breakdown of packages, classes, methods, fields, and LOC distributions |
+| 10 | `api-catalog` | API Surface & REST Endpoint Catalog | REST routes, HTTP verbs (GET, POST, PUT, DELETE), controllers, auth checks, and blast radius |
+| 11 | `database-access` | Database & Data Access Flow | Persistence integrity score, DAO access points, CRUD distribution, and target tables touched |
+| 12 | `concurrency-audit` | Concurrency & Thread Safety Audit | Thread safety score/grade, synchronized locks, volatile fields, and mutable shared collections |
+| 13 | `html-snapshot` | Standalone Offline HTML Snapshot | Bundled single-file offline interactive HTML snapshot for offline review and air-gapped sharing |
+
+#### Sequential Precomputation & Audit Logging
+Reports precomputation runs in a strict sequential runner (1 through 13) with per-report error isolation, individual execution duration tracking, and formatted ASCII logging banners in the server console:
+```text
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ CODELENS BACKGROUND PROCESS REPORT_BUILD_STARTED                                   ║
+║ Process:   [10/13] API Surface & REST Endpoint Catalog                             ║
+║ Target:    api-catalog                                                             ║
+║ Details:   Computing analysis model and rendering artifacts                        ║
+║ Timestamp: 2026-10-01 22:19:04.066                           Memory: 185MB / 512MB ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+...
+[REPORT 10/13] COMPLETED API Surface & REST Endpoint Catalog in 17 ms
+```
+
+---
+
+### 7. Background Tasks & Process Manager (11 Engines)
+
+Accessible via the top-bar **`Tasks`** button or `GET /api/processes`, the **Background Tasks & Process Manager** provides real-time telemetry and lifecycle management across all 11 asynchronous engines:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│               CODELENS BACKGROUND TASK PROCESS HUB                     │
+├─────────────────────┬───────────────────┬──────────────┬───────────────┤
+│ Process ID          │ Subsystem Name    │ Role         │ Control       │
+├─────────────────────┼───────────────────┼──────────────┼───────────────┤
+│ scanner             │ Source Scanner    │ Parallel AST │ [Restart]     │
+│ delta-scanner       │ Delta Scanner     │ File Watcher │ [Scan Delta]  │
+│ call-graph          │ Call Graph Engine │ JGraphT Topo │ [Rebuild]     │
+│ layout-engine       │ Layout Engine     │ Sunflower 2D │ [Precompute]  │
+│ module-analyzer     │ Module Touchpoint │ Cross-Module │ [Recompute]   │
+│ lucene-indexer      │ Lucene Indexer    │ Text Search  │ [Re-index]    │
+│ git-analyzer        │ Git Churn Engine  │ JGit Logs    │ [Analyze]     │
+│ db-watchdog         │ DB Pool Sentinel  │ Leak Guard   │ [Check Health]│
+│ stress-test         │ Stress Tester     │ Benchmarks   │ [Run Test]    │
+│ heap-watchdog       │ Memory Sentinel   │ OOM Sentinel │ [Force GC]    │
+│ reports-generator   │ Reports Generator │ 13 Reports   │ [Regenerate]  │
+└─────────────────────┴───────────────────┴──────────────┴───────────────┘
+```
+
+* **Live Telemetry**: Real-time status (`ACTIVE`, `IDLE`, `COMPLETE`), active stage, progress percentage, and throughput metrics (e.g. `Heap: 142 MB / 512 MB (28%)`, `320 files/sec`).
+* **Lifecycle Endpoints**: Individual processes can be restarted via `POST /api/processes/:id/restart` or cooperatively canceled via `POST /api/processes/:id/kill`.
+* **Memory Sentinel & Circuit Breaker**: JMX threshold monitoring and background watchdog that evicts caches at 85% heap usage and trips a circuit breaker at 92% to prevent `OutOfMemoryError`.
 
 ---
 
@@ -822,10 +888,21 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 - `GET /api/graph/treemap?scope=module|package|class` — Hierarchical treemap payload aggregated by lines of code and complexity
 
 ### Reports & Export Hub
-- `GET /api/reports/architecture?format=markdown|html|json|csv` — Architecture & Coupling metrics summary report
-- `GET /api/reports/review?format=markdown|html|json|csv` — Code Quality & Security Audit report
-- `GET /api/reports/metrics?format=markdown|html|json|csv` — Codebase Inventory & Metrics report
-- `GET /api/reports/download?type=architecture|review|metrics&format=markdown|html|json|csv` — Direct file download endpoint for offline reports and PDF printing
+- `GET /api/reports/status` — Current precomputation progress, percentage, phase, and cached keys
+- `POST /api/reports/regenerate` — Trigger background sequential precomputation of all 13 reports
+- `GET /api/reports/{reportKey}?format=markdown|html|json|csv` — Retrieve report in requested format
+  - Supported keys: `architecture`, `change-risk`, `dead-code`, `circular-dependencies`, `archetype-governance`, `technical-debt`, `executive-summary`, `review`, `metrics`, `api-catalog`, `database-access`, `concurrency-audit`, `html-snapshot`
+- `GET /api/reports/download?type={key}&format=markdown|html|csv` — Direct file download endpoint
+
+### Background Process Manager & JVM Sentinel
+- `GET /api/processes` — Live status, stage, progress %, and throughput for all 11 background engines
+- `POST /api/processes/{id}/restart` — Restart/re-queue engine (`scanner`, `call-graph`, `layout-engine`, `module-analyzer`, `lucene-indexer`, `git-analyzer`, `reports-generator`, etc.)
+- `POST /api/processes/{id}/kill` — Cooperatively terminate/cancel active task
+- `GET /api/jvm/status` — Live heap usage, pool occupancy, GC stats, and circuit breaker state
+- `POST /api/jvm/trigger-recovery` — Force cache eviction, DB compaction, and garbage collection
+- `POST /api/jvm/reset-circuit-breaker` — Reset circuit breaker to CLOSED
+- `POST /api/jvm/simulate-pressure` — Test auto-recovery sentinel by injecting synthetic memory spike
+- `GET /api/jvm/threads` — Dump live JVM thread stacks, monitors, and lock contention
 
 ### Fields & Impact Analysis
 - `GET /api/fields/{fqn}` — Field metadata and initializer expression
@@ -836,6 +913,12 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 - `GET /api/analysis/critical-path?class={classFqn}&mode=primary|mutation|read|longest|max_complexity` — Multi-hop end-to-end critical execution path report with candidate paths, precomputed coordinates, and metrics
 - `GET /api/inconsistencies` — List of all flagged structural inconsistencies and AST clones
 - `GET /api/search?q={query}&limit=30` — Apache Lucene full-text entity search
+
+### Scope Management & Boundary Exclusion
+- `POST /api/scope/exclude` — Exclude class or package from the analysis
+- `GET /api/scope/excluded` — List all currently excluded scopes
+- `POST /api/scope/restore` — Restore previously excluded entity
+- `POST /api/scope/clear` — Clear all exclusion rules and restore full codebase scope
 
 ### Configuration Management
 - `GET /api/config` — Retrieve active runtime configuration JSON
@@ -869,8 +952,9 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 | `4` | Switch to Git Analytics & Churn view | Global |
 | `5` | Switch to Source Code (Monaco Editor) view | Global |
 | `M` | Open Macro 3D Codebase Studio (City & Galaxy) | Global |
-| `R` | Open Reports Hub (11 Architecture & Quality Reports) | Global |
-| `?` | Open Feature & User Guide | Global |
+| `R` | Open Reports Hub (13 Architecture & Quality Reports) | Global |
+| `P` | Open Background Tasks & Process Hub | Global |
+| `?` | Open Feature & User Guide (with About CodeLens) | Global |
 | `\` / `\|` | Toggle Critical Path Stepper Dock | Global |
 | `[` | Toggle Left Explorer panel visibility | Global |
 | `]` | Toggle Right Inspector panel visibility | Global |

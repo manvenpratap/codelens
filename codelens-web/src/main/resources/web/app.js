@@ -16104,6 +16104,33 @@ function initCommandPalette() {
         const toggleBtn = qs('#theme-toggle-btn');
         if (toggleBtn) toggleBtn.click();
       }
+    },
+
+    // Help & Documentation
+    {
+      id: 'help-about',
+      title: 'About CodeLens & Platform Overview',
+      subtitle: 'Architecture philosophy, v1.1.3 engine specs, and 100% offline guarantee',
+      group: 'Help & Documentation',
+      shortcut: '?',
+      icon: '<svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      action: () => {
+        if (typeof openHelpModal === 'function') {
+          openHelpModal();
+          const aboutBtn = qs('.guide-tab-btn[data-guide-tab="about"]');
+          if (aboutBtn) aboutBtn.click();
+        }
+      }
+    },
+    {
+      id: 'help-wiki',
+      title: 'Open GitHub Wiki Documentation',
+      subtitle: 'Browse official architecture blueprints, ADRs, 13 reports, and REST API guide',
+      group: 'Help & Documentation',
+      icon: '<svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+      action: () => {
+        window.open('https://github.com/manvenpratap/codelens/wiki', '_blank');
+      }
     }
   ];
 
