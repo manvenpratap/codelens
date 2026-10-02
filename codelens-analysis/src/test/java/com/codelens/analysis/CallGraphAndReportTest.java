@@ -459,4 +459,107 @@ public class CallGraphAndReportTest {
             .anyMatch(i -> i.methodFqn.equals(orderExecute));
         assertFalse(orderIsDead, "OrderService.execute should NOT be dead code since it has a caller");
     }
+
+    public void testWriteInteractiveHtmlSnapshotStreamingAndEscaping() throws Exception {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+        java.io.StringWriter sw = new java.io.StringWriter();
+
+        // Data containing </script> inside a label or string to verify proper escaping
+        java.util.Map<String, Object> maliciousGraph = java.util.Map.of(
+            "label", "Test</script><script>alert(1)</script>",
+            "nodes", java.util.List.of(java.util.Map.of("id", "n1", "name", "ClassWith</script>Tag"))
+        );
+
+        ReportService.ArchitectureReportData archData = new ReportService.ArchitectureReportData();
+        archData.generatedAt = "2026-10-02 12:00:00";
+
+        reportService.writeInteractiveHtmlSnapshot(sw, "SecurityTestProject", maliciousGraph, maliciousGraph, archData);
+        String html = sw.toString();
+
+        assertNotNull(html, "Generated HTML snapshot should not be null");
+        assertTrue(html.contains("<!DOCTYPE html>"), "HTML should contain DOCTYPE");
+        assertTrue(html.contains("SecurityTestProject"), "HTML should contain project name");
+        assertTrue(html.contains("<\\/script>"), "HTML should escape </script> to <\\/script> in embedded JSON");
+        // Verify that raw unescaped </script> inside JSON is NOT present before closing tags
+        assertTrue(!html.contains("ClassWith</script>Tag"), "Raw unescaped </script> must not appear in JSON payload");
+    }
+
+    public void testExecutiveSummaryPrecomputedDataReuse() {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+
+        List<CodeType> types = new ArrayList<>();
+        CodeType t1 = new CodeType();
+        t1.setFqn("com.example.Service");
+        t1.setSimpleName("Service");
+        t1.setPackageFqn("com.example");
+        types.add(t1);
+
+        ReportService.ArchitectureReportData cachedArch = new ReportService.ArchitectureReportData();
+        cachedArch.healthScore = 95;
+        cachedArch.totalPackages = 1;
+        cachedArch.totalDependencies = 0;
+
+        ReportService.ChangeRiskReportData cachedRisk = new ReportService.ChangeRiskReportData();
+        cachedRisk.averageRiskScore = 15;
+        cachedRisk.criticalRiskCount = 0;
+
+        ReportService.CircularDependencyReportData cachedCycles = new ReportService.CircularDependencyReportData();
+        cachedCycles.acyclicScore = 100;
+        cachedCycles.totalClassCycles = 0;
+
+        ReportService.ArchetypeGovernanceReportData cachedGov = new ReportService.ArchetypeGovernanceReportData();
+        cachedGov.governanceScore = 90;
+        cachedGov.totalViolations = 0;
+
+        ReportService.DeadCodeReportData cachedDead = new ReportService.DeadCodeReportData();
+        cachedDead.deadCodePercentage = 5.0;
+        cachedDead.orphanedMethodsCount = 1;
+
+        ReportService.TechnicalDebtReportData cachedDebt = new ReportService.TechnicalDebtReportData();
+        cachedDebt.maintainabilityScore = 88;
+        cachedDebt.totalDebtHours = 4.0;
+        cachedDebt.sqaleRating = "A";
+
+        // Call the overloaded method passing cached reports
+        ReportService.ExecutiveSummaryReportData summary = reportService.buildExecutiveSummaryData(
+            types, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+            cachedArch, cachedRisk, cachedCycles, cachedGov, cachedDead, cachedDebt
+        );
+
+        assertNotNull(summary, "Executive summary should not be null");
+        assertTrue(summary.overallHealthScore >= 85, "Overall health score should reflect high cached dimension scores");
+        assertTrue(summary.overallGrade.startsWith("A"), "Overall grade should be A tier");
+        assertEquals(6, summary.dimensions.size(), "Should have exactly 6 evaluated dimensions");
+    }
+
+    public void testChangeRiskFieldLookupOptimization() {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+
+        List<CodeType> types = new ArrayList<>();
+        List<CodeField> fields = new ArrayList<>();
+
+        for (int i = 0; i < 50; i++) {
+            String cFqn = "com.example.Class" + i;
+            CodeType t = new CodeType();
+            t.setFqn(cFqn);
+            t.setSimpleName("Class" + i);
+            t.setPackageFqn("com.example");
+            types.add(t);
+
+            for (int j = 0; j < 10; j++) {
+                CodeField f = new CodeField();
+                f.setFqn(cFqn + ".field" + j);
+                f.setDeclaringTypeFqn(cFqn);
+                fields.add(f);
+            }
+        }
+
+        ReportService.ChangeRiskReportData risk = reportService.buildChangeRiskData(
+            types, Collections.emptyList(), fields, Collections.emptyList(), Collections.emptyList()
+        );
+
+        assertNotNull(risk, "Change risk data should not be null");
+        assertEquals(50, risk.totalClassesAnalyzed, "All 50 classes should be analyzed");
+        assertEquals(50, risk.classRiskRankings.size(), "All 50 classes should have evaluated risk");
+    }
 }

@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FilterWriter;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -437,28 +441,46 @@ public class ReportService {
             .collect(Collectors.toSet());
 
         data.totalFilesReviewed = sourceFiles.size();
-        List<ReviewFinding> allFindings = new ArrayList<>();
+        final int MAX_RETAINED_FINDINGS = 1000;
+        int processedFiles = 0;
 
         for (String file : sourceFiles) {
+            processedFiles++;
             try {
                 List<ReviewFinding> fileFindings = reviewEngine.reviewFile(file, callGraph, fieldImpact);
-                allFindings.addAll(fileFindings);
+                for (ReviewFinding f : fileFindings) {
+                    data.totalFindings++;
+                    String sev = f.getSeverity() != null ? f.getSeverity().toUpperCase() : "INFO";
+                    if ("CRITICAL".equals(sev)) data.criticalCount++;
+                    else if ("WARNING".equals(sev)) data.warningCount++;
+                    else data.infoCount++;
+
+                    String cat = f.getCategory() != null ? f.getCategory() : "Other";
+                    data.categoryCounts.put(cat, data.categoryCounts.getOrDefault(cat, 0) + 1);
+
+                    if (data.findings.size() < MAX_RETAINED_FINDINGS) {
+                        data.findings.add(f);
+                    } else if ("CRITICAL".equals(sev)) {
+                        for (int i = data.findings.size() - 1; i >= 0; i--) {
+                            String curSev = data.findings.get(i).getSeverity();
+                            if ("INFO".equalsIgnoreCase(curSev) || "WARNING".equalsIgnoreCase(curSev)) {
+                                data.findings.set(i, f);
+                                break;
+                            }
+                        }
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Error reviewing {}: {}", file, e.getMessage());
             }
-        }
 
-        data.findings = allFindings;
-        data.totalFindings = allFindings.size();
-
-        for (ReviewFinding f : allFindings) {
-            String sev = f.getSeverity() != null ? f.getSeverity().toUpperCase() : "INFO";
-            if ("CRITICAL".equals(sev)) data.criticalCount++;
-            else if ("WARNING".equals(sev)) data.warningCount++;
-            else data.infoCount++;
-
-            String cat = f.getCategory() != null ? f.getCategory() : "Other";
-            data.categoryCounts.put(cat, data.categoryCounts.getOrDefault(cat, 0) + 1);
+            if (processedFiles % 50 == 0) {
+                Runtime rt = Runtime.getRuntime();
+                long used = rt.totalMemory() - rt.freeMemory();
+                if ((double) used / rt.maxMemory() > 0.80) {
+                    System.gc();
+                }
+            }
         }
 
         return data;
@@ -904,6 +926,13 @@ public class ReportService {
             data.fieldMutationHotspots = new ArrayList<>(data.fieldMutationHotspots.subList(0, 25));
         }
 
+        Map<String, List<CodeField>> fieldsByDeclaringType = new HashMap<>();
+        for (CodeField f : fields) {
+            if (f.getDeclaringTypeFqn() != null) {
+                fieldsByDeclaringType.computeIfAbsent(f.getDeclaringTypeFqn(), k -> new ArrayList<>()).add(f);
+            }
+        }
+
         int totalScoreSum = 0;
         for (CodeType t : types) {
             String cFqn = t.getFqn();
@@ -912,8 +941,9 @@ public class ReportService {
             int inDeg = classInDegree.getOrDefault(cFqn, 0);
 
             int fieldBlast = 0;
-            for (CodeField f : fields) {
-                if (cFqn.equals(f.getDeclaringTypeFqn())) {
+            List<CodeField> typeFields = fieldsByDeclaringType.get(cFqn);
+            if (typeFields != null) {
+                for (CodeField f : typeFields) {
                     fieldBlast += fieldReaders.getOrDefault(f.getFqn(), Collections.emptySet()).size();
                 }
             }
@@ -2250,19 +2280,8 @@ public class ReportService {
     // 8. STANDALONE INTERACTIVE HTML GRAPH SNAPSHOT
     // =========================================================================
 
-    public String generateInteractiveHtmlSnapshot(String projectName, Object fullGraphData, Object archGraphData, ArchitectureReportData archData) {
-        String fullGraphJson = "{}";
-        String archGraphJson = "{}";
-        String archDataJson = "{}";
-        try {
-            if (fullGraphData != null) fullGraphJson = jsonMapper.writeValueAsString(fullGraphData);
-            if (archGraphData != null) archGraphJson = jsonMapper.writeValueAsString(archGraphData);
-            if (archData != null) archDataJson = jsonMapper.writeValueAsString(archData);
-        } catch (Exception e) {
-            log.error("Failed to serialize graph snapshot data: {}", e.getMessage());
-        }
-
-        StringBuilder sb = new StringBuilder();
+    public void writeInteractiveHtmlSnapshot(Writer out, String projectName, Object fullGraphData, Object archGraphData, ArchitectureReportData archData) throws IOException {
+        Writer sb = out;
         sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n");
         sb.append("<meta charset=\"UTF-8\" />\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
@@ -2429,9 +2448,35 @@ public class ReportService {
         sb.append("  <div class=\"floating-tooltip\" id=\"graph-tooltip\"></div>\n");
         sb.append("</div>\n");
 
-        sb.append("<script id=\"codelens-fullgraph\" type=\"application/json\">\n").append(fullGraphJson.replace("</script>", "<\\/script>")).append("\n</script>\n");
-        sb.append("<script id=\"codelens-archgraph\" type=\"application/json\">\n").append(archGraphJson.replace("</script>", "<\\/script>")).append("\n</script>\n");
-        sb.append("<script id=\"codelens-archdata\" type=\"application/json\">\n").append(archDataJson.replace("</script>", "<\\/script>")).append("\n</script>\n");
+        sb.append("<script id=\"codelens-fullgraph\" type=\"application/json\">\n");
+        if (fullGraphData != null) {
+            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
+            jsonMapper.writeValue(esc, fullGraphData);
+            esc.flush();
+        } else {
+            sb.append("{}");
+        }
+        sb.append("\n</script>\n");
+
+        sb.append("<script id=\"codelens-archgraph\" type=\"application/json\">\n");
+        if (archGraphData != null) {
+            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
+            jsonMapper.writeValue(esc, archGraphData);
+            esc.flush();
+        } else {
+            sb.append("{}");
+        }
+        sb.append("\n</script>\n");
+
+        sb.append("<script id=\"codelens-archdata\" type=\"application/json\">\n");
+        if (archData != null) {
+            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
+            jsonMapper.writeValue(esc, archData);
+            esc.flush();
+        } else {
+            sb.append("{}");
+        }
+        sb.append("\n</script>\n");
 
         // Embedded interactive HTML5 canvas force graph viewer script
         sb.append("<script>\n");
@@ -3036,7 +3081,18 @@ public class ReportService {
         sb.append("})();\n");
         sb.append("</script>\n");
         sb.append("</body>\n</html>");
-        return sb.toString();
+        sb.flush();
+    }
+
+    public String generateInteractiveHtmlSnapshot(String projectName, Object fullGraphData, Object archGraphData, ArchitectureReportData archData) {
+        StringWriter sw = new StringWriter();
+        try {
+            writeInteractiveHtmlSnapshot(sw, projectName, fullGraphData, archGraphData, archData);
+            return sw.toString();
+        } catch (IOException e) {
+            log.error("Failed to generate interactive HTML snapshot: {}", e.getMessage(), e);
+            return "";
+        }
     }
 
     // =========================================================================
@@ -3397,18 +3453,32 @@ public class ReportService {
                                                                 List<CodeField> fields,
                                                                 List<CodeRelationship> relationships,
                                                                 List<GitMeta> gitMetas) {
+        return buildExecutiveSummaryData(types, methods, fields, relationships, gitMetas, null, null, null, null, null, null);
+    }
+
+    public ExecutiveSummaryReportData buildExecutiveSummaryData(List<CodeType> types,
+                                                                List<CodeMethod> methods,
+                                                                List<CodeField> fields,
+                                                                List<CodeRelationship> relationships,
+                                                                List<GitMeta> gitMetas,
+                                                                ArchitectureReportData cachedArch,
+                                                                ChangeRiskReportData cachedRisk,
+                                                                CircularDependencyReportData cachedCycles,
+                                                                ArchetypeGovernanceReportData cachedGov,
+                                                                DeadCodeReportData cachedDead,
+                                                                TechnicalDebtReportData cachedDebt) {
         ExecutiveSummaryReportData out = new ExecutiveSummaryReportData();
         out.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         out.totalTypes = types.size();
         out.totalMethods = methods.size();
         out.totalFields = fields.size();
 
-        ArchitectureReportData arch = buildArchitectureData(types, methods, fields, relationships);
-        ChangeRiskReportData risk = buildChangeRiskData(types, methods, fields, relationships, gitMetas);
-        CircularDependencyReportData cycles = buildCircularDependencyData(types, methods, relationships);
-        ArchetypeGovernanceReportData gov = buildArchetypeGovernanceData(types, methods, fields, relationships);
-        DeadCodeReportData dead = buildDeadCodeData(types, methods, fields, relationships);
-        TechnicalDebtReportData debt = buildTechnicalDebtData(types, methods, fields, relationships);
+        ArchitectureReportData arch = (cachedArch != null) ? cachedArch : buildArchitectureData(types, methods, fields, relationships);
+        ChangeRiskReportData risk = (cachedRisk != null) ? cachedRisk : buildChangeRiskData(types, methods, fields, relationships, gitMetas);
+        CircularDependencyReportData cycles = (cachedCycles != null) ? cachedCycles : buildCircularDependencyData(types, methods, relationships);
+        ArchetypeGovernanceReportData gov = (cachedGov != null) ? cachedGov : buildArchetypeGovernanceData(types, methods, fields, relationships);
+        DeadCodeReportData dead = (cachedDead != null) ? cachedDead : buildDeadCodeData(types, methods, fields, relationships);
+        TechnicalDebtReportData debt = (cachedDebt != null) ? cachedDebt : buildTechnicalDebtData(types, methods, fields, relationships);
 
         out.totalPackages = arch.totalPackages;
         out.totalDebtHours = debt.totalDebtHours;
@@ -4198,5 +4268,87 @@ public class ReportService {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
+    }
+
+    /**
+     * FilterWriter that intercepts the "</script" string case-insensitively and emits "<\/script"
+     * so that JSON can be streamed directly into a HTML &lt;script&gt; tag without being truncated or
+     * vulnerable to script injection, using an 8-character buffer and zero heap allocations.
+     */
+    public static class EscapingScriptWriter extends FilterWriter {
+        private final StringBuilder buf = new StringBuilder(8);
+
+        public EscapingScriptWriter(Writer out) {
+            super(out);
+        }
+
+        @Override
+        public void write(int c) throws IOException {
+            checkAndWrite((char) c);
+        }
+
+        @Override
+        public void write(char[] cbuf, int off, int len) throws IOException {
+            for (int i = 0; i < len; i++) {
+                checkAndWrite(cbuf[off + i]);
+            }
+        }
+
+        @Override
+        public void write(String str, int off, int len) throws IOException {
+            for (int i = 0; i < len; i++) {
+                checkAndWrite(str.charAt(off + i));
+            }
+        }
+
+        private void checkAndWrite(char c) throws IOException {
+            if (buf.length() == 0) {
+                if (c == '<') {
+                    buf.append(c);
+                } else {
+                    out.write(c);
+                }
+            } else if (buf.length() == 1) { // buf has "<"
+                if (c == '/') {
+                    buf.append(c);
+                } else {
+                    out.write('<');
+                    buf.setLength(0);
+                    if (c == '<') {
+                        buf.append(c);
+                    } else {
+                        out.write(c);
+                    }
+                }
+            } else { // buf has "</..."
+                buf.append(c);
+                String pattern = "</script";
+                String current = buf.toString().toLowerCase();
+                if (pattern.startsWith(current)) {
+                    if (current.equals(pattern)) {
+                        out.write("<\\/script");
+                        buf.setLength(0);
+                    }
+                } else {
+                    out.write(buf.toString());
+                    buf.setLength(0);
+                }
+            }
+        }
+
+        @Override
+        public void flush() throws IOException {
+            if (buf.length() > 0) {
+                out.write(buf.toString());
+                buf.setLength(0);
+            }
+            super.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
+            super.close();
+        }
     }
 }

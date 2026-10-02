@@ -139,6 +139,13 @@ public class Application {
 
         printBanner(port);
 
+        long maxMem = Runtime.getRuntime().maxMemory();
+        if (maxMem < 1_000_000_000L) {
+            System.err.printf("%n  [ADVISORY] Maximum JVM heap is configured at %d MB. For large enterprise codebases,%n" +
+                              "  consider increasing heap space to optimize report precomputation throughput:%n" +
+                              "  java -Xms512m -Xmx2g -XX:+UseG1GC -jar codelens-app.jar%n%n", maxMem / (1024 * 1024));
+        }
+
         // ── Initialise storage layer ──────────────────────────────────────────
         DatabaseManager db = new DatabaseManager(dataDir);
         db.initialize();

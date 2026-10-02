@@ -20,6 +20,7 @@ import java.awt.GraphicsEnvironment;
 import javax.swing.JFileChooser;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -120,7 +121,7 @@ public class CodeLensServer {
 
     // ── Precomputed Reports Cache & Disk Persistence ────────────────────────
     private final Map<String, Object> cachedReportsJson = new ConcurrentHashMap<>();
-    private final Map<String, String> cachedReportsRendered = new ConcurrentHashMap<>();
+    private final Set<String> cachedReportArtifacts = ConcurrentHashMap.newKeySet();
     private final Object reportsPrecomputeLock = new Object();
     private final java.util.concurrent.atomic.AtomicBoolean reportsPrecomputeRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicReference<String> reportsPrecomputePhase = new java.util.concurrent.atomic.AtomicReference<>("Idle");
@@ -247,7 +248,7 @@ public class CodeLensServer {
         precomputedModuleResult = null;
         precomputedModuleInsights.clear();
         cachedReportsJson.clear();
-        cachedReportsRendered.clear();
+        cachedReportArtifacts.clear();
         clearTransientScanSnapshot();
         scanRevision.incrementAndGet();
         try {
@@ -597,31 +598,27 @@ public class CodeLensServer {
             try {
                 if (name.endsWith(".json")) {
                     String reportKey = name.substring(0, name.length() - 5);
-                    String jsonStr = Files.readString(f.toPath(), StandardCharsets.UTF_8);
-                    cachedReportsRendered.put(reportKey + ":json", jsonStr);
-                    try {
-                        Object parsed = jsonMapper.readValue(jsonStr, Object.class);
+                    cachedReportArtifacts.add(reportKey + ":json");
+                    try (InputStream in = Files.newInputStream(f.toPath())) {
+                        Object parsed = jsonMapper.readValue(in, Object.class);
                         cachedReportsJson.put(reportKey, parsed);
                     } catch (Exception ignored) {}
                     loadedAny = true;
                 } else if (name.endsWith(".html")) {
                     String reportKey = name.substring(0, name.length() - 5);
-                    String html = Files.readString(f.toPath(), StandardCharsets.UTF_8);
-                    cachedReportsRendered.put(reportKey + ":html", html);
+                    cachedReportArtifacts.add(reportKey + ":html");
                     if ("html-snapshot".equals(reportKey)) {
                         cachedReportsJson.putIfAbsent("html-snapshot", Map.of("report", "html-snapshot", "name", "Standalone Offline HTML Snapshot", "status", "ready"));
                     }
                     loadedAny = true;
                 } else if (name.endsWith(".md")) {
                     String reportKey = name.substring(0, name.length() - 3);
-                    String md = Files.readString(f.toPath(), StandardCharsets.UTF_8);
-                    cachedReportsRendered.put(reportKey + ":markdown", md);
-                    cachedReportsRendered.put(reportKey + ":md", md);
+                    cachedReportArtifacts.add(reportKey + ":markdown");
+                    cachedReportArtifacts.add(reportKey + ":md");
                     loadedAny = true;
                 } else if (name.endsWith(".csv")) {
                     String reportKey = name.substring(0, name.length() - 4);
-                    String csv = Files.readString(f.toPath(), StandardCharsets.UTF_8);
-                    cachedReportsRendered.put(reportKey + ":csv", csv);
+                    cachedReportArtifacts.add(reportKey + ":csv");
                     loadedAny = true;
                 }
             } catch (Exception e) {
@@ -631,7 +628,7 @@ public class CodeLensServer {
         if (loadedAny) {
             reportsPrecomputePhase.set("Ready (Loaded from disk cache)");
             reportsPrecomputePercentage.set(100);
-            log.info("Loaded {} precomputed report artifacts from disk cache ({})", cachedReportsRendered.size(), dir.getAbsolutePath());
+            log.info("Loaded {} precomputed report artifacts from disk cache ({})", cachedReportArtifacts.size(), dir.getAbsolutePath());
         }
         return loadedAny;
     }
@@ -690,7 +687,7 @@ public class CodeLensServer {
 
             if (force) {
                 cachedReportsJson.clear();
-                cachedReportsRendered.clear();
+                cachedReportArtifacts.clear();
             }
 
             reportsPrecomputeRunning.set(true);
@@ -775,8 +772,8 @@ public class CodeLensServer {
                             progress.setDynamicMetrics(
                                 "Reports Ready", String.format("%d / %d", index - 1, TOTAL_REPORTS),
                                 "Active Report", title,
-                                "Artifacts", String.valueOf(cachedReportsRendered.size()),
-                                "Snapshot", index == 13 ? "Compiling" : (cachedReportsRendered.containsKey("html-snapshot:html") ? "Ready" : "Pending")
+                                "Artifacts", String.valueOf(cachedReportArtifacts.size()),
+                                "Snapshot", index == 13 ? "Compiling" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
                             );
                         }
 
@@ -795,23 +792,41 @@ public class CodeLensServer {
                                 progress.setDynamicMetrics(
                                     "Reports Ready", String.format("%d / %d", index, TOTAL_REPORTS),
                                     "Active Report", title,
-                                    "Artifacts", String.valueOf(cachedReportsRendered.size()),
-                                    "Snapshot", index == 13 ? "Ready" : (cachedReportsRendered.containsKey("html-snapshot:html") ? "Ready" : "Pending")
+                                    "Artifacts", String.valueOf(cachedReportArtifacts.size()),
+                                    "Snapshot", index == 13 ? "Ready" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
                                 );
                             }
                         } catch (Throwable t) {
                             long repDuration = System.currentTimeMillis() - repStart;
                             log.error("[REPORT {}/{}] FAILED {} after {} ms: {}", index, TOTAL_REPORTS, title, repDuration, t.getMessage(), t);
                             logProcessBanner("REPORT_BUILD_FAILED", phaseText, reportKey, "Error: " + t.getMessage());
+                        } finally {
+                            // Proactive memory check and trim between intensive analytical reports
+                            Runtime rt = Runtime.getRuntime();
+                            long usedBytes = rt.totalMemory() - rt.freeMemory();
+                            long maxBytes = rt.maxMemory();
+                            if ((double) usedBytes / maxBytes > 0.70) {
+                                log.info("[REPORT {}/{}] Heap pressure at {:.1f}% ({}MB/{}MB). Running proactive GC trim...",
+                                    index, TOTAL_REPORTS, ((double) usedBytes / maxBytes) * 100.0, usedBytes / (1024 * 1024), maxBytes / (1024 * 1024));
+                                System.gc();
+                            }
                         }
                     }
                 }
 
                 ReportTaskRunner runner = new ReportTaskRunner();
 
+                final java.util.concurrent.atomic.AtomicReference<ReportService.ArchitectureReportData> refArch = new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.atomic.AtomicReference<ReportService.ChangeRiskReportData> refRisk = new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.atomic.AtomicReference<ReportService.DeadCodeReportData> refDead = new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.atomic.AtomicReference<ReportService.CircularDependencyReportData> refCycles = new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.atomic.AtomicReference<ReportService.ArchetypeGovernanceReportData> refGov = new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.atomic.AtomicReference<ReportService.TechnicalDebtReportData> refDebt = new java.util.concurrent.atomic.AtomicReference<>();
+
                 // 1. Architecture Report
                 runner.run(1, "architecture", "Architecture & Coupling Report", () -> {
                     ReportService.ArchitectureReportData data = reportService.buildArchitectureData(types, methods, fields, rels);
+                    refArch.set(data);
                     cacheReport("architecture", data,
                         reportService.renderArchitectureHtml(data),
                         reportService.renderArchitectureMarkdown(data),
@@ -821,6 +836,7 @@ public class CodeLensServer {
                 // 2. Change Risk & Blast Radius Matrix
                 runner.run(2, "change-risk", "Change Risk & Blast Radius Matrix", () -> {
                     ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
+                    refRisk.set(data);
                     cacheReport("change-risk", data,
                         reportService.renderChangeRiskHtml(data),
                         reportService.renderChangeRiskMarkdown(data),
@@ -830,6 +846,7 @@ public class CodeLensServer {
                 // 3. Dead Code & Orphaned Entry Points
                 runner.run(3, "dead-code", "Dead Code & Reachability Analysis", () -> {
                     ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
+                    refDead.set(data);
                     cacheReport("dead-code", data,
                         reportService.renderDeadCodeHtml(data),
                         reportService.renderDeadCodeMarkdown(data),
@@ -839,6 +856,7 @@ public class CodeLensServer {
                 // 4. Circular Dependencies & Tangling
                 runner.run(4, "circular-dependencies", "Circular Dependencies & Tangling", () -> {
                     ReportService.CircularDependencyReportData data = reportService.buildCircularDependencyData(types, methods, rels);
+                    refCycles.set(data);
                     cacheReport("circular-dependencies", data,
                         reportService.renderCircularDependencyHtml(data),
                         reportService.renderCircularDependencyMarkdown(data),
@@ -848,6 +866,7 @@ public class CodeLensServer {
                 // 5. Archetype Governance & Compliance
                 runner.run(5, "archetype-governance", "Enterprise Archetype Governance", () -> {
                     ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                    refGov.set(data);
                     cacheReport("archetype-governance", data,
                         reportService.renderArchetypeGovernanceHtml(data),
                         reportService.renderArchetypeGovernanceMarkdown(data),
@@ -857,6 +876,7 @@ public class CodeLensServer {
                 // 6. Technical Debt & SQALE Remediation ROI
                 runner.run(6, "technical-debt", "Technical Debt & SQALE Remediation ROI", () -> {
                     ReportService.TechnicalDebtReportData data = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+                    refDebt.set(data);
                     cacheReport("technical-debt", data,
                         reportService.renderTechnicalDebtHtml(data),
                         reportService.renderTechnicalDebtMarkdown(data),
@@ -865,11 +885,19 @@ public class CodeLensServer {
 
                 // 7. Executive Architectural Health Scorecard
                 runner.run(7, "executive-summary", "Executive Architectural Health Scorecard", () -> {
-                    ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(types, methods, fields, rels, gitMetas);
+                    ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(
+                        types, methods, fields, rels, gitMetas,
+                        refArch.get(), refRisk.get(), refCycles.get(), refGov.get(), refDead.get(), refDebt.get());
                     cacheReport("executive-summary", data,
                         reportService.renderExecutiveSummaryHtml(data),
                         reportService.renderExecutiveSummaryMarkdown(data),
                         reportService.renderExecutiveSummaryCsv(data));
+
+                    refRisk.set(null);
+                    refDead.set(null);
+                    refCycles.set(null);
+                    refGov.set(null);
+                    refDebt.set(null);
                 });
 
                 // 8. Code Quality & Security Audit
@@ -921,28 +949,43 @@ public class CodeLensServer {
                 runner.run(13, "html-snapshot", "Standalone Offline HTML Snapshot", () -> {
                     Object fullGraph = callGraph.precomputedFullGraphView(false);
                     Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
-                    String projectName = (types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
-                    Object cachedArch = cachedReportsJson.get("architecture");
-                    ReportService.ArchitectureReportData archData = null;
-                    if (cachedArch instanceof ReportService.ArchitectureReportData ard) {
-                        archData = ard;
-                    } else if (cachedArch instanceof Map) {
-                        try {
-                            archData = jsonMapper.convertValue(cachedArch, ReportService.ArchitectureReportData.class);
-                        } catch (Exception ignored) {}
+                    String projectName = (!types.isEmpty() && types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
+                    ReportService.ArchitectureReportData archData = refArch.get();
+                    if (archData == null) {
+                        Object cachedArch = cachedReportsJson.get("architecture");
+                        if (cachedArch instanceof ReportService.ArchitectureReportData ard) {
+                            archData = ard;
+                        } else if (cachedArch instanceof Map) {
+                            try {
+                                archData = jsonMapper.convertValue(cachedArch, ReportService.ArchitectureReportData.class);
+                            } catch (Exception ignored) {}
+                        }
                     }
                     if (archData == null) {
                         archData = reportService.buildArchitectureData(types, methods, fields, rels);
                     }
-                    String snapshotHtml = reportService.generateInteractiveHtmlSnapshot(projectName, fullGraph, archGraph, archData);
+
+                    File snapshotFile = new File(getReportsCacheDir(), "html-snapshot.html");
+                    try (BufferedWriter writer = Files.newBufferedWriter(snapshotFile.toPath(), StandardCharsets.UTF_8)) {
+                        reportService.writeInteractiveHtmlSnapshot(writer, projectName, fullGraph, archGraph, archData);
+                    } catch (Exception e) {
+                        log.error("Failed streaming interactive HTML snapshot: {}", e.getMessage(), e);
+                    }
+
                     Map<String, Object> snapshotMeta = new LinkedHashMap<>();
                     snapshotMeta.put("report", "html-snapshot");
                     snapshotMeta.put("name", "Standalone Offline HTML Snapshot");
                     snapshotMeta.put("status", "ready");
                     snapshotMeta.put("file", "html-snapshot.html");
-                    snapshotMeta.put("sizeBytes", snapshotHtml.length());
+                    snapshotMeta.put("sizeBytes", snapshotFile.exists() ? snapshotFile.length() : 0);
                     snapshotMeta.put("generatedAt", System.currentTimeMillis());
-                    cacheReport("html-snapshot", snapshotMeta, snapshotHtml, null, null);
+
+                    cachedReportsJson.put("html-snapshot", snapshotMeta);
+                    cachedReportArtifacts.add("html-snapshot:html");
+                    cachedReportArtifacts.add("html-snapshot:json");
+                    writeJsonToFile(new File(getReportsCacheDir(), "html-snapshot.json"), snapshotMeta);
+
+                    refArch.set(null);
                 });
 
                 long duration = System.currentTimeMillis() - startTotal;
@@ -959,14 +1002,14 @@ public class CodeLensServer {
                     progress.setDynamicMetrics(
                         "Reports Ready", "13 / 13",
                         "Active Report", "All Reports Complete",
-                        "Artifacts", String.valueOf(cachedReportsRendered.size()),
+                        "Artifacts", String.valueOf(cachedReportArtifacts.size()),
                         "Snapshot", "Ready"
                     );
                 }
 
                 logProcessBanner("REPORTS_PRECOMPUTE_COMPLETED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
-                    String.format("All %d reports precomputed and cached in %d ms (%d artifacts)", TOTAL_REPORTS, duration, cachedReportsRendered.size()));
-                log.info("Finished precomputing all {} reports in {} ms ({} cache entries)", TOTAL_REPORTS, duration, cachedReportsRendered.size());
+                    String.format("All %d reports precomputed and cached in %d ms (%d artifacts)", TOTAL_REPORTS, duration, cachedReportArtifacts.size()));
+                log.info("Finished precomputing all {} reports in {} ms ({} cache entries)", TOTAL_REPORTS, duration, cachedReportArtifacts.size());
 
             } catch (Exception e) {
                 reportsPrecomputePhase.set("Error: " + e.getMessage());
@@ -982,26 +1025,30 @@ public class CodeLensServer {
     private void cacheReport(String reportKey, Object jsonData, String html, String md, String csv) {
         if (jsonData != null) {
             cachedReportsJson.put(reportKey, jsonData);
-            try {
-                String jsonStr = jsonMapper.writeValueAsString(jsonData);
-                cachedReportsRendered.put(reportKey + ":json", jsonStr);
-                writeStringToFile(new File(getReportsCacheDir(), reportKey + ".json"), jsonStr);
-            } catch (Exception e) {
-                log.debug("Failed saving {}.json: {}", reportKey, e.getMessage());
-            }
+            cachedReportArtifacts.add(reportKey + ":json");
+            writeJsonToFile(new File(getReportsCacheDir(), reportKey + ".json"), jsonData);
         }
         if (html != null) {
-            cachedReportsRendered.put(reportKey + ":html", html);
+            cachedReportArtifacts.add(reportKey + ":html");
             writeStringToFile(new File(getReportsCacheDir(), reportKey + ".html"), html);
         }
         if (md != null) {
-            cachedReportsRendered.put(reportKey + ":markdown", md);
-            cachedReportsRendered.put(reportKey + ":md", md);
+            cachedReportArtifacts.add(reportKey + ":markdown");
+            cachedReportArtifacts.add(reportKey + ":md");
             writeStringToFile(new File(getReportsCacheDir(), reportKey + ".md"), md);
         }
         if (csv != null) {
-            cachedReportsRendered.put(reportKey + ":csv", csv);
+            cachedReportArtifacts.add(reportKey + ":csv");
             writeStringToFile(new File(getReportsCacheDir(), reportKey + ".csv"), csv);
+        }
+    }
+
+    private void writeJsonToFile(File file, Object data) {
+        if (file == null || data == null) return;
+        try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
+            jsonMapper.writeValue(writer, data);
+        } catch (Exception e) {
+            log.debug("Failed writing JSON file {}: {}", file.getName(), e.getMessage());
         }
     }
 
@@ -1041,6 +1088,11 @@ public class CodeLensServer {
             precomputedModuleResult = null;
             clearTransientScanSnapshot();
             log.info("Heap Auto-Recovery: evicted {} layout and {} module in-memory caches", layouts, modules);
+        });
+        this.heapWatchdog.registerRecoveryHook("In-Memory Reports JSON Models Cache", () -> {
+            int reportsCount = cachedReportsJson.size();
+            cachedReportsJson.clear();
+            log.info("Heap Auto-Recovery: evicted {} in-memory report JSON models (disk cache retained)", reportsCount);
         });
         this.heapWatchdog.registerRecoveryHook("H2 Database Page Cache Shrink (16MB)", () -> {
             this.db.trimCache(16384);
@@ -2786,7 +2838,7 @@ public class CodeLensServer {
 
             Map<String, String> reportMetrics = new LinkedHashMap<>();
             reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
-            reportMetrics.put("Artifacts", String.valueOf(cachedReportsRendered.size()));
+            reportMetrics.put("Artifacts", String.valueOf(cachedReportArtifacts.size()));
             reportMetrics.put("Snapshot", "Ready");
             reportMetrics.put("Status", "Complete");
             progress.recordStageEnd("REPORTS", "COMPLETE", String.format("Generated %,d codebase intelligence reports", reportsCount), reportMetrics);
@@ -3205,7 +3257,7 @@ public class CodeLensServer {
 
             Map<String, String> reportMetrics = new LinkedHashMap<>();
             reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
-            reportMetrics.put("Artifacts", String.valueOf(cachedReportsRendered.size()));
+            reportMetrics.put("Artifacts", String.valueOf(cachedReportArtifacts.size()));
             reportMetrics.put("Snapshot", "Ready");
             reportMetrics.put("Status", "Complete");
             progress.recordStageEnd("REPORTS", "COMPLETE", String.format("Generated %,d codebase intelligence reports", reportsCount), reportMetrics);
@@ -4216,73 +4268,77 @@ public class CodeLensServer {
 
         ctx.header("Cache-Control", "private, max-age=60");
 
-        // 1. Check in-memory precomputed cache first (<1ms)
+        // 1. Check disk cache first via streaming InputStream (<1ms, 0 heap string allocation)
+        String ext = "markdown".equals(format) ? "md" : format;
+        File diskFile = new File(getReportsCacheDir(), reportKey + "." + ext);
+        if (diskFile.exists() && diskFile.length() > 0) {
+            String contentType;
+            if ("html".equals(format)) contentType = "text/html; charset=UTF-8";
+            else if ("csv".equals(format)) contentType = "text/csv; charset=UTF-8";
+            else if ("json".equals(format)) contentType = "application/json; charset=UTF-8";
+            else contentType = "text/markdown; charset=UTF-8";
+
+            try {
+                ctx.contentType(contentType).result(Files.newInputStream(diskFile.toPath()));
+                return;
+            } catch (Exception e) {
+                log.warn("Failed streaming cached report {}.{}: {}", reportKey, ext, e.getMessage());
+            }
+        }
+
+        // 2. Check in-memory precomputed JSON cache
         if ("json".equals(format)) {
             Object jsonData = cachedReportsJson.get(reportKey);
             if (jsonData != null) {
                 ctx.json(jsonData);
                 return;
             }
-        } else {
-            String rendered = cachedReportsRendered.get(reportKey + ":" + format);
-            if (rendered != null) {
-                if ("html".equals(format)) {
-                    ctx.contentType("text/html; charset=UTF-8").result(rendered);
-                } else if ("csv".equals(format)) {
-                    ctx.contentType("text/csv; charset=UTF-8").result(rendered);
-                } else {
-                    ctx.contentType("text/markdown; charset=UTF-8").result(rendered);
-                }
-                return;
-            }
         }
 
-        // 2. Check disk cache if not in memory
+        // 3. Check disk cache if not yet indexed in memory
         if (loadReportsFromDiskCache()) {
+            if (diskFile.exists() && diskFile.length() > 0) {
+                String contentType;
+                if ("html".equals(format)) contentType = "text/html; charset=UTF-8";
+                else if ("csv".equals(format)) contentType = "text/csv; charset=UTF-8";
+                else if ("json".equals(format)) contentType = "application/json; charset=UTF-8";
+                else contentType = "text/markdown; charset=UTF-8";
+
+                try {
+                    ctx.contentType(contentType).result(Files.newInputStream(diskFile.toPath()));
+                    return;
+                } catch (Exception e) {
+                    log.warn("Failed streaming cached report {}.{}: {}", reportKey, ext, e.getMessage());
+                }
+            }
             if ("json".equals(format)) {
                 Object jsonData = cachedReportsJson.get(reportKey);
                 if (jsonData != null) {
                     ctx.json(jsonData);
                     return;
                 }
-            } else {
-                String rendered = cachedReportsRendered.get(reportKey + ":" + format);
-                if (rendered != null) {
-                    if ("html".equals(format)) {
-                        ctx.contentType("text/html; charset=UTF-8").result(rendered);
-                    } else if ("csv".equals(format)) {
-                        ctx.contentType("text/csv; charset=UTF-8").result(rendered);
-                    } else {
-                        ctx.contentType("text/markdown; charset=UTF-8").result(rendered);
-                    }
-                    return;
-                }
             }
         }
 
-        // 3. Fallback: If JSON report exists in memory but requested format (e.g. md/html) wasn't rendered yet
+        // 4. Fallback: If JSON report exists in memory but requested format (e.g. md/html) wasn't rendered yet
         if (cachedReportsJson.containsKey(reportKey)) {
             Object jsonData = cachedReportsJson.get(reportKey);
             if ("json".equals(format)) {
                 ctx.json(jsonData);
                 return;
             }
-            String jsonStr = cachedReportsRendered.get(reportKey + ":json");
-            if (jsonStr == null) {
-                try {
-                    jsonStr = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonData);
-                } catch (Exception ignored) {
-                    jsonStr = String.valueOf(jsonData);
-                }
+            String jsonStr;
+            try {
+                jsonStr = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonData);
+            } catch (Exception ignored) {
+                jsonStr = String.valueOf(jsonData);
             }
             if ("html".equals(format)) {
                 String fallbackHtml = "<!DOCTYPE html><html><head><title>" + reportKey + "</title></head><body style=\"background:#0b0f19;color:#f1f5f9;font-family:sans-serif;padding:24px;\"><pre>" + jsonStr + "</pre></body></html>";
-                cachedReportsRendered.put(reportKey + ":html", fallbackHtml);
                 ctx.contentType("text/html; charset=UTF-8").result(fallbackHtml);
                 return;
             } else if ("markdown".equals(format)) {
                 String fallbackMd = "# " + reportKey.toUpperCase() + " REPORT\n\n```json\n" + jsonStr + "\n```\n";
-                cachedReportsRendered.put(reportKey + ":markdown", fallbackMd);
                 ctx.contentType("text/markdown; charset=UTF-8").result(fallbackMd);
                 return;
             } else {
@@ -4357,16 +4413,23 @@ public class CodeLensServer {
     }
 
     private void getHtmlSnapshotReport(Context ctx) {
-        String cachedHtml = cachedReportsRendered.get("html-snapshot:html");
-        if (cachedHtml != null) {
-            ctx.contentType("text/html; charset=UTF-8").result(cachedHtml);
-            return;
+        File snapshotFile = new File(getReportsCacheDir(), "html-snapshot.html");
+        if (snapshotFile.exists() && snapshotFile.length() > 0) {
+            try {
+                ctx.contentType("text/html; charset=UTF-8").result(Files.newInputStream(snapshotFile.toPath()));
+                return;
+            } catch (Exception e) {
+                log.warn("Failed streaming html-snapshot.html: {}", e.getMessage());
+            }
         }
         if (loadReportsFromDiskCache()) {
-            cachedHtml = cachedReportsRendered.get("html-snapshot:html");
-            if (cachedHtml != null) {
-                ctx.contentType("text/html; charset=UTF-8").result(cachedHtml);
-                return;
+            if (snapshotFile.exists() && snapshotFile.length() > 0) {
+                try {
+                    ctx.contentType("text/html; charset=UTF-8").result(Files.newInputStream(snapshotFile.toPath()));
+                    return;
+                } catch (Exception e) {
+                    log.warn("Failed streaming html-snapshot.html: {}", e.getMessage());
+                }
             }
         }
         if (reportsPrecomputeRunning.get()) {
