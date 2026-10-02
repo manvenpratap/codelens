@@ -1204,7 +1204,11 @@ public class CallGraphAnalyzer {
             if (classMatches.size() == 1) return classMatches.get(0);
             String best = disambiguateByCaller(from, classMatches);
             if (best != null) return best;
-            return classMatches.get(0);
+            // Only return candidate 0 if all matches belong to the EXACT same class (overloads)
+            if (getDistinctClasses(classMatches).size() == 1) {
+                return classMatches.get(0);
+            }
+            return null;
         }
 
         // 3. Fallback to candidate methods matching methodName
@@ -1224,7 +1228,10 @@ public class CallGraphAnalyzer {
                 if (scopeMatches.size() == 1) return scopeMatches.get(0);
                 String best = disambiguateByCaller(from, scopeMatches);
                 if (best != null) return best;
-                return scopeMatches.get(0);
+                if (getDistinctClasses(scopeMatches).size() == 1) {
+                    return scopeMatches.get(0);
+                }
+                return null;
             }
         }
 
@@ -1247,9 +1254,17 @@ public class CallGraphAnalyzer {
                             return null;
                         }
 
+                        // If all samePkgCandidates belong to the EXACT SAME class (overloads), resolve
+                        if (getDistinctClasses(samePkgCandidates).size() == 1) {
+                            String best = disambiguateByCaller(from, samePkgCandidates);
+                            return (best != null) ? best : samePkgCandidates.get(0);
+                        }
+
+                        // Candidates belong to multiple distinct classes in the same package.
+                        // Do NOT arbitrarily pick one class's method over another!
                         String best = disambiguateByCaller(from, samePkgCandidates);
                         if (best != null) return best;
-                        return samePkgCandidates.get(0);
+                        return null; // Ambiguous across distinct classes!
                     }
                 }
             }
@@ -1267,12 +1282,18 @@ public class CallGraphAnalyzer {
                     if (sameModCandidates.size() == 1) {
                         return sameModCandidates.get(0);
                     }
+                    if (sameModCandidates.size() > 1 && getDistinctClasses(sameModCandidates).size() == 1) {
+                        return sameModCandidates.get(0);
+                    }
                 }
             }
         }
 
-        // 6. If there is globally only ONE method in the entire codebase with this name, resolve to it.
+        // 6. If there is globally only ONE class in the entire codebase with this method name, resolve to it.
         if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+        if (!candidates.isEmpty() && getDistinctClasses(candidates).size() == 1) {
             return candidates.get(0);
         }
 
@@ -1309,6 +1330,15 @@ public class CallGraphAnalyzer {
         return null;
     }
 
+    private static Set<String> getDistinctClasses(List<String> methodFqns) {
+        if (methodFqns == null || methodFqns.isEmpty()) return Collections.emptySet();
+        Set<String> set = new HashSet<>(4);
+        for (String m : methodFqns) {
+            set.add(extractClassFqnStatic(m));
+        }
+        return set;
+    }
+
     private static String extractClassFqnStatic(String methodFqn) {
         int paren = methodFqn.indexOf('(');
         String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
@@ -1319,39 +1349,59 @@ public class CallGraphAnalyzer {
     private static String disambiguateByCaller(String from, List<String> candidates) {
         if (candidates == null || candidates.isEmpty()) return null;
         if (candidates.size() == 1) return candidates.get(0);
-        if (from == null || from.isEmpty()) return candidates.get(0);
+        if (from == null || from.isEmpty()) {
+            return getDistinctClasses(candidates).size() == 1 ? candidates.get(0) : null;
+        }
 
-        String callerPkg = extractPackageFqn(from);
-        if (callerPkg != null && !callerPkg.isEmpty()) {
+        // 1. Same-class candidate match (e.g. self-call / recursion / inner class)
+        String callerClass = extractClassFqnStatic(from);
+        if (callerClass != null && !callerClass.isEmpty()) {
+            List<String> sameClassCandidates = new ArrayList<>(2);
             for (String c : candidates) {
-                if (!c.equals(from) && callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
-                    return c;
+                if (callerClass.equalsIgnoreCase(extractClassFqnStatic(c))) {
+                    sameClassCandidates.add(c);
                 }
             }
+            if (!sameClassCandidates.isEmpty()) {
+                return sameClassCandidates.get(0);
+            }
+        }
+
+        // 2. Package proximity: only return if matching candidates in caller's package isolate to a single class
+        String callerPkg = extractPackageFqn(from);
+        if (callerPkg != null && !callerPkg.isEmpty() && !"(default)".equalsIgnoreCase(callerPkg)) {
+            List<String> samePkg = new ArrayList<>(2);
             for (String c : candidates) {
                 if (callerPkg.equalsIgnoreCase(extractPackageFqn(c))) {
-                    return c;
+                    samePkg.add(c);
                 }
+            }
+            if (!samePkg.isEmpty() && getDistinctClasses(samePkg).size() == 1) {
+                return samePkg.get(0);
             }
         }
 
+        // 3. Module proximity: only return if matching candidates in caller's module isolate to a single class
         String callerMod = extractModuleName(from);
         if (callerMod != null && !callerMod.isEmpty() && !"default".equalsIgnoreCase(callerMod)) {
-            for (String c : candidates) {
-                if (!c.equals(from) && callerMod.equalsIgnoreCase(extractModuleName(c))) {
-                    return c;
-                }
-            }
+            List<String> sameMod = new ArrayList<>(2);
             for (String c : candidates) {
                 if (callerMod.equalsIgnoreCase(extractModuleName(c))) {
-                    return c;
+                    sameMod.add(c);
                 }
+            }
+            if (!sameMod.isEmpty() && getDistinctClasses(sameMod).size() == 1) {
+                return sameMod.get(0);
             }
         }
 
-        for (String c : candidates) {
-            if (!c.equals(from)) return c;
+        // 4. If all candidates belong to the EXACT same class (overloads), resolving to the first is safe
+        if (getDistinctClasses(candidates).size() == 1) {
+            return candidates.get(0);
         }
+
+        // Candidates span multiple distinct classes and cannot be uniquely disambiguated.
+        // Return null to avoid falsely merging separate methods across classes.
         return null;
     }
 

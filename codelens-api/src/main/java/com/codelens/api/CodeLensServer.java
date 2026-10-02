@@ -80,6 +80,7 @@ public class CodeLensServer {
     private final CallGraphAnalyzer  callGraph;
     private final FieldImpactAnalyzer fieldImpact;
     private final CodeReviewEngine   codeReviewEngine;
+    private final InconsistencyDetector inconsistencyDetector;
     private final ReportService      reportService;
     private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final GitBlameService    gitBlameService;
@@ -1024,6 +1025,7 @@ public class CodeLensServer {
         this.callGraph             = new CallGraphAnalyzer();
         this.fieldImpact           = new FieldImpactAnalyzer();
         this.codeReviewEngine      = new CodeReviewEngine();
+        this.inconsistencyDetector = new InconsistencyDetector();
         this.moduleDependencyAnalyzer = new ModuleDependencyAnalyzer();
         this.reportService         = new ReportService(this.callGraph, this.fieldImpact, this.codeReviewEngine);
         this.criticalPathAnalyzer  = new CriticalPathAnalyzer(this.callGraph);
@@ -1185,8 +1187,9 @@ public class CodeLensServer {
         app.get("/api/fields/{id}",          this::getField);
         app.get("/api/fields/{id}/impact",   this::getFieldImpact);
 
-        // ── Code Review ───────────────────────────────────────────────────────
+        // ── Code Review & Inconsistency Detection ──────────────────────────────
         app.post("/api/review",              this::reviewCode);
+        app.get("/api/inconsistencies",      this::getInconsistencies);
 
         // ── Search ────────────────────────────────────────────────────────────
         app.get("/api/search",               this::search);
@@ -2792,6 +2795,19 @@ public class CodeLensServer {
                 return;
             }
 
+            // Phase 7b: Structural Inconsistency Detection with Class-Awareness
+            try {
+                List<CodeType> scanTypes = dao.findAllTypes();
+                List<CodeMethod> scanMethods = dao.findAllMethods();
+                List<CodeField> scanFields = dao.findAllFields();
+                List<CodeRelationship> scanRels = dao.findAllRelationships();
+                List<InconsistencyReport> inconsistencies = inconsistencyDetector.detect(scanTypes, scanMethods, scanFields, scanRels);
+                dao.batchInsertInconsistencies(inconsistencies);
+                log.info("Structural inconsistency scan complete: detected {} issues across {} types", inconsistencies.size(), scanTypes.size());
+            } catch (Exception ex) {
+                log.warn("Failed to compute structural inconsistencies during scan: {}", ex.getMessage());
+            }
+
             // Phase 8: Complete
             progress.setActiveStage("COMPLETE");
             progress.setPercentage(100);
@@ -3744,6 +3760,22 @@ public class CodeLensServer {
         }
 
         ctx.json(findings);
+    }
+
+    private void getInconsistencies(Context ctx) throws Exception {
+        boolean refresh = Boolean.parseBoolean(ctx.queryParam("refresh"));
+        List<InconsistencyReport> reports = refresh ? Collections.emptyList() : dao.findAllInconsistencies();
+        if (reports.isEmpty()) {
+            List<CodeType> types = dao.findAllTypes();
+            List<CodeMethod> methods = dao.findAllMethods();
+            List<CodeField> fields = dao.findAllFields();
+            List<CodeRelationship> rels = dao.findAllRelationships();
+            if (!methods.isEmpty()) {
+                reports = inconsistencyDetector.detect(types, methods, fields, rels);
+                dao.batchInsertInconsistencies(reports);
+            }
+        }
+        ctx.json(reports);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

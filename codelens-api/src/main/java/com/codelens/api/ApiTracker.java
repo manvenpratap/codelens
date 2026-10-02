@@ -125,6 +125,7 @@ public class ApiTracker {
 
         // ── Code Review & Quality ─────────────────────────────────────────────
         addRoute("POST", "/api/review", "Code Review", "Rule-based architectural and anti-pattern code review", false);
+        addRoute("GET",  "/api/inconsistencies", "Code Review", "Structural inconsistencies and signature divergences", false);
 
         // ── Search ────────────────────────────────────────────────────────────
         addRoute("GET",  "/api/search", "Search", "Full-text Lucene + SQL entity search across codebase", false);

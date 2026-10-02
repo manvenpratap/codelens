@@ -952,12 +952,12 @@ public class EntityDao {
 
     public void batchInsertInconsistencies(List<InconsistencyReport> reports)
             throws SQLException {
-        if (reports.isEmpty()) return;
         // Clear existing before re-inserting (re-scan scenario)
         try (Connection c = db.getConnection();
              Statement s = c.createStatement()) {
             s.execute("DELETE FROM inconsistencies");
         }
+        if (reports == null || reports.isEmpty()) return;
         String sql =
             "MERGE INTO inconsistencies " +
             "(id,entity1_fqn,entity1_kind,entity2_fqn,entity2_kind,reason,similarity_score,kind) KEY(id)" +

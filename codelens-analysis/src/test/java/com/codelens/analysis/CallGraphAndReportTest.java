@@ -2,6 +2,7 @@ package com.codelens.analysis;
 
 import com.codelens.core.model.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class CallGraphAndReportTest {
@@ -265,5 +266,197 @@ public class CallGraphAndReportTest {
         assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.PC_AccountRecord.Get()"), "PC_AccountRecord Get should NOT be filtered");
         assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.PC_AccountRecord.Create()"), "PC_AccountRecord Create should NOT be filtered");
         assertFalse(CallGraphAnalyzer.isPojoOrAccessor("com.tcs.bancs.TradeEntity.Modify()"), "TradeEntity Modify should NOT be filtered");
+    }
+
+    public void testSameNamedMethodsInDifferentClassesCallGraphIndependence() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+
+        String orderExecute = "com.example.service.OrderService.execute()";
+        String batchExecute = "com.example.batch.BatchProcessor.execute()";
+        String runnerRun    = "com.example.app.AppRunner.run()";
+        String ambigCaller  = "com.example.app.OtherCaller.callUnknown()";
+
+        List<String> methods = List.of(orderExecute, batchExecute, runnerRun, ambigCaller);
+
+        List<CodeRelationship> rels = new ArrayList<>();
+
+        // Call 1: AppRunner explicitly calls OrderService.execute
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn(runnerRun);
+        r1.setToEntityFqn("~com.example.service.OrderService.execute");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        // Call 2: AppRunner calls BatchProcessor.execute via scope hint
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn(runnerRun);
+        r2.setToEntityFqn("~batchProcessor.execute");
+        r2.setKind("CALLS");
+        rels.add(r2);
+
+        // Call 3: Ambiguous caller calls execute on unknown receiver 'x' (must NOT attach to either class)
+        CodeRelationship r3 = new CodeRelationship();
+        r3.setFromEntityFqn(ambigCaller);
+        r3.setToEntityFqn("~x.execute");
+        r3.setKind("CALLS");
+        rels.add(r3);
+
+        analyzer.rebuild(methods, rels);
+
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = analyzer.getCallGraph();
+
+        // OrderService.execute should have exactly 1 caller (AppRunner.run)
+        assertEquals(1, analyzer.callerCount(orderExecute), "OrderService.execute caller count");
+        assertTrue(g.containsEdge(runnerRun, orderExecute), "OrderService.execute caller is runnerRun");
+
+        // BatchProcessor.execute should have exactly 1 caller (AppRunner.run)
+        assertEquals(1, analyzer.callerCount(batchExecute), "BatchProcessor.execute caller count");
+        assertTrue(g.containsEdge(runnerRun, batchExecute), "BatchProcessor.execute caller is runnerRun");
+
+        // Ambiguous call must NOT attach to OrderService or BatchProcessor
+        assertFalse(g.containsEdge(ambigCaller, orderExecute), "OrderService.execute should NOT receive ambiguous call");
+        assertFalse(g.containsEdge(ambigCaller, batchExecute), "BatchProcessor.execute should NOT receive ambiguous call");
+    }
+
+    public void testInconsistencyDetectorDistinguishesClasses() {
+        InconsistencyDetector detector = new InconsistencyDetector();
+
+        // 1. Two unrelated classes with same method name but divergent signatures
+        CodeMethod mOrderExec = new CodeMethod();
+        mOrderExec.setFqn("com.example.service.OrderService.execute(Order)");
+        mOrderExec.setSimpleName("execute");
+        mOrderExec.setDeclaringTypeFqn("com.example.service.OrderService");
+        mOrderExec.setReturnType("boolean");
+        mOrderExec.setParameters(List.of(new MethodParam("Order", "order")));
+
+        CodeMethod mBatchExec = new CodeMethod();
+        mBatchExec.setFqn("com.example.batch.BatchProcessor.execute()");
+        mBatchExec.setSimpleName("execute");
+        mBatchExec.setDeclaringTypeFqn("com.example.batch.BatchProcessor");
+        mBatchExec.setReturnType("void");
+
+        // 2. Same class methods with divergent signatures
+        CodeMethod mSameClass1 = new CodeMethod();
+        mSameClass1.setFqn("com.example.service.OrderService.validate(Order)");
+        mSameClass1.setSimpleName("validate");
+        mSameClass1.setDeclaringTypeFqn("com.example.service.OrderService");
+        mSameClass1.setReturnType("boolean");
+        mSameClass1.setParameters(List.of(new MethodParam("Order", "order")));
+
+        CodeMethod mSameClass2 = new CodeMethod();
+        mSameClass2.setFqn("com.example.service.OrderService.validate(Order,int)");
+        mSameClass2.setSimpleName("validate");
+        mSameClass2.setDeclaringTypeFqn("com.example.service.OrderService");
+        mSameClass2.setReturnType("void");
+        mSameClass2.setParameters(List.of(new MethodParam("Order", "order"), new MethodParam("int", "flags")));
+
+        // 3. Constructors with different parameter counts should never be flagged
+        CodeMethod mCtor1 = new CodeMethod();
+        mCtor1.setFqn("com.example.service.OrderService.<init>()");
+        mCtor1.setSimpleName("<init>");
+        mCtor1.setDeclaringTypeFqn("com.example.service.OrderService");
+
+        CodeMethod mCtor2 = new CodeMethod();
+        mCtor2.setFqn("com.example.service.OrderService.<init>(String)");
+        mCtor2.setSimpleName("<init>");
+        mCtor2.setDeclaringTypeFqn("com.example.service.OrderService");
+        mCtor2.setParameters(List.of(new MethodParam("String", "name")));
+
+        List<CodeMethod> allMethods = List.of(mOrderExec, mBatchExec, mSameClass1, mSameClass2, mCtor1, mCtor2);
+        List<CodeType> allTypes = new ArrayList<>();
+
+        CodeType tOrder = new CodeType();
+        tOrder.setFqn("com.example.service.OrderService");
+        tOrder.setSimpleName("OrderService");
+        allTypes.add(tOrder);
+
+        CodeType tBatch = new CodeType();
+        tBatch.setFqn("com.example.batch.BatchProcessor");
+        tBatch.setSimpleName("BatchProcessor");
+        allTypes.add(tBatch);
+
+        List<InconsistencyReport> reports = detector.detect(allTypes, allMethods, Collections.emptyList());
+
+        // Unrelated classes (OrderService vs BatchProcessor) must NOT be flagged
+        boolean falsePositive = reports.stream().anyMatch(r ->
+            "DIVERGENT_SIGNATURE".equals(r.getKind()) &&
+            (r.getEntity1Fqn().contains("BatchProcessor") || r.getEntity2Fqn().contains("BatchProcessor"))
+        );
+        assertFalse(falsePositive, "Unrelated classes sharing method name 'execute' should NOT be flagged as divergent signature");
+
+        // Constructors must never be flagged
+        boolean ctorFlagged = reports.stream().anyMatch(r ->
+            "DIVERGENT_SIGNATURE".equals(r.getKind()) &&
+            (r.getEntity1Fqn().contains("<init>") || r.getEntity2Fqn().contains("<init>"))
+        );
+        assertFalse(ctorFlagged, "Constructors must NEVER be flagged as divergent signature");
+
+        // Same class divergent signature MUST be flagged
+        boolean sameClassFlagged = reports.stream().anyMatch(r ->
+            "DIVERGENT_SIGNATURE".equals(r.getKind()) &&
+            r.getEntity1Fqn().contains("validate") && r.getEntity2Fqn().contains("validate")
+        );
+        assertTrue(sameClassFlagged, "Same class methods with divergent signature MUST be flagged");
+    }
+
+    public void testDeadCodeDetectionTreatsSameNamedMethodsSeparately() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+        FieldImpactAnalyzer fieldImpact = new FieldImpactAnalyzer();
+        CodeReviewEngine reviewEngine = new CodeReviewEngine();
+        ReportService reportService = new ReportService(analyzer, fieldImpact, reviewEngine);
+
+        String orderExecute = "com.example.service.OrderService.execute()";
+        String batchExecute = "com.example.batch.BatchProcessor.execute()";
+        String caller = "com.example.app.Runner.run()";
+
+        List<CodeType> types = new ArrayList<>();
+        CodeType t1 = new CodeType();
+        t1.setFqn("com.example.service.OrderService");
+        t1.setLineCount(100);
+        types.add(t1);
+
+        CodeType t2 = new CodeType();
+        t2.setFqn("com.example.batch.BatchProcessor");
+        t2.setLineCount(100);
+        types.add(t2);
+
+        List<CodeMethod> methods = new ArrayList<>();
+        CodeMethod m1 = new CodeMethod();
+        m1.setFqn(orderExecute);
+        m1.setSimpleName("execute");
+        m1.setDeclaringTypeFqn("com.example.service.OrderService");
+        m1.setStartLine(10);
+        m1.setEndLine(20);
+        methods.add(m1);
+
+        CodeMethod m2 = new CodeMethod();
+        m2.setFqn(batchExecute);
+        m2.setSimpleName("execute");
+        m2.setDeclaringTypeFqn("com.example.batch.BatchProcessor");
+        m2.setStartLine(30);
+        m2.setEndLine(45);
+        methods.add(m2);
+
+        // Only OrderService.execute is called by Runner
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship r = new CodeRelationship();
+        r.setFromEntityFqn(caller);
+        r.setToEntityFqn(orderExecute);
+        r.setKind("CALLS");
+        rels.add(r);
+
+        analyzer.rebuild(List.of(orderExecute, batchExecute, caller), rels);
+
+        ReportService.DeadCodeReportData deadData = reportService.buildDeadCodeData(types, methods, Collections.emptyList(), rels);
+
+        // BatchProcessor.execute should be dead code (0 callers)
+        boolean batchIsDead = deadData.orphanedMethods.stream()
+            .anyMatch(i -> i.methodFqn.equals(batchExecute));
+        assertTrue(batchIsDead, "BatchProcessor.execute should be flagged as orphaned/dead code");
+
+        // OrderService.execute has a caller, so it should NOT be dead code
+        boolean orderIsDead = deadData.orphanedMethods.stream()
+            .anyMatch(i -> i.methodFqn.equals(orderExecute));
+        assertFalse(orderIsDead, "OrderService.execute should NOT be dead code since it has a caller");
     }
 }

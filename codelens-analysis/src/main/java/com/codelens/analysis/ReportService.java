@@ -1386,6 +1386,13 @@ public class ReportService {
 
         for (CodeMethod m : methods) {
             int inCalls = methodCallers.getOrDefault(m.getFqn(), 0);
+            if (inCalls == 0 && m.getDeclaringTypeFqn() != null) {
+                String classMethodKey = m.getDeclaringTypeFqn() + "." + m.getSimpleName();
+                inCalls = methodCallers.getOrDefault(classMethodKey, 0);
+            }
+            if (inCalls == 0 && callGraph != null) {
+                inCalls = callGraph.callerCount(m.getFqn());
+            }
             if (inCalls == 0) {
                 String name = m.getSimpleName();
                 if (isPotentialEntryPoint(name, m.getDeclaringTypeFqn())) continue;
@@ -1398,7 +1405,11 @@ public class ReportService {
                 item.returnType = m.getReturnType() != null ? m.getReturnType() : "void";
                 int mLines = Math.max(1, m.getEndLine() - m.getStartLine());
                 item.lineCount = mLines;
-                item.outDegree = methodCallees.getOrDefault(m.getFqn(), 0);
+                int outCalls = methodCallees.getOrDefault(m.getFqn(), 0);
+                if (outCalls == 0 && callGraph != null) {
+                    outCalls = callGraph.calleeCount(m.getFqn());
+                }
+                item.outDegree = outCalls;
                 item.reason = "Zero incoming callers across codebase";
                 data.orphanedMethods.add(item);
                 deadLines += mLines;
@@ -3194,7 +3205,17 @@ public class ReportService {
             int loc = Math.max(1, m.getEndLine() - m.getStartLine() + 1);
             totalLoc += loc;
             int inDeg = methodIn.getOrDefault(m.getFqn(), 0);
+            if (inDeg == 0 && m.getDeclaringTypeFqn() != null) {
+                String classMethodKey = m.getDeclaringTypeFqn() + "." + m.getSimpleName();
+                inDeg = methodIn.getOrDefault(classMethodKey, 0);
+            }
+            if (inDeg == 0 && callGraph != null) {
+                inDeg = callGraph.callerCount(m.getFqn());
+            }
             int outDeg = methodOut.getOrDefault(m.getFqn(), 0);
+            if (outDeg == 0 && callGraph != null) {
+                outDeg = callGraph.calleeCount(m.getFqn());
+            }
 
             String pkg = "default";
             if (m.getDeclaringTypeFqn() != null && m.getDeclaringTypeFqn().contains(".")) {
