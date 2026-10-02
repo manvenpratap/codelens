@@ -75,27 +75,35 @@ public class ApiTracker {
         addRoute("POST", "/api/processes/{id}/restart",   "Process & Tasks", "Restart worker or trigger immediate task re-execution", false);
 
         // ── Database & Storage ────────────────────────────────────────────────
-        addRoute("GET",  "/api/database/health",  "Database & Storage", "Check H2 MVStore size, pool metrics, table counts & integrity", true);
-        addRoute("POST", "/api/database/recover", "Database & Storage", "Execute self-healing index rebuild, compaction, or orphan purge", false);
+        addRoute("GET",    "/api/database/health",             "Database & Storage", "Check H2 MVStore size, pool metrics, table counts & integrity", true);
+        addRoute("POST",   "/api/database/recover",            "Database & Storage", "Execute self-healing index rebuild, compaction, or orphan purge", false);
+        addRoute("GET",    "/api/diagnostics/logs",            "Database & Storage", "List saved diagnostic incident flight recorder log files", true);
+        addRoute("GET",    "/api/diagnostics/logs/{filename}", "Database & Storage", "Read contents of specific diagnostic incident log file", false);
+        addRoute("POST",   "/api/diagnostics/capture",         "Database & Storage", "Capture full system diagnostic snapshot (heap, pools, threads)", true);
+        addRoute("DELETE", "/api/diagnostics/logs",            "Database & Storage", "Purge older diagnostic incident log files", false);
 
         // ── JVM & Telemetry ───────────────────────────────────────────────────
-        addRoute("GET",  "/api/jvm/metrics",             "JVM & Telemetry", "Comprehensive JVM telemetry: Heap, Pools, GC, Threads, OS CPU", true);
-        addRoute("POST", "/api/jvm/gc",                  "JVM & Telemetry", "Trigger manual garbage collection (System.gc()) & report reclaimed MB", true);
-        addRoute("GET",  "/api/jvm/threads",              "JVM & Telemetry", "Live thread list with states, CPU time, locks, and top stack frame", true);
-        addRoute("GET",  "/api/jvm/threads/{id}/stack",  "JVM & Telemetry", "Inspect stack trace of an individual JVM thread", false);
-        addRoute("GET",  "/api/jvm/thread-dump",          "JVM & Telemetry", "Generate full diagnostic JVM thread dump for export", true);
-        addRoute("GET",  "/api/jvm/deadlocks",            "JVM & Telemetry", "Scan JVM for deadlocked monitor and synchronizer threads", true);
-        addRoute("POST", "/api/jvm/trim-memory",         "JVM & Telemetry", "Evict in-memory layout & module caches and run garbage collection", true);
-        addRoute("GET",  "/api/jvm/auto-recovery",       "JVM & Telemetry", "Heap auto-recovery watchdog status, threshold levels, and incident log", true);
-        addRoute("POST", "/api/jvm/auto-recovery/trigger", "JVM & Telemetry", "Manually trigger heap auto-recovery routine and record incident", true);
-        addRoute("POST", "/api/jvm/auto-recovery/simulate", "JVM & Telemetry", "Simulate transient memory pressure spike to test auto-recovery end-to-end", true);
+        addRoute("GET",  "/api/jvm/metrics",                          "JVM & Telemetry", "Comprehensive JVM telemetry: Heap, Pools, GC, Threads, OS CPU", true);
+        addRoute("POST", "/api/jvm/gc",                               "JVM & Telemetry", "Trigger manual garbage collection (System.gc()) & report reclaimed MB", true);
+        addRoute("GET",  "/api/jvm/threads",                           "JVM & Telemetry", "Live thread list with states, CPU time, locks, and top stack frame", true);
+        addRoute("GET",  "/api/jvm/threads/{id}/stack",               "JVM & Telemetry", "Inspect stack trace of an individual JVM thread", false);
+        addRoute("GET",  "/api/jvm/thread-dump",                       "JVM & Telemetry", "Generate full diagnostic JVM thread dump for export", true);
+        addRoute("GET",  "/api/jvm/deadlocks",                         "JVM & Telemetry", "Scan JVM for deadlocked monitor and synchronizer threads", true);
+        addRoute("POST", "/api/jvm/trim-memory",                      "JVM & Telemetry", "Evict in-memory layout & module caches and run garbage collection", true);
+        addRoute("GET",  "/api/jvm/auto-recovery",                    "JVM & Telemetry", "Heap auto-recovery watchdog status, threshold levels, and incident log", true);
+        addRoute("POST", "/api/jvm/auto-recovery/trigger",            "JVM & Telemetry", "Manually trigger heap auto-recovery routine and record incident", true);
+        addRoute("POST", "/api/jvm/auto-recovery/simulate",           "JVM & Telemetry", "Simulate transient memory pressure spike to test auto-recovery end-to-end", true);
         addRoute("POST", "/api/jvm/auto-recovery/reset-circuit-breaker", "JVM & Telemetry", "Manually reset memory circuit breaker to closed state", true);
+        addRoute("GET",  "/api/stress-test/status",                   "JVM & Telemetry", "Current synthetic database and memory stress test status", true);
+        addRoute("POST", "/api/stress-test/start",                    "JVM & Telemetry", "Launch multi-threaded database read/write stress simulation", false);
+        addRoute("POST", "/api/stress-test/stop",                     "JVM & Telemetry", "Stop running stress test simulation and release workers", true);
 
         // ── Packages & Modules ────────────────────────────────────────────────
         addRoute("GET",  "/api/packages",                    "Packages & Modules", "List all detected Java packages with hierarchy", true);
         addRoute("GET",  "/api/packages/{fqn}/types",        "Packages & Modules", "Retrieve types declared within package", false);
         addRoute("GET",  "/api/packages/{fqn}/dependencies", "Packages & Modules", "Package-level afferent & efferent dependencies", false);
         addRoute("GET",  "/api/modules/dependencies",        "Packages & Modules", "Complete module-to-module dependency matrix", true);
+        addRoute("GET",  "/api/modules/insights",            "Packages & Modules", "Deep module decoupling insights, architectural layering and risks", true);
         addRoute("GET",  "/api/modules/{name}/dependencies", "Packages & Modules", "Specific module dependencies and couplings", false);
 
         // ── Types & Classes ───────────────────────────────────────────────────
@@ -147,13 +155,21 @@ public class ApiTracker {
         addRoute("GET",  "/api/git/status",           "Git Analytics", "Current Git history analysis progress status", true);
 
         // ── Reports & Exports ─────────────────────────────────────────────────
+        addRoute("GET",  "/api/reports/all",                   "Reports", "Consolidated summary of all available codebase reports", true);
+        addRoute("GET",  "/api/reports/status",                "Reports", "Live generation status and cache freshness of background reports", true);
+        addRoute("POST", "/api/reports/regenerate",            "Reports", "Force eviction and background recomputation of all analytical reports", true);
         addRoute("GET",  "/api/reports/architecture",          "Reports", "Architecture coupling and modularity report", true);
         addRoute("GET",  "/api/reports/change-risk",           "Reports", "Change risk and high-churn hotspot report", true);
         addRoute("GET",  "/api/reports/dead-code",             "Reports", "Unreachable methods and dead code analysis report", true);
         addRoute("GET",  "/api/reports/circular-dependencies", "Reports", "Circular dependency cycle detection report", true);
         addRoute("GET",  "/api/reports/archetype-governance",  "Reports", "Archetype compliance and governance report", true);
+        addRoute("GET",  "/api/reports/concurrency-audit",      "Reports", "Thread safety, race hazard, and synchronization anti-pattern audit", true);
+        addRoute("GET",  "/api/reports/technical-debt",        "Reports", "SQALE technical debt index, remediation effort and hotspot ranking", true);
+        addRoute("GET",  "/api/reports/database-access",       "Reports", "Database query patterns, transaction scopes, and JDBC anti-patterns", true);
+        addRoute("GET",  "/api/reports/executive-summary",     "Reports", "High-level codebase health overview, architecture grades, and key risks", true);
         addRoute("GET",  "/api/reports/review",                "Reports", "Consolidated code review report", true);
         addRoute("GET",  "/api/reports/metrics",               "Reports", "Comprehensive codebase metrics report", true);
+        addRoute("GET",  "/api/reports/api-catalog",           "Reports", "Exportable OpenAPI-style documentation catalog for all CodeLens APIs", true);
         addRoute("GET",  "/api/reports/html-snapshot",         "Reports", "Generate standalone interactive HTML snapshot", true);
         addRoute("GET",  "/api/reports/download",              "Reports", "Download generated report in requested format", false);
 

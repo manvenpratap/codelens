@@ -2196,7 +2196,7 @@ async function loadProcessHubData() {
 
     const totalReq = apis.summary?.totalRequests || 0;
     const avgLat = apis.summary?.avgLatencyMs || 0;
-    const epCount = apis.summary?.totalEndpoints || 52;
+    const epCount = apis.summary?.totalEndpoints || 95;
     const hudApis = qs('#hub-hud-apis');
     if (hudApis) hudApis.textContent = `${epCount}`;
     const hudApisSub = qs('#hub-hud-apis-sub');

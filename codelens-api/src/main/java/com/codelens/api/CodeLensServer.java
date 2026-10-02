@@ -1153,13 +1153,24 @@ public class CodeLensServer {
 
         // ── API Telemetry Filters ─────────────────────────────────────────────
         app.before(ctx -> {
-            ctx.attribute("startTime", System.currentTimeMillis());
-            apiTracker.recordRequestStart(ctx.method().name(), ctx.path());
+            if (ctx.path().startsWith("/api")) {
+                ctx.attribute("startTime", System.currentTimeMillis());
+                apiTracker.recordRequestStart(ctx.method().name(), ctx.path());
+            }
         });
         app.after(ctx -> {
-            Long start = ctx.attribute("startTime");
-            long duration = start != null ? (System.currentTimeMillis() - start) : 0;
-            apiTracker.recordRequestEnd(ctx.method().name(), ctx.matchedPath(), ctx.status().getCode(), duration);
+            if (ctx.path().startsWith("/api")) {
+                Long start = ctx.attribute("startTime");
+                long duration = start != null ? (System.currentTimeMillis() - start) : 0;
+                String matchedPath = null;
+                try {
+                    matchedPath = ctx.endpointHandlerPath();
+                } catch (Throwable ignored) {}
+                if (matchedPath == null || matchedPath.isBlank() || matchedPath.startsWith("No handler")) {
+                    matchedPath = ctx.path();
+                }
+                apiTracker.recordRequestEnd(ctx.method().name(), matchedPath, ctx.status().getCode(), duration);
+            }
         });
 
         // ── Root redirect ─────────────────────────────────────────────────────
