@@ -233,6 +233,10 @@ public class BackgroundTaskOrchestratorTest {
             orchestrator.dispatch();
 
             assertTrue(taskFinished.await(3, TimeUnit.SECONDS), "Task should resume and complete after memory normalizes");
+            long deadline = System.currentTimeMillis() + 1000;
+            while (System.currentTimeMillis() < deadline && orchestrator.getTaskSnapshot("reports-generator").status != BackgroundTaskOrchestrator.TaskStatus.COMPLETE) {
+                Thread.sleep(10);
+            }
             assertEquals(BackgroundTaskOrchestrator.TaskStatus.COMPLETE,
                     orchestrator.getTaskSnapshot("reports-generator").status,
                     "Task status should be COMPLETE");

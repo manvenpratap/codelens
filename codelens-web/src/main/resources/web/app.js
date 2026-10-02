@@ -14168,7 +14168,7 @@ const ReportsHub = {
     }
   },
 
-  activate(reportKey, format) {
+  activate(reportKey, format = 'dashboard') {
     if (ReportsHub.pollTimer) {
       clearTimeout(ReportsHub.pollTimer);
       ReportsHub.pollTimer = null;
@@ -14176,10 +14176,10 @@ const ReportsHub = {
     if (reportKey && REPORTS_METADATA[reportKey]) {
       ReportsHub.activeReport = reportKey;
     }
-    if (format) {
-      ReportsHub.activeFormat = format;
-    } else if (ReportsHub.activeReport === 'html-snapshot' && ReportsHub.activeFormat !== 'html') {
+    if (ReportsHub.activeReport === 'html-snapshot') {
       ReportsHub.activeFormat = 'html';
+    } else {
+      ReportsHub.activeFormat = format || 'dashboard';
     }
 
     ReportsHub.syncUI();
@@ -16178,28 +16178,39 @@ const ReportsHub = {
 
   enhanceInteractiveTables(container) {
     if (!container) return;
-    const cards = container.querySelectorAll('.report-section-card');
-    cards.forEach((card, cardIdx) => {
-      const table = card.querySelector('.report-table');
-      const header = card.querySelector('.report-section-header');
-      if (!table || !header || card.dataset.enhanced === 'true') return;
-      card.dataset.enhanced = 'true';
+    const tables = container.querySelectorAll('.report-table');
+    tables.forEach((table, tblIdx) => {
+      if (table.dataset.enhanced === 'true') return;
+      table.dataset.enhanced = 'true';
 
       const tbody = table.querySelector('tbody');
       if (!tbody) return;
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      if (rows.length <= 1) return;
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      if (allRows.length === 0) return;
+
+      const card = table.closest('.report-section-card');
+      let header = card ? card.querySelector('.report-section-header') : null;
+      const tableWrap = table.closest('.report-table-wrap') || table.parentElement;
 
       // Check if table contains risk/severity badges for quick pill filtering
       const hasRiskBadges = tbody.querySelector('.risk-critical, .risk-high, .risk-medium, .risk-low') !== null;
 
-      // Create interactive filter toolbar inside header
-      const controlsWrap = document.createElement('div');
-      controlsWrap.className = 'report-table-controls';
+      // Create interactive filter & rows-per-page controls inside header or right above table
+      let controlsWrap = header ? header.querySelector('.report-table-controls') : null;
+      if (!controlsWrap) {
+        controlsWrap = document.createElement('div');
+        controlsWrap.className = 'report-table-controls';
+        if (header) {
+          header.appendChild(controlsWrap);
+        } else if (tableWrap && tableWrap.parentNode) {
+          tableWrap.parentNode.insertBefore(controlsWrap, tableWrap);
+        }
+      }
+
       controlsWrap.innerHTML = `
         ${hasRiskBadges ? `
           <div class="report-severity-pills" role="group" aria-label="Filter by severity">
-            <button type="button" class="report-sev-pill active" data-sev="ALL">All (${rows.length})</button>
+            <button type="button" class="report-sev-pill active" data-sev="ALL">All (${allRows.length})</button>
             <button type="button" class="report-sev-pill sev-critical" data-sev="CRITICAL">Critical</button>
             <button type="button" class="report-sev-pill sev-high" data-sev="HIGH">High</button>
             <button type="button" class="report-sev-pill sev-medium" data-sev="MEDIUM">Medium</button>
@@ -16207,20 +16218,136 @@ const ReportsHub = {
         ` : ''}
         <div class="report-table-search-wrap">
           <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="search" class="report-table-filter-input" placeholder="Filter ${rows.length} rows…" aria-label="Filter table rows" />
+          <input type="search" class="report-table-filter-input" placeholder="Filter ${allRows.length} rows…" aria-label="Filter table rows" />
+        </div>
+        <div class="report-table-size-wrap">
+          <label>Rows: </label>
+          <select class="report-pagination-size-select" aria-label="Rows per page">
+            <option value="10">10</option>
+            <option value="15" selected>15</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="-1">All</option>
+          </select>
         </div>
       `;
-      header.appendChild(controlsWrap);
+
+      // Create bottom pagination bar
+      const paginationWrap = document.createElement('div');
+      paginationWrap.className = 'report-table-pagination';
+      paginationWrap.innerHTML = `
+        <div class="report-pagination-info">Showing 1–${Math.min(15, allRows.length)} of ${allRows.length} entries</div>
+        <div class="report-pagination-nav"></div>
+      `;
+
+      if (tableWrap && tableWrap.parentNode) {
+        if (tableWrap.nextSibling) {
+          tableWrap.parentNode.insertBefore(paginationWrap, tableWrap.nextSibling);
+        } else {
+          tableWrap.parentNode.appendChild(paginationWrap);
+        }
+      }
 
       let activeSev = 'ALL';
       let queryText = '';
-      const badgeEl = header.querySelector('.report-section-badge');
-      const origBadgeText = badgeEl ? badgeEl.textContent : `${rows.length} items`;
+      let pageSize = 15;
+      let currentPage = 1;
+      let filteredRows = allRows.slice();
+
+      const badgeEl = header ? header.querySelector('.report-section-badge') : null;
+      const origBadgeText = badgeEl ? badgeEl.textContent : `${allRows.length} items`;
+      const pageInfoEl = paginationWrap.querySelector('.report-pagination-info');
+      const pageNavEl = paginationWrap.querySelector('.report-pagination-nav');
+
+      const renderPagination = () => {
+        const total = filteredRows.length;
+        const totalPages = (pageSize > 0) ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        const startIdx = (pageSize > 0) ? (currentPage - 1) * pageSize : 0;
+        const endIdx = (pageSize > 0) ? Math.min(startIdx + pageSize, total) : total;
+        const visibleSet = new Set(filteredRows.slice(startIdx, endIdx));
+
+        allRows.forEach(tr => {
+          tr.style.display = visibleSet.has(tr) ? '' : 'none';
+        });
+
+        // Entry counter
+        if (total === 0) {
+          pageInfoEl.textContent = 'Showing 0 of 0 entries' + (queryText || activeSev !== 'ALL' ? ` (filtered from ${allRows.length})` : '');
+        } else {
+          const filterSuffix = (total < allRows.length) ? ` (filtered from ${allRows.length})` : '';
+          pageInfoEl.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} entries${filterSuffix}`;
+        }
+
+        if (badgeEl) {
+          badgeEl.textContent = (total === allRows.length)
+            ? origBadgeText
+            : `${total} / ${allRows.length} shown`;
+        }
+
+        // Render page buttons
+        pageNavEl.innerHTML = '';
+
+        const makeBtn = (label, targetPage, disabled, isActive, title) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = (label === '«' || label === '‹' || label === '›' || label === '»')
+            ? 'btn-pagination-nav'
+            : ('btn-pagination-page' + (isActive ? ' active' : ''));
+          btn.textContent = label;
+          if (title) btn.title = title;
+          if (disabled) {
+            btn.disabled = true;
+          } else {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              currentPage = targetPage;
+              renderPagination();
+            });
+          }
+          return btn;
+        };
+
+        pageNavEl.appendChild(makeBtn('«', 1, currentPage === 1, false, 'First page'));
+        pageNavEl.appendChild(makeBtn('‹', currentPage - 1, currentPage === 1, false, 'Previous page'));
+
+        const startP = Math.max(1, currentPage - 2);
+        const endP = Math.min(totalPages, currentPage + 2);
+
+        if (startP > 1) {
+          pageNavEl.appendChild(makeBtn('1', 1, false, currentPage === 1));
+          if (startP > 2) {
+            const ell = document.createElement('span');
+            ell.className = 'report-pagination-ellipsis';
+            ell.textContent = '…';
+            pageNavEl.appendChild(ell);
+          }
+        }
+
+        for (let p = startP; p <= endP; p++) {
+          pageNavEl.appendChild(makeBtn(String(p), p, false, p === currentPage));
+        }
+
+        if (endP < totalPages) {
+          if (endP < totalPages - 1) {
+            const ell = document.createElement('span');
+            ell.className = 'report-pagination-ellipsis';
+            ell.textContent = '…';
+            pageNavEl.appendChild(ell);
+          }
+          pageNavEl.appendChild(makeBtn(String(totalPages), totalPages, false, currentPage === totalPages));
+        }
+
+        pageNavEl.appendChild(makeBtn('›', currentPage + 1, currentPage === totalPages, false, 'Next page'));
+        pageNavEl.appendChild(makeBtn('»', totalPages, currentPage === totalPages, false, 'Last page'));
+      };
 
       const applyFilter = () => {
-        let visibleCount = 0;
         const q = queryText.trim().toLowerCase();
-        rows.forEach(tr => {
+        filteredRows = allRows.filter(tr => {
           const textMatch = !q || tr.textContent.toLowerCase().includes(q);
           let sevMatch = true;
           if (activeSev !== 'ALL') {
@@ -16229,15 +16356,10 @@ const ReportsHub = {
                       : '.risk-medium';
             sevMatch = tr.querySelector(cls) !== null || tr.textContent.toUpperCase().includes(activeSev);
           }
-          const show = textMatch && sevMatch;
-          tr.style.display = show ? '' : 'none';
-          if (show) visibleCount++;
+          return textMatch && sevMatch;
         });
-        if (badgeEl) {
-          badgeEl.textContent = (visibleCount === rows.length)
-            ? origBadgeText
-            : `${visibleCount} / ${rows.length} shown`;
-        }
+        currentPage = 1;
+        renderPagination();
       };
 
       const searchInput = controlsWrap.querySelector('.report-table-filter-input');
@@ -16245,6 +16367,15 @@ const ReportsHub = {
         searchInput.addEventListener('input', (e) => {
           queryText = e.target.value || '';
           applyFilter();
+        });
+      }
+
+      const sizeSelect = controlsWrap.querySelector('.report-pagination-size-select');
+      if (sizeSelect) {
+        sizeSelect.addEventListener('change', (e) => {
+          pageSize = parseInt(e.target.value, 10);
+          currentPage = 1;
+          renderPagination();
         });
       }
 
@@ -16286,7 +16417,7 @@ const ReportsHub = {
           sortIcon.textContent = asc ? '▲' : '▼';
           sortIcon.style.opacity = '1';
 
-          const sorted = rows.slice().sort((a, b) => {
+          allRows.sort((a, b) => {
             const cellA = (a.children[colIdx]?.textContent || '').trim();
             const cellB = (b.children[colIdx]?.textContent || '').trim();
             const numA = parseFloat(cellA.replace(/[^0-9.-]+/g, ''));
@@ -16296,9 +16427,12 @@ const ReportsHub = {
             }
             return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
           });
-          sorted.forEach(r => tbody.appendChild(r));
+          allRows.forEach(r => tbody.appendChild(r));
+          applyFilter();
         });
       });
+
+      renderPagination();
     });
   },
 
@@ -16367,7 +16501,7 @@ const ReportsHub = {
 
 window.ReportsHub = ReportsHub;
 window.ExportHub = {
-  open(type = 'architecture', format = 'markdown') {
+  open(type = 'architecture', format = 'dashboard') {
     switchTab('reports');
     ReportsHub.activate(type, format);
   },

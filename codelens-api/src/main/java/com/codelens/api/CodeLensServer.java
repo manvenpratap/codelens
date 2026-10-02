@@ -610,6 +610,15 @@ public class CodeLensServer {
                     loadedAny = true;
                 } else if (name.endsWith(".html")) {
                     String reportKey = name.substring(0, name.length() - 5);
+                    if (!"html-snapshot".equals(reportKey)) {
+                        try {
+                            String content = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                            if (!content.contains("report-html-pagination")) {
+                                f.delete();
+                                continue;
+                            }
+                        } catch (Exception ignored) {}
+                    }
                     cachedReportArtifacts.add(reportKey + ":html");
                     if ("html-snapshot".equals(reportKey)) {
                         cachedReportsJson.putIfAbsent("html-snapshot", Map.of("report", "html-snapshot", "name", "Standalone Offline HTML Snapshot", "status", "ready"));
@@ -4288,6 +4297,17 @@ public class CodeLensServer {
         // 1. Check disk cache first via streaming InputStream (<1ms, 0 heap string allocation)
         String ext = "markdown".equals(format) ? "md" : format;
         File diskFile = new File(getReportsCacheDir(), reportKey + "." + ext);
+        if (diskFile.exists() && diskFile.length() > 0) {
+            if ("html".equals(format) && !"html-snapshot".equals(reportKey)) {
+                try {
+                    String sample = Files.readString(diskFile.toPath(), StandardCharsets.UTF_8);
+                    if (!sample.contains("report-html-pagination")) {
+                        diskFile.delete();
+                        cachedReportArtifacts.remove(reportKey + ":html");
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
         if (diskFile.exists() && diskFile.length() > 0) {
             String contentType;
             if ("html".equals(format)) contentType = "text/html; charset=UTF-8";

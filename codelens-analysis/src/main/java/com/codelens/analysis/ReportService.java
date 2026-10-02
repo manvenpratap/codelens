@@ -401,6 +401,7 @@ public class ReportService {
             sb.append("</ul>\n");
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -589,6 +590,7 @@ public class ReportService {
             sb.append("</div>\n");
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -754,6 +756,7 @@ public class ReportService {
         }
         sb.append("</tbody></table>\n");
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -1275,6 +1278,7 @@ public class ReportService {
             sb.append("</tbody></table>\n");
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -1588,6 +1592,7 @@ public class ReportService {
             sb.append("</tbody></table>\n");
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -1827,7 +1832,9 @@ public class ReportService {
         sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.totalPackageTangles == 0 ? "var(--green)" : "var(--orange)").append(";\">")
           .append(d.totalPackageTangles).append("</div><div class=\"card-lbl\">Package Tangles</div></div>");
         sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--accent);\">").append(d.acyclicScore).append("/100</div><div class=\"card-lbl\">Acyclicity Score</div></div>");
-        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:18px; color:#f1f5f9;\">").append(d.architectureHealthRating.split(" ")[0]).append("</div><div class=\"card-lbl\">Rating</div></div>");
+        String ratingStr = (d.architectureHealthRating != null && !d.architectureHealthRating.isBlank())
+            ? d.architectureHealthRating.split(" ")[0] : "A";
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:18px; color:#f1f5f9;\">").append(ratingStr).append("</div><div class=\"card-lbl\">Rating</div></div>");
         sb.append("</div>\n");
 
         if (!d.packageTangles.isEmpty()) {
@@ -1857,6 +1864,7 @@ public class ReportService {
             }
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -2158,8 +2166,9 @@ public class ReportService {
         sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.totalArchetypesFound).append("</div><div class=\"card-lbl\">Archetype Entities</div></div>");
         sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.totalViolations == 0 ? "var(--green)" : "var(--orange)").append(";\">")
           .append(d.totalViolations).append("</div><div class=\"card-lbl\">Policy Violations</div></div>");
-        sb.append("<div class=\"card\"><div class=\"card-val\">").append(d.governanceScore).append("/100</div><div class=\"card-lbl\">Compliance Score</div></div>");
-        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:16px; color:#f1f5f9;\">").append(d.complianceRating.split(" ")[0]).append("</div><div class=\"card-lbl\">Rating</div></div>");
+        String ratingStr = (d.complianceRating != null && !d.complianceRating.isBlank())
+            ? d.complianceRating.split(" ")[0] : "A";
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"font-size:16px; color:#f1f5f9;\">").append(ratingStr).append("</div><div class=\"card-lbl\">Rating</div></div>");
         sb.append("</div>\n");
 
         sb.append("<h2>Archetype Compliance Breakdown</h2>\n");
@@ -2193,6 +2202,7 @@ public class ReportService {
             }
         }
 
+        appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
     }
@@ -3398,7 +3408,9 @@ public class ReportService {
               .append("</code></td><td>").append(m.cyclomaticComplexity).append("</td><td>").append(m.inDegree).append("</td><td>")
               .append(m.estimatedHours).append("h</td><td><strong>").append(m.roiScore).append("</strong></td><td>").append(escapeHtml(m.refactoringStrategy)).append("</td></tr>");
         }
-        sb.append("</tbody></table></body></html>");
+        sb.append("</tbody></table>\n");
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
         return sb.toString();
     }
 
@@ -3665,7 +3677,9 @@ public class ReportService {
               .append("</td><td><code>").append(escapeHtml(item.entityFqn)).append("</code></td><td>").append(escapeHtml(item.title))
               .append("</td><td>").append(escapeHtml(item.recommendedAction)).append("</td></tr>");
         }
-        sb.append("</tbody></table></body></html>");
+        sb.append("</tbody></table>\n");
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
         return sb.toString();
     }
 
@@ -3871,7 +3885,9 @@ public class ReportService {
             sb.append("<td>").append(ep.hasAuthCheck ? "<span style='color:#34d399;'>Protected</span>" : "<span style='color:#f87171;'>Open</span>").append("</td>");
             sb.append("<td class='").append(riskCls).append("'>").append(escapeHtml(ep.riskLevel)).append(" (").append(ep.blastRadiusScore).append(")</td></tr>");
         }
-        sb.append("</tbody></table></body></html>");
+        sb.append("</tbody></table>\n");
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
         return sb.toString();
     }
 
@@ -4081,7 +4097,9 @@ public class ReportService {
             sb.append("<td>").append(escapeHtml(da.pattern)).append("</td>");
             sb.append("<td>").append(escapeHtml(da.riskFactor)).append("</td></tr>");
         }
-        sb.append("</tbody></table></body></html>");
+        sb.append("</tbody></table>\n");
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
         return sb.toString();
     }
 
@@ -4232,7 +4250,9 @@ public class ReportService {
             sb.append("<td>").append(escapeHtml(f.findingDetail)).append("</td>");
             sb.append("<td>").append(escapeHtml(f.remediationAdvice)).append("</td></tr>");
         }
-        sb.append("</tbody></table></body></html>");
+        sb.append("</tbody></table>\n");
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
         return sb.toString();
     }
 
@@ -4268,6 +4288,197 @@ public class ReportService {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
+    }
+
+    public void appendHtmlReportPaginationAssets(StringBuilder sb) {
+        sb.append("\n<!-- report-html-pagination assets -->\n<style>\n");
+        sb.append("/* report-html-pagination */\n");
+        sb.append(".report-html-table-wrapper { margin: 20px 0; border: 1px solid var(--border, #1e293b); border-radius: 8px; overflow: hidden; background: var(--surface, #131b2e); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }\n");
+        sb.append(".report-html-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; background: rgba(0,0,0,0.22); border-bottom: 1px solid var(--border, #1e293b); font-size: 13px; }\n");
+        sb.append(".report-html-filter-wrap { display: inline-flex; align-items: center; position: relative; }\n");
+        sb.append(".report-html-filter-input { background: rgba(255,255,255,0.06); border: 1px solid var(--border, #334155); color: var(--text, #f1f5f9); padding: 6px 12px; border-radius: 6px; font-size: 12px; min-width: 240px; outline: none; transition: border-color 0.15s; }\n");
+        sb.append(".report-html-filter-input:focus { border-color: var(--accent, #38bdf8); box-shadow: 0 0 0 2px rgba(56,189,248,0.2); }\n");
+        sb.append(".report-html-size-wrap { display: inline-flex; align-items: center; gap: 8px; color: var(--muted, #94a3b8); font-size: 12px; }\n");
+        sb.append(".report-html-size-select { background: #0b0f19; border: 1px solid var(--border, #334155); color: var(--text, #f1f5f9); padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; outline: none; }\n");
+        sb.append(".report-html-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; background: rgba(0,0,0,0.18); border-top: 1px solid var(--border, #1e293b); font-size: 12px; }\n");
+        sb.append(".report-html-page-info { color: var(--muted, #94a3b8); font-variant-numeric: tabular-nums; font-weight: 500; }\n");
+        sb.append(".report-html-page-btns { display: inline-flex; align-items: center; gap: 4px; }\n");
+        sb.append(".report-html-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 8px; border: 1px solid var(--border, #334155); background: rgba(255,255,255,0.04); color: var(--text, #f1f5f9); border-radius: 5px; font-size: 12px; cursor: pointer; user-select: none; transition: all 0.15s ease; }\n");
+        sb.append(".report-html-btn:hover:not(:disabled) { background: rgba(255,255,255,0.12); border-color: var(--accent, #38bdf8); }\n");
+        sb.append(".report-html-btn.active { background: var(--accent, #38bdf8); border-color: var(--accent, #38bdf8); color: #0b0f19; font-weight: 700; }\n");
+        sb.append(".report-html-btn:disabled { opacity: 0.35; cursor: not-allowed; }\n");
+        sb.append(".report-html-ellipsis { padding: 0 4px; color: var(--muted, #94a3b8); }\n");
+        sb.append(".report-html-table-wrapper table { margin: 0 !important; border: none !important; width: 100% !important; border-collapse: collapse !important; }\n");
+        sb.append("th.sortable-th { cursor: pointer !important; user-select: none; transition: background 0.15s; }\n");
+        sb.append("th.sortable-th:hover { background: rgba(255,255,255,0.08) !important; }\n");
+        sb.append(".sort-icon { margin-left: 6px; font-size: 11px; opacity: 0.45; display: inline-block; }\n");
+        sb.append("th.sorted-asc .sort-icon, th.sorted-desc .sort-icon { opacity: 1; color: var(--accent, #38bdf8); }\n");
+        sb.append("@media print {\n");
+        sb.append("  .report-html-toolbar, .report-html-pagination { display: none !important; }\n");
+        sb.append("  .report-html-table-wrapper { border: none !important; background: transparent !important; box-shadow: none !important; margin: 10px 0 !important; }\n");
+        sb.append("  table tr { display: table-row !important; }\n");
+        sb.append("}\n");
+        sb.append("</style>\n");
+        sb.append("<script>\n");
+        sb.append("(function() {\n");
+        sb.append("  function enhanceAllHtmlTables() {\n");
+        sb.append("    var tables = Array.from(document.querySelectorAll('table:not([data-paginated=\"true\"])'));\n");
+        sb.append("    tables.forEach(function(table) {\n");
+        sb.append("      var tbody = table.querySelector('tbody') || table;\n");
+        sb.append("      var allRows = Array.from(tbody.querySelectorAll('tr'));\n");
+        sb.append("      if (allRows.length === 0) return;\n");
+        sb.append("      var thead = table.querySelector('thead');\n");
+        sb.append("      if (!thead && allRows.length > 0 && allRows[0].querySelector('th')) {\n");
+        sb.append("        thead = document.createElement('thead');\n");
+        sb.append("        thead.appendChild(allRows.shift());\n");
+        sb.append("        table.insertBefore(thead, tbody);\n");
+        sb.append("      }\n");
+        sb.append("      table.setAttribute('data-paginated', 'true');\n");
+        sb.append("      var parent = table.parentNode;\n");
+        sb.append("      var wrapper = document.createElement('div');\n");
+        sb.append("      wrapper.className = 'report-html-table-wrapper';\n");
+        sb.append("      parent.insertBefore(wrapper, table);\n");
+        sb.append("      var toolbar = document.createElement('div');\n");
+        sb.append("      toolbar.className = 'report-html-toolbar';\n");
+        sb.append("      toolbar.innerHTML = '<div class=\"report-html-filter-wrap\"><input type=\"search\" class=\"report-html-filter-input\" placeholder=\"Filter ' + allRows.length + ' rows…\" aria-label=\"Filter table rows\" /></div>' +\n");
+        sb.append("        '<div class=\"report-html-size-wrap\"><label>Rows per page: </label><select class=\"report-html-size-select\"><option value=\"10\">10</option><option value=\"15\" selected>15</option><option value=\"25\">25</option><option value=\"50\">50</option><option value=\"100\">100</option><option value=\"-1\">All</option></select></div>';\n");
+        sb.append("      wrapper.appendChild(toolbar);\n");
+        sb.append("      wrapper.appendChild(table);\n");
+        sb.append("      var pagBar = document.createElement('div');\n");
+        sb.append("      pagBar.className = 'report-html-pagination';\n");
+        sb.append("      pagBar.innerHTML = '<div class=\"report-html-page-info\"></div><div class=\"report-html-page-btns\"></div>';\n");
+        sb.append("      wrapper.appendChild(pagBar);\n");
+        sb.append("      var filterInput = toolbar.querySelector('.report-html-filter-input');\n");
+        sb.append("      var sizeSelect = toolbar.querySelector('.report-html-size-select');\n");
+        sb.append("      var pageInfo = pagBar.querySelector('.report-html-page-info');\n");
+        sb.append("      var pageBtns = pagBar.querySelector('.report-html-page-btns');\n");
+        sb.append("      var query = '';\n");
+        sb.append("      var pageSize = 15;\n");
+        sb.append("      var currentPage = 1;\n");
+        sb.append("      var filteredRows = allRows.slice();\n");
+        sb.append("      function updateDisplay() {\n");
+        sb.append("        var total = filteredRows.length;\n");
+        sb.append("        var pages = (pageSize > 0) ? Math.max(1, Math.ceil(total / pageSize)) : 1;\n");
+        sb.append("        if (currentPage > pages) currentPage = pages;\n");
+        sb.append("        if (currentPage < 1) currentPage = 1;\n");
+        sb.append("        var startIdx = (pageSize > 0) ? (currentPage - 1) * pageSize : 0;\n");
+        sb.append("        var endIdx = (pageSize > 0) ? Math.min(startIdx + pageSize, total) : total;\n");
+        sb.append("        var visibleSet = new Set(filteredRows.slice(startIdx, endIdx));\n");
+        sb.append("        allRows.forEach(function(tr) {\n");
+        sb.append("          tr.style.display = visibleSet.has(tr) ? '' : 'none';\n");
+        sb.append("        });\n");
+        sb.append("        if (total === 0) {\n");
+        sb.append("          pageInfo.textContent = 'Showing 0 of 0 entries' + (query ? ' (filtered from ' + allRows.length + ')' : '');\n");
+        sb.append("        } else {\n");
+        sb.append("          var filterNote = (total < allRows.length) ? ' (filtered from ' + allRows.length + ')' : '';\n");
+        sb.append("          pageInfo.textContent = 'Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + total + ' entries' + filterNote;\n");
+        sb.append("        }\n");
+        sb.append("        pageBtns.innerHTML = '';\n");
+        sb.append("        function makeBtn(label, targetPage, disabled, isActive, title) {\n");
+        sb.append("          var btn = document.createElement('button');\n");
+        sb.append("          btn.type = 'button';\n");
+        sb.append("          btn.className = 'report-html-btn' + (isActive ? ' active' : '');\n");
+        sb.append("          btn.textContent = label;\n");
+        sb.append("          if (title) btn.title = title;\n");
+        sb.append("          if (disabled) btn.disabled = true;\n");
+        sb.append("          else btn.addEventListener('click', function() { currentPage = targetPage; updateDisplay(); });\n");
+        sb.append("          return btn;\n");
+        sb.append("        }\n");
+        sb.append("        pageBtns.appendChild(makeBtn('«', 1, currentPage === 1, false, 'First page'));\n");
+        sb.append("        pageBtns.appendChild(makeBtn('‹', currentPage - 1, currentPage === 1, false, 'Previous page'));\n");
+        sb.append("        var startP = Math.max(1, currentPage - 2);\n");
+        sb.append("        var endP = Math.min(pages, currentPage + 2);\n");
+        sb.append("        if (startP > 1) {\n");
+        sb.append("          pageBtns.appendChild(makeBtn('1', 1, false, currentPage === 1));\n");
+        sb.append("          if (startP > 2) {\n");
+        sb.append("            var span = document.createElement('span');\n");
+        sb.append("            span.className = 'report-html-ellipsis';\n");
+        sb.append("            span.textContent = '…';\n");
+        sb.append("            pageBtns.appendChild(span);\n");
+        sb.append("          }\n");
+        sb.append("        }\n");
+        sb.append("        for (var p = startP; p <= endP; p++) {\n");
+        sb.append("          pageBtns.appendChild(makeBtn(String(p), p, false, p === currentPage));\n");
+        sb.append("        }\n");
+        sb.append("        if (endP < pages) {\n");
+        sb.append("          if (endP < pages - 1) {\n");
+        sb.append("            var span = document.createElement('span');\n");
+        sb.append("            span.className = 'report-html-ellipsis';\n");
+        sb.append("            span.textContent = '…';\n");
+        sb.append("            pageBtns.appendChild(span);\n");
+        sb.append("          }\n");
+        sb.append("          pageBtns.appendChild(makeBtn(String(pages), pages, false, currentPage === pages));\n");
+        sb.append("        }\n");
+        sb.append("        pageBtns.appendChild(makeBtn('›', currentPage + 1, currentPage === pages, false, 'Next page'));\n");
+        sb.append("        pageBtns.appendChild(makeBtn('»', pages, currentPage === pages, false, 'Last page'));\n");
+        sb.append("      }\n");
+        sb.append("      function applyFilter() {\n");
+        sb.append("        var q = query.toLowerCase().trim();\n");
+        sb.append("        if (!q) {\n");
+        sb.append("          filteredRows = allRows.slice();\n");
+        sb.append("        } else {\n");
+        sb.append("          filteredRows = allRows.filter(function(r) {\n");
+        sb.append("            return r.textContent.toLowerCase().includes(q);\n");
+        sb.append("          });\n");
+        sb.append("        }\n");
+        sb.append("        currentPage = 1;\n");
+        sb.append("        updateDisplay();\n");
+        sb.append("      }\n");
+        sb.append("      filterInput.addEventListener('input', function(e) {\n");
+        sb.append("        query = e.target.value || '';\n");
+        sb.append("        applyFilter();\n");
+        sb.append("      });\n");
+        sb.append("      sizeSelect.addEventListener('change', function(e) {\n");
+        sb.append("        pageSize = parseInt(e.target.value, 10);\n");
+        sb.append("        currentPage = 1;\n");
+        sb.append("        updateDisplay();\n");
+        sb.append("      });\n");
+        sb.append("      if (thead) {\n");
+        sb.append("        var ths = Array.from(thead.querySelectorAll('th'));\n");
+        sb.append("        ths.forEach(function(th, colIdx) {\n");
+        sb.append("          var label = th.textContent.trim();\n");
+        sb.append("          if (!label) return;\n");
+        sb.append("          th.classList.add('sortable-th');\n");
+        sb.append("          th.title = 'Click to sort by ' + label;\n");
+        sb.append("          var icon = document.createElement('span');\n");
+        sb.append("          icon.className = 'sort-icon';\n");
+        sb.append("          icon.textContent = '⇅';\n");
+        sb.append("          th.appendChild(icon);\n");
+        sb.append("          var asc = false;\n");
+        sb.append("          th.addEventListener('click', function() {\n");
+        sb.append("            asc = !asc;\n");
+        sb.append("            ths.forEach(function(other) {\n");
+        sb.append("              other.classList.remove('sorted-asc', 'sorted-desc');\n");
+        sb.append("              var oi = other.querySelector('.sort-icon');\n");
+        sb.append("              if (oi) oi.textContent = '⇅';\n");
+        sb.append("            });\n");
+        sb.append("            th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');\n");
+        sb.append("            icon.textContent = asc ? '▲' : '▼';\n");
+        sb.append("            allRows.sort(function(a, b) {\n");
+        sb.append("              var cellA = (a.children[colIdx] ? a.children[colIdx].textContent : '').trim();\n");
+        sb.append("              var cellB = (b.children[colIdx] ? b.children[colIdx].textContent : '').trim();\n");
+        sb.append("              var numA = parseFloat(cellA.replace(/[^0-9.-]+/g, ''));\n");
+        sb.append("              var numB = parseFloat(cellB.replace(/[^0-9.-]+/g, ''));\n");
+        sb.append("              if (!isNaN(numA) && !isNaN(numB) && /^[0-9.,%\\s+-]+([a-zA-Z/-]*)?$/.test(cellA)) {\n");
+        sb.append("                return asc ? (numA - numB) : (numB - numA);\n");
+        sb.append("              }\n");
+        sb.append("              return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);\n");
+        sb.append("            });\n");
+        sb.append("            allRows.forEach(function(r) { tbody.appendChild(r); });\n");
+        sb.append("            applyFilter();\n");
+        sb.append("          });\n");
+        sb.append("        });\n");
+        sb.append("      }\n");
+        sb.append("      updateDisplay();\n");
+        sb.append("    });\n");
+        sb.append("  }\n");
+        sb.append("  if (document.readyState === 'loading') {\n");
+        sb.append("    document.addEventListener('DOMContentLoaded', enhanceAllHtmlTables);\n");
+        sb.append("  } else {\n");
+        sb.append("    enhanceAllHtmlTables();\n");
+        sb.append("  }\n");
+        sb.append("})();\n");
+        sb.append("</script>\n");
     }
 
     /**

@@ -562,4 +562,77 @@ public class CallGraphAndReportTest {
         assertEquals(50, risk.totalClassesAnalyzed, "All 50 classes should be analyzed");
         assertEquals(50, risk.classRiskRankings.size(), "All 50 classes should have evaluated risk");
     }
+
+    public void testHtmlReportsPaginationEmbedded() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+        FieldImpactAnalyzer fieldImpact = new FieldImpactAnalyzer();
+        CodeReviewEngine reviewEngine = new CodeReviewEngine();
+        ReportService reportService = new ReportService(analyzer, fieldImpact, reviewEngine);
+
+        // 1. Architecture
+        ReportService.ArchitectureReportData arch = new ReportService.ArchitectureReportData();
+        String archHtml = reportService.renderArchitectureHtml(arch);
+        assertTrue(archHtml.contains("report-html-pagination"), "Architecture HTML should contain pagination");
+        assertTrue(archHtml.contains("report-html-size-select"), "Architecture HTML should contain size select");
+
+        // 2. Review
+        ReportService.ReviewReportData rev = new ReportService.ReviewReportData();
+        String revHtml = reportService.renderReviewHtml(rev);
+        assertTrue(revHtml.contains("report-html-pagination"), "Review HTML should contain pagination");
+
+        // 3. Metrics
+        ReportService.MetricsReportData met = new ReportService.MetricsReportData();
+        String metHtml = reportService.renderMetricsHtml(met);
+        assertTrue(metHtml.contains("report-html-pagination"), "Metrics HTML should contain pagination");
+
+        // 4. Change Risk
+        ReportService.ChangeRiskReportData risk = new ReportService.ChangeRiskReportData();
+        String riskHtml = reportService.renderChangeRiskHtml(risk);
+        assertTrue(riskHtml.contains("report-html-pagination"), "ChangeRisk HTML should contain pagination");
+
+        // 5. Dead Code
+        ReportService.DeadCodeReportData dead = new ReportService.DeadCodeReportData();
+        String deadHtml = reportService.renderDeadCodeHtml(dead);
+        assertTrue(deadHtml.contains("report-html-pagination"), "DeadCode HTML should contain pagination");
+
+        // 6. Circular Dependency
+        ReportService.CircularDependencyReportData circ = new ReportService.CircularDependencyReportData();
+        String circHtml = reportService.renderCircularDependencyHtml(circ);
+        assertTrue(circHtml.contains("report-html-pagination"), "CircularDependency HTML should contain pagination");
+
+        // 7. Archetype Governance
+        ReportService.ArchetypeGovernanceReportData gov = new ReportService.ArchetypeGovernanceReportData();
+        String govHtml = reportService.renderArchetypeGovernanceHtml(gov);
+        assertTrue(govHtml.contains("report-html-pagination"), "Governance HTML should contain pagination");
+
+        // 8. Technical Debt
+        ReportService.TechnicalDebtReportData debt = new ReportService.TechnicalDebtReportData();
+        debt.sqaleRating = "A";
+        debt.maintainabilityScore = 90;
+        debt.totalDebtHours = 5.0;
+        debt.totalDebtDays = 0.6;
+        debt.debtRatioPercent = 2.1;
+        String debtHtml = reportService.renderTechnicalDebtHtml(debt);
+        assertTrue(debtHtml.contains("report-html-pagination"), "TechnicalDebt HTML should contain pagination");
+
+        // 9. Executive Summary
+        ReportService.ExecutiveSummaryReportData exec = new ReportService.ExecutiveSummaryReportData();
+        String execHtml = reportService.renderExecutiveSummaryHtml(exec);
+        assertTrue(execHtml.contains("report-html-pagination"), "ExecutiveSummary HTML should contain pagination");
+
+        // 10. API Catalog
+        ReportService.ApiCatalogReportData apiCat = new ReportService.ApiCatalogReportData();
+        String apiHtml = reportService.renderApiCatalogHtml(apiCat);
+        assertTrue(apiHtml.contains("report-html-pagination"), "ApiCatalog HTML should contain pagination");
+
+        // 11. Database Access
+        ReportService.DatabaseAccessReportData dbAcc = new ReportService.DatabaseAccessReportData();
+        String dbHtml = reportService.renderDatabaseAccessHtml(dbAcc);
+        assertTrue(dbHtml.contains("report-html-pagination"), "DatabaseAccess HTML should contain pagination");
+
+        // 12. Concurrency Audit
+        ReportService.ConcurrencyAuditReportData conc = new ReportService.ConcurrencyAuditReportData();
+        String concHtml = reportService.renderConcurrencyAuditHtml(conc);
+        assertTrue(concHtml.contains("report-html-pagination"), "ConcurrencyAudit HTML should contain pagination");
+    }
 }
