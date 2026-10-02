@@ -76,3 +76,48 @@ def test_responsive_viewports_navigation(laptop_page, compact_page):
         page.wait_for_timeout(200)
         assert check_no_horizontal_overflow(page)
         save_screenshot(page, f"responsive_kb_{label}")
+
+
+def test_reports_view_auto_minimizes_panels(desktop_page):
+    """Verify Explorer and Inspector panels auto-minimize when in reports view and auto-restore on exit."""
+    page = desktop_page
+    page.wait_for_timeout(300)
+
+    # Initial workspace state: Explorer and Inspector should be expanded
+    left_panel = page.locator("#left-panel")
+    right_panel = page.locator("#right-panel")
+    assert "collapsed" not in (left_panel.get_attribute("class") or "")
+    assert "collapsed" not in (right_panel.get_attribute("class") or "")
+
+    # Switch to Reports view
+    export_btn = page.locator("#export-btn")
+    assert export_btn.is_visible()
+    export_btn.click(no_wait_after=True)
+    page.wait_for_timeout(400)
+
+    # Both panels must be auto-minimized (collapsed)
+    assert "collapsed" in (left_panel.get_attribute("class") or "")
+    assert "collapsed" in (right_panel.get_attribute("class") or "")
+    assert "reports-mode" in (page.locator("body").get_attribute("class") or "")
+
+    # Workspace expand strips must be hidden in reports mode
+    left_strip_display = page.evaluate("getComputedStyle(document.querySelector('#left-expand-strip')).display")
+    right_strip_display = page.evaluate("getComputedStyle(document.querySelector('#right-expand-strip')).display")
+    assert left_strip_display == "none"
+    assert right_strip_display == "none"
+
+    save_screenshot(page, "reports_view_auto_minimized")
+
+    # Return to workspace via workspace back button
+    back_btn = page.locator("#btn-reports-back-workspace")
+    assert back_btn.is_visible()
+    back_btn.click(no_wait_after=True)
+    page.wait_for_timeout(400)
+
+    # Panels must auto-restore to expanded state
+    assert "collapsed" not in (left_panel.get_attribute("class") or "")
+    assert "collapsed" not in (right_panel.get_attribute("class") or "")
+    assert "reports-mode" not in (page.locator("body").get_attribute("class") or "")
+
+    save_screenshot(page, "workspace_panels_restored")
+

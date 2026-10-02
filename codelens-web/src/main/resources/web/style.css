@@ -11874,6 +11874,12 @@ body.theme-light .cp-card-name {
 /* ═══════════════════════════════════════════════════════════════════════════
    REPORTS & EXPORT HUB (VIEW 6)
    ═══════════════════════════════════════════════════════════════════════════ */
+/* Suppress floating workspace expand strips in reports mode to prevent overlapping the catalog */
+body.reports-mode #left-expand-strip,
+body.reports-mode #right-expand-strip {
+  display: none !important;
+}
+
 #reports-view {
   display: none;
   flex: 1;

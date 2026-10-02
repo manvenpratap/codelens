@@ -4113,6 +4113,47 @@ function switchTab(tabName) {
   } else {
     document.body.classList.remove('macro-studio-mode');
   }
+
+  if (tabName === 'reports') {
+    document.body.classList.add('reports-mode');
+    if (previousTab !== 'reports') {
+      const leftPanel = qs('#left-panel');
+      const rightPanel = qs('#right-panel');
+      const leftWasCollapsed = !leftPanel || leftPanel.classList.contains('collapsed');
+      const rightWasCollapsed = !rightPanel || rightPanel.classList.contains('collapsed');
+
+      // Preserve previous workspace panel states so they can be restored upon return
+      App._preReportsPanelState = {
+        leftCollapsed: leftWasCollapsed,
+        rightCollapsed: rightWasCollapsed
+      };
+
+      // Auto-minimize Explorer and Inspector
+      if (!leftWasCollapsed) {
+        collapseLeftPanel(true, false);
+      }
+      if (!rightWasCollapsed) {
+        collapseRightPanel(true, false);
+      }
+    }
+  } else {
+    document.body.classList.remove('reports-mode');
+    if (previousTab === 'reports' && App._preReportsPanelState) {
+      const { leftCollapsed, rightCollapsed } = App._preReportsPanelState;
+      const leftPanel = qs('#left-panel');
+      const rightPanel = qs('#right-panel');
+
+      // Auto-restore Explorer if it was open prior to entering reports and is currently collapsed
+      if (!leftCollapsed && leftPanel && leftPanel.classList.contains('collapsed')) {
+        collapseLeftPanel(false, false);
+      }
+      // Auto-restore Inspector if it was open prior to entering reports and is currently collapsed
+      if (!rightCollapsed && rightPanel && rightPanel.classList.contains('collapsed')) {
+        collapseRightPanel(false, false);
+      }
+      App._preReportsPanelState = null;
+    }
+  }
   requestAnimationFrame(() => triggerRelayout());
 
   qsa('.tab').forEach(t => {
@@ -11982,13 +12023,13 @@ function initPanelResizers() {
   if (isNaN(savedReportsW) || savedReportsW < MIN_REPORTS_SIDEBAR_WIDTH) savedReportsW = DEFAULT_REPORTS_SIDEBAR_WIDTH;
 
   // Apply initial widths and collapse states
-  if (leftCollapsed) {
+  if (leftCollapsed || App.activeTab === 'reports') {
     collapseLeftPanel(true, false);
   } else {
     setLeftPanelWidth(savedLeftW, false);
   }
 
-  if (rightCollapsed) {
+  if (rightCollapsed || App.activeTab === 'reports') {
     collapseRightPanel(true, false);
   } else {
     setRightPanelWidth(savedRightW, false);
@@ -11998,6 +12039,14 @@ function initPanelResizers() {
     collapseReportsSidebar(true, false);
   } else {
     setReportsSidebarWidth(savedReportsW, false);
+  }
+
+  if (App.activeTab === 'reports') {
+    document.body.classList.add('reports-mode');
+    App._preReportsPanelState = {
+      leftCollapsed: leftCollapsed,
+      rightCollapsed: rightCollapsed
+    };
   }
 
   // ── Dragging Left Resizer (Explorer) ────────────────────────────────────────
