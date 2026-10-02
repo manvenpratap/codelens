@@ -781,7 +781,7 @@ body.theme-light .footer-scan-mini-track {
   z-index: 100;
   position: relative;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .header-right-actions {
@@ -2463,6 +2463,9 @@ body.theme-light .module-breakup-row:hover {
   top: calc(100% + 6px);
   right: 0;
   width: 320px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);

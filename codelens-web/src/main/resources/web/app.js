@@ -12934,10 +12934,21 @@ function initThemeDropdowns() {
     cfg.menu.style.display = 'flex';
     cfg.btn.setAttribute('aria-expanded', 'true');
 
-    // Focus active or first item for accessible keyboard navigation
+    // Ensure header scroll is anchored to 0
+    const hdr = qs('#header');
+    if (hdr && hdr.scrollTop !== 0) hdr.scrollTop = 0;
+
+    // Focus active or first item for accessible keyboard navigation without scrolling viewport
     const activeItem = cfg.menu.querySelector('.theme-dropdown-item.active') || cfg.menu.querySelector('.theme-dropdown-item');
     if (activeItem) {
-      setTimeout(() => activeItem.focus(), 25);
+      setTimeout(() => {
+        try {
+          activeItem.focus({ preventScroll: true });
+        } catch (ignored) {
+          activeItem.focus();
+        }
+        if (hdr && hdr.scrollTop !== 0) hdr.scrollTop = 0;
+      }, 25);
     }
   }
 
