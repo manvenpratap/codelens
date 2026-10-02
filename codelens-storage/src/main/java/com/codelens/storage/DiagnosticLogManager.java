@@ -25,11 +25,11 @@ import java.util.stream.Stream;
  * Automatically generates persistent, self-contained diagnostic incident logs under
  * {@code ./codelens-data/diagnostics/} whenever any of the following events occur:
  * <ul>
- *   <li><b>HEAP_SPACE</b> — OutOfMemoryError or Critical/Emergency heap pressure recovery</li>
- *   <li><b>CONNECTION_LEAK</b> — JDBC connection leak detection & forced eviction or H2 query timeout</li>
- *   <li><b>CRASH</b> — Uncaught thread exception, StackOverflowError, or fatal JVM error</li>
- *   <li><b>FAILURE</b> — Unhandled HTTP 500 API exception, scan pipeline failure, or storage error</li>
- *   <li><b>SNAPSHOT</b> — On-demand full system diagnostic bundle (JVM heap, pools, DB leases, thread dump)</li>
+ *   <li><b>HEAP_SPACE</b> - OutOfMemoryError or Critical/Emergency heap pressure recovery</li>
+ *   <li><b>CONNECTION_LEAK</b> - JDBC connection leak detection & forced eviction or H2 query timeout</li>
+ *   <li><b>CRASH</b> - Uncaught thread exception, StackOverflowError, or fatal JVM error</li>
+ *   <li><b>FAILURE</b> - Unhandled HTTP 500 API exception, scan pipeline failure, or storage error</li>
+ *   <li><b>SNAPSHOT</b> - On-demand full system diagnostic bundle (JVM heap, pools, DB leases, thread dump)</li>
  * </ul>
  */
 public class DiagnosticLogManager {
@@ -127,7 +127,7 @@ public class DiagnosticLogManager {
         StringBuilder body = new StringBuilder(8192);
         appendHeader(body, "HEAP_SPACE", severity, title, summary);
 
-        body.append("── 1. HEAP RECOVERY TELEMETRY ─────────────────────────────────────────────────\n");
+        body.append("-- 1. HEAP RECOVERY TELEMETRY -------------------------------------------------\n");
         body.append("Incident ID          : ").append(incidentId != null ? incidentId : "N/A").append("\n");
         body.append("Trigger Source       : ").append(trigger).append("\n");
         body.append("Heap Before Recovery : ").append(heapBeforeMb).append(" MB (").append(pctBefore).append("%)\n");
@@ -138,7 +138,7 @@ public class DiagnosticLogManager {
         body.append("Circuit Breaker      : ").append(circuitBreakerOpen ? "OPEN (Throttling heavy requests)" : "CLOSED (Normal)").append("\n\n");
 
         if (actions != null && !actions.isEmpty()) {
-            body.append("── 2. RECOVERY ACTIONS EXECUTED ───────────────────────────────────────────────\n");
+            body.append("-- 2. RECOVERY ACTIONS EXECUTED -----------------------------------------------\n");
             for (int i = 0; i < actions.size(); i++) {
                 body.append(String.format("  [%d] %s\n", i + 1, actions.get(i)));
             }
@@ -146,7 +146,7 @@ public class DiagnosticLogManager {
         }
 
         if (oomCause != null) {
-            body.append("── 3. INTERCEPTED OUT-OF-MEMORY STACK TRACE ───────────────────────────────────\n");
+            body.append("-- 3. INTERCEPTED OUT-OF-MEMORY STACK TRACE -----------------------------------\n");
             body.append(formatStackTrace(oomCause)).append("\n");
         }
 
@@ -178,7 +178,7 @@ public class DiagnosticLogManager {
         StringBuilder body = new StringBuilder(8192);
         appendHeader(body, "CONNECTION_LEAK", severity, title, summary);
 
-        body.append("── 1. CONNECTION LEASE DIAGNOSTICS ────────────────────────────────────────────\n");
+        body.append("-- 1. CONNECTION LEASE DIAGNOSTICS --------------------------------------------\n");
         body.append("Eviction Reason      : ").append(reason).append("\n");
         body.append("Holding Thread       : ").append(threadName).append(" (Thread ID: ").append(threadId).append(")\n");
         body.append("Lease Hold Duration  : ").append(holdDurationMs).append(" ms\n");
@@ -186,13 +186,13 @@ public class DiagnosticLogManager {
         body.append("Caller Allocation    : ").append(allocationSite).append("\n\n");
 
         if (poolStats != null && !poolStats.isEmpty()) {
-            body.append("── 2. HIKARICP CONNECTION POOL STATE ──────────────────────────────────────────\n");
+            body.append("-- 2. HIKARICP CONNECTION POOL STATE ------------------------------------------\n");
             poolStats.forEach((k, v) -> body.append(String.format("  %-22s : %s\n", k, v)));
             body.append("\n");
         }
 
         if (allocationStack != null && allocationStack.length > 0) {
-            body.append("── 3. CONNECTION BORROW ALLOCATION STACK TRACE ────────────────────────────────\n");
+            body.append("-- 3. CONNECTION BORROW ALLOCATION STACK TRACE --------------------------------\n");
             for (StackTraceElement el : allocationStack) {
                 body.append("    at ").append(el.toString()).append("\n");
             }
@@ -200,7 +200,7 @@ public class DiagnosticLogManager {
         }
 
         if (sqlError != null) {
-            body.append("── 4. ASSOCIATED SQL EXCEPTION / TIMEOUT ──────────────────────────────────────\n");
+            body.append("-- 4. ASSOCIATED SQL EXCEPTION / TIMEOUT --------------------------------------\n");
             body.append(formatStackTrace(sqlError)).append("\n");
         }
 
@@ -229,7 +229,7 @@ public class DiagnosticLogManager {
         StringBuilder body = new StringBuilder(12288);
         appendHeader(body, normalizedCat, severity, title, summary);
 
-        body.append("── 1. FAILURE / CRASH CONTEXT ─────────────────────────────────────────────────\n");
+        body.append("-- 1. FAILURE / CRASH CONTEXT -------------------------------------------------\n");
         body.append("Source Context       : ").append(sourceContext).append("\n");
         body.append("Exception Type       : ").append(error != null ? error.getClass().getName() : "N/A").append("\n");
         body.append("Exception Message    : ").append(errMsg).append("\n");
@@ -242,7 +242,7 @@ public class DiagnosticLogManager {
         body.append("\n");
 
         if (error != null) {
-            body.append("── 2. FULL EXCEPTION STACK TRACE & ROOT CAUSE ─────────────────────────────────\n");
+            body.append("-- 2. FULL EXCEPTION STACK TRACE & ROOT CAUSE ---------------------------------\n");
             body.append(formatStackTrace(error)).append("\n");
         }
 
@@ -269,7 +269,7 @@ public class DiagnosticLogManager {
         appendHeader(body, "SNAPSHOT", "INFO", title, summary);
 
         if (dbDiagnostics != null && !dbDiagnostics.isEmpty()) {
-            body.append("── 1. DATABASE & CONNECTION POOL DIAGNOSTICS ──────────────────────────────────\n");
+            body.append("-- 1. DATABASE & CONNECTION POOL DIAGNOSTICS ----------------------------------\n");
             dbDiagnostics.forEach((k, v) -> body.append(String.format("  %-22s : %s\n", k, v)));
             body.append("\n");
         }
@@ -327,9 +327,9 @@ public class DiagnosticLogManager {
     }
 
     private static void appendHeader(StringBuilder sb, String category, String severity, String title, String summary) {
-        sb.append("╔════════════════════════════════════════════════════════════════════════════════════╗\n");
-        sb.append("║ CODELENS DIAGNOSTIC INCIDENT FLIGHT RECORDER                                       ║\n");
-        sb.append("╚════════════════════════════════════════════════════════════════════════════════════╝\n");
+        sb.append("+====================================================================================+\n");
+        sb.append("| CODELENS DIAGNOSTIC INCIDENT FLIGHT RECORDER                                       |\n");
+        sb.append("+====================================================================================+\n");
         sb.append("Timestamp            : ").append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"))).append("\n");
         sb.append("Category             : ").append(category).append("\n");
         sb.append("Severity             : ").append(severity).append("\n");
@@ -341,7 +341,7 @@ public class DiagnosticLogManager {
     }
 
     private static void appendJvmMemoryAndGcSnapshot(StringBuilder sb) {
-        sb.append("── JVM MEMORY & GARBAGE COLLECTION SNAPSHOT ───────────────────────────────────\n");
+        sb.append("-- JVM MEMORY & GARBAGE COLLECTION SNAPSHOT -----------------------------------\n");
         MemoryMXBean memBean = ManagementFactory.getMemoryMXBean();
         MemoryUsage heap = memBean.getHeapMemoryUsage();
         MemoryUsage nonHeap = memBean.getNonHeapMemoryUsage();
@@ -375,7 +375,7 @@ public class DiagnosticLogManager {
     private static void appendThreadSnapshot(StringBuilder sb, boolean fullStackTraces) {
         ThreadMXBean tm = ManagementFactory.getThreadMXBean();
         long[] deadlocked = tm.findDeadlockedThreads();
-        sb.append("── JVM THREAD & DEADLOCK DIAGNOSTICS ──────────────────────────────────────────\n");
+        sb.append("-- JVM THREAD & DEADLOCK DIAGNOSTICS ------------------------------------------\n");
         sb.append("Live Threads         : ").append(tm.getThreadCount())
           .append(" (Peak: ").append(tm.getPeakThreadCount())
           .append(", Daemon: ").append(tm.getDaemonThreadCount()).append(")\n");

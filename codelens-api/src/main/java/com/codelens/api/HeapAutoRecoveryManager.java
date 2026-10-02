@@ -41,6 +41,7 @@ public class HeapAutoRecoveryManager {
 
     private static final Logger log = LoggerFactory.getLogger(HeapAutoRecoveryManager.class);
     private static final DateTimeFormatter ISO_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
+    private static final String LINE_SEPARATOR = "================================================================================";
 
     private final MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
     private final List<MemoryPoolMXBean> poolBeans = ManagementFactory.getMemoryPoolMXBeans();
@@ -301,18 +302,18 @@ public class HeapAutoRecoveryManager {
      */
     public AutoRecoveryIncident handleTrappedOOM(String source, Throwable error) {
         final int innerWidth = 82;
-        String top = "╔" + "═".repeat(innerWidth + 2) + "╗";
-        String bottom = "╚" + "═".repeat(innerWidth + 2) + "╝";
+        String top = "+" + "=".repeat(innerWidth + 2) + "+";
+        String bottom = "+" + "=".repeat(innerWidth + 2) + "+";
         String msg1 = "EMERGENCY: OutOfMemoryError trapped from [" + (source != null ? source : "-") + "]!";
         if (msg1.length() > innerWidth) {
             msg1 = msg1.substring(0, innerWidth - 3) + "...";
         }
-        String line1 = "║ " + msg1 + " ".repeat(innerWidth - msg1.length()) + " ║";
+        String line1 = "| " + msg1 + " ".repeat(innerWidth - msg1.length()) + " |";
         String msg2 = "Initiating immediate emergency heap auto-recovery pipeline...";
         if (msg2.length() > innerWidth) {
             msg2 = msg2.substring(0, innerWidth - 3) + "...";
         }
-        String line2 = "║ " + msg2 + " ".repeat(innerWidth - msg2.length()) + " ║";
+        String line2 = "| " + msg2 + " ".repeat(innerWidth - msg2.length()) + " |";
 
         log.error("\n{}\n{}\n{}\n{}", top, line1, line2, bottom);
 
@@ -423,7 +424,7 @@ public class HeapAutoRecoveryManager {
             incidentHistory.removeLast();
         }
 
-        log.info("════════════════════════════════════════════════════════════════════════════════");
+        log.info(LINE_SEPARATOR);
         log.info("HEAP AUTO-RECOVERY COMPLETE [{}]", incidentId);
         log.info("Trigger: {} | Duration: {} ms | Diagnostic Log: {}", trigger, durationMs,
                  incident.diagnosticLogFile != null ? incident.diagnosticLogFile : "N/A");
@@ -431,7 +432,7 @@ public class HeapAutoRecoveryManager {
                 incident.heapBeforeMb, beforePct, incident.heapAfterMb, afterPct);
         log.info("Reclaimed Memory: {} MB | Circuit Breaker: {}",
                 freedMb, cbActive ? "OPEN (Throttling)" : "CLOSED (Normal)");
-        log.info("════════════════════════════════════════════════════════════════════════════════");
+        log.info(LINE_SEPARATOR);
 
         return incident;
     }

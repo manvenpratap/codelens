@@ -1478,9 +1478,9 @@ public class CodeLensServer {
         long totalMem = Runtime.getRuntime().totalMemory() / (1024 * 1024);
         long usedMem = totalMem - freeMem;
 
-        final int innerWidth = 82; // Space between "║ " and " ║"
-        String top = "╔" + "═".repeat(innerWidth + 2) + "╗";
-        String bottom = "╚" + "═".repeat(innerWidth + 2) + "╝";
+        final int innerWidth = 82; // Space between "| " and " |"
+        String top = "+" + "=".repeat(innerWidth + 2) + "+";
+        String bottom = "+" + "=".repeat(innerWidth + 2) + "+";
 
         String line1 = formatBannerField("CODELENS BACKGROUND PROCESS ", eventType, innerWidth, true);
         String line2 = formatBannerField("Process:   ", processName, innerWidth, true);
@@ -1492,9 +1492,9 @@ public class CodeLensServer {
         int spacing = innerWidth - tsPart.length() - memPart.length();
         String line5;
         if (spacing > 0) {
-            line5 = "║ " + tsPart + " ".repeat(spacing) + memPart + " ║";
+            line5 = "| " + tsPart + " ".repeat(spacing) + memPart + " |";
         } else {
-            line5 = "║ " + truncateAndPad(tsPart + " " + memPart, innerWidth) + " ║";
+            line5 = "| " + truncateAndPad(tsPart + " " + memPart, innerWidth) + " |";
         }
 
         System.out.println("\n" +
@@ -1533,7 +1533,7 @@ public class CodeLensServer {
         if (content.length() < innerWidth) {
             content = content + " ".repeat(innerWidth - content.length());
         }
-        return "║ " + content + " ║";
+        return "| " + content + " |";
     }
 
     private static String truncateAndPad(String text, int width) {
