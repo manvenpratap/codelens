@@ -39,6 +39,8 @@ public class JavaSourceScanner {
         public int methodsFound;
         public int fieldsFound;
         public int relationshipsFound;
+        public int skippedEntities;
+        public int skippedBatches;
         public boolean cancelled;
     }
 
@@ -353,7 +355,8 @@ public class JavaSourceScanner {
         ConcurrentMap<String, CodePackage> packageMap = new ConcurrentHashMap<>();
         ConcurrentMap<String, AtomicInteger> typesPerPkg = new ConcurrentHashMap<>();
         ConcurrentMap<String, AtomicInteger> filesPerPkg = new ConcurrentHashMap<>();
-        AtomicReference<Throwable> flushError = new AtomicReference<>();
+        AtomicInteger skippedBatches = new AtomicInteger(0);
+        AtomicInteger skippedEntities = new AtomicInteger(0);
 
         // Bounded queue providing backpressure: parser threads never block on DB/Lucene locks
         BlockingQueue<ParsedChunk> flushQueue = new LinkedBlockingQueue<>(PARSER_THREADS * 3);
@@ -364,10 +367,6 @@ public class JavaSourceScanner {
                     ParsedChunk chunk = flushQueue.take();
                     if (chunk.poisonPill) {
                         break;
-                    }
-                    // If a previous flush failed, keep draining the queue until POISON so producer workers never deadlock on flushQueue.put()
-                    if (flushError.get() != null) {
-                        continue;
                     }
                     try {
                         if (batchConsumer != null) {
@@ -380,8 +379,14 @@ public class JavaSourceScanner {
                             result.fileMetas.addAll(chunk.fileMetas);
                         }
                     } catch (Throwable t) {
-                        log.error("Error in asynchronous flush consumer", t);
-                        flushError.compareAndSet(null, t);
+                        int chunkCount = (chunk.types != null ? chunk.types.size() : 0)
+                                + (chunk.methods != null ? chunk.methods.size() : 0)
+                                + (chunk.fields != null ? chunk.fields.size() : 0)
+                                + (chunk.relationships != null ? chunk.relationships.size() : 0);
+                        log.warn("Asynchronous batch flush encountered error ({} entities): {}. Skipping failed batch without aborting scan.",
+                                chunkCount, t.getMessage(), t);
+                        skippedBatches.incrementAndGet();
+                        skippedEntities.addAndGet(chunkCount);
                     }
                 }
             } catch (InterruptedException e) {
@@ -415,14 +420,12 @@ public class JavaSourceScanner {
         List<Future<?>> futures = new ArrayList<>();
 
         for (List<Path> chunk : chunks) {
-            if ((cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) || flushError.get() != null) {
-                if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
-                    result.cancelled = true;
-                }
+            if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
+                result.cancelled = true;
                 break;
             }
             futures.add(pool.submit(() -> {
-                if ((cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) || flushError.get() != null) {
+                if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
                     return;
                 }
                 JavaParser parser = THREAD_PARSER.get();
@@ -435,7 +438,7 @@ public class JavaSourceScanner {
                 List<FileMeta> batchFileMetas = new ArrayList<>();
 
                 for (Path javaFile : chunk) {
-                    if ((cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) || flushError.get() != null) {
+                    if (cancelCheck != null && Boolean.TRUE.equals(cancelCheck.get())) {
                         break;
                     }
                     try {
@@ -477,15 +480,13 @@ public class JavaSourceScanner {
 
                             // Flush mid-chunk if relationship or method batch grows large to keep DB transactions fast
                             if (batchRels.size() >= 15_000 || batchMethods.size() >= 3_000) {
-                                if (flushError.get() == null) {
-                                    flushQueue.put(new ParsedChunk(
-                                        new ArrayList<>(batchTypes),
-                                        new ArrayList<>(batchFields),
-                                        new ArrayList<>(batchMethods),
-                                        new ArrayList<>(batchRels),
-                                        new ArrayList<>(batchFileMetas)
-                                    ));
-                                }
+                                flushQueue.put(new ParsedChunk(
+                                    new ArrayList<>(batchTypes),
+                                    new ArrayList<>(batchFields),
+                                    new ArrayList<>(batchMethods),
+                                    new ArrayList<>(batchRels),
+                                    new ArrayList<>(batchFileMetas)
+                                ));
                                 batchTypes.clear();
                                 batchFields.clear();
                                 batchMethods.clear();
@@ -516,9 +517,7 @@ public class JavaSourceScanner {
                 if (!batchTypes.isEmpty() || !batchFields.isEmpty() || !batchMethods.isEmpty()
                     || !batchRels.isEmpty() || !batchFileMetas.isEmpty()) {
                     try {
-                        if (flushError.get() == null) {
-                            flushQueue.put(new ParsedChunk(batchTypes, batchFields, batchMethods, batchRels, batchFileMetas));
-                        }
+                        flushQueue.put(new ParsedChunk(batchTypes, batchFields, batchMethods, batchRels, batchFileMetas));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -551,8 +550,11 @@ public class JavaSourceScanner {
                     totalTypes.get(), totalMethods.get(), totalFields.get(), totalRels.get());
         }
 
-        if (flushError.get() != null) {
-            throw new IOException("Failed to persist parsed entities during scan: " + flushError.get().getMessage(), flushError.get());
+        result.skippedBatches = skippedBatches.get();
+        result.skippedEntities = skippedEntities.get();
+        result.errorFiles = errors.get();
+        if (result.skippedBatches > 0) {
+            log.warn("Scan finished with {} skipped batch(es) and {} skipped entities.", result.skippedBatches, result.skippedEntities);
         }
 
         // ── Populate final package summary ────────────────────────────────────

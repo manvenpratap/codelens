@@ -21,6 +21,7 @@ public class ScanProgress {
     private int relationshipsFound;
     private int modulesFound;
     private int reportsFound;
+    private int skippedRecords;
     private String message;
     private long startTime;
     private long endTime;
@@ -114,6 +115,8 @@ public class ScanProgress {
     public void setModulesFound(int n)         { this.modulesFound = n; }
     public int getReportsFound()                { return reportsFound; }
     public void setReportsFound(int n)         { this.reportsFound = n; }
+    public int getSkippedRecords()              { return skippedRecords; }
+    public void setSkippedRecords(int n)       { this.skippedRecords = n; }
     public String getMessage()                  { return message; }
     public void setMessage(String m)           { this.message = m; }
     public long getStartTime()                  { return startTime; }

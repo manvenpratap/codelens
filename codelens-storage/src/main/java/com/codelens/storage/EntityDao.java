@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Single consolidated DAO for all entity types (packages, types, fields,
@@ -29,9 +30,18 @@ public class EntityDao {
 
     private final DatabaseManager db;
     private final ObjectMapper    json = new ObjectMapper();
+    private final AtomicLong      skippedRecordCount = new AtomicLong(0);
 
     public EntityDao(DatabaseManager db) {
         this.db = db;
+    }
+
+    public long getSkippedRecordCount() {
+        return skippedRecordCount.get();
+    }
+
+    public void resetSkippedRecordCount() {
+        skippedRecordCount.set(0);
     }
 
     public static final int BATCH_CHUNK_SIZE = 2500;
@@ -63,6 +73,11 @@ public class EntityDao {
                         String sqlPkg = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
                         try (PreparedStatement ps = c.prepareStatement(sqlPkg)) {
                             for (CodePackage p : pkgs) {
+                                if (p == null || p.getId() == null) {
+                                    skippedRecordCount.incrementAndGet();
+                                    log.warn("Skipping null or invalid CodePackage in batch: {}", p);
+                                    continue;
+                                }
                                 ps.setString(1, p.getId());
                                 ps.setString(2, p.getFqn());
                                 ps.setString(3, p.getName());
@@ -84,7 +99,12 @@ public class EntityDao {
                             "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
                         Map<String, CodeType> unique = new LinkedHashMap<>(types.size());
                         for (CodeType t : types) {
-                            if (t.getId() != null) unique.put(t.getId(), t);
+                            if (t == null || t.getId() == null) {
+                                skippedRecordCount.incrementAndGet();
+                                log.warn("Skipping null or invalid CodeType in batch: {}", t);
+                                continue;
+                            }
+                            unique.put(t.getId(), t);
                         }
                         int typeCount = 0;
                         try (PreparedStatement ps = c.prepareStatement(sqlTypes)) {
@@ -121,7 +141,12 @@ public class EntityDao {
                             "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
                         Map<String, CodeField> unique = new LinkedHashMap<>(fields.size());
                         for (CodeField f : fields) {
-                            if (f.getId() != null) unique.put(f.getId(), f);
+                            if (f == null || f.getId() == null) {
+                                skippedRecordCount.incrementAndGet();
+                                log.warn("Skipping null or invalid CodeField in batch: {}", f);
+                                continue;
+                            }
+                            unique.put(f.getId(), f);
                         }
                         int fieldCount = 0;
                         try (PreparedStatement ps = c.prepareStatement(sqlFields)) {
@@ -153,7 +178,12 @@ public class EntityDao {
                             "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
                         Map<String, CodeMethod> unique = new LinkedHashMap<>(methods.size());
                         for (CodeMethod m : methods) {
-                            if (m.getId() != null) unique.put(m.getId(), m);
+                            if (m == null || m.getId() == null) {
+                                skippedRecordCount.incrementAndGet();
+                                log.warn("Skipping null or invalid CodeMethod in batch: {}", m);
+                                continue;
+                            }
+                            unique.put(m.getId(), m);
                         }
                         int methodCount = 0;
                         try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
@@ -186,7 +216,12 @@ public class EntityDao {
                             "KEY(id) VALUES (?,?,?,?,?)";
                         Map<String, CodeRelationship> unique = new LinkedHashMap<>(rels.size());
                         for (CodeRelationship r : rels) {
-                            if (r.getId() != null) unique.put(r.getId(), r);
+                            if (r == null || r.getId() == null) {
+                                skippedRecordCount.incrementAndGet();
+                                log.warn("Skipping null or invalid CodeRelationship in batch: {}", r);
+                                continue;
+                            }
+                            unique.put(r.getId(), r);
                         }
                         int relCount = 0;
                         try (PreparedStatement ps = c.prepareStatement(sqlRels)) {
@@ -211,6 +246,11 @@ public class EntityDao {
                         String sqlMeta = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
                         try (PreparedStatement ps = c.prepareStatement(sqlMeta)) {
                             for (FileMeta m : fileMetas) {
+                                if (m == null || m.getFilePath() == null) {
+                                    skippedRecordCount.incrementAndGet();
+                                    log.warn("Skipping null or invalid FileMeta in batch: {}", m);
+                                    continue;
+                                }
                                 ps.setString(1, m.getFilePath());
                                 ps.setLong(2, m.getLastModified());
                                 ps.setLong(3, m.getFileSize());
@@ -239,7 +279,316 @@ public class EntityDao {
             }
         }
         if (lastEx != null) {
-            throw lastEx;
+            log.warn("batchInsertChunkFast encountered persistent error ({}). Falling back to individual record insertion to skip failed records without fatal failure.", lastEx.getMessage());
+            insertChunkIndividuallySkippingErrors(pkgs, types, fields, methods, rels, fileMetas);
+        }
+    }
+
+    /**
+     * Resilient individual record fallback: persists valid records one-by-one and skips corrupt or invalid records.
+     */
+    public void insertChunkIndividuallySkippingErrors(List<CodePackage> pkgs,
+                                                     List<CodeType> types,
+                                                     List<CodeField> fields,
+                                                     List<CodeMethod> methods,
+                                                     List<CodeRelationship> rels,
+                                                     List<FileMeta> fileMetas) {
+        insertPackagesIndividually(pkgs);
+        insertTypesIndividually(types);
+        insertFieldsIndividually(fields);
+        insertMethodsIndividually(methods);
+        insertRelationshipsIndividually(rels);
+        insertFileMetasIndividually(fileMetas);
+    }
+
+    public void insertPackagesIndividually(List<CodePackage> packages) {
+        if (packages == null || packages.isEmpty()) return;
+        String sql = "MERGE INTO packages (id, fqn, name, parent_fqn, file_count, type_count) KEY(id) VALUES (?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (CodePackage p : packages) {
+                if (p == null || p.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodePackage record in fallback: {}", p);
+                    continue;
+                }
+                try {
+                    ps.setString(1, p.getId());
+                    ps.setString(2, p.getFqn());
+                    ps.setString(3, p.getName());
+                    ps.setString(4, p.getParentFqn());
+                    ps.setInt(5, p.getFileCount());
+                    ps.setInt(6, p.getTypeCount());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable t) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed package record [id={}, fqn={}]: {}", p.getId(), p.getFqn(), t.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback package insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertTypesIndividually(List<CodeType> types) {
+        if (types == null || types.isEmpty()) return;
+        String sql =
+            "MERGE INTO types " +
+            "(id,fqn,simple_name,package_fqn,kind,modifiers,super_class,interfaces," +
+            " source_file,start_line,end_line,line_count,field_count,method_count) " +
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (CodeType t : types) {
+                if (t == null || t.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeType record in fallback: {}", t);
+                    continue;
+                }
+                try {
+                    ps.setString(1,  t.getId());
+                    ps.setString(2,  t.getFqn());
+                    ps.setString(3,  t.getSimpleName());
+                    ps.setString(4,  t.getPackageFqn());
+                    ps.setString(5,  t.getKind());
+                    ps.setString(6,  t.getModifiers());
+                    ps.setString(7,  t.getSuperClass());
+                    ps.setString(8,  toJson(t.getInterfaces()));
+                    ps.setString(9,  t.getSourceFile());
+                    ps.setInt(10,    t.getStartLine());
+                    ps.setInt(11,    t.getEndLine());
+                    ps.setInt(12,    t.getLineCount());
+                    ps.setInt(13,    t.getFieldCount());
+                    ps.setInt(14,    t.getMethodCount());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed type record [id={}, fqn={}]: {}", t.getId(), t.getFqn(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback type insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertFieldsIndividually(List<CodeField> fields) {
+        if (fields == null || fields.isEmpty()) return;
+        String sql =
+            "MERGE INTO fields " +
+            "(id,fqn,simple_name,declaring_type_fqn,field_type,modifiers,initializer,start_line) " +
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (CodeField f : fields) {
+                if (f == null || f.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeField record in fallback: {}", f);
+                    continue;
+                }
+                try {
+                    ps.setString(1, f.getId());
+                    ps.setString(2, f.getFqn());
+                    ps.setString(3, f.getSimpleName());
+                    ps.setString(4, f.getDeclaringTypeFqn());
+                    ps.setString(5, f.getFieldType());
+                    ps.setString(6, f.getModifiers());
+                    ps.setString(7, f.getInitializer());
+                    ps.setInt(8,    f.getStartLine());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed field record [id={}, fqn={}]: {}", f.getId(), f.getFqn(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback field insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertMethodsIndividually(List<CodeMethod> methods) {
+        if (methods == null || methods.isEmpty()) return;
+        String sql =
+            "MERGE INTO methods " +
+            "(id,fqn,simple_name,declaring_type_fqn,return_type,parameters,modifiers," +
+            " start_line,end_line,cyclomatic_complexity,body_hash) " +
+            "KEY(id) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (CodeMethod m : methods) {
+                if (m == null || m.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeMethod record in fallback: {}", m);
+                    continue;
+                }
+                try {
+                    ps.setString(1,  m.getId());
+                    ps.setString(2,  m.getFqn());
+                    ps.setString(3,  m.getSimpleName());
+                    ps.setString(4,  m.getDeclaringTypeFqn());
+                    ps.setString(5,  m.getReturnType());
+                    ps.setString(6,  toJson(m.getParameters()));
+                    ps.setString(7,  m.getModifiers());
+                    ps.setInt(8,     m.getStartLine());
+                    ps.setInt(9,     m.getEndLine());
+                    ps.setInt(10,    m.getCyclomaticComplexity());
+                    ps.setString(11, m.getBodyHash());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed method record [id={}, fqn={}]: {}", m.getId(), m.getFqn(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback method insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertRelationshipsIndividually(List<CodeRelationship> rels) {
+        if (rels == null || rels.isEmpty()) return;
+        String sql =
+            "MERGE INTO relationships (id, from_entity_fqn, to_entity_fqn, kind, source_line) " +
+            "KEY(id) VALUES (?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (CodeRelationship r : rels) {
+                if (r == null || r.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeRelationship record in fallback: {}", r);
+                    continue;
+                }
+                try {
+                    ps.setString(1, r.getId());
+                    ps.setString(2, r.getFromEntityFqn());
+                    ps.setString(3, r.getToEntityFqn());
+                    ps.setString(4, r.getKind());
+                    ps.setInt(5,    r.getSourceLine());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed relationship record [id={}, from={}, to={}]: {}", r.getId(), r.getFromEntityFqn(), r.getToEntityFqn(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback relationship insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertFileMetasIndividually(List<FileMeta> metas) {
+        if (metas == null || metas.isEmpty()) return;
+        String sql = "MERGE INTO file_meta (file_path, last_modified, file_size, type_count) KEY (file_path) VALUES (?, ?, ?, ?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (FileMeta m : metas) {
+                if (m == null || m.getFilePath() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid FileMeta record in fallback: {}", m);
+                    continue;
+                }
+                try {
+                    ps.setString(1, m.getFilePath());
+                    ps.setLong(2,   m.getLastModified());
+                    ps.setLong(3,   m.getFileSize());
+                    ps.setInt(4,    m.getTypeCount());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed file_meta record [path={}]: {}", m.getFilePath(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback file_meta insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertInconsistenciesIndividually(List<InconsistencyReport> reports) {
+        if (reports == null || reports.isEmpty()) return;
+        String sql =
+            "MERGE INTO inconsistencies " +
+            "(id,entity1_fqn,entity1_kind,entity2_fqn,entity2_kind,reason,similarity_score,kind) KEY(id)" +
+            " VALUES (?,?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (InconsistencyReport r : reports) {
+                if (r == null || r.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid InconsistencyReport record in fallback: {}", r);
+                    continue;
+                }
+                try {
+                    ps.setString(1, r.getId());
+                    ps.setString(2, r.getEntity1Fqn());
+                    ps.setString(3, r.getEntity1Kind());
+                    ps.setString(4, r.getEntity2Fqn());
+                    ps.setString(5, r.getEntity2Kind());
+                    ps.setString(6, r.getReason());
+                    ps.setDouble(7, r.getSimilarityScore());
+                    ps.setString(8, r.getKind());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed inconsistency record [id={}]: {}", r.getId(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback inconsistency insertion: {}", e.getMessage());
+        }
+    }
+
+    public void insertGitMetasIndividually(List<GitMeta> metas) {
+        if (metas == null || metas.isEmpty()) return;
+        String sql =
+            "MERGE INTO git_meta " +
+            "(entity_fqn, last_author_name, last_author_email, last_commit_time, " +
+            " last_commit_hash, last_commit_msg, commit_count) " +
+            "KEY(entity_fqn) VALUES (?,?,?,?,?,?,?)";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
+            for (GitMeta m : metas) {
+                if (m == null || m.getEntityFqn() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid GitMeta record in fallback: {}", m);
+                    continue;
+                }
+                try {
+                    ps.setString(1, m.getEntityFqn());
+                    ps.setString(2, m.getLastAuthorName());
+                    ps.setString(3, m.getLastAuthorEmail());
+                    ps.setLong(4,   m.getLastCommitTime());
+                    ps.setString(5, m.getLastCommitHash());
+                    ps.setString(6, m.getLastCommitMsg());
+                    ps.setInt(7,    m.getCommitCount());
+                    ps.executeUpdate();
+                    c.commit();
+                } catch (Throwable ex) {
+                    try { c.rollback(); } catch (SQLException ignored) {}
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping failed git_meta record [entityFqn={}]: {}", m.getEntityFqn(), ex.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed opening connection during fallback git_meta insertion: {}", e.getMessage());
         }
     }
 
@@ -256,6 +605,11 @@ public class EntityDao {
                 c.setAutoCommit(false);
                 try (PreparedStatement ps = c.prepareStatement(sql)) {
                     for (CodePackage p : chunk) {
+                        if (p == null || p.getId() == null) {
+                            skippedRecordCount.incrementAndGet();
+                            log.warn("Skipping null or invalid CodePackage in batch: {}", p);
+                            continue;
+                        }
                         ps.setString(1, p.getId());
                         ps.setString(2, p.getFqn());
                         ps.setString(3, p.getName());
@@ -268,8 +622,8 @@ public class EntityDao {
                     c.commit();
                 } catch (Throwable t) {
                     try { c.rollback(); } catch (SQLException ignored) {}
-                    if (t instanceof SQLException) throw (SQLException) t;
-                    throw new SQLException(t);
+                    log.warn("batchInsertPackagesFast failed for chunk ({}): {}. Falling back to individual record insertion with error skipping.", chunk.size(), t.getMessage());
+                    insertPackagesIndividually(chunk);
                 } finally {
                     try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
@@ -311,7 +665,12 @@ public class EntityDao {
             List<CodeType> chunk = types.subList(i, Math.min(i + BATCH_CHUNK_SIZE, types.size()));
             Map<String, CodeType> unique = new LinkedHashMap<>(chunk.size());
             for (CodeType t : chunk) {
-                if (t.getId() != null) unique.put(t.getId(), t);
+                if (t == null || t.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeType in batch: {}", t);
+                    continue;
+                }
+                unique.put(t.getId(), t);
             }
             try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
@@ -337,8 +696,8 @@ public class EntityDao {
                     c.commit();
                 } catch (Throwable t) {
                     try { c.rollback(); } catch (SQLException ignored) {}
-                    if (t instanceof SQLException) throw (SQLException) t;
-                    throw new SQLException(t);
+                    log.warn("batchInsertTypesFast failed for chunk ({}): {}. Falling back to individual record insertion with error skipping.", chunk.size(), t.getMessage());
+                    insertTypesIndividually(chunk);
                 } finally {
                     try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
@@ -408,7 +767,12 @@ public class EntityDao {
             List<CodeField> chunk = fields.subList(i, Math.min(i + BATCH_CHUNK_SIZE, fields.size()));
             Map<String, CodeField> unique = new LinkedHashMap<>(chunk.size());
             for (CodeField f : chunk) {
-                if (f.getId() != null) unique.put(f.getId(), f);
+                if (f == null || f.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeField in batch: {}", f);
+                    continue;
+                }
+                unique.put(f.getId(), f);
             }
             try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
@@ -428,8 +792,8 @@ public class EntityDao {
                     c.commit();
                 } catch (Throwable t) {
                     try { c.rollback(); } catch (SQLException ignored) {}
-                    if (t instanceof SQLException) throw (SQLException) t;
-                    throw new SQLException(t);
+                    log.warn("batchInsertFieldsFast failed for chunk ({}): {}. Falling back to individual record insertion with error skipping.", chunk.size(), t.getMessage());
+                    insertFieldsIndividually(chunk);
                 } finally {
                     try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
@@ -493,7 +857,12 @@ public class EntityDao {
             List<CodeMethod> chunk = methods.subList(i, Math.min(i + BATCH_CHUNK_SIZE, methods.size()));
             Map<String, CodeMethod> unique = new LinkedHashMap<>(chunk.size());
             for (CodeMethod m : chunk) {
-                if (m.getId() != null) unique.put(m.getId(), m);
+                if (m == null || m.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeMethod in batch: {}", m);
+                    continue;
+                }
+                unique.put(m.getId(), m);
             }
             try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
@@ -516,8 +885,8 @@ public class EntityDao {
                     c.commit();
                 } catch (Throwable t) {
                     try { c.rollback(); } catch (SQLException ignored) {}
-                    if (t instanceof SQLException) throw (SQLException) t;
-                    throw new SQLException(t);
+                    log.warn("batchInsertMethodsFast failed for chunk ({}): {}. Falling back to individual record insertion with error skipping.", chunk.size(), t.getMessage());
+                    insertMethodsIndividually(chunk);
                 } finally {
                     try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
@@ -603,7 +972,12 @@ public class EntityDao {
             List<CodeRelationship> chunk = rels.subList(i, Math.min(i + BATCH_CHUNK_SIZE, rels.size()));
             Map<String, CodeRelationship> unique = new LinkedHashMap<>(chunk.size());
             for (CodeRelationship r : chunk) {
-                if (r.getId() != null) unique.put(r.getId(), r);
+                if (r == null || r.getId() == null) {
+                    skippedRecordCount.incrementAndGet();
+                    log.warn("Skipping null or invalid CodeRelationship in batch: {}", r);
+                    continue;
+                }
+                unique.put(r.getId(), r);
             }
             try (Connection c = db.getConnection()) {
                 c.setAutoCommit(false);
@@ -620,8 +994,8 @@ public class EntityDao {
                     c.commit();
                 } catch (Throwable t) {
                     try { c.rollback(); } catch (SQLException ignored) {}
-                    if (t instanceof SQLException) throw (SQLException) t;
-                    throw new SQLException(t);
+                    log.warn("batchInsertRelationshipsFast failed for chunk ({}): {}. Falling back to individual record insertion with error skipping.", chunk.size(), t.getMessage());
+                    insertRelationshipsIndividually(chunk);
                 } finally {
                     try { c.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
@@ -785,7 +1159,11 @@ public class EntityDao {
             }
 
             for (String[] pair : chunk) {
-                consumer.accept(pair[0], pair[1]);
+                try {
+                    consumer.accept(pair[0], pair[1]);
+                } catch (Throwable t) {
+                    log.warn("Skipping failed call relationship ({} -> {}): {}", pair[0], pair[1], t.getMessage());
+                }
             }
 
             if (chunk.size() < chunkSize || nextLastId == null) {
@@ -850,7 +1228,11 @@ public class EntityDao {
             }
 
             for (String[] tuple : chunk) {
-                consumer.accept(tuple[0], tuple[1], kind);
+                try {
+                    consumer.accept(tuple[0], tuple[1], kind);
+                } catch (Throwable t) {
+                    log.warn("Skipping failed field relationship ({} -> {}, {}): {}", tuple[0], tuple[1], kind, t.getMessage());
+                }
             }
 
             if (chunk.size() < chunkSize || nextLastId == null) {
@@ -966,6 +1348,11 @@ public class EntityDao {
             c.setAutoCommit(false);
             try (PreparedStatement ps = c.prepareStatement(sql)) {
                 for (InconsistencyReport r : reports) {
+                    if (r == null || r.getId() == null) {
+                        skippedRecordCount.incrementAndGet();
+                        log.warn("Skipping null or invalid InconsistencyReport in batch: {}", r);
+                        continue;
+                    }
                     ps.setString(1, r.getId());
                     ps.setString(2, r.getEntity1Fqn());
                     ps.setString(3, r.getEntity1Kind());
@@ -980,8 +1367,8 @@ public class EntityDao {
                 c.commit();
             } catch (Throwable t) {
                 try { c.rollback(); } catch (SQLException ignored) {}
-                if (t instanceof SQLException) throw (SQLException) t;
-                throw new SQLException(t);
+                log.warn("batchInsertInconsistencies failed ({}): {}. Falling back to individual record insertion with error skipping.", reports.size(), t.getMessage());
+                insertInconsistenciesIndividually(reports);
             } finally {
                 try { c.setAutoCommit(true); } catch (SQLException ignored) {}
             }
@@ -1025,20 +1412,33 @@ public class EntityDao {
             "(entity_fqn, last_author_name, last_author_email, last_commit_time, " +
             " last_commit_hash, last_commit_msg, commit_count) " +
             "KEY(entity_fqn) VALUES (?,?,?,?,?,?,?)";
-        try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            for (GitMeta m : metas) {
-                ps.setString(1, m.getEntityFqn());
-                ps.setString(2, m.getLastAuthorName());
-                ps.setString(3, m.getLastAuthorEmail());
-                ps.setLong(4,   m.getLastCommitTime());
-                ps.setString(5, m.getLastCommitHash());
-                ps.setString(6, m.getLastCommitMsg());
-                ps.setInt(7,    m.getCommitCount());
-                ps.addBatch();
+        try (Connection c = db.getConnection()) {
+            c.setAutoCommit(false);
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                for (GitMeta m : metas) {
+                    if (m == null || m.getEntityFqn() == null) {
+                        skippedRecordCount.incrementAndGet();
+                        log.warn("Skipping null or invalid GitMeta in batch: {}", m);
+                        continue;
+                    }
+                    ps.setString(1, m.getEntityFqn());
+                    ps.setString(2, m.getLastAuthorName());
+                    ps.setString(3, m.getLastAuthorEmail());
+                    ps.setLong(4,   m.getLastCommitTime());
+                    ps.setString(5, m.getLastCommitHash());
+                    ps.setString(6, m.getLastCommitMsg());
+                    ps.setInt(7,    m.getCommitCount());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+                c.commit();
+            } catch (Throwable t) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                log.warn("batchInsertGitMeta failed ({}): {}. Falling back to individual record insertion with error skipping.", metas.size(), t.getMessage());
+                insertGitMetasIndividually(metas);
+            } finally {
+                try { c.setAutoCommit(true); } catch (SQLException ignored) {}
             }
-            ps.executeBatch();
-            c.commit();
         }
     }
 

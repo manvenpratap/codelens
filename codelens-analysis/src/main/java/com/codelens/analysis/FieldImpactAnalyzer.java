@@ -68,19 +68,23 @@ public class FieldImpactAnalyzer {
 
         if (streamer != null) {
             streamer.stream((from, to, kind) -> {
-                if (from == null || to == null || kind == null) return;
-                CompactFieldImpact impact = map.computeIfAbsent(to, k -> new CompactFieldImpact());
-                if ("READS_FIELD".equals(kind)) {
-                    impact.readers.add(from);
-                } else if ("WRITES_FIELD".equals(kind)) {
-                    impact.writers.add(from);
-                }
-                count[0]++;
-                if (listener != null && (count[0] % stride == 0 || count[0] == totalExpectedRels)) {
-                    int lastDot = to.lastIndexOf('.');
-                    String shortTarget = lastDot >= 0 ? to.substring(lastDot + 1) : to;
-                    listener.onProgress("Field Impact: Indexing Relations", count[0], totalExpectedRels,
-                        String.format("Indexed %,d / %,d field relations (%s)", count[0], totalExpectedRels > 0 ? totalExpectedRels : count[0], shortTarget));
+                try {
+                    if (from == null || to == null || kind == null) return;
+                    CompactFieldImpact impact = map.computeIfAbsent(to, k -> new CompactFieldImpact());
+                    if ("READS_FIELD".equals(kind)) {
+                        impact.readers.add(from);
+                    } else if ("WRITES_FIELD".equals(kind)) {
+                        impact.writers.add(from);
+                    }
+                    count[0]++;
+                    if (listener != null && (count[0] % stride == 0 || count[0] == totalExpectedRels)) {
+                        int lastDot = to.lastIndexOf('.');
+                        String shortTarget = lastDot >= 0 ? to.substring(lastDot + 1) : to;
+                        listener.onProgress("Field Impact: Indexing Relations", count[0], totalExpectedRels,
+                            String.format("Indexed %,d / %,d field relations (%s)", count[0], totalExpectedRels > 0 ? totalExpectedRels : count[0], shortTarget));
+                    }
+                } catch (Throwable t) {
+                    log.warn("Skipping malformed field relation ({} -> {}, {}): {}", from, to, kind, t.getMessage());
                 }
             });
         }

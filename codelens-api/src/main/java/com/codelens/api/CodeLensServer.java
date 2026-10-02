@@ -348,7 +348,11 @@ public class CodeLensServer {
                     );
                     progress.setPercentage(82 + (int) ((i / (float) total) * 6.0));
                 }
-                getOrComputeLayout(task.key, task.supplier);
+                try {
+                    getOrComputeLayout(task.key, task.supplier);
+                } catch (Exception e) {
+                    log.warn("Skipping failed layout precomputation for '{}' ({}): {}", task.name, task.key, e.getMessage());
+                }
                 if (progress != null) {
                     progress.setDynamicMetrics(
                         "Layouts Ready", String.format("%d / %d", step, total),
@@ -2784,6 +2788,7 @@ public class CodeLensServer {
             progress.setMethodsFound(result.methodsFound);
             progress.setFieldsFound(result.fieldsFound);
             progress.setRelationshipsFound(result.relationshipsFound);
+            progress.setSkippedRecords((int) (dao.getSkippedRecordCount() + result.skippedEntities));
 
             invalidateGraphCache();
             warmupGraphCache(progress);
@@ -3206,6 +3211,7 @@ public class CodeLensServer {
             progress.setMethodsFound(totalMethodsCount);
             progress.setFieldsFound(totalFieldsCount);
             progress.setRelationshipsFound(totalRelsCount);
+            progress.setSkippedRecords((int) (dao.getSkippedRecordCount() + result.skippedEntities));
 
             // Phase 5: Invalidate obsolete cached graph layouts and warm up fresh ones
             invalidateGraphCache();

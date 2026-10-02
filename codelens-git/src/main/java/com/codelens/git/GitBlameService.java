@@ -61,28 +61,40 @@ public class GitBlameService {
 
             // ── Step 2: Group entities by unique source file ──────────────────
             Map<String, String> typeToFile = new HashMap<>();
-            for (CodeType t : result.types) {
-                if (t.getSourceFile() != null) {
-                    typeToFile.put(t.getFqn(), t.getSourceFile());
+            if (result.types != null) {
+                for (CodeType t : result.types) {
+                    if (t != null && t.getSourceFile() != null && t.getFqn() != null) {
+                        typeToFile.put(t.getFqn(), t.getSourceFile());
+                    }
                 }
             }
 
             Map<String, FileEntities> byFile = new LinkedHashMap<>();
-            for (CodeType t : result.types) {
-                if (t.getSourceFile() != null) {
-                    byFile.computeIfAbsent(t.getSourceFile(), FileEntities::new).types.add(t);
+            if (result.types != null) {
+                for (CodeType t : result.types) {
+                    if (t != null && t.getSourceFile() != null) {
+                        byFile.computeIfAbsent(t.getSourceFile(), FileEntities::new).types.add(t);
+                    }
                 }
             }
-            for (CodeMethod m : result.methods) {
-                String file = typeToFile.get(m.getDeclaringTypeFqn());
-                if (file != null) {
-                    byFile.computeIfAbsent(file, FileEntities::new).methods.add(m);
+            if (result.methods != null) {
+                for (CodeMethod m : result.methods) {
+                    if (m != null && m.getDeclaringTypeFqn() != null) {
+                        String file = typeToFile.get(m.getDeclaringTypeFqn());
+                        if (file != null) {
+                            byFile.computeIfAbsent(file, FileEntities::new).methods.add(m);
+                        }
+                    }
                 }
             }
-            for (CodeField f : result.fields) {
-                String file = typeToFile.get(f.getDeclaringTypeFqn());
-                if (file != null) {
-                    byFile.computeIfAbsent(file, FileEntities::new).fields.add(f);
+            if (result.fields != null) {
+                for (CodeField f : result.fields) {
+                    if (f != null && f.getDeclaringTypeFqn() != null) {
+                        String file = typeToFile.get(f.getDeclaringTypeFqn());
+                        if (file != null) {
+                            byFile.computeIfAbsent(file, FileEntities::new).fields.add(f);
+                        }
+                    }
                 }
             }
 
@@ -94,10 +106,11 @@ public class GitBlameService {
 
             // ── Step 3: Parallel blame execution across CPU cores ────────────
             workItems.parallelStream().forEach(item -> {
-                String fileName = new File(item.sourceFile).getName();
+                String fileName = (item.sourceFile != null) ? new File(item.sourceFile).getName() : "unknown";
                 try (Repository threadRepo = openRepo(repoRoot);
                      Git threadGit = new Git(threadRepo)) {
 
+                    if (item.sourceFile == null) return;
                     String relPath = repoRoot.toPath()
                         .relativize(Paths.get(item.sourceFile).toAbsolutePath())
                         .toString()
@@ -114,19 +127,22 @@ public class GitBlameService {
                         blame.computeAll();
 
                         for (CodeType t : item.types) {
+                            if (t == null || t.getFqn() == null) continue;
                             GitMeta m = buildMeta(t.getFqn(), t.getStartLine(), t.getEndLine(), blame, count);
                             if (m != null) allMeta.add(m);
                         }
                         for (CodeMethod method : item.methods) {
+                            if (method == null || method.getFqn() == null) continue;
                             GitMeta m = buildMeta(method.getFqn(), method.getStartLine(), method.getEndLine(), blame, count);
                             if (m != null) allMeta.add(m);
                         }
                         for (CodeField f : item.fields) {
+                            if (f == null || f.getFqn() == null) continue;
                             GitMeta m = buildMeta(f.getFqn(), f.getStartLine(), f.getStartLine(), blame, count);
                             if (m != null) allMeta.add(m);
                         }
                     }
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     log.debug("Blame failed for {}: {}", item.sourceFile, e.getMessage());
                 } finally {
                     int done = processedCount.incrementAndGet();

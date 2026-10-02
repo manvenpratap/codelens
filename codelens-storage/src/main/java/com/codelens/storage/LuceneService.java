@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Manages the embedded Apache Lucene full-text search index.
@@ -30,6 +31,15 @@ import java.util.*;
 public class LuceneService {
 
     private static final Logger log = LoggerFactory.getLogger(LuceneService.class);
+    private final AtomicLong skippedDocCount = new AtomicLong(0);
+
+    public long getSkippedDocCount() {
+        return skippedDocCount.get();
+    }
+
+    public void resetSkippedDocCount() {
+        skippedDocCount.set(0);
+    }
 
     // Field names in the Lucene document schema
     private static final String F_ID            = "id";
@@ -129,52 +139,94 @@ public class LuceneService {
         List<Document> docs = new ArrayList<>(estimatedSize);
         if (types != null) {
             for (CodeType t : types) {
-                if (t.getId() != null && !t.getId().isEmpty()) {
-                    docs.add(buildTypeDoc(t));
+                if (t != null && t.getId() != null && !t.getId().isEmpty()) {
+                    try {
+                        docs.add(buildTypeDoc(t));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping corrupt type for Lucene index [id={}, fqn={}]: {}", t.getId(), t.getFqn(), e.getMessage());
+                    }
                 }
             }
         }
         if (methods != null) {
             for (CodeMethod m : methods) {
-                if (m.getId() != null && !m.getId().isEmpty()) {
-                    docs.add(buildMethodDoc(m));
+                if (m != null && m.getId() != null && !m.getId().isEmpty()) {
+                    try {
+                        docs.add(buildMethodDoc(m));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping corrupt method for Lucene index [id={}, fqn={}]: {}", m.getId(), m.getFqn(), e.getMessage());
+                    }
                 }
             }
         }
         if (fields != null) {
             for (CodeField f : fields) {
-                if (f.getId() != null && !f.getId().isEmpty()) {
-                    docs.add(buildFieldDoc(f));
+                if (f != null && f.getId() != null && !f.getId().isEmpty()) {
+                    try {
+                        docs.add(buildFieldDoc(f));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping corrupt field for Lucene index [id={}, fqn={}]: {}", f.getId(), f.getFqn(), e.getMessage());
+                    }
                 }
             }
         }
         if (!docs.isEmpty()) {
-            writer.addDocuments(docs);
+            try {
+                writer.addDocuments(docs);
+            } catch (Exception e) {
+                log.warn("Batch Lucene indexing failed ({}), falling back to individual document indexing with error skipping", e.getMessage());
+                for (Document doc : docs) {
+                    try {
+                        writer.addDocument(doc);
+                    } catch (Exception docEx) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping failed Lucene document [id={}, fqn={}]: {}", doc.get(F_ID), doc.get(F_FQN), docEx.getMessage());
+                    }
+                }
+            }
         }
     }
 
     /** Indexes a batch of types, methods, and fields incrementally. Uses updateDocument for strict idempotency. */
     public synchronized void indexBatch(List<CodeType>   types,
                                         List<CodeMethod> methods,
-                                        List<CodeField>  fields) throws IOException {
+                                        List<CodeField>  fields) {
         if (types != null) {
             for (CodeType t : types) {
-                if (t.getId() != null && !t.getId().isEmpty()) {
-                    writer.updateDocument(new Term(F_ID, t.getId()), buildTypeDoc(t));
+                if (t != null && t.getId() != null && !t.getId().isEmpty()) {
+                    try {
+                        writer.updateDocument(new Term(F_ID, t.getId()), buildTypeDoc(t));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping failed Lucene type index [id={}, fqn={}]: {}", t.getId(), t.getFqn(), e.getMessage());
+                    }
                 }
             }
         }
         if (methods != null) {
             for (CodeMethod m : methods) {
-                if (m.getId() != null && !m.getId().isEmpty()) {
-                    writer.updateDocument(new Term(F_ID, m.getId()), buildMethodDoc(m));
+                if (m != null && m.getId() != null && !m.getId().isEmpty()) {
+                    try {
+                        writer.updateDocument(new Term(F_ID, m.getId()), buildMethodDoc(m));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping failed Lucene method index [id={}, fqn={}]: {}", m.getId(), m.getFqn(), e.getMessage());
+                    }
                 }
             }
         }
         if (fields != null) {
             for (CodeField f : fields) {
-                if (f.getId() != null && !f.getId().isEmpty()) {
-                    writer.updateDocument(new Term(F_ID, f.getId()), buildFieldDoc(f));
+                if (f != null && f.getId() != null && !f.getId().isEmpty()) {
+                    try {
+                        writer.updateDocument(new Term(F_ID, f.getId()), buildFieldDoc(f));
+                    } catch (Exception e) {
+                        skippedDocCount.incrementAndGet();
+                        log.warn("Skipping failed Lucene field index [id={}, fqn={}]: {}", f.getId(), f.getFqn(), e.getMessage());
+                    }
                 }
             }
         }

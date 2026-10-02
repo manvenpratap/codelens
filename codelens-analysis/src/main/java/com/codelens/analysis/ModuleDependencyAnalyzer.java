@@ -6,6 +6,9 @@ import com.codelens.core.model.CodePackage;
 import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -17,6 +20,8 @@ import java.util.stream.Collectors;
  * 4. Coupling and stability metrics (Afferent Ca, Efferent Ce, Instability I = Ce / (Ca + Ce)).
  */
 public class ModuleDependencyAnalyzer {
+
+    private static final Logger log = LoggerFactory.getLogger(ModuleDependencyAnalyzer.class);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Models
@@ -180,21 +185,35 @@ public class ModuleDependencyAnalyzer {
         if (callGraph != null && callGraph.getCallGraph() != null) {
             org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g = callGraph.getCallGraph();
             for (org.jgrapht.graph.DefaultEdge e : g.edgeSet()) {
-                String src = g.getEdgeSource(e);
-                String tgt = g.getEdgeTarget(e);
-                if (src != null && tgt != null) {
-                    consumer.accept(src, tgt, "CALLS", 0);
+                try {
+                    String src = g.getEdgeSource(e);
+                    String tgt = g.getEdgeTarget(e);
+                    if (src != null && tgt != null) {
+                        consumer.accept(src, tgt, "CALLS", 0);
+                    }
+                } catch (Throwable t) {
+                    log.warn("Skipping failed edge in module analysis: {}", t.getMessage());
                 }
             }
             if (relationships != null) {
                 for (CodeRelationship rel : relationships) {
+                    if (rel == null) continue;
                     if ("CALLS".equalsIgnoreCase(rel.getKind())) continue;
-                    consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
+                    try {
+                        consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
+                    } catch (Throwable t) {
+                        log.warn("Skipping failed relationship in module analysis: {}", t.getMessage());
+                    }
                 }
             }
         } else if (relationships != null) {
             for (CodeRelationship rel : relationships) {
-                consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
+                if (rel == null) continue;
+                try {
+                    consumer.accept(rel.getFromEntityFqn(), rel.getToEntityFqn(), rel.getKind(), rel.getSourceLine());
+                } catch (Throwable t) {
+                    log.warn("Skipping failed relationship in module analysis: {}", t.getMessage());
+                }
             }
         }
     }
@@ -218,9 +237,14 @@ public class ModuleDependencyAnalyzer {
         Map<String, Integer> typesCountPerModule = new HashMap<>();
         if (types != null) {
             for (CodeType t : types) {
-                String mod = ctx.getModuleForType(t.getFqn());
-                if (mod != null) {
-                    typesCountPerModule.merge(mod.toLowerCase(), 1, Integer::sum);
+                if (t == null || t.getFqn() == null) continue;
+                try {
+                    String mod = ctx.getModuleForType(t.getFqn());
+                    if (mod != null) {
+                        typesCountPerModule.merge(mod.toLowerCase(), 1, Integer::sum);
+                    }
+                } catch (Throwable t2) {
+                    log.warn("Skipping failed type in module counting: {}", t2.getMessage());
                 }
             }
         }
@@ -585,63 +609,83 @@ public class ModuleDependencyAnalyzer {
 
         if (packages != null) {
             for (CodePackage p : packages) {
-                ctx.packageByFqn.put(p.getFqn(), p);
-                String mod = (p.getName() != null && !p.getName().isBlank()) ? p.getName() : CallGraphAnalyzer.extractModuleName(p.getFqn());
-                ctx.packageToModule.put(p.getFqn(), mod);
-                ctx.moduleToPrimaryPackage.putIfAbsent(mod, p.getFqn());
-                ctx.allModules.add(mod);
+                if (p == null || p.getFqn() == null) continue;
+                try {
+                    ctx.packageByFqn.put(p.getFqn(), p);
+                    String mod = (p.getName() != null && !p.getName().isBlank()) ? p.getName() : CallGraphAnalyzer.extractModuleName(p.getFqn());
+                    ctx.packageToModule.put(p.getFqn(), mod);
+                    ctx.moduleToPrimaryPackage.putIfAbsent(mod, p.getFqn());
+                    ctx.allModules.add(mod);
+                } catch (Throwable t) {
+                    log.warn("Skipping malformed package in module context: {}", t.getMessage());
+                }
             }
         }
 
         if (types != null) {
             for (CodeType t : types) {
-                ctx.typeMap.put(t.getFqn(), t);
-                String pkg = t.getPackageFqn() != null ? t.getPackageFqn() : CallGraphAnalyzer.extractPackageFqn(t.getFqn());
-                ctx.typeToPkg.put(t.getFqn(), pkg);
-                if (t.getSimpleName() != null && !t.getSimpleName().isBlank()) {
-                    ctx.simpleNameToType.putIfAbsent(t.getSimpleName(), t.getFqn());
-                    ctx.simpleNameToType.putIfAbsent(t.getSimpleName().toLowerCase(), t.getFqn());
-                }
-
-                String mod = ctx.packageToModule.get(pkg);
-                if (mod == null) {
-                    mod = ctx.findModuleByPackagePrefix(pkg);
-                    if (mod == null) {
-                        mod = CallGraphAnalyzer.extractModuleName(t.getFqn());
+                if (t == null || t.getFqn() == null) continue;
+                try {
+                    ctx.typeMap.put(t.getFqn(), t);
+                    String pkg = t.getPackageFqn() != null ? t.getPackageFqn() : CallGraphAnalyzer.extractPackageFqn(t.getFqn());
+                    ctx.typeToPkg.put(t.getFqn(), pkg);
+                    if (t.getSimpleName() != null && !t.getSimpleName().isBlank()) {
+                        ctx.simpleNameToType.putIfAbsent(t.getSimpleName(), t.getFqn());
+                        ctx.simpleNameToType.putIfAbsent(t.getSimpleName().toLowerCase(), t.getFqn());
                     }
-                    ctx.packageToModule.put(pkg, mod);
-                    ctx.moduleToPrimaryPackage.putIfAbsent(mod, pkg);
-                    ctx.allModules.add(mod);
+
+                    String mod = ctx.packageToModule.get(pkg);
+                    if (mod == null) {
+                        mod = ctx.findModuleByPackagePrefix(pkg);
+                        if (mod == null) {
+                            mod = CallGraphAnalyzer.extractModuleName(t.getFqn());
+                        }
+                        ctx.packageToModule.put(pkg, mod);
+                        ctx.moduleToPrimaryPackage.putIfAbsent(mod, pkg);
+                        ctx.allModules.add(mod);
+                    }
+                } catch (Throwable err) {
+                    log.warn("Skipping malformed type in module context: {}", err.getMessage());
                 }
             }
         }
 
         if (methods != null) {
             for (CodeMethod m : methods) {
-                ctx.methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
-                ctx.methodToType.put(m.getFqn().toLowerCase(), m.getDeclaringTypeFqn());
-                int paren = m.getFqn().indexOf('(');
-                if (paren > 0) {
-                    String noParams = m.getFqn().substring(0, paren);
-                    ctx.methodToType.put(noParams, m.getDeclaringTypeFqn());
-                    ctx.methodToType.put(noParams.toLowerCase(), m.getDeclaringTypeFqn());
-                }
-                if (m.getSimpleName() != null && !m.getSimpleName().isBlank() && m.getDeclaringTypeFqn() != null) {
-                    String simpleClass = extractSimple(m.getDeclaringTypeFqn());
-                    ctx.methodToType.put(simpleClass + "." + m.getSimpleName(), m.getDeclaringTypeFqn());
-                    ctx.methodToType.put((simpleClass + "." + m.getSimpleName()).toLowerCase(), m.getDeclaringTypeFqn());
+                if (m == null || m.getFqn() == null) continue;
+                try {
+                    ctx.methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
+                    ctx.methodToType.put(m.getFqn().toLowerCase(), m.getDeclaringTypeFqn());
+                    int paren = m.getFqn().indexOf('(');
+                    if (paren > 0) {
+                        String noParams = m.getFqn().substring(0, paren);
+                        ctx.methodToType.put(noParams, m.getDeclaringTypeFqn());
+                        ctx.methodToType.put(noParams.toLowerCase(), m.getDeclaringTypeFqn());
+                    }
+                    if (m.getSimpleName() != null && !m.getSimpleName().isBlank() && m.getDeclaringTypeFqn() != null) {
+                        String simpleClass = extractSimple(m.getDeclaringTypeFqn());
+                        ctx.methodToType.put(simpleClass + "." + m.getSimpleName(), m.getDeclaringTypeFqn());
+                        ctx.methodToType.put((simpleClass + "." + m.getSimpleName()).toLowerCase(), m.getDeclaringTypeFqn());
+                    }
+                } catch (Throwable err) {
+                    log.warn("Skipping malformed method in module context: {}", err.getMessage());
                 }
             }
         }
 
         if (fields != null) {
             for (CodeField f : fields) {
-                ctx.fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
-                ctx.fieldToType.put(f.getFqn().toLowerCase(), f.getDeclaringTypeFqn());
-                if (f.getSimpleName() != null && !f.getSimpleName().isBlank() && f.getDeclaringTypeFqn() != null) {
-                    String simpleClass = extractSimple(f.getDeclaringTypeFqn());
-                    ctx.fieldToType.put(simpleClass + "." + f.getSimpleName(), f.getDeclaringTypeFqn());
-                    ctx.fieldToType.put((simpleClass + "." + f.getSimpleName()).toLowerCase(), f.getDeclaringTypeFqn());
+                if (f == null || f.getFqn() == null) continue;
+                try {
+                    ctx.fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
+                    ctx.fieldToType.put(f.getFqn().toLowerCase(), f.getDeclaringTypeFqn());
+                    if (f.getSimpleName() != null && !f.getSimpleName().isBlank() && f.getDeclaringTypeFqn() != null) {
+                        String simpleClass = extractSimple(f.getDeclaringTypeFqn());
+                        ctx.fieldToType.put(simpleClass + "." + f.getSimpleName(), f.getDeclaringTypeFqn());
+                        ctx.fieldToType.put((simpleClass + "." + f.getSimpleName()).toLowerCase(), f.getDeclaringTypeFqn());
+                    }
+                } catch (Throwable err) {
+                    log.warn("Skipping malformed field in module context: {}", err.getMessage());
                 }
             }
         }

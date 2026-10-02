@@ -128,59 +128,63 @@ public class CallGraphAnalyzer {
             final int eStride = 5000;
             final String[] lastFromHolder = new String[2]; // [0] = from, [1] = callerClass
             edgeStreamer.stream((rawFrom, rawTo) -> {
-                if (rawFrom == null || rawTo == null) return;
-                String from = dedup(dedupPool, rawFrom);
-                String to   = rawTo;
+                try {
+                    if (rawFrom == null || rawTo == null) return;
+                    String from = dedup(dedupPool, rawFrom);
+                    String to   = rawTo;
 
-                if (to.startsWith("~")) {
-                    String callerClass;
-                    if (from.equals(lastFromHolder[0])) {
-                        callerClass = lastFromHolder[1];
-                    } else {
-                        callerClass = extractClassFqn(from);
-                        lastFromHolder[0] = from;
-                        lastFromHolder[1] = callerClass;
-                    }
-                    String cacheKey = callerClass + "|" + to;
-                    String cached = resolveCache.get(cacheKey);
-                    if (cached != null) {
-                        to = cached.isEmpty() ? null : cached;
-                    } else {
-                        to = resolve(from, to, byName, byClassAndMethod, byClassFqnAndMethod, byPackageAndMethod);
-                        resolveCache.put(cacheKey, to != null ? to : "");
-                    }
-                } else if (!to.contains("(") && !g.containsVertex(to)) {
-                    // Same-class or direct call without parameter signature (e.g. this.Get(), Get())
-                    int dot = to.lastIndexOf('.');
-                    if (dot > 0) {
-                        String classFqn = to.substring(0, dot);
-                        String methodName = to.substring(dot + 1);
-                        String fqnKey = (classFqn + "." + methodName).toLowerCase();
-                        List<String> fqnMatches = byClassFqnAndMethod.get(fqnKey);
-                        if (fqnMatches != null && !fqnMatches.isEmpty()) {
-                            if (fqnMatches.size() == 1) {
-                                to = fqnMatches.get(0);
-                            } else {
-                                String best = disambiguateByCaller(from, fqnMatches);
-                                to = (best != null) ? best : fqnMatches.get(0);
+                    if (to.startsWith("~")) {
+                        String callerClass;
+                        if (from.equals(lastFromHolder[0])) {
+                            callerClass = lastFromHolder[1];
+                        } else {
+                            callerClass = extractClassFqn(from);
+                            lastFromHolder[0] = from;
+                            lastFromHolder[1] = callerClass;
+                        }
+                        String cacheKey = callerClass + "|" + to;
+                        String cached = resolveCache.get(cacheKey);
+                        if (cached != null) {
+                            to = cached.isEmpty() ? null : cached;
+                        } else {
+                            to = resolve(from, to, byName, byClassAndMethod, byClassFqnAndMethod, byPackageAndMethod);
+                            resolveCache.put(cacheKey, to != null ? to : "");
+                        }
+                    } else if (!to.contains("(") && !g.containsVertex(to)) {
+                        // Same-class or direct call without parameter signature (e.g. this.Get(), Get())
+                        int dot = to.lastIndexOf('.');
+                        if (dot > 0) {
+                            String classFqn = to.substring(0, dot);
+                            String methodName = to.substring(dot + 1);
+                            String fqnKey = (classFqn + "." + methodName).toLowerCase();
+                            List<String> fqnMatches = byClassFqnAndMethod.get(fqnKey);
+                            if (fqnMatches != null && !fqnMatches.isEmpty()) {
+                                if (fqnMatches.size() == 1) {
+                                    to = fqnMatches.get(0);
+                                } else {
+                                    String best = disambiguateByCaller(from, fqnMatches);
+                                    to = (best != null) ? best : fqnMatches.get(0);
+                                }
                             }
                         }
                     }
-                }
-                if (to == null || to.startsWith("~") || from.equals(to)) return;
-                to = dedup(dedupPool, to);
+                    if (to == null || to.startsWith("~") || from.equals(to)) return;
+                    to = dedup(dedupPool, to);
 
-                g.addVertex(from);
-                g.addVertex(to);
+                    g.addVertex(from);
+                    g.addVertex(to);
 
-                if (!g.containsEdge(from, to)) {
-                    g.addEdge(from, to);
-                }
+                    if (!g.containsEdge(from, to)) {
+                        g.addEdge(from, to);
+                    }
 
-                edgeCount[0]++;
-                if (listener != null && edgeCount[0] % eStride == 0) {
-                    listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], -1,
-                        String.format("Mapped %,d call edges (%s → %s)", edgeCount[0], simpleMethodName(from), simpleMethodName(to)));
+                    edgeCount[0]++;
+                    if (listener != null && edgeCount[0] % eStride == 0) {
+                        listener.onProgress("Call Graph: Mapping Edges", edgeCount[0], -1,
+                            String.format("Mapped %,d call edges (%s → %s)", edgeCount[0], simpleMethodName(from), simpleMethodName(to)));
+                    }
+                } catch (Throwable t) {
+                    log.warn("Skipping malformed call edge ({} -> {}): {}", rawFrom, rawTo, t.getMessage());
                 }
             });
             if (listener != null) {
