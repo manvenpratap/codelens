@@ -9364,6 +9364,179 @@ function ease(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
    8. Keyboard shortcuts
    ───────────────────────────────────────────────────────────────────────────── */
 
+function initGuideModalEnhancements() {
+  const guideSearchInput = qs('#guide-search-input');
+  const guideSearchClear = qs('#guide-search-clear');
+  const guideSearchCount = qs('#guide-search-count');
+  const guideModal       = qs('#help-modal');
+  const testerStatus     = qs('#guide-key-tester-status');
+
+  // 1. Search & Filter
+  function filterGuide(query) {
+    const q = (query || '').trim().toLowerCase();
+    const panels = qsa('.guide-tab-panel');
+    let totalMatches = 0;
+
+    if (!q) {
+      if (guideSearchClear) guideSearchClear.style.display = 'none';
+      if (guideSearchCount) guideSearchCount.style.display = 'none';
+      panels.forEach(panel => {
+        panel.querySelectorAll('.help-card, .flow-step, .sc-row, .guide-tier-card, .guide-formula-card, .guide-hero-banner').forEach(el => {
+          el.style.display = '';
+        });
+        const tabBtn = qs(`.guide-tab-btn[data-guide-tab="${panel.id.replace('guide-tab-', '')}"]`);
+        if (tabBtn) {
+          const badge = tabBtn.querySelector('.guide-tab-badge');
+          if (badge) badge.style.display = 'none';
+        }
+      });
+      return;
+    }
+
+    if (guideSearchClear) guideSearchClear.style.display = 'flex';
+
+    panels.forEach(panel => {
+      let panelMatches = 0;
+      const tabKey = panel.id.replace('guide-tab-', '');
+      const tabBtn = qs(`.guide-tab-btn[data-guide-tab="${tabKey}"]`);
+
+      // Searchable cards & rows
+      const items = panel.querySelectorAll('.help-card, .flow-step, .sc-row, .guide-tier-card, .guide-formula-card');
+      items.forEach(el => {
+        const text = el.textContent.toLowerCase();
+        const matches = text.includes(q);
+        el.style.display = matches ? '' : 'none';
+        if (matches) panelMatches++;
+      });
+
+      totalMatches += panelMatches;
+
+      if (tabBtn) {
+        const badge = tabBtn.querySelector('.guide-tab-badge');
+        if (badge) {
+          if (panelMatches > 0) {
+            badge.textContent = panelMatches;
+            badge.style.display = 'inline-block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+      }
+    });
+
+    if (guideSearchCount) {
+      guideSearchCount.textContent = `${totalMatches} match${totalMatches === 1 ? '' : 'es'}`;
+      guideSearchCount.style.display = 'inline-block';
+    }
+  }
+
+  if (guideSearchInput) {
+    guideSearchInput.addEventListener('input', (e) => filterGuide(e.target.value));
+    guideSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        guideSearchInput.value = '';
+        filterGuide('');
+        guideSearchInput.blur();
+        e.stopPropagation();
+      }
+    });
+  }
+
+  if (guideSearchClear) {
+    guideSearchClear.addEventListener('click', () => {
+      if (guideSearchInput) {
+        guideSearchInput.value = '';
+        filterGuide('');
+        guideSearchInput.focus();
+      }
+    });
+  }
+
+  // 2. Direct screen jump handlers
+  if (guideModal) {
+    guideModal.addEventListener('click', (e) => {
+      const jumpEl = e.target.closest('.guide-jump-btn, .guide-chip');
+      if (!jumpEl) return;
+      e.preventDefault();
+      const jumpTab = jumpEl.dataset.jumpTab;
+      const jumpAction = jumpEl.dataset.jumpAction;
+
+      closeHelpModal();
+
+      if (jumpTab) {
+        switchTab(jumpTab);
+      } else if (jumpAction) {
+        if (jumpAction === 'studio' || jumpAction === 'studio-city') {
+          openMacroStudio('city3d');
+        } else if (jumpAction === 'studio-galaxy') {
+          openMacroStudio('galaxy3d');
+        } else if (jumpAction === 'dsm') {
+          openMacroStudio('dsm');
+        } else if (jumpAction === 'treemap') {
+          openMacroStudio('treemap');
+        } else if (jumpAction === 'sunburst') {
+          openMacroStudio('sunburst');
+        } else if (jumpAction === 'chord') {
+          openMacroStudio('chord');
+        } else if (jumpAction === 'graph2d') {
+          openMacroStudio('graph2d');
+        } else if (jumpAction === 'scope-manager') {
+          if (typeof openScopeManagerModal === 'function') openScopeManagerModal();
+        } else if (jumpAction === 'tasks') {
+          if (typeof openProcessHub === 'function') openProcessHub();
+        } else if (jumpAction === 'settings') {
+          if (typeof openSettings === 'function') openSettings();
+        }
+      }
+    });
+  }
+
+  // 3. Live keypress tester for Shortcuts tab
+  document.addEventListener('keydown', (e) => {
+    if (!guideModal || !guideModal.classList.contains('open')) return;
+    if (document.activeElement === guideSearchInput) return;
+
+    // Press '/' to focus guide search
+    if (e.key === '/' && document.activeElement !== guideSearchInput) {
+      e.preventDefault();
+      guideSearchInput?.focus();
+      return;
+    }
+
+    const shortcutsTab = qs('#guide-tab-shortcuts');
+    if (!shortcutsTab || !shortcutsTab.classList.contains('active')) return;
+
+    const pressedKey = e.key.toLowerCase();
+    const rows = shortcutsTab.querySelectorAll('.sc-row[data-shortcut-key]');
+    let matchedRow = null;
+
+    rows.forEach(row => {
+      const keys = (row.dataset.shortcutKey || '').toLowerCase().split(' ');
+      if (keys.includes(pressedKey) || (pressedKey === 'escape' && keys.includes('esc'))) {
+        matchedRow = row;
+      }
+    });
+
+    if (matchedRow) {
+      rows.forEach(r => r.classList.remove('pulse-highlight'));
+      matchedRow.classList.add('pulse-highlight');
+      if (testerStatus) {
+        const keyDisplay = e.key === ' ' ? 'Space' : e.key.toUpperCase();
+        testerStatus.textContent = `Active Key: [${keyDisplay}] — Matched!`;
+        testerStatus.style.color = '#10b981';
+      }
+      matchedRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(() => {
+        matchedRow.classList.remove('pulse-highlight');
+      }, 1400);
+    } else if (testerStatus) {
+      const keyDisplay = e.key === ' ' ? 'Space' : e.key;
+      testerStatus.textContent = `Pressed [${keyDisplay}] — No direct shortcut`;
+      testerStatus.style.color = 'var(--text-muted)';
+    }
+  });
+}
+
 function openHelpModal(triggerEl = null) {
   const modal = qs('#help-modal');
   if (!modal) return;
@@ -10023,6 +10196,9 @@ async function init() {
       });
     });
   });
+
+  // Feature Guide Interactive Enhancements (Live Search, Direct Jump, Live Key Tester)
+  initGuideModalEnhancements();
 
   bindKeyboard();
   initScopeManagement();

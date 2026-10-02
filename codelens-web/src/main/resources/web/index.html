@@ -1960,7 +1960,15 @@
         <img src="/assets/logo.svg" alt="CodeLens Icon" class="modal-icon-img" />
         <div>
           <h2 id="help-modal-title">CodeLens Intelligence Platform — Feature &amp; User Guide</h2>
-          <p class="modal-subtitle">Comprehensive walkthrough of workspace screens, 3D/2D visualizers, scope management, hotspots, quality engines, and keyboard shortcuts</p>
+          <p class="modal-subtitle">Interactive walkthrough of workspace screens, 3D/2D visualizers, scope management, hotspots, quality engines, and keyboard shortcuts</p>
+        </div>
+      </div>
+      <div class="guide-header-search-wrap">
+        <div class="guide-search-box">
+          <svg class="svg-icon icon-xs guide-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="guide-search-input" class="guide-search-input" placeholder="Search guide topics, rules, shortcuts... (Press / to focus)" autocomplete="off" spellcheck="false" />
+          <span id="guide-search-count" class="guide-search-count" style="display:none;">0 matches</span>
+          <button id="guide-search-clear" class="guide-search-clear" style="display:none;" aria-label="Clear search">&times;</button>
         </div>
       </div>
       <button class="modal-close-btn" id="help-modal-close" aria-label="Close Guide">
@@ -1972,21 +1980,27 @@
     <div class="guide-nav-bar" role="tablist" aria-label="Guide Sections">
       <button class="guide-tab-btn active" data-guide-tab="overview" role="tab">
         <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Overview &amp; Workflows
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
       <button class="guide-tab-btn" data-guide-tab="views" role="tab">
         <svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg> 3D &amp; 2D Codebase Views
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
       <button class="guide-tab-btn" data-guide-tab="symbols" role="tab">
         <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Scope &amp; Entity Symbols
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
       <button class="guide-tab-btn" data-guide-tab="quality" role="tab">
         <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Quality &amp; Hotspots Engine
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
       <button class="guide-tab-btn" data-guide-tab="shortcuts" role="tab">
         <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/></svg> Keyboard Shortcuts
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
       <button class="guide-tab-btn" data-guide-tab="about" role="tab">
         <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> About CodeLens
+        <span class="guide-tab-badge" style="display:none;">0</span>
       </button>
     </div>
 
@@ -1994,32 +2008,100 @@
 
       <!-- Sub-Tab 1: Overview & Workflows -->
       <div class="guide-tab-panel active" id="guide-tab-overview">
+        <!-- Quick Launch Chip Ribbon -->
+        <div class="guide-hero-banner">
+          <div class="guide-hero-title-row">
+            <span class="guide-hero-icon"><svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+            <div>
+              <h3 class="guide-hero-title">Interactive Workspace Tour &amp; Direct Navigation</h3>
+              <p class="guide-hero-desc">Click any destination chip below to close this guide and instantly launch that workspace screen or visualization canvas:</p>
+            </div>
+          </div>
+          <div class="guide-chips-wrap">
+            <button class="guide-chip" data-jump-tab="graph" title="Switch to Graph Canvas (Key 1)"><svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Graph Canvas <kbd>1</kbd></button>
+            <button class="guide-chip" data-jump-tab="catalog" title="Switch to Knowledge Base Catalog (Key 2)"><svg class="svg-icon icon-blue icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg> Knowledge Base <kbd>2</kbd></button>
+            <button class="guide-chip" data-jump-tab="rules" title="Switch to Code Review Auditor (Key 3)"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Logic Auditor <kbd>3</kbd></button>
+            <button class="guide-chip" data-jump-tab="git" title="Switch to Git Analytics &amp; Churn (Key 4)"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg> Git Churn <kbd>4</kbd></button>
+            <button class="guide-chip" data-jump-tab="editor" title="Switch to Monaco Code Editor (Key 5)"><svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Monaco Editor <kbd>5</kbd></button>
+            <button class="guide-chip" data-jump-tab="reports" title="Open Reports Hub (Key R)"><svg class="svg-icon icon-mint icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Reports Hub (13 Reports) <kbd>R</kbd></button>
+            <button class="guide-chip" data-jump-action="studio" title="Open 3D Macro Studio (Key M)"><svg class="svg-icon icon-pink icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/></svg> 3D Macro Studio <kbd>M</kbd></button>
+            <button class="guide-chip" data-jump-action="tasks" title="Open Background Process Manager"><svg class="svg-icon icon-slate icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Process Manager</button>
+          </div>
+        </div>
+
         <section class="help-section">
           <h3>Workspace Architecture (5 Core Screens + Global Hubs)</h3>
           <div class="help-grid">
             <div class="help-card">
-              <h4>1. Graph View (<kbd>1</kbd>)</h4>
+              <div class="help-card-header">
+                <h4>1. Graph View (<kbd>1</kbd>)</h4>
+                <span class="help-card-badge">Primary Canvas</span>
+              </div>
               <p>Call hierarchy and field impact canvas with force-directed physics, BFS depth pills (1–15 hops / Max), package convex hulls, composite Behavioral Hotspot heat mode (<kbd>H</kbd>), and radar minimap.</p>
+              <button class="guide-jump-btn" data-jump-tab="graph">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Launch Graph Canvas &rarr;
+              </button>
             </div>
+
             <div class="help-card">
-              <h4>2. Knowledge Base (<kbd>2</kbd>)</h4>
-              <p>Structured package/type/member catalog with Cyclomatic Complexity health scores (Green: 1–4, Amber: 5–10, Red: 11+ High Risk) and member lists.</p>
+              <div class="help-card-header">
+                <h4>2. Knowledge Base (<kbd>2</kbd>)</h4>
+                <span class="help-card-badge">Catalog &amp; Stats</span>
+              </div>
+              <p>Structured package/type/member catalog with Cyclomatic Complexity health scores (Green: 1–4, Amber: 5–10, Red: 11+ High Risk) and instant search filtering across all symbols.</p>
+              <button class="guide-jump-btn" data-jump-tab="catalog">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Open Knowledge Base &rarr;
+              </button>
             </div>
+
             <div class="help-card">
-              <h4>3. Code Review &amp; Logic Auditor (<kbd>3</kbd>)</h4>
-              <p>32 AST-backed static quality rules detecting null pointer risks, concurrency hazards, swallowed exceptions, smells, and high blast radius centrality.</p>
+              <div class="help-card-header">
+                <h4>3. Code Review &amp; Logic Auditor (<kbd>3</kbd>)</h4>
+                <span class="help-card-badge">AST Linter</span>
+              </div>
+              <p>32 AST-backed static quality rules detecting null pointer risks, concurrency hazards, swallowed exceptions, code smells, and high blast radius centrality with single-click location navigation.</p>
+              <button class="guide-jump-btn" data-jump-tab="rules">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Audit Code in Auditor &rarr;
+              </button>
             </div>
+
             <div class="help-card">
-              <h4>4. Git Analytics &amp; Churn (<kbd>4</kbd>)</h4>
-              <p>Top author leaderboards, recent commit timeline, and churn heatmaps. Correlates commit frequency with complexity to compute Behavioral Hotspot debt.</p>
+              <div class="help-card-header">
+                <h4>4. Git Analytics &amp; Churn (<kbd>4</kbd>)</h4>
+                <span class="help-card-badge">History &amp; Risk</span>
+              </div>
+              <p>Top author leaderboards, recent commit timeline, and churn heatmaps. Correlates commit frequency with complexity to compute Behavioral Hotspot debt metrics.</p>
+              <button class="guide-jump-btn" data-jump-tab="git">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                View Git Analytics &rarr;
+              </button>
             </div>
+
             <div class="help-card">
-              <h4>5. Source Code Editor (<kbd>5</kbd>)</h4>
-              <p>Embedded Microsoft Monaco code editor. Jump directly from any graph node or line link (`Class.java:42`) to edit and save files on disk.</p>
+              <div class="help-card-header">
+                <h4>5. Source Code Editor (<kbd>5</kbd>)</h4>
+                <span class="help-card-badge">Monaco IDE</span>
+              </div>
+              <p>Embedded Microsoft Monaco code editor. Jump directly from any graph node or line link (<code>Class.java:42</code>) to view, edit, and save source files directly to disk.</p>
+              <button class="guide-jump-btn" data-jump-tab="editor">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Open Monaco Editor &rarr;
+              </button>
             </div>
+
             <div class="help-card">
-              <h4>3D Macro Studio (<kbd>M</kbd>), Reports (<kbd>R</kbd>) &amp; Tasks</h4>
-              <p>Top-level launch for WebGL 3D Software City &amp; Galaxy, 13-category Intelligence Reports Hub with 57 pre-rendered artifacts, and Background Tasks Manager monitoring 11 engines with live telemetry.</p>
+              <div class="help-card-header">
+                <h4>Reports Hub (<kbd>R</kbd>) &amp; 3D Studio (<kbd>M</kbd>)</h4>
+                <span class="help-card-badge">Hubs &amp; Engines</span>
+              </div>
+              <p>13 Intelligence Reports with 57 pre-rendered artifacts, WebGL 3D Software City &amp; Force Galaxy, and Background Process Manager monitoring 11 subsystem engines with live telemetry.</p>
+              <div class="guide-btn-group">
+                <button class="guide-jump-btn" data-jump-tab="reports">Reports Hub &rarr;</button>
+                <button class="guide-jump-btn" data-jump-action="studio">3D Studio &rarr;</button>
+              </div>
             </div>
           </div>
         </section>
@@ -2028,16 +2110,31 @@
           <h3>Key Impact &amp; Investigation Workflows</h3>
           <div class="help-flow">
             <div class="flow-step">
-              <strong>Method Blast Radius Analysis</strong>: Search or click any method &rarr; Click <code>⬆ Callers</code> in the Inspector &rarr; Expand BFS depth from 1 to 15 hops to trace all entrypoints and public controllers impacted by signature changes.
+              <div class="flow-step-num">01</div>
+              <div class="flow-step-content">
+                <strong>Method Blast Radius Analysis</strong>: Search or click any method &rarr; Click <code>⬆ Callers</code> in the Inspector &rarr; Expand BFS depth from 1 to 15 hops to trace all entrypoints and public controllers impacted by signature changes.
+              </div>
             </div>
             <div class="flow-step">
-              <strong>Field Mutation Propagation Chains</strong>: Select any field &rarr; Click <code>Propagation Chain</code> in the Inspector &rarr; Traces <code>Field &larr; Writer Methods &larr; Upstream Calling Triggers</code> across the repository with color-coded node roles.
+              <div class="flow-step-num">02</div>
+              <div class="flow-step-content">
+                <strong>Field Mutation Propagation Chains</strong>: Select any field &rarr; Click <code>Propagation Chain</code> in the Inspector &rarr; Traces <code>Field &larr; Writer Methods &larr; Upstream Calling Triggers</code> across the repository with color-coded node roles.
+              </div>
             </div>
             <div class="flow-step">
-              <strong>Scope Boundary Exclusion</strong>: Hover over any class or package in the Explorer and click <code>×</code> (or right-click) &rarr; Immediately removes it from H2, Lucene search, graphs, DSM, and reports &rarr; Restore anytime via the <strong>Scope Manager</strong> toolbar button.
+              <div class="flow-step-num">03</div>
+              <div class="flow-step-content">
+                <strong>Scope Boundary Exclusion</strong>: Hover over any class or package in the Explorer and click <code>×</code> (or right-click) &rarr; Immediately removes it from H2, Lucene search, graphs, DSM, and reports &rarr; Restore anytime via the <strong>Scope Manager</strong>.
+                <div style="margin-top:6px;">
+                  <button class="guide-jump-btn" data-jump-action="scope-manager">Open Scope Manager &rarr;</button>
+                </div>
+              </div>
             </div>
             <div class="flow-step">
-              <strong>Repository Scan &amp; Delta Ingestion</strong>: Click <strong>Browse…</strong> to pick your Java repository &rarr; Configure <strong>Settings</strong> exclude patterns (`target, build, .mvn, .git, node_modules, **/test/**`) &rarr; Click <strong>Scan</strong>.
+              <div class="flow-step-num">04</div>
+              <div class="flow-step-content">
+                <strong>Repository Scan &amp; Delta Ingestion</strong>: Click <strong>Browse…</strong> to pick your Java repository &rarr; Configure <strong>Settings</strong> exclude patterns (<code>target, build, .mvn, .git, node_modules, **/test/**</code>) &rarr; Click <strong>Scan</strong>.
+              </div>
             </div>
           </div>
         </section>
@@ -2049,36 +2146,75 @@
           <h3>Interactive Architectural Renderers</h3>
           <div class="help-grid">
             <div class="help-card">
-              <h4><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg> 3D Software City ("CodeCity")</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg> 3D Software City ("CodeCity")</h4>
+                <span class="help-card-badge">WebGL 3D</span>
+              </div>
               <p>Visualizes packages as elevated ground platforms and classes as skyscraper monoliths. Base footprint = method/field count, Height = lines of code (LOC). Features active <strong>Heat Mode</strong> with glowing thermal skyscraper shaders. Orbit with mouse drag/wheel.</p>
+              <button class="guide-jump-btn" data-jump-action="studio-city">Launch 3D City &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg> 3D Force Galaxy ("Orbital Graph")</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg> 3D Force Galaxy ("Orbital Graph")</h4>
+                <span class="help-card-badge">Orbital Physics</span>
+              </div>
               <p>Gravitational star cluster rendering code modules as orbital star systems with 3D quadratic bezier call arcs, animated particle pulses, and glowing celestial spheres.</p>
+              <button class="guide-jump-btn" data-jump-action="studio-galaxy">Launch 3D Galaxy &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><path d="M14.5 9.5 17 7"/><path d="m9.5 14.5-2.5 2.5"/><path d="m14.5 14.5 2.5 2.5"/><path d="m9.5 9.5-2.5-2.5"/></svg> 2D Blooming Tree Graph</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><path d="M14.5 9.5 17 7"/><path d="m9.5 14.5-2.5 2.5"/><path d="m14.5 14.5 2.5 2.5"/><path d="m9.5 9.5-2.5-2.5"/></svg> 2D Sunflower Blooming Graph</h4>
+                <span class="help-card-badge">Clustered 2D</span>
+              </div>
               <p>Whole-codebase sunflower clustered topology rendering classes and methods as connected nodes with fixed-position hover cards, tooltips, and composite Behavioral Hotspots Heat mode (<kbd>H</kbd>).</p>
+              <button class="guide-jump-btn" data-jump-action="graph2d">View 2D Graph &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> Interactive DSM with Method Drilldown</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> Interactive DSM with Method Drilldown</h4>
+                <span class="help-card-badge">Architecture Matrix</span>
+              </div>
               <p>Multi-tier Dependency Structure Matrix (<code>Modules</code> &rarr; <code>Packages</code> &rarr; <code>Classes</code> &rarr; <code>Methods</code>). Double-click headers to drill into method invocations with breadcrumbs. Displays real-time <strong>DAG Acyclicity Rating</strong>, cycle counts, and CSV/JSON downloads.</p>
+              <button class="guide-jump-btn" data-jump-action="dsm">Launch DSM &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Zoomable Treemap</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Zoomable Treemap</h4>
+                <span class="help-card-badge">Hierarchical Area</span>
+              </div>
               <p>Squarified area partitioner sizing rectangles by lines of code and coloring by complexity. Click any package or class rectangle to zoom in with breadcrumb navigation.</p>
+              <button class="guide-jump-btn" data-jump-action="treemap">Launch Treemap &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst (Radial Hierarchy)</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst (Radial Hierarchy)</h4>
+                <span class="help-card-badge">Radial Multi-Ring</span>
+              </div>
               <p>Concentric ring segments representing Package &rarr; Class &rarr; Method hierarchy. Segment angle reflects size; click ring slices to zoom radially.</p>
+              <button class="guide-jump-btn" data-jump-action="sunburst">Launch Sunburst &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg> Chord Diagram</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-pink icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/></svg> Chord Diagram</h4>
+                <span class="help-card-badge">Coupling Ribbons</span>
+              </div>
               <p>Circular arc visualizer with double-sided bezier ribbon polygons showing inter-package and inter-class call volume with directional linear gradients.</p>
+              <button class="guide-jump-btn" data-jump-action="chord">Launch Chord &rarr;</button>
             </div>
+
             <div class="help-card">
-              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Granularity &amp; POJO Filter</h4>
+              <div class="help-card-header">
+                <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Granularity &amp; POJO Filter</h4>
+                <span class="help-card-badge">Scope Controls</span>
+              </div>
               <p>Toggle between <strong>Classes</strong> and <strong>Methods</strong> scope on the floating bottom toolbar. Enable <strong>Hide POJOs</strong> to filter out trivial getters, setters, and data carrier boilerplate.</p>
+              <button class="guide-jump-btn" data-jump-tab="graph">Configure in Graph &rarr;</button>
             </div>
           </div>
         </section>
@@ -2091,15 +2227,16 @@
           <div class="help-grid">
             <div class="help-card">
               <h4><svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Excluding from Explorer</h4>
-              <p>Hover over any class or package item in the Explorer sidebar and click the <code>×</code> button, or right-click to open the context menu and select <strong>Remove Class from Scope</strong>.</p>
+              <p>Hover over any class or package item in the Explorer sidebar and click the <code>&times;</code> button, or right-click to open the context menu and select <strong>Remove Class from Scope</strong>.</p>
             </div>
             <div class="help-card">
               <h4><svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg> Cascading Deletion Guarantee</h4>
               <p>Exclusion immediately and completely purges the entity from the H2 database (<code>relationships</code>, <code>fields</code>, <code>methods</code>, <code>types</code>, <code>git_meta</code>), Lucene search index, in-memory call graph, DSM matrix, and reports.</p>
             </div>
             <div class="help-card">
-              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Scope Manager Toolbar Button</h4>
+              <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Scope Manager Dialog</h4>
               <p>Click the <strong>Scope Manager</strong> button (with active count badge) in the Explorer toolbar to open the management dialog. Filter excluded items in real-time by keyword.</p>
+              <button class="guide-jump-btn" data-jump-action="scope-manager">Open Scope Manager &rarr;</button>
             </div>
             <div class="help-card">
               <h4><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> One-Click Restoration</h4>
@@ -2113,27 +2250,35 @@
           <div class="help-grid">
             <div class="help-card">
               <h4><span class="nc-val nc-badge" style="background:var(--primary-subtle); color:var(--primary); border:1px solid var(--primary-border)">m</span> Method</h4>
-              <p>Java member methods and constructors. Circle size reflects connectivity degree (callers + callees).</p>
+              <p>Java member methods and constructors. Circle radius on graph reflects connectivity degree (callers + callees). Traces execution call chains.</p>
             </div>
             <div class="help-card">
               <h4><span class="nc-val nc-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4)">f</span> Field / Property</h4>
-              <p>Class fields and static variables. Tracks repository-wide reader and writer methods.</p>
+              <p>Class fields and static variables. Tracks repository-wide reader and writer methods with propagation flow visualization.</p>
             </div>
             <div class="help-card">
               <h4><span class="nc-val nc-badge nc-badge-class">C</span> Class</h4>
-              <p>Standard Java classes. Contains member methods, fields, and inheritance relationships.</p>
+              <p>Standard Java classes. Contains member methods, fields, and inheritance relationships. Elevated into skyscrapers in 3D City.</p>
             </div>
             <div class="help-card">
               <h4><span class="nc-val nc-badge nc-badge-interface">I</span> Interface</h4>
-              <p>Java interface contracts. Displays polymorphic implementation links across packages.</p>
+              <p>Java interface contracts. Displays polymorphic implementation links across packages and modular API boundaries.</p>
             </div>
             <div class="help-card">
               <h4><span class="nc-val nc-badge nc-badge-enum">E</span> Enum</h4>
-              <p>Enumeration types with constant values and associated behavior.</p>
+              <p>Enumeration types with constant values and associated behavior. Tracked in switch statement analysis.</p>
             </div>
             <div class="help-card">
               <h4><span class="nc-val nc-badge nc-badge-record">R</span> Record</h4>
-              <p>Java 17+ immutable data carriers with auto-generated component accessors.</p>
+              <p>Java 17+ immutable data carriers with auto-generated component accessors, canonical constructors, and clean invariants.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4; border:1px solid rgba(6,182,212,0.4)">P</span> Package / Module</h4>
+              <p>High-level architectural containment boundaries. Rendered as platform terrain in 3D City and convex hulls in 2D graphs.</p>
+            </div>
+            <div class="help-card">
+              <h4><span class="nc-val nc-badge" style="background:rgba(236,72,153,0.15); color:#ec4899; border:1px solid rgba(236,72,153,0.4)">@</span> Annotation</h4>
+              <p>Declarative bytecode annotations and framework interceptors (Spring, Jakarta, Lombok) decorating classes and members.</p>
             </div>
           </div>
         </section>
@@ -2143,46 +2288,123 @@
       <div class="guide-tab-panel" id="guide-tab-quality" style="display:none;">
         <section class="help-section">
           <h3>Behavioral Hotspots Intelligence</h3>
-          <div class="help-flow">
-            <div class="flow-step">
-              <strong>Hotspot Debt Metric</strong>: Evaluates technical risk using the composite formula:
-              <br/><code style="display:inline-block; margin-top:4px; font-size:12px; color:var(--emerald-400);">Hotspot Score = Cyclomatic Complexity &times; log₂(1 + Commit Churn) &times; log₁₀(LOC)</code>
+          
+          <!-- Styled Mathematical Formula Card -->
+          <div class="guide-formula-card">
+            <div class="guide-formula-badge">COMPOSITE HOTSPOT DEBT EQUATION</div>
+            <div class="guide-formula-expression">
+              <span class="formula-term formula-score">Hotspot Debt Score</span>
+              <span class="formula-op">=</span>
+              <span class="formula-term formula-cc" title="Cyclomatic Complexity (branch density)">Cyclomatic Complexity</span>
+              <span class="formula-op">&times;</span>
+              <span class="formula-term formula-churn" title="Git modification frequency">log₂(1 + Commit Churn)</span>
+              <span class="formula-op">&times;</span>
+              <span class="formula-term formula-loc" title="Lines of Code (surface area)">log₁₀(LOC)</span>
             </div>
-            <div class="flow-step">
-              <strong>Risk Tiers &amp; Refactoring Guidance</strong>: Entities are classified into <code>CRITICAL (&ge;75)</code>, <code>HIGH (&ge;45)</code>, <code>MEDIUM (&ge;20)</code>, and <code>LOW</code> tiers with actionable suggestions (e.g. Extract Class, Break Cycles, Add Unit Tests).
+            <div class="guide-formula-breakdown">
+              <div class="breakdown-item">
+                <span class="breakdown-dot cc-dot"></span>
+                <div><strong>Cyclomatic Complexity (CC)</strong>: Cognitive decision points, loops, switches, and nested conditionals. Measures logical density.</div>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-dot churn-dot"></span>
+                <div><strong>Commit Churn</strong>: Frequency of git revisions and author mutations over time. Identifies actively unstable code.</div>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-dot loc-dot"></span>
+                <div><strong>Code Mass (LOC)</strong>: Total physical lines of code contributing to surface area and maintenance footprint.</div>
+              </div>
             </div>
-            <div class="flow-step">
-              <strong>Visual Heat Overlays</strong>: Press <kbd>H</kbd> in Graph View or toggle <strong>Heat Mode</strong> in 3D Software City to render thermal heat shaders ranging from serene green to fiery red based on risk scores.
+          </div>
+
+          <!-- Color-Coded Risk Tiers Grid -->
+          <div class="guide-tiers-grid">
+            <div class="guide-tier-card tier-critical">
+              <div class="tier-tag">CRITICAL (&ge; 75)</div>
+              <h4>Urgent Refactoring Required</h4>
+              <p>God classes and sprawling methods with heavy git churn and high cyclomatic branches. Top priority for modular decomposition and hazard mitigation.</p>
+            </div>
+            <div class="guide-tier-card tier-high">
+              <div class="tier-tag">HIGH (45–74)</div>
+              <h4>Elevated Regression Risk</h4>
+              <p>Active development hotspots with significant complexity. Requires comprehensive automated test harnesses and dependency decoupling.</p>
+            </div>
+            <div class="guide-tier-card tier-medium">
+              <div class="tier-tag">MEDIUM (20–44)</div>
+              <h4>Moderate Maintenance Friction</h4>
+              <p>Manageable components exhibiting steady revision growth. Review for architectural hygiene during standard pull requests.</p>
+            </div>
+            <div class="guide-tier-card tier-low">
+              <div class="tier-tag">LOW (&lt; 20)</div>
+              <h4>Clean &amp; Modular Code</h4>
+              <p>Stable, single-responsibility units with low churn and clear boundaries. Exemplifies repository best practices.</p>
             </div>
           </div>
         </section>
 
-        <section class="help-section">
-          <h3>32 Static AST Quality Rules</h3>
+        <section class="help-section" style="margin-top:20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0;">32 Static AST Quality Rules</h3>
+            <button class="guide-jump-btn" data-jump-tab="rules" style="margin:0;">Audit Code in Logic Auditor &rarr;</button>
+          </div>
           <div class="help-grid">
             <div class="help-card">
               <h4>1. Correctness Checks</h4>
-              <p>Detects null pointer risks, unclosed resource streams (`AutoCloseable`), switch fallthrough bugs, and string comparison mistakes (`==`).</p>
+              <p>Detects null pointer risks, unclosed resource streams (<code>AutoCloseable</code>), switch fallthrough bugs, and string comparison mistakes (<code>==</code> vs <code>.equals()</code>).</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Null Dereference</span>
+                <span class="guide-rule-tag">Resource Leak</span>
+                <span class="guide-rule-tag">Switch Fallthrough</span>
+                <span class="guide-rule-tag">String Identity</span>
+              </div>
             </div>
+
             <div class="help-card">
               <h4>2. Concurrency Hazards</h4>
-              <p>Flags non-thread-safe field mutations, unsynchronized static state access, double-checked locking anti-patterns, and thread pool leaks.</p>
+              <p>Flags non-thread-safe field mutations, unsynchronized static state access, double-checked locking anti-patterns, and unmanaged thread pool executor leaks.</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Unsynchronized Static</span>
+                <span class="guide-rule-tag">Double-Checked Lock</span>
+                <span class="guide-rule-tag">Thread Leak</span>
+              </div>
             </div>
+
             <div class="help-card">
               <h4>3. Exception Safety</h4>
-              <p>Identifies swallowed exception blocks, raw `Throwable` catches, lost stack traces, and cleanup block failures.</p>
+              <p>Identifies swallowed exception blocks, raw <code>catch (Throwable)</code> or <code>Exception</code>, lost stack traces, and finally-block return hazards.</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Swallowed Exception</span>
+                <span class="guide-rule-tag">Raw Throwable</span>
+                <span class="guide-rule-tag">Lost Cause</span>
+              </div>
             </div>
+
             <div class="help-card">
               <h4>4. Code Smells &amp; Metrics</h4>
-              <p>Flags long parameter lists ($>5$ params), high cyclomatic complexity ($>10$), dead code, and oversized classes ($>500$ LOC).</p>
+              <p>Flags excessive parameters (&gt;5 params), high cyclomatic complexity (&gt;10), dead/unreferenced private methods, and oversized classes (&gt;500 LOC).</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Long Param List</span>
+                <span class="guide-rule-tag">High Complexity</span>
+                <span class="guide-rule-tag">Dead Code</span>
+              </div>
             </div>
+
             <div class="help-card">
               <h4>5. API Contracts &amp; Docs</h4>
-              <p>Audits missing Javadoc on public methods, broken `equals`/`hashCode` contracts, and mutable collection leaks.</p>
+              <p>Audits missing Javadoc on public methods, asymmetric <code>equals()</code>/<code>hashCode()</code> contracts, and mutable collection internal leaks.</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Equals/HashCode Contract</span>
+                <span class="guide-rule-tag">Collection Leak</span>
+              </div>
             </div>
+
             <div class="help-card">
               <h4>6. Blast Radius Centrality</h4>
-              <p>Identifies high-centrality methods that act as critical system bottlenecks and carry high refactoring risk.</p>
+              <p>Identifies high-centrality methods that act as critical system bottlenecks and carry high refactoring risk across downstream packages.</p>
+              <div class="guide-rule-tags">
+                <span class="guide-rule-tag">Bottleneck Centrality</span>
+                <span class="guide-rule-tag">High Fan-In</span>
+              </div>
             </div>
           </div>
         </section>
@@ -2191,25 +2413,46 @@
       <!-- Sub-Tab 5: Keyboard Shortcuts -->
       <div class="guide-tab-panel" id="guide-tab-shortcuts" style="display:none;">
         <section class="help-section">
-          <h3>Complete Keyboard Shortcuts</h3>
+          <!-- Interactive Live Keypress Tester Banner -->
+          <div class="guide-key-tester-banner">
+            <div class="tester-icon">
+              <svg class="svg-icon icon-amber icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/></svg>
+            </div>
+            <div class="tester-text">
+              <strong>Interactive Live Keypress Tester</strong>
+              <span>Press any shortcut key while this tab is active to highlight and verify its action below:</span>
+            </div>
+            <div class="tester-status" id="guide-key-tester-status">Listening for keypress...</div>
+          </div>
+
+          <h4 class="guide-sc-group-title">Global Navigation &amp; Search</h4>
           <div class="shortcuts-table">
-            <div class="sc-row"><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global Apache Lucene entity search</span></div>
-            <div class="sc-row"><kbd>Esc</kbd> <span>Close search popup, guide, modal, or deselect active node</span></div>
-            <div class="sc-row"><kbd>1</kbd> <span>Switch to <strong>Graph Canvas</strong> workspace</span></div>
-            <div class="sc-row"><kbd>2</kbd> <span>Switch to <strong>Knowledge Base</strong> catalog</span></div>
-            <div class="sc-row"><kbd>3</kbd> <span>Switch to <strong>Code Review &amp; Logic Auditor</strong></span></div>
-            <div class="sc-row"><kbd>4</kbd> <span>Switch to <strong>Git Analytics &amp; Churn</strong></span></div>
-            <div class="sc-row"><kbd>5</kbd> <span>Switch to <strong>Integrated Monaco Code Editor</strong></span></div>
-            <div class="sc-row"><kbd>R</kbd> <span>Toggle <strong>Reports Hub</strong> (13 categories &amp; 57 exports)</span></div>
-            <div class="sc-row"><kbd>M</kbd> <span>Toggle <strong>3D Macro Studio</strong> (Software City &amp; Galaxy)</span></div>
-            <div class="sc-row"><kbd>H</kbd> <span>Toggle <strong>Behavioral Hotspots Heat Mode</strong> on nodes/skyscrapers</span></div>
-            <div class="sc-row"><kbd>Space</kbd> <span>Toggle / Freeze live graph force physics simulation</span></div>
-            <div class="sc-row"><kbd>F</kbd> <span>Fit entire graph layout to screen viewport</span></div>
-            <div class="sc-row"><kbd>+</kbd> / <kbd>-</kbd> <span>Zoom visualizer canvas in / out</span></div>
-            <div class="sc-row"><kbd>[</kbd> <span>Toggle Left Explorer &amp; Search Panel</span></div>
-            <div class="sc-row"><kbd>]</kbd> <span>Toggle Right Entity Inspector Panel</span></div>
-            <div class="sc-row"><kbd>\</kbd> <span>Reset Left/Right panel split widths</span></div>
-            <div class="sc-row"><kbd>?</kbd> <span>Open / Close Feature &amp; User Guide modal</span></div>
+            <div class="sc-row" data-shortcut-key="k"><kbd>&#8984;K</kbd> / <kbd>Ctrl+K</kbd> <span>Focus global Apache Lucene entity search input</span></div>
+            <div class="sc-row" data-shortcut-key="escape"><kbd>Esc</kbd> <span>Close search popup, guide, modal, or deselect active node</span></div>
+            <div class="sc-row" data-shortcut-key="1"><kbd>1</kbd> <span>Switch to <strong>Graph Canvas</strong> workspace</span></div>
+            <div class="sc-row" data-shortcut-key="2"><kbd>2</kbd> <span>Switch to <strong>Knowledge Base</strong> catalog</span></div>
+            <div class="sc-row" data-shortcut-key="3"><kbd>3</kbd> <span>Switch to <strong>Code Review &amp; Logic Auditor</strong></span></div>
+            <div class="sc-row" data-shortcut-key="4"><kbd>4</kbd> <span>Switch to <strong>Git Analytics &amp; Churn</strong></span></div>
+            <div class="sc-row" data-shortcut-key="5"><kbd>5</kbd> <span>Switch to <strong>Integrated Monaco Code Editor</strong></span></div>
+            <div class="sc-row" data-shortcut-key="r"><kbd>R</kbd> <span>Toggle <strong>Reports Hub</strong> (13 categories &amp; 57 exports)</span></div>
+            <div class="sc-row" data-shortcut-key="m"><kbd>M</kbd> <span>Toggle <strong>3D Macro Studio</strong> (Software City &amp; Galaxy)</span></div>
+            <div class="sc-row" data-shortcut-key="?"><kbd>?</kbd> <span>Open / Close Feature &amp; User Guide modal</span></div>
+          </div>
+
+          <h4 class="guide-sc-group-title" style="margin-top:16px;">Canvas Physics &amp; Visualizer Navigation</h4>
+          <div class="shortcuts-table">
+            <div class="sc-row" data-shortcut-key=" "><kbd>Space</kbd> <span>Toggle / Freeze live graph force physics simulation</span></div>
+            <div class="sc-row" data-shortcut-key="h"><kbd>H</kbd> <span>Toggle <strong>Behavioral Hotspots Heat Mode</strong> on nodes/skyscrapers</span></div>
+            <div class="sc-row" data-shortcut-key="f"><kbd>F</kbd> <span>Fit entire graph layout to screen viewport</span></div>
+            <div class="sc-row" data-shortcut-key="+ ="><kbd>+</kbd> <span>Zoom visualizer canvas in</span></div>
+            <div class="sc-row" data-shortcut-key="- _"><kbd>-</kbd> <span>Zoom visualizer canvas out</span></div>
+          </div>
+
+          <h4 class="guide-sc-group-title" style="margin-top:16px;">Panels, Splitters &amp; Layout Controls</h4>
+          <div class="shortcuts-table">
+            <div class="sc-row" data-shortcut-key="["><kbd>[</kbd> <span>Toggle Left Explorer &amp; Search Panel</span></div>
+            <div class="sc-row" data-shortcut-key="]"><kbd>]</kbd> <span>Toggle Right Entity Inspector Panel</span></div>
+            <div class="sc-row" data-shortcut-key="\"><kbd>\</kbd> <span>Reset Left/Right panel split widths to defaults</span></div>
           </div>
         </section>
       </div>
@@ -2223,8 +2466,9 @@
               <div style="display:flex; align-items:center; gap:8px;">
                 <h3 style="margin:0; font-size:18px; font-weight:700; color:var(--text-primary);">CodeLens Intelligence Platform</h3>
                 <span class="risk-badge risk-low font-mono" style="font-size:11px; padding:2px 8px;">v1.1.3</span>
+                <span class="guide-badge-pill" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px;">100% Offline</span>
               </div>
-              <p style="margin:4px 0 0 0; font-size:12.5px; color:var(--text-muted);">
+              <p style="margin:4px 0 0 0; font-size:12.5px; color:var(--text-secondary);">
                 High-performance, 100% offline Java codebase intelligence, architectural topology mapping, and risk analysis platform.
               </p>
             </div>
@@ -2245,6 +2489,7 @@
                 11 Background Subsystem Engines
               </h4>
               <p>Dedicated Process Manager with live telemetry monitoring AST Ingestion, Delta Change Watcher, JGraphT Topology, Sunflower Layout, Lucene Indexer, Git Churn, DB Pool Sentinel, Heap Watchdog, and Report Precomputer.</p>
+              <button class="guide-jump-btn" data-jump-action="tasks">Open Process Manager &rarr;</button>
             </div>
 
             <div class="help-card">
@@ -2253,6 +2498,7 @@
                 13 Intelligence Reports (57 Artifacts)
               </h4>
               <p>Sequential precomputation pipeline covering Architecture &amp; Coupling, Change Risk, Dead Code, Circular Dependencies, Archetype Governance, SQALE Tech Debt, Executive Scorecard, Code Review, Metrics, API Surface, Database Flow, Concurrency, and HTML Snapshots.</p>
+              <button class="guide-jump-btn" data-jump-tab="reports">Open Reports Hub &rarr;</button>
             </div>
 
             <div class="help-card">
@@ -2261,13 +2507,14 @@
                 Zero-Admin &amp; Two-JAR Deployment
               </h4>
               <p>Operates entirely in user-space on unprivileged port 7878. Features lightweight modular packaging (1.1 MB app JAR + 22 MB deps JAR) enabling 3-second incremental rebuilds.</p>
+              <button class="guide-jump-btn" data-jump-action="settings">Configure Settings &amp; Themes &rarr;</button>
             </div>
           </div>
         </section>
 
         <section class="help-section" style="margin-top:16px;">
           <h3>Documentation &amp; Community Resources</h3>
-          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+          <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div>
                 <strong style="color:var(--text-primary); font-size:13px;">Official GitHub Documentation Wiki</strong>
