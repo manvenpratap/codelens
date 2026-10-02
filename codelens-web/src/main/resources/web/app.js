@@ -108,7 +108,14 @@ const api = {
   // ── Convenience wrappers ────────────────────────────────────────────────────
   stats:              ()          => api.get('/stats'),
   packages:           ()          => api.get('/packages'),
-  typesByPackage:     (fqn)       => api.get(`/packages/${enc(fqn)}/types`),
+  typesByPackage:     (fqn)       => {
+    const key = `pkg:types:${(fqn || '').toLowerCase()}`;
+    if (GraphDataCache.has(key)) return Promise.resolve(GraphDataCache.get(key));
+    return api.get(`/packages/${enc(fqn)}/types`).then(data => {
+      if (data) GraphDataCache.set(key, data);
+      return data;
+    });
+  },
   type:               (id)        => api.get(`/types/${enc(id)}`),
   method:             (id)        => api.get(`/methods/${enc(id)}`),
   callers:            async (id, d=4) => {
@@ -219,10 +226,54 @@ const api = {
   excludeScope:       (type, fqn) => api.post('/scope/exclude', { type, fqn }),
   excludedScopes:     ()          => api.get('/scope/excluded'),
   restoreScope:       (fqn)       => api.post('/scope/restore', { fqn }),
-  clearExcludedScopes:()          => api.post('/scope/clear', {}),
-  moduleDependencies: (nameOrFqn) => api.get(`/modules/${enc(nameOrFqn)}/dependencies`),
-  packageDependencies:(fqn)       => api.get(`/packages/${enc(fqn)}/dependencies`),
-  allModuleDependencies:()        => api.get('/modules/dependencies'),
+  moduleDependencies: (nameOrFqn) => {
+    const key = `mod:dep:${(nameOrFqn || '').toLowerCase()}`;
+    if (GraphDataCache.has(key)) return Promise.resolve(GraphDataCache.get(key));
+    return api.get(`/modules/${enc(nameOrFqn)}/dependencies`).then(data => {
+      if (data) GraphDataCache.set(key, data);
+      return data;
+    });
+  },
+  packageDependencies:(fqn)       => {
+    const key = `mod:dep:${(fqn || '').toLowerCase()}`;
+    if (GraphDataCache.has(key)) return Promise.resolve(GraphDataCache.get(key));
+    return api.get(`/packages/${enc(fqn)}/dependencies`).then(data => {
+      if (data) {
+        GraphDataCache.set(key, data);
+        if (data.moduleName) {
+          GraphDataCache.set(`mod:dep:${data.moduleName.toLowerCase()}`, data);
+        }
+      }
+      return data;
+    });
+  },
+  allModuleDependencies:()        => {
+    const key = 'mod:all-overview';
+    if (GraphDataCache.has(key)) return Promise.resolve(GraphDataCache.get(key));
+    return api.get('/modules/dependencies').then(data => {
+      if (data) GraphDataCache.set(key, data);
+      return data;
+    });
+  },
+  allModuleInsights:  ()          => {
+    return api.get('/modules/insights').then(data => {
+      if (data && typeof data === 'object') {
+        for (const [key, insights] of Object.entries(data)) {
+          if (insights) {
+            GraphDataCache.set(`mod:dep:${key.toLowerCase()}`, insights);
+            if (insights.moduleName) {
+              GraphDataCache.set(`mod:dep:${insights.moduleName.toLowerCase()}`, insights);
+            }
+            if (insights.packageFqn) {
+              GraphDataCache.set(`mod:dep:${insights.packageFqn.toLowerCase()}`, insights);
+            }
+          }
+        }
+      }
+      return data;
+    });
+  },
+  allReports:         ()          => api.get('/reports/all'),
 };
 
 /** URL-encode an entity FQN for path segments. */
@@ -3359,6 +3410,14 @@ async function onScanComplete(s) {
   await loadStats();
   await loadPackageTree();
 
+  // Eagerly pre-warm reports and module coupling in background for instant zero-lag rendering
+  cachedModuleCouplingMap = null;
+  loadModuleCouplingMap().catch(() => {});
+  if (window.ReportsHub && typeof window.ReportsHub.preloadAllReports === 'function') {
+    ReportsHub.cache = {};
+    ReportsHub.preloadAllReports().catch(() => {});
+  }
+
   // Footer update
   const fText = qs('#footer-status-text');
   const fInd = qs('.status-indicator');
@@ -4857,11 +4916,34 @@ function renderMethodRow(m, type) {
 async function loadKnowledgeBase(pkgFqn, initialTab = null) {
   const view = qs('#knowledge-view');
   if (!view) return;
-  view.innerHTML = '';
-  view.scrollTop = 0;
+
+  const depCacheKey = `mod:dep:${(pkgFqn || '').toLowerCase()}`;
+  let cachedDepData = GraphDataCache.has(depCacheKey) ? GraphDataCache.get(depCacheKey) : null;
+  const typesCacheKey = `pkg:types:${(pkgFqn || '').toLowerCase()}`;
+  let cachedTypes = GraphDataCache.has(typesCacheKey) ? GraphDataCache.get(typesCacheKey) : null;
+
+  // Only show blank/loading skeleton if neither types nor depData are cached yet
+  if (!cachedTypes && !(initialTab === 'DEPENDENCIES' && cachedDepData)) {
+    view.innerHTML = `
+      <div class="kb-empty-container fade-in" style="padding:60px 20px;">
+        <div class="kb-empty-icon"><div class="spinner" style="width:24px;height:24px;border-width:2.5px;"></div></div>
+        <div class="kb-empty-title">Loading Package Entities…</div>
+        <div class="kb-empty-desc">${esc(pkgFqn)}</div>
+      </div>`;
+    view.scrollTop = 0;
+  }
 
   try {
-    const types = await api.typesByPackage(pkgFqn);
+    const [types, depData] = await Promise.all([
+      cachedTypes ? Promise.resolve(cachedTypes) : api.typesByPackage(pkgFqn),
+      cachedDepData ? Promise.resolve(cachedDepData) : api.packageDependencies(pkgFqn).catch(() => null)
+    ]);
+
+    let moduleDepData = depData || cachedDepData;
+    if (moduleDepData && depCacheKey) {
+      GraphDataCache.set(depCacheKey, moduleDepData);
+    }
+
     if (window.CodeLensClassifier && Array.isArray(types)) {
       for (const t of types) {
         if (Array.isArray(t.methods) && t.methods.length > 0 && typeof window.CodeLensClassifier.registerTypeMethods === 'function') {
@@ -4870,6 +4952,10 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
       }
     }
     let activeKind = (initialTab || App.activeFilter || 'all').toUpperCase();
+
+    // Clear loading placeholder once data is ready
+    view.innerHTML = '';
+    view.scrollTop = 0;
 
     // ── Package Hero Card ─────────────────────────────────────────────────────
     const hero = createElement('div', { class: 'kb-hero-card fade-in' });
@@ -4908,6 +4994,7 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
       ENUM: types.filter(t => (t.kind || '').toUpperCase() === 'ENUM').length
     };
 
+    const depTouchCount = moduleDepData ? (moduleDepData.totalTouchPoints || 0) : 0;
     const pkgTabsBar = createElement('div', { class: 'kb-members-nav-bar fade-in' });
     pkgTabsBar.innerHTML = `
       <div class="kb-members-tabs" role="tablist">
@@ -4934,7 +5021,7 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
         <button class="kb-tab-pill ${activeKind === 'DEPENDENCIES' ? 'active' : ''}" data-filter="DEPENDENCIES" id="kb-tab-dependencies">
           <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           <span>Dependencies & Touch Points</span>
-          <span class="kb-tab-badge" id="kb-dep-badge">…</span>
+          <span class="kb-tab-badge" id="kb-dep-badge">${depTouchCount} touch pts</span>
         </button>
       </div>
     `;
@@ -4943,21 +5030,6 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
     // Container for types section or empty state
     const contentContainer = createElement('div', { id: 'kb-pkg-content-container' });
     view.appendChild(contentContainer);
-
-    let moduleDepData = null;
-    api.packageDependencies(pkgFqn).then(depData => {
-      moduleDepData = depData;
-      const badge = qs('#kb-dep-badge');
-      if (badge && depData) {
-        badge.textContent = `${depData.totalTouchPoints} touch pts`;
-      }
-      if (activeKind === 'DEPENDENCIES') {
-        renderFilteredTypes('DEPENDENCIES');
-      }
-    }).catch(() => {
-      const badge = qs('#kb-dep-badge');
-      if (badge) badge.textContent = '0';
-    });
 
     function renderFilteredTypes(filterKind) {
       activeKind = filterKind;
@@ -4973,16 +5045,11 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
         const filterEl = qs('#kb-pkg-filter-label');
         if (filterEl) filterEl.textContent = 'DEPENDENCIES';
         if (moduleDepData) {
-          if (showingEl) showingEl.textContent = (moduleDepData.outgoingModules.length + moduleDepData.incomingModules.length) + ' modules';
+          if (showingEl) showingEl.textContent = ((moduleDepData.outgoingModules?.length || 0) + (moduleDepData.incomingModules?.length || 0)) + ' modules';
           renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, moduleDepData);
         } else {
-          if (showingEl) showingEl.textContent = '…';
-          contentContainer.innerHTML = `
-            <div class="kb-empty-container fade-in">
-              <div class="kb-empty-icon"><div class="spinner" style="width:28px;height:28px;border-width:2.5px;"></div></div>
-              <div class="kb-empty-title">Analyzing Module Dependencies…</div>
-              <div class="kb-empty-desc">Mapping intermodular touch points, function calls, and class usage.</div>
-            </div>`;
+          // Guaranteed fallback without hanging
+          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, { outgoingModules: [], incomingModules: [], totalTouchPoints: 0, moduleName: pkgFqn.split('.').pop() });
         }
         return;
       }
@@ -8198,21 +8265,9 @@ function renderPackageDetail(pkg) {
 
   // Module Dependency & Touch Points Section in Right Panel
   const depSec = createElement('div', { class: 'module-dep-inspector-sec' });
-  depSec.innerHTML = `
-    <div class="module-dep-inspector-title">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        <span>Module Touch Points</span>
-      </div>
-      <span class="stability-rating-pill is-balanced">Analyzing…</span>
-    </div>
-    <div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-      <div class="spinner" style="width:12px;height:12px;border-width:2px;"></div> Loading touch points…
-    </div>
-  `;
   body.appendChild(depSec);
 
-  api.packageDependencies(pkg.fqn).then(deps => {
+  const renderDepsSec = (deps) => {
     if (!deps) {
       depSec.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No dependency data found.</div>';
       return;
@@ -8315,9 +8370,33 @@ function renderPackageDetail(pkg) {
       switchTab('knowledge');
       loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES');
     });
-  }).catch(() => {
-    depSec.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No dependency insights found.</div>';
-  });
+  };
+
+  const cachedDeps = (window.GraphDataCache && pkg.fqn)
+    ? (GraphDataCache.get('mod:dep:' + pkg.fqn.toLowerCase()) || GraphDataCache.get('mod:dep:' + (pkg.name || '').toLowerCase()))
+    : null;
+
+  if (cachedDeps) {
+    renderDepsSec(cachedDeps);
+  } else {
+    depSec.innerHTML = `
+      <div class="module-dep-inspector-title">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <span>Module Touch Points</span>
+        </div>
+        <span class="stability-rating-pill is-balanced">Precomputed</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+        <div class="spinner" style="width:12px;height:12px;border-width:2px;"></div> Loading touch points…
+      </div>
+    `;
+    api.packageDependencies(pkg.fqn).then(deps => {
+      renderDepsSec(deps);
+    }).catch(() => {
+      depSec.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No dependency insights found.</div>';
+    });
+  }
 
   api.notes(pkg.fqn).then(notes => renderNotes(pkg.fqn, notes)).catch(() => renderNotes(pkg.fqn, []));
 }
@@ -8610,7 +8689,10 @@ let moduleSortBarInitialized = false;
 async function loadModuleCouplingMap() {
   if (cachedModuleCouplingMap) return cachedModuleCouplingMap;
   try {
-    const overview = await api.allModuleDependencies();
+    const [overview] = await Promise.all([
+      api.allModuleDependencies(),
+      api.allModuleInsights().catch(() => null)
+    ]);
     const map = new Map();
     if (overview && overview.modules) {
       for (const m of overview.modules) {
@@ -8770,7 +8852,7 @@ async function selectModuleItem(pkg, initialTab = null) {
   }
 
   if (pkg && pkg.fqn) {
-    // Open all ancestor package chains in tree
+    // Open all ancestor package chains in tree state
     const parts = pkg.fqn.split('.');
     let cur = '';
     for (let i = 0; i < parts.length - 1; i++) {
@@ -8778,13 +8860,19 @@ async function selectModuleItem(pkg, initialTab = null) {
       App.openPackages.add(cur);
     }
     App.openPackages.add(pkg.fqn);
-    await loadPackageTree();
 
+    // Sync tree asynchronously in background without delaying user view navigation!
+    loadPackageTree().then(() => {
+      const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(pkg.fqn)}"]`);
+      if (itemEl) {
+        itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        setActiveTreeItem(itemEl);
+      }
+    }).catch(() => {});
+
+    // IMMEDIATELY navigate and select package in 0ms!
     const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(pkg.fqn)}"]`);
     selectPackage(pkg, itemEl, initialTab);
-    if (itemEl) {
-      itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
   }
 
   showToast(`Selected module: ${pkg.name || pkg.fqn}`, 'info', 2200);
@@ -13783,6 +13871,39 @@ const ReportsHub = {
       switchTab('reports');
       ReportsHub.activate('review');
     });
+    // Eagerly preload all precomputed reports in background on init
+    ReportsHub.preloadAllReports().catch(() => {});
+  },
+
+  async preloadAllReports() {
+    if (ReportsHub._preloading) return ReportsHub._preloadPromise;
+    ReportsHub._preloading = true;
+    ReportsHub._preloadPromise = api.allReports().then(allReports => {
+      if (allReports && typeof allReports === 'object') {
+        const reportMap = (allReports && allReports.reports) ? allReports.reports : allReports;
+        for (const [key, reportData] of Object.entries(reportMap)) {
+          if (reportData && typeof reportData === 'object' && key !== 'status') {
+            ReportsHub.cache[key + '_json'] = reportData;
+          }
+        }
+        // If user is currently looking at Reports Hub and format is dashboard, render immediately if waiting
+        if (App.activeTab === 'reports' && ReportsHub.activeFormat === 'dashboard') {
+          const activeKey = ReportsHub.activeReport + '_json';
+          if (ReportsHub.cache[activeKey]) {
+            const dashContainer = qs('#reports-dashboard-container');
+            if (dashContainer && dashContainer.querySelector('.reports-loading-state')) {
+              ReportsHub.renderDashboard(ReportsHub.activeReport, ReportsHub.cache[activeKey]);
+            }
+          }
+        }
+      }
+      return allReports;
+    }).catch(err => {
+      console.warn('Reports preloading notice:', err);
+    }).finally(() => {
+      ReportsHub._preloading = false;
+    });
+    return ReportsHub._preloadPromise;
   },
 
   async regenerate() {
@@ -13802,7 +13923,12 @@ const ReportsHub = {
       }
       const res = await fetch('/api/reports/regenerate', { method: 'POST' });
       if (res.ok) {
-        ReportsHub.loadActiveReport();
+        ReportsHub.cache = {};
+        ReportsHub.preloadAllReports().then(() => {
+          ReportsHub.loadActiveReport();
+        }).catch(() => {
+          ReportsHub.loadActiveReport();
+        });
       }
     } catch (err) {
       if (typeof showToast === 'function') {
@@ -13900,7 +14026,8 @@ const ReportsHub = {
       dashContainer.innerHTML = `
         <div class="reports-loading-state">
           <div class="loading-spinner"></div>
-          <div class="loading-text">Analyzing ${esc(REPORTS_METADATA[ReportsHub.activeReport]?.title || 'Report')}…</div>
+          <div class="loading-text">Loading ${esc(REPORTS_METADATA[ReportsHub.activeReport]?.title || 'Report')}…</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:6px;">Displaying precomputed report dataset…</div>
         </div>
       `;
 
@@ -13975,7 +14102,7 @@ const ReportsHub = {
       return;
     }
 
-    codeOutput.textContent = 'Generating ' + ReportsHub.activeFormat.toUpperCase() + ' report…';
+    codeOutput.textContent = 'Loading precomputed ' + ReportsHub.activeFormat.toUpperCase() + ' report…';
 
     try {
       const res = await fetch(`/api/reports/${ReportsHub.activeReport}?format=${ReportsHub.activeFormat}`);
@@ -13996,7 +14123,7 @@ const ReportsHub = {
       ReportsHub.cache[cacheKey] = text;
       codeOutput.textContent = text;
     } catch (err) {
-      codeOutput.textContent = 'Error generating report: ' + err.message;
+      codeOutput.textContent = 'Error loading report: ' + err.message;
     }
   },
 
