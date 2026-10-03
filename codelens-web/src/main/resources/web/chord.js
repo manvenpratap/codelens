@@ -23,11 +23,35 @@ class ChordRenderer {
     this._hovered = -1;
     this._tooltip = null;
     this._dpr = window.devicePixelRatio || 1;
+    this._searchQuery = '';
     this._bound = {
       onMouseMove: this._onMouseMove.bind(this),
       onMouseLeave: this._onMouseLeave.bind(this),
       onResize: this._onResize.bind(this),
     };
+  }
+
+  /** Set search query and redraw. Pass empty string to clear. */
+  search(query) {
+    this._searchQuery = (query || '').trim().toLowerCase();
+    this._draw();
+  }
+
+  /** Returns a Set of arc indices that match the current search query, or null if no query. */
+  _matchedIndices() {
+    const q = this._searchQuery;
+    if (!q) return null;
+    const matched = new Set();
+    for (const arc of this._arcs) {
+      const nd = arc.node;
+      const label = (nd.label || '').toLowerCase();
+      const id = (nd.id || '').toLowerCase();
+      const pkg = (nd.package || '').toLowerCase();
+      if (label.includes(q) || id.includes(q) || pkg.includes(q)) {
+        matched.add(arc.index);
+      }
+    }
+    return matched;
   }
 
   toggleHideGetters() {
@@ -328,6 +352,10 @@ class ChordRenderer {
 
     // Draw D3-style double-sided ribbon polygons with linear gradients
     const minChordWeight = this._chords.length > 100 ? 2 : 1;
+
+    // Resolve search matches once for this frame
+    const searchMatched = this._matchedIndices(); // null when no query active
+
     for (const chord of this._chords) {
       if (chord.value < minChordWeight && hovered < 0) continue; // Chord weight culling / bundling
 
@@ -349,7 +377,14 @@ class ChordRenderer {
       const tx1 = cx + Math.cos(ta1) * r, ty1 = cy + Math.sin(ta1) * r;
 
       const isHot = hovered >= 0 && (chord.source === hovered || chord.target === hovered);
-      const dimmed = hovered >= 0 && !isHot;
+      const dimmedByHover = hovered >= 0 && !isHot;
+
+      // Search-aware chord state
+      const srcMatched = searchMatched ? searchMatched.has(chord.source) : false;
+      const tgtMatched = searchMatched ? searchMatched.has(chord.target) : false;
+      const chordSearchHot = searchMatched && srcMatched && tgtMatched;
+      const chordSearchDimmed = searchMatched && !srcMatched && !tgtMatched;
+      const chordSearchPartial = searchMatched && (srcMatched || tgtMatched) && !chordSearchHot;
 
       // Draw D3 Ribbon Geometry
       ctx.beginPath();
@@ -364,13 +399,26 @@ class ChordRenderer {
       grad.addColorStop(0, srcArc.color);
       grad.addColorStop(1, tgtArc.color);
 
+      let fillAlpha, strokeAlpha, lineW;
+      if (dimmedByHover || chordSearchDimmed) {
+        fillAlpha = 0.03; strokeAlpha = 0.04; lineW = 0.5;
+      } else if (chordSearchHot) {
+        fillAlpha = 0.70; strokeAlpha = 0.95; lineW = 2.0;
+      } else if (chordSearchPartial) {
+        fillAlpha = 0.45; strokeAlpha = 0.65; lineW = 1.2;
+      } else if (isHot) {
+        fillAlpha = 0.65; strokeAlpha = 0.90; lineW = 1.5;
+      } else {
+        fillAlpha = 0.28; strokeAlpha = 0.35; lineW = 0.5;
+      }
+
       ctx.fillStyle = grad;
-      ctx.globalAlpha = dimmed ? 0.04 : (isHot ? 0.65 : 0.28);
+      ctx.globalAlpha = fillAlpha;
       ctx.fill();
 
       ctx.strokeStyle = srcArc.color;
-      ctx.globalAlpha = dimmed ? 0.05 : (isHot ? 0.9 : 0.35);
-      ctx.lineWidth = isHot ? 1.5 : 0.5;
+      ctx.globalAlpha = strokeAlpha;
+      ctx.lineWidth = lineW;
       ctx.stroke();
     }
 
@@ -387,11 +435,23 @@ class ChordRenderer {
     for (const arc of this._arcs) {
       const isHovered = (hovered >= 0 && arc.index === hovered);
       const isRelated = (hovered >= 0 && relatedArcs.has(arc.index));
-      const isDimmed = (hovered >= 0 && !isHovered && !isRelated);
+      const isDimmedByHover = (hovered >= 0 && !isHovered && !isRelated);
+
+      const isSearchMatch = searchMatched ? searchMatched.has(arc.index) : false;
+      const isDimmedBySearch = searchMatched ? !isSearchMatch : false;
+
+      const isDimmed = isDimmedByHover || (isDimmedBySearch && !isHovered && !isRelated);
 
       ctx.beginPath();
       ctx.arc(cx, cy, r + aw / 2, arc.startAngle, arc.endAngle);
-      ctx.strokeStyle = arc.color;
+
+      // Arc color: cyan for search matches, otherwise original color
+      if (isSearchMatch && !isHovered) {
+        ctx.strokeStyle = '#22d3ee'; // cyan-400
+      } else {
+        ctx.strokeStyle = arc.color;
+      }
+
       if (isHovered) {
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = aw + 6;
@@ -399,8 +459,11 @@ class ChordRenderer {
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = aw + 2;
       } else if (isDimmed) {
-        ctx.globalAlpha = 0.12;
+        ctx.globalAlpha = 0.08;
         ctx.lineWidth = aw;
+      } else if (isSearchMatch) {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = aw + 3;
       } else {
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = aw;
@@ -408,7 +471,7 @@ class ChordRenderer {
       ctx.lineCap = 'butt';
       ctx.stroke();
 
-      // Outer accent ring for hovered and related arcs
+      // Outer accent ring for hovered, related, and search-matched arcs
       if (isHovered) {
         ctx.save();
         ctx.beginPath();
@@ -427,6 +490,18 @@ class ChordRenderer {
         ctx.lineWidth = 1.5;
         ctx.stroke();
         ctx.restore();
+      } else if (isSearchMatch) {
+        // Cyan halo ring for search matches
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + aw + 4, arc.startAngle, arc.endAngle);
+        ctx.strokeStyle = '#22d3ee';
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 10;
+        ctx.globalAlpha = 0.85;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
       }
 
       // Label
@@ -436,7 +511,8 @@ class ChordRenderer {
       const ly = cy + Math.sin(midAngle) * labelR;
 
       const arcSpan = arc.endAngle - arc.startAngle;
-      if (isHovered || isRelated || (arcSpan > 0.08 && !isDimmed)) { // Always label hovered and related nodes
+      const showLabel = isHovered || isRelated || isSearchMatch || (arcSpan > 0.08 && !isDimmed);
+      if (showLabel) {
         ctx.save();
         ctx.translate(lx, ly);
         let rotation = midAngle;
@@ -459,8 +535,13 @@ class ChordRenderer {
           ctx.font = '600 11.5px "Plus Jakarta Sans", system-ui, sans-serif';
           ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
           ctx.shadowBlur = 5;
+        } else if (isSearchMatch) {
+          ctx.fillStyle = '#67e8f9'; // cyan-300 for legibility
+          ctx.font = '600 11.5px "Plus Jakarta Sans", system-ui, sans-serif';
+          ctx.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx.shadowBlur = 6;
         } else if (isDimmed) {
-          ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.15)';
           ctx.font = '400 10.5px "Plus Jakarta Sans", system-ui, sans-serif';
         } else {
           ctx.fillStyle = '#e2e8f0';
@@ -475,6 +556,43 @@ class ChordRenderer {
     }
 
     ctx.restore(); // for zoom scale & translate
+
+    // ── Search match count badge (drawn in screen-space, top-left) ──────────
+    if (searchMatched !== null) {
+      const count = searchMatched.size;
+      const total = this._arcs.length;
+      const label = count === 0
+        ? `No matches for "${this._searchQuery}"`
+        : `${count} of ${total} matching`;
+
+      const px = 14, py = 12;
+      ctx.save();
+      ctx.font = '600 12px "Plus Jakarta Sans", system-ui, sans-serif';
+      const tw = ctx.measureText(label).width;
+      const bw = tw + 22, bh = 24, br = 6;
+
+      // Badge background
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = count > 0 ? 'rgba(8,47,73,0.92)' : 'rgba(50,20,20,0.92)';
+      ctx.beginPath();
+      ctx.roundRect(px, py, bw, bh, br);
+      ctx.fill();
+
+      // Badge border
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = count > 0 ? '#22d3ee' : '#ef4444';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Badge text
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = count > 0 ? '#67e8f9' : '#fca5a5';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, px + 11, py + bh / 2);
+      ctx.restore();
+    }
+
     ctx.restore(); // for dpr scale
   }
 

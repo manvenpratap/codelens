@@ -1293,7 +1293,27 @@
           </div>
         </div>
 
+        <!-- Chord Diagram Search Input (shown only in Chord view) -->
+        <div id="chord-search-wrap" class="chord-search-wrap" style="display:none;">
+          <div class="chord-search-box">
+            <svg class="svg-icon icon-xxs chord-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input
+              id="chord-search-input"
+              type="search"
+              placeholder="Search classes…"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search chord diagram nodes"
+              title="Filter chord diagram by class or package name"
+            />
+            <button id="chord-search-clear" class="chord-search-clear" aria-label="Clear search" style="display:none;" title="Clear search (Esc)">
+              <svg class="svg-icon icon-xxs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
         <div class="hud-divider" id="codebase-camera-divider"></div>
+
 
         <!-- Codebase Camera Controls (Zoom In, Zoom Out, Fit, Reset) -->
         <div class="graph-camera-controls" id="codebase-camera-controls">

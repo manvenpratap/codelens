@@ -11302,6 +11302,71 @@ body.theme-light .sunburst-tip-hint {
   display: block;
 }
 
+/* ── Chord Search ───────────────────────────────────────────────────────────── */
+.chord-search-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.chord-search-box {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-input, rgba(15, 23, 42, 0.7));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  transition: border-color 0.15s;
+}
+
+.chord-search-box:focus-within {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 2px rgba(34,211,238,0.15);
+}
+
+.chord-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+#chord-search-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  width: 160px;
+  padding: 0;
+  caret-color: #22d3ee;
+}
+
+#chord-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* hide native clear button from type=search */
+#chord-search-input::-webkit-search-cancel-button { display: none; }
+
+.chord-search-clear {
+  background: none;
+  border: none;
+  padding: 1px 2px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: color 0.12s;
+}
+
+.chord-search-clear:hover { color: var(--text-primary); }
+
+@media (max-width: 1050px) {
+  #chord-search-input { width: 110px; }
+}
+
+
 /* ── Sunburst ───────────────────────────────────────────────────────────────── */
 .sunburst-container {
   position: absolute;

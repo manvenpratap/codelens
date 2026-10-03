@@ -7211,6 +7211,53 @@ async function loadWholeCodebaseGraph(level, granularity) {
   if (cameraCtrl) cameraCtrl.style.display = showCameraControls ? 'inline-flex' : 'none';
   if (cameraDiv) cameraDiv.style.display = showCameraControls ? '' : 'none';
 
+  // Toggle Chord search input (visible only in Chord view)
+  const chordSearchWrap = qs('#chord-search-wrap');
+  const chordSearchInput = qs('#chord-search-input');
+  const chordSearchClear = qs('#chord-search-clear');
+  const isChord = effectiveLevel === 'chord';
+  if (chordSearchWrap) chordSearchWrap.style.display = isChord ? 'flex' : 'none';
+  if (!isChord && chordSearchInput) {
+    // Clear search state when leaving Chord view
+    chordSearchInput.value = '';
+    if (chordSearchClear) chordSearchClear.style.display = 'none';
+  }
+
+  // Wire chord search events (idempotent – guarded by flag on element)
+  if (chordSearchInput && !chordSearchInput._chordWired) {
+    chordSearchInput._chordWired = true;
+
+    chordSearchInput.addEventListener('input', () => {
+      const q = chordSearchInput.value;
+      if (chordSearchClear) chordSearchClear.style.display = q ? 'flex' : 'none';
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.search === 'function') {
+        App.activeAltRenderer.search(q);
+      }
+    });
+
+    chordSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        chordSearchInput.value = '';
+        if (chordSearchClear) chordSearchClear.style.display = 'none';
+        if (App.activeAltRenderer && typeof App.activeAltRenderer.search === 'function') {
+          App.activeAltRenderer.search('');
+        }
+        chordSearchInput.blur();
+      }
+    });
+
+    if (chordSearchClear) {
+      chordSearchClear.addEventListener('click', () => {
+        chordSearchInput.value = '';
+        chordSearchClear.style.display = 'none';
+        if (App.activeAltRenderer && typeof App.activeAltRenderer.search === 'function') {
+          App.activeAltRenderer.search('');
+        }
+        chordSearchInput.focus();
+      });
+    }
+  }
+
   // Toggle visibility of bottom canvas toolbar
   const canvasToolbar = qs('#codebase-canvas-toolbar');
   const hasBottomControls = (supportsGranularity || is3D || isGraph2D || showCameraControls || showPojoFilter);
