@@ -1099,9 +1099,20 @@ public class CallGraphAnalyzer {
                 }
                 return parts[2];
             }
+            if (parts.length >= 4) {
+                if (Character.isUpperCase(parts[parts.length - 1].charAt(0))) {
+                    return parts[parts.length - 2];
+                }
+                return parts[parts.length - 1];
+            } else if (parts.length == 3) {
+                if (Character.isUpperCase(parts[2].charAt(0))) {
+                    return parts[1];
+                }
+                return parts[2];
+            }
             return parts[0];
         } else if (parts.length == 2) {
-            return parts[0];
+            return parts[1].length() > 0 && Character.isUpperCase(parts[1].charAt(0)) ? parts[0] : parts[1];
         }
         return "default";
     }

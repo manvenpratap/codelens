@@ -1190,6 +1190,22 @@ body.theme-light .scan-stat-card {
   background: #f8fafc;
   border-color: #e2e8f0;
 }
+.scan-stat-card.scan-stat-card-clickable {
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.scan-stat-card.scan-stat-card-clickable:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+.scan-stat-card.scan-stat-card-clickable:hover .stat-card-lbl {
+  color: var(--primary, #10b981);
+}
+body.theme-light .scan-stat-card.scan-stat-card-clickable:hover {
+  background: #ecfdf5;
+  border-color: #10b981;
+}
 .stat-card-num {
   font-size: 13px;
   font-weight: 700;

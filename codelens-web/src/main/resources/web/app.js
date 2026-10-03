@@ -720,9 +720,8 @@ function getPhaseMetricsData(stageKey, s) {
           }
         ]
       };
-
     case 'MODULES':
-      const modulesCount = s.modulesFound || stats.modules || (metrics['Modules Indexed'] ? parseInt(metrics['Modules Indexed']) : 0);
+      const modulesCount = Math.max(s.modulesFound || 0, stats.modules || 0, stats.packages || 0, (metrics['Modules Indexed'] ? parseInt(metrics['Modules Indexed']) : 0), (App.packages && App.packages.length) || 0);
       return {
         pill: 'Phase 5',
         name: 'Module Dependencies',
@@ -8969,7 +8968,8 @@ async function loadStats() {
     App.stats = s;
 
     // Animate counters to new values: modules, classes, methods, fields
-    animateCounter(qs('#stat-modules'), s.modules || s.packages || 0);
+    const effectiveModules = Math.max(s.modules || 0, s.packages || 0, (App.packages && App.packages.length) || 0);
+    animateCounter(qs('#stat-modules'), effectiveModules);
     animateCounter(qs('#stat-classes'), s.classes || s.types || 0);
     animateCounter(qs('#stat-methods'), s.methods || 0);
     animateCounter(qs('#stat-fields'),  s.fields  || 0);
@@ -9232,6 +9232,16 @@ async function updateModulesList(filterText = '') {
   const totalCount = (packages && packages.length) ? packages.length : 0;
   if (modulesTotal) {
     modulesTotal.textContent = `${totalCount.toLocaleString()} ${totalCount === 1 ? 'module' : 'modules'}`;
+  }
+  if (totalCount > 0) {
+    const statModEl = qs('#stat-modules');
+    if (statModEl) {
+      animateCounter(statModEl, totalCount);
+    }
+    const scanStatMod = qs('#scan-stat-modules');
+    if (scanStatMod) {
+      scanStatMod.textContent = totalCount.toLocaleString();
+    }
   }
 
   const filter = (filterText || '').trim().toLowerCase();
@@ -9561,8 +9571,8 @@ function updateScanSummaryUI(s) {
   setNum('scan-stat-types', s.typesFound || App.stats?.types || 0);
   setNum('scan-stat-methods', s.methodsFound || App.stats?.methods || 0);
   setNum('scan-stat-fields', s.fieldsFound || App.stats?.fields || 0);
-  setNum('scan-stat-rels', s.relationshipsFound || 0);
-  setNum('scan-stat-modules', s.modulesFound || App.stats?.modules || 0);
+  const effectiveScanModules = Math.max(s.modulesFound || 0, App.stats?.modules || 0, App.stats?.packages || 0, (App.packages && App.packages.length) || 0);
+  setNum('scan-stat-modules', effectiveScanModules);
   setNum('scan-stat-reports', s.reportsFound || App.stats?.reports || (s.status === 'COMPLETE' ? 13 : 0));
 
   // Format Duration
@@ -10220,6 +10230,37 @@ async function init() {
     toggleScanSummaryPopover(false);
     startIncrementalScan();
   });
+
+  // Clicking on Modules stat card opens the modules-list-popover
+  const scanModulesCard = qs('#scan-stat-card-modules');
+  if (scanModulesCard) {
+    const openModules = (e) => {
+      e.stopPropagation();
+      toggleScanSummaryPopover(false);
+      const pill = qs('#stat-pill-modules');
+      const popover = qs('#modules-list-popover');
+      if (popover) {
+        popover.style.display = 'flex';
+        if (pill) {
+          pill.classList.add('popover-open');
+          pill.setAttribute('aria-expanded', 'true');
+        }
+        updateModulesList();
+        const filterInput = qs('#modules-popover-filter');
+        if (filterInput) {
+          filterInput.value = '';
+          setTimeout(() => filterInput.focus(), 60);
+        }
+      }
+    };
+    scanModulesCard.addEventListener('click', openModules);
+    scanModulesCard.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openModules(e);
+      }
+    });
+  }
 
 
   // Close scan popover on outside click

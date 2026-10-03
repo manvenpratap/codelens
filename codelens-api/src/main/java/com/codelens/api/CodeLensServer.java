@@ -527,7 +527,12 @@ public class CodeLensServer {
 
                 populateModuleDependencyCaches(result);
 
-                int modCount = (result != null && result.overview != null && result.overview.modules != null) ? result.overview.modules.size() : 0;
+                int modCount = (result != null && result.overview != null && result.overview.modules != null && result.overview.modules.size() > 1)
+                    ? result.overview.modules.size()
+                    : (packages != null ? packages.size() : 0);
+                if (modCount <= 1 && packages != null && packages.size() > 1) {
+                    modCount = packages.size();
+                }
                 int interLinks = (result != null && result.overview != null) ? result.overview.totalInterModuleTouchPoints : 0;
                 boolean hasHighEfferent = (result != null && result.overview != null && result.overview.modules != null && result.overview.modules.stream().anyMatch(m -> "High Efferent".equals(m.stabilityRating)));
 
@@ -2910,10 +2915,13 @@ public class CodeLensServer {
                 "Cycles", "Detecting…",
                 "Status", "In progress"
             );
-
             ModuleDependencyAnalyzer.FullModuleDependencyResult moduleResult = precomputeModuleDependencies(progress);
-            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null)
-                ? moduleResult.overview.modules.size() : 0;
+            int totalPkgsCount = dao.findAllPackages().size();
+            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null && moduleResult.overview.modules.size() > 1)
+                ? moduleResult.overview.modules.size() : totalPkgsCount;
+            if (modulesCount <= 1 && totalPkgsCount > 1) {
+                modulesCount = totalPkgsCount;
+            }
             progress.setModulesFound(modulesCount);
             progress.setPercentage(93);
 
@@ -3332,10 +3340,13 @@ public class CodeLensServer {
                 "Cycles", "Detecting…",
                 "Status", "In progress"
             );
-
             ModuleDependencyAnalyzer.FullModuleDependencyResult moduleResult = precomputeModuleDependencies(progress);
-            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null)
-                ? moduleResult.overview.modules.size() : 0;
+            int totalPkgsCount = dao.findAllPackages().size();
+            int modulesCount = (moduleResult != null && moduleResult.overview != null && moduleResult.overview.modules != null && moduleResult.overview.modules.size() > 1)
+                ? moduleResult.overview.modules.size() : totalPkgsCount;
+            if (modulesCount <= 1 && totalPkgsCount > 1) {
+                modulesCount = totalPkgsCount;
+            }
             progress.setModulesFound(modulesCount);
             progress.setPercentage(93);
 
@@ -3462,10 +3473,17 @@ public class CodeLensServer {
             return;
         }
         Map<String, Object> stats = dao.getStats();
-        int modCount = precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null
+        int totalPackages = dao.findAllPackages().size();
+        int modCount = (precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null && precomputedModuleResult.overview.modules.size() > 1)
             ? precomputedModuleResult.overview.modules.size()
-            : (stats.containsKey("modules") ? ((Number) stats.get("modules")).intValue() : dao.findAllPackages().size());
+            : (stats.containsKey("modules") && ((Number) stats.get("modules")).intValue() > 1
+                ? ((Number) stats.get("modules")).intValue()
+                : totalPackages);
+        if (modCount <= 1 && totalPackages > 1) {
+            modCount = totalPackages;
+        }
         stats.put("modules", modCount);
+        stats.put("packages", totalPackages);
         stats.put("reports", cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13);
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());

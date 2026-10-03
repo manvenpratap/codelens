@@ -1584,7 +1584,11 @@ public class EntityDao {
              Statement s = c.createStatement()) {
             int rootPkgs = singleInt(s, "SELECT COUNT(*) FROM packages WHERE parent_fqn IS NULL OR parent_fqn = ''");
             int totalPkgs = singleInt(s, "SELECT COUNT(*) FROM packages");
-            if (rootPkgs == 0) rootPkgs = totalPkgs;
+            if (rootPkgs <= 1 && totalPkgs > 1) {
+                rootPkgs = totalPkgs;
+            } else if (rootPkgs == 0) {
+                rootPkgs = totalPkgs;
+            }
             stats.put("modules",        rootPkgs);
             stats.put("packages",       totalPkgs);
             stats.put("types",          singleInt(s, "SELECT COUNT(*) FROM types"));
@@ -1861,9 +1865,9 @@ public class EntityDao {
                 }
                 return parts[2]; // e.g. com.example.trading -> trading
             }
-            return parts[0];
+            return parts[parts.length - 1]; // e.g. mycompany.billing -> billing
         } else if (parts.length == 2) {
-            return parts[0];
+            return parts[1];
         }
         return packageFqn;
     }
