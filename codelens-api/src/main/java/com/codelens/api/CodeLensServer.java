@@ -5,7 +5,11 @@ import com.codelens.core.ExcludedScope;
 import com.codelens.core.model.*;
 import com.codelens.git.GitBlameService;
 import com.codelens.git.GitRepoLocator;
+import com.codelens.parser.AstVisitor;
 import com.codelens.parser.JavaSourceScanner;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ast.CompilationUnit;
 import com.codelens.storage.*;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -727,15 +731,15 @@ public class CodeLensServer {
                 }
 
                 ScanEntitySnapshot snapshot = this.transientScanSnapshot;
-                List<CodeType> types;
+                List<CodeType> resolvedTypes;
                 List<CodeMethod> methods;
                 List<CodeField> fields;
                 List<CodeRelationship> rels;
                 List<GitMeta> gitMetas;
 
                 if (snapshot != null && snapshot.types != null && !snapshot.types.isEmpty()) {
-                    types = snapshot.types;
-                    if (types.isEmpty()) {
+                    resolvedTypes = snapshot.types;
+                    if (resolvedTypes.isEmpty()) {
                         reportsPrecomputePhase.set("Idle (No scanned types)");
                         reportsPrecomputePercentage.set(0);
                         return;
@@ -747,16 +751,26 @@ public class CodeLensServer {
                     rels = (snapshot.relationships != null && !snapshot.relationships.isEmpty()) ? snapshot.relationships : dao.findAllRelationships();
                     gitMetas = (snapshot.gitMetas != null && !snapshot.gitMetas.isEmpty()) ? snapshot.gitMetas : dao.findAllGitMeta();
                     log.info("Reports generator reused transient entity snapshot ({} types, {} methods, {} fields, {} rels)",
-                        types.size(), methods.size(), fields.size(), rels.size());
+                        resolvedTypes.size(), methods.size(), fields.size(), rels.size());
                 } else {
                     // Query DB entities snapshot once
-                    types = dao.findAllTypes();
-                    if (types.isEmpty()) {
+                    List<CodeType> dbTypes = dao.findAllTypes();
+                    if (dbTypes.isEmpty()) {
                         reportsPrecomputePhase.set("Idle (No scanned types)");
                         reportsPrecomputePercentage.set(0);
                         return;
                     }
 
+                    try {
+                        if (dao.countZeroLineTypes() > 0) {
+                            backfillZeroLineCountsIfPresent();
+                            dbTypes = dao.findAllTypes();
+                        }
+                    } catch (Exception e) {
+                        log.warn("Line count check during reports precompute: {}", e.getMessage());
+                    }
+
+                    resolvedTypes = dbTypes;
                     reportsPrecomputePercentage.set(5);
                     reportsPrecomputePhase.set("Reading methods, fields, and relationships");
                     methods = dao.findAllMethods();
@@ -764,6 +778,8 @@ public class CodeLensServer {
                     rels = dao.findAllRelationships();
                     gitMetas = dao.findAllGitMeta();
                 }
+
+                final List<CodeType> types = resolvedTypes;
 
                 final int TOTAL_REPORTS = 13;
 
@@ -979,8 +995,10 @@ public class CodeLensServer {
                     }
 
                     File snapshotFile = new File(getReportsCacheDir(), "html-snapshot.html");
+                    boolean snapshotSuccess = false;
                     try (BufferedWriter writer = Files.newBufferedWriter(snapshotFile.toPath(), StandardCharsets.UTF_8)) {
                         reportService.writeInteractiveHtmlSnapshot(writer, projectName, fullGraph, archGraph, archData);
+                        snapshotSuccess = (snapshotFile.exists() && snapshotFile.length() > 5000);
                     } catch (Exception e) {
                         log.error("Failed streaming interactive HTML snapshot: {}", e.getMessage(), e);
                     }
@@ -988,15 +1006,17 @@ public class CodeLensServer {
                     Map<String, Object> snapshotMeta = new LinkedHashMap<>();
                     snapshotMeta.put("report", "html-snapshot");
                     snapshotMeta.put("name", "Standalone Offline HTML Snapshot");
-                    snapshotMeta.put("status", "ready");
+                    snapshotMeta.put("status", snapshotSuccess ? "ready" : "error");
                     snapshotMeta.put("file", "html-snapshot.html");
                     snapshotMeta.put("sizeBytes", snapshotFile.exists() ? snapshotFile.length() : 0);
                     snapshotMeta.put("generatedAt", System.currentTimeMillis());
 
                     cachedReportsJson.put("html-snapshot", snapshotMeta);
-                    cachedReportArtifacts.add("html-snapshot:html");
-                    cachedReportArtifacts.add("html-snapshot:json");
-                    writeJsonToFile(new File(getReportsCacheDir(), "html-snapshot.json"), snapshotMeta);
+                    if (snapshotSuccess) {
+                        cachedReportArtifacts.add("html-snapshot:html");
+                        cachedReportArtifacts.add("html-snapshot:json");
+                        writeJsonToFile(new File(getReportsCacheDir(), "html-snapshot.json"), snapshotMeta);
+                    }
 
                     refArch.set(null);
                 });
@@ -1071,6 +1091,68 @@ public class CodeLensServer {
             Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
         } catch (Exception e) {
             log.debug("Failed writing file {}: {}", file.getName(), e.getMessage());
+        }
+    }
+
+    public synchronized void backfillZeroLineCountsIfPresent() {
+        try {
+            int zeroCount = dao.countZeroLineTypes();
+            if (zeroCount == 0) return;
+            log.info("Found {} types with zero line count; backfilling lines from source files...", zeroCount);
+            List<CodeType> allTypes = dao.findAllTypes();
+            Map<String, List<CodeType>> bySourceFile = new HashMap<>();
+            for (CodeType t : allTypes) {
+                if (t.getSourceFile() != null && !t.getSourceFile().isBlank()) {
+                    bySourceFile.computeIfAbsent(t.getSourceFile(), k -> new ArrayList<>()).add(t);
+                }
+            }
+
+            JavaParser parser = new JavaParser(JavaSourceScanner.createDefaultParserConfig());
+            AstVisitor visitor = new AstVisitor();
+            List<CodeType> typesToUpdate = new ArrayList<>();
+            List<CodeMethod> methodsToUpdate = new ArrayList<>();
+
+            for (Map.Entry<String, List<CodeType>> entry : bySourceFile.entrySet()) {
+                Path path = Paths.get(entry.getKey());
+                if (!Files.isRegularFile(path)) continue;
+
+                try {
+                    ParseResult<CompilationUnit> pr = parser.parse(path);
+                    if (pr.isSuccessful() && pr.getResult().isPresent()) {
+                        AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
+                        ctx.sourceFile = path.toAbsolutePath().toString();
+                        visitor.visit(pr.getResult().get(), ctx);
+
+                        for (CodeType parsedType : ctx.types) {
+                            if (parsedType.getLineCount() > 0) {
+                                typesToUpdate.add(parsedType);
+                            }
+                        }
+                        for (CodeMethod parsedMethod : ctx.methods) {
+                            if (parsedMethod.getEndLine() > 0) {
+                                methodsToUpdate.add(parsedMethod);
+                            }
+                        }
+                    } else {
+                        int lineCount = (int) Files.lines(path).count();
+                        for (CodeType t : entry.getValue()) {
+                            t.setLineCount(lineCount);
+                            t.setStartLine(1);
+                            t.setEndLine(lineCount);
+                            typesToUpdate.add(t);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Could not parse file for line backfill {}: {}", path, e.getMessage());
+                }
+            }
+
+            if (!typesToUpdate.isEmpty() || !methodsToUpdate.isEmpty()) {
+                dao.updateTypeAndMethodRanges(typesToUpdate, methodsToUpdate);
+                log.info("Successfully backfilled line numbers for {} types and {} methods.", typesToUpdate.size(), methodsToUpdate.size());
+            }
+        } catch (Exception e) {
+            log.warn("Line count backfill encountered an error: {}", e.getMessage(), e);
         }
     }
 
@@ -1411,6 +1493,14 @@ public class CodeLensServer {
             }
         } catch (Exception e) {
             log.warn("Failed to clean up orphan file_meta on startup: {}", e.getMessage());
+        }
+
+        try {
+            if (dao.countZeroLineTypes() > 0) {
+                backfillZeroLineCountsIfPresent();
+            }
+        } catch (Exception e) {
+            log.warn("Startup line count backfill error: {}", e.getMessage());
         }
 
         app.start(port);
@@ -4523,7 +4613,223 @@ public class CodeLensServer {
         serveReport(ctx, "concurrency-audit", "json");
     }
 
+    public synchronized boolean regenerateSingleReport(String reportKey) {
+        if (reportKey == null || reportKey.isBlank()) return false;
+        String key = reportKey.trim().toLowerCase();
+
+        ScanEntitySnapshot snapshot = this.transientScanSnapshot;
+        List<CodeType> types;
+        List<CodeMethod> methods;
+        List<CodeField> fields;
+        List<CodeRelationship> rels;
+        List<GitMeta> gitMetas;
+
+        try {
+            if (snapshot != null && snapshot.types != null && !snapshot.types.isEmpty()) {
+                types = snapshot.types;
+                methods = (snapshot.methods != null && !snapshot.methods.isEmpty()) ? snapshot.methods : dao.findAllMethods();
+                fields = (snapshot.fields != null && !snapshot.fields.isEmpty()) ? snapshot.fields : dao.findAllFields();
+                rels = (snapshot.relationships != null && !snapshot.relationships.isEmpty()) ? snapshot.relationships : dao.findAllRelationships();
+                gitMetas = (snapshot.gitMetas != null && !snapshot.gitMetas.isEmpty()) ? snapshot.gitMetas : dao.findAllGitMeta();
+            } else {
+                types = dao.findAllTypes();
+                methods = dao.findAllMethods();
+                fields = dao.findAllFields();
+                rels = dao.findAllRelationships();
+                gitMetas = dao.findAllGitMeta();
+            }
+        } catch (Exception e) {
+            log.error("Failed loading entities for single report regeneration ({}): {}", key, e.getMessage(), e);
+            return false;
+        }
+
+        if (types == null || types.isEmpty()) {
+            log.warn("Cannot regenerate report {}: no types scanned", key);
+            return false;
+        }
+
+        log.info("[SINGLE_REPORT_REGENERATE] Starting single regeneration for report '{}'", key);
+        long start = System.currentTimeMillis();
+
+        switch (key) {
+            case "architecture": {
+                ReportService.ArchitectureReportData data = reportService.buildArchitectureData(types, methods, fields, rels);
+                cacheReport("architecture", data,
+                    reportService.renderArchitectureHtml(data),
+                    reportService.renderArchitectureMarkdown(data),
+                    null);
+                break;
+            }
+            case "change-risk": {
+                ReportService.ChangeRiskReportData data = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
+                cacheReport("change-risk", data,
+                    reportService.renderChangeRiskHtml(data),
+                    reportService.renderChangeRiskMarkdown(data),
+                    reportService.renderChangeRiskCsv(data));
+                break;
+            }
+            case "dead-code": {
+                ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
+                cacheReport("dead-code", data,
+                    reportService.renderDeadCodeHtml(data),
+                    reportService.renderDeadCodeMarkdown(data),
+                    reportService.renderDeadCodeCsv(data));
+                break;
+            }
+            case "circular-dependencies": {
+                ReportService.CircularDependencyReportData data = reportService.buildCircularDependencyData(types, methods, rels);
+                cacheReport("circular-dependencies", data,
+                    reportService.renderCircularDependencyHtml(data),
+                    reportService.renderCircularDependencyMarkdown(data),
+                    reportService.renderCircularDependencyCsv(data));
+                break;
+            }
+            case "archetype-governance": {
+                ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                cacheReport("archetype-governance", data,
+                    reportService.renderArchetypeGovernanceHtml(data),
+                    reportService.renderArchetypeGovernanceMarkdown(data),
+                    reportService.renderArchetypeGovernanceCsv(data));
+                break;
+            }
+            case "technical-debt": {
+                ReportService.TechnicalDebtReportData data = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+                cacheReport("technical-debt", data,
+                    reportService.renderTechnicalDebtHtml(data),
+                    reportService.renderTechnicalDebtMarkdown(data),
+                    reportService.renderTechnicalDebtCsv(data));
+                break;
+            }
+            case "executive-summary": {
+                ReportService.ArchitectureReportData arch = reportService.buildArchitectureData(types, methods, fields, rels);
+                ReportService.ChangeRiskReportData risk = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
+                ReportService.DeadCodeReportData dead = reportService.buildDeadCodeData(types, methods, fields, rels);
+                ReportService.CircularDependencyReportData cycles = reportService.buildCircularDependencyData(types, methods, rels);
+                ReportService.ArchetypeGovernanceReportData gov = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                ReportService.TechnicalDebtReportData debt = reportService.buildTechnicalDebtData(types, methods, fields, rels);
+
+                ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(
+                    types, methods, fields, rels, gitMetas, arch, risk, cycles, gov, dead, debt);
+                cacheReport("executive-summary", data,
+                    reportService.renderExecutiveSummaryHtml(data),
+                    reportService.renderExecutiveSummaryMarkdown(data),
+                    reportService.renderExecutiveSummaryCsv(data));
+                break;
+            }
+            case "review": {
+                ReportService.ReviewReportData data = reportService.buildReviewReportData(types);
+                cacheReport("review", data,
+                    reportService.renderReviewHtml(data),
+                    reportService.renderReviewMarkdown(data),
+                    reportService.renderReviewCsv(data));
+                break;
+            }
+            case "metrics": {
+                ReportService.MetricsReportData data = reportService.buildMetricsData(types, methods, fields);
+                cacheReport("metrics", data,
+                    reportService.renderMetricsHtml(data),
+                    reportService.renderMetricsMarkdown(data),
+                    reportService.renderMetricsCsv(data));
+                break;
+            }
+            case "api-catalog": {
+                ReportService.ApiCatalogReportData data = reportService.buildApiCatalogData(types, methods, rels);
+                cacheReport("api-catalog", data,
+                    reportService.renderApiCatalogHtml(data),
+                    reportService.renderApiCatalogMarkdown(data),
+                    reportService.renderApiCatalogCsv(data));
+                break;
+            }
+            case "database-access": {
+                ReportService.DatabaseAccessReportData data = reportService.buildDatabaseAccessData(types, methods, fields, rels);
+                cacheReport("database-access", data,
+                    reportService.renderDatabaseAccessHtml(data),
+                    reportService.renderDatabaseAccessMarkdown(data),
+                    reportService.renderDatabaseAccessCsv(data));
+                break;
+            }
+            case "concurrency-audit": {
+                ReportService.ConcurrencyAuditReportData data = reportService.buildConcurrencyAuditData(types, methods, fields, rels);
+                cacheReport("concurrency-audit", data,
+                    reportService.renderConcurrencyAuditHtml(data),
+                    reportService.renderConcurrencyAuditMarkdown(data),
+                    reportService.renderConcurrencyAuditCsv(data));
+                break;
+            }
+            case "html-snapshot": {
+                Object fullGraph = callGraph.precomputedFullGraphView(false);
+                Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
+                String projectName = (!types.isEmpty() && types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
+                ReportService.ArchitectureReportData archData = reportService.buildArchitectureData(types, methods, fields, rels);
+
+                File snapshotFile = new File(getReportsCacheDir(), "html-snapshot.html");
+                boolean snapshotSuccess = false;
+                try (BufferedWriter writer = Files.newBufferedWriter(snapshotFile.toPath(), StandardCharsets.UTF_8)) {
+                    reportService.writeInteractiveHtmlSnapshot(writer, projectName, fullGraph, archGraph, archData);
+                    snapshotSuccess = (snapshotFile.exists() && snapshotFile.length() > 5000);
+                } catch (Exception e) {
+                    log.error("Failed streaming interactive HTML snapshot: {}", e.getMessage(), e);
+                }
+
+                Map<String, Object> snapshotMeta = new LinkedHashMap<>();
+                snapshotMeta.put("report", "html-snapshot");
+                snapshotMeta.put("name", "Standalone Offline HTML Snapshot");
+                snapshotMeta.put("status", snapshotSuccess ? "ready" : "error");
+                snapshotMeta.put("file", "html-snapshot.html");
+                snapshotMeta.put("sizeBytes", snapshotFile.exists() ? snapshotFile.length() : 0);
+                snapshotMeta.put("generatedAt", System.currentTimeMillis());
+
+                cachedReportsJson.put("html-snapshot", snapshotMeta);
+                if (snapshotSuccess) {
+                    cachedReportArtifacts.add("html-snapshot:html");
+                    cachedReportArtifacts.add("html-snapshot:json");
+                    writeJsonToFile(new File(getReportsCacheDir(), "html-snapshot.json"), snapshotMeta);
+                }
+                break;
+            }
+            default:
+                log.warn("[SINGLE_REPORT_REGENERATE] Unknown report key: '{}'", key);
+                return false;
+        }
+
+        long dur = System.currentTimeMillis() - start;
+        log.info("[SINGLE_REPORT_REGENERATE] Successfully regenerated report '{}' in {} ms", key, dur);
+        return true;
+    }
+
     private void regenerateReports(Context ctx) {
+        String report = ctx.queryParam("report");
+        if (report == null || report.isBlank()) {
+            try {
+                Map<?, ?> body = ctx.bodyAsClass(Map.class);
+                if (body != null && body.get("report") != null) {
+                    report = String.valueOf(body.get("report"));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (report != null && !report.isBlank() && !"all".equalsIgnoreCase(report.trim())) {
+            String key = report.trim().toLowerCase();
+            long start = System.currentTimeMillis();
+            boolean success = regenerateSingleReport(key);
+            long dur = System.currentTimeMillis() - start;
+            if (success) {
+                ctx.json(Map.of(
+                    "status", "completed",
+                    "report", key,
+                    "message", "Report " + key + " regenerated successfully in " + dur + "ms",
+                    "durationMs", dur
+                ));
+            } else {
+                ctx.status(400).json(Map.of(
+                    "status", "error",
+                    "report", key,
+                    "message", "Unknown or unhandled report key: " + key
+                ));
+            }
+            return;
+        }
+
         triggerReportsPrecomputeAsync(null, true);
         ctx.json(Map.of(
             "status", "queued",

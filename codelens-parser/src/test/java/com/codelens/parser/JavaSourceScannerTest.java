@@ -252,6 +252,25 @@ public class JavaSourceScannerTest {
             });
         }
 
+        System.out.println("Running testLineCountsAndRangesExtracted...");
+        Path tempDir7 = Files.createTempDirectory("codelens_lines_test");
+        try {
+            test.testLineCountsAndRangesExtracted(tempDir7);
+        } finally {
+            Files.walkFileTree(tempDir7, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                    Files.delete(f);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override
+                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                    Files.delete(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
         System.out.println("ALL JAVA SOURCE SCANNER AND DELTA CHANGE TESTS PASSED SUCCESSFULLY!");
     }
 
@@ -371,5 +390,38 @@ public class JavaSourceScannerTest {
         assertEquals(30, flushedTypes.get(), "30 types streamed via async flusher");
         assertEquals(60, flushedMethods.get(), "60 methods streamed via async flusher");
         assertTrue(flushedBatches.get() > 0, "at least one batch flushed");
+    }
+
+    public void testLineCountsAndRangesExtracted(Path tempDir) throws IOException {
+        Path pkg = tempDir.resolve("src/main/java/com/example/demo");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("OrderCalculator.java"),
+            "package com.example.demo;\n" +
+            "\n" +
+            "public class OrderCalculator {\n" +
+            "    private double taxRate;\n" +
+            "\n" +
+            "    public double calculateTotal(double subtotal) {\n" +
+            "        double tax = subtotal * taxRate;\n" +
+            "        return subtotal + tax;\n" +
+            "    }\n" +
+            "}\n");
+
+        JavaSourceScanner scanner = new JavaSourceScanner();
+        JavaSourceScanner.ScanResult res = scanner.scan(tempDir.toString(), null);
+
+        assertEquals(1, res.totalFiles, "1 file scanned");
+        assertEquals(1, res.types.size(), "1 type found");
+
+        com.codelens.core.model.CodeType t = res.types.get(0);
+        assertEquals(3, t.getStartLine(), "startLine should be 3");
+        assertEquals(10, t.getEndLine(), "endLine should be 10");
+        assertEquals(8, t.getLineCount(), "lineCount should be 8 (10 - 3 + 1)");
+
+        assertEquals(1, res.methods.size(), "1 method found");
+        com.codelens.core.model.CodeMethod m = res.methods.get(0);
+        assertEquals(6, m.getStartLine(), "method startLine should be 6");
+        assertEquals(9, m.getEndLine(), "method endLine should be 9");
+        assertEquals(4, m.getLineCount(), "method lineCount should be 4 (9 - 6 + 1)");
     }
 }

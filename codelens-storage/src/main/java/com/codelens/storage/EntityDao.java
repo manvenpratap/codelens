@@ -713,6 +713,52 @@ public class EntityDao {
         return queryTypes("SELECT * FROM types");
     }
 
+    public int countZeroLineTypes() throws SQLException {
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM types WHERE line_count = 0 OR line_count IS NULL")) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    public void updateTypeAndMethodRanges(List<CodeType> types, List<CodeMethod> methods) throws SQLException {
+        if ((types == null || types.isEmpty()) && (methods == null || methods.isEmpty())) return;
+        try (Connection c = db.getConnection()) {
+            boolean auto = c.getAutoCommit();
+            c.setAutoCommit(false);
+            try {
+                if (types != null && !types.isEmpty()) {
+                    String sqlTypes = "UPDATE types SET start_line = ?, end_line = ?, line_count = ? WHERE id = ?";
+                    try (PreparedStatement ps = c.prepareStatement(sqlTypes)) {
+                        for (CodeType t : types) {
+                            ps.setInt(1, t.getStartLine());
+                            ps.setInt(2, t.getEndLine());
+                            ps.setInt(3, t.getLineCount());
+                            ps.setString(4, t.getId());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+                if (methods != null && !methods.isEmpty()) {
+                    String sqlMethods = "UPDATE methods SET start_line = ?, end_line = ? WHERE id = ?";
+                    try (PreparedStatement ps = c.prepareStatement(sqlMethods)) {
+                        for (CodeMethod m : methods) {
+                            ps.setInt(1, m.getStartLine());
+                            ps.setInt(2, m.getEndLine());
+                            ps.setString(3, m.getId());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+                c.commit();
+            } finally {
+                c.setAutoCommit(auto);
+            }
+        }
+    }
+
     public List<CodeType> findTypesByPackage(String packageFqn) throws SQLException {
         List<CodeType> list = queryTypesParam("SELECT * FROM types WHERE package_fqn=? ORDER BY simple_name",
                                packageFqn);

@@ -39,6 +39,12 @@ public class CodeMethod {
     public void setStartLine(int n)                    { this.startLine = n; }
     public int getEndLine()                             { return endLine; }
     public void setEndLine(int n)                      { this.endLine = n; }
+    public int getLineCount() {
+        if (endLine > 0 && startLine > 0 && endLine >= startLine) {
+            return endLine - startLine + 1;
+        }
+        return 0;
+    }
     public int getCyclomaticComplexity()               { return cyclomaticComplexity; }
     public void setCyclomaticComplexity(int c)         { this.cyclomaticComplexity = c; }
     public String getBodyHash()                         { return bodyHash; }

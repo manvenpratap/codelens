@@ -1822,7 +1822,7 @@
 
               <!-- Action Buttons -->
               <div class="reports-action-buttons">
-                <button type="button" class="btn-ghost btn-sm" id="btn-reports-regenerate" title="Regenerate all reports in background">
+                <button type="button" class="btn-ghost btn-sm" id="btn-reports-regenerate" title="Regenerate active report">
                   <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                   <span>Regenerate</span>
                 </button>
@@ -2893,92 +2893,94 @@
           </div>
         </div>
 
-        <!-- Rule Form Wrap (Hidden by default, shown when adding/editing) -->
-        <div id="archetype-rule-form-wrap" class="archetype-rule-form-wrap" style="display:none;">
-          <input type="hidden" id="rule-form-id" value="" />
-          <div class="rule-form-header">
-            <div class="rule-form-title-wrap">
-              <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/></svg>
-              <span id="rule-form-title" class="rule-form-title">Add Archetype Rule</span>
-            </div>
-            <div id="rule-form-live-preview" class="rule-form-live-preview"></div>
-            <button id="btn-close-rule-form" class="modal-close-btn" aria-label="Close form">
-              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-
-          <div class="rule-form-grid">
-            <div class="rule-form-field">
-              <label>Target Scope</label>
-              <select id="rule-form-target" class="settings-select">
-                <option value="METHOD" selected>Method (Methods &amp; Calls)</option>
-                <option value="CLASS">Class / Type (Classes &amp; Types)</option>
-                <option value="ANY">Any Entity</option>
-              </select>
-            </div>
-            <div class="rule-form-field">
-              <label>Match Type</label>
-              <select id="rule-form-match-type" class="settings-select">
-                <option value="PREFIX" selected>Prefix (Starts With)</option>
-                <option value="SUFFIX">Suffix (Ends With)</option>
-                <option value="CONTAINS">Contains Substring</option>
-                <option value="GLOB">Wildcard / Glob (*)</option>
-                <option value="REGEX">Regular Expression (/.../)</option>
-                <option value="EXACT">Exact Match</option>
-                <option value="STRUCTURAL">Structural Methods (Get, Create, Modify)</option>
-              </select>
-            </div>
-            <div class="rule-form-field" style="grid-column: span 2;">
-              <label>Pattern <span class="field-hint">(use <code>{MODULE}</code> for dynamic module token, e.g. <code>{MODULE}ET</code>)</span></label>
-              <input type="text" id="rule-form-pattern" class="settings-input" placeholder="{MODULE}ET, *Service, /Order.*/" />
+        <!-- Rule Form Wrap Anchor (Preserves form when rendered inline or reset to top) -->
+        <div id="archetype-form-default-anchor" class="archetype-form-default-anchor">
+          <div id="archetype-rule-form-wrap" class="archetype-rule-form-wrap" style="display:none;">
+            <input type="hidden" id="rule-form-id" value="" />
+            <div class="rule-form-header">
+              <div class="rule-form-title-wrap">
+                <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/></svg>
+                <span id="rule-form-title" class="rule-form-title">Add Archetype Rule</span>
+              </div>
+              <div id="rule-form-live-preview" class="rule-form-live-preview"></div>
+              <button id="btn-close-rule-form" class="modal-close-btn" aria-label="Close form">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
 
-            <div class="rule-form-field">
-              <label>Archetype Name</label>
-              <input type="text" id="rule-form-label" class="settings-input" placeholder="Elementary Transaction" />
-            </div>
-            <div class="rule-form-field">
-              <label>Badge Tag</label>
-              <input type="text" id="rule-form-badge" class="settings-input" placeholder="FETCH, MUTATE, CTRL" />
-            </div>
+            <div class="rule-form-grid">
+              <div class="rule-form-field">
+                <label>Target Scope</label>
+                <select id="rule-form-target" class="settings-select">
+                  <option value="METHOD" selected>Method (Methods &amp; Calls)</option>
+                  <option value="CLASS">Class / Type (Classes &amp; Types)</option>
+                  <option value="ANY">Any Entity</option>
+                </select>
+              </div>
+              <div class="rule-form-field">
+                <label>Match Type</label>
+                <select id="rule-form-match-type" class="settings-select">
+                  <option value="PREFIX" selected>Prefix (Starts With)</option>
+                  <option value="SUFFIX">Suffix (Ends With)</option>
+                  <option value="CONTAINS">Contains Substring</option>
+                  <option value="GLOB">Wildcard / Glob (*)</option>
+                  <option value="REGEX">Regular Expression (/.../)</option>
+                  <option value="EXACT">Exact Match</option>
+                  <option value="STRUCTURAL">Structural Methods (Get, Create, Modify)</option>
+                </select>
+              </div>
+              <div class="rule-form-field" style="grid-column: span 2;">
+                <label>Pattern <span class="field-hint">(use <code>{MODULE}</code> for dynamic module token, e.g. <code>{MODULE}ET</code>)</span></label>
+                <input type="text" id="rule-form-pattern" class="settings-input" placeholder="{MODULE}ET, *Service, /Order.*/" />
+              </div>
 
-            <div class="rule-form-field">
-              <label>Color Accent</label>
-              <div class="color-picker-wrap">
-                <input type="color" id="rule-form-color" value="#10b981" class="color-swatch-input" />
-                <input type="text" id="rule-form-color-text" class="settings-input color-text-input" value="#10b981" />
+              <div class="rule-form-field">
+                <label>Archetype Name</label>
+                <input type="text" id="rule-form-label" class="settings-input" placeholder="Elementary Transaction" />
+              </div>
+              <div class="rule-form-field">
+                <label>Badge Tag</label>
+                <input type="text" id="rule-form-badge" class="settings-input" placeholder="FETCH, MUTATE, CTRL" />
+              </div>
+
+              <div class="rule-form-field">
+                <label>Color Accent</label>
+                <div class="color-picker-wrap">
+                  <input type="color" id="rule-form-color" value="#10b981" class="color-swatch-input" />
+                  <input type="text" id="rule-form-color-text" class="settings-input color-text-input" value="#10b981" />
+                </div>
+              </div>
+              <div class="rule-form-field">
+                <label>Icon Key</label>
+                <select id="rule-form-icon" class="settings-select">
+                  <option value="tag" selected>tag (Default)</option>
+                  <option value="download">download (Fetch/Read)</option>
+                  <option value="zap">zap (Mutate/Action)</option>
+                  <option value="settings">settings (Process/Service)</option>
+                  <option value="database">database (Repository/DB)</option>
+                  <option value="globe">globe (Controller/API)</option>
+                  <option value="box">box (Component/Aggregate)</option>
+                  <option value="fileText">fileText (DTO/Schema)</option>
+                  <option value="refresh">refresh (Mapper/Sync)</option>
+                  <option value="activity">activity (Event/Metric)</option>
+                  <option value="skipBack">skipBack (Pre-batch)</option>
+                  <option value="skipForward">skipForward (Post-batch)</option>
+                </select>
+              </div>
+
+              <div class="rule-form-field" style="grid-column: span 2;">
+                <label>Description / Semantic Purpose</label>
+                <input type="text" id="rule-form-desc" class="settings-input" placeholder="Read-only data retrieval transaction" />
               </div>
             </div>
-            <div class="rule-form-field">
-              <label>Icon Key</label>
-              <select id="rule-form-icon" class="settings-select">
-                <option value="tag" selected>tag (Default)</option>
-                <option value="download">download (Fetch/Read)</option>
-                <option value="zap">zap (Mutate/Action)</option>
-                <option value="settings">settings (Process/Service)</option>
-                <option value="database">database (Repository/DB)</option>
-                <option value="globe">globe (Controller/API)</option>
-                <option value="box">box (Component/Aggregate)</option>
-                <option value="fileText">fileText (DTO/Schema)</option>
-                <option value="refresh">refresh (Mapper/Sync)</option>
-                <option value="activity">activity (Event/Metric)</option>
-                <option value="skipBack">skipBack (Pre-batch)</option>
-                <option value="skipForward">skipForward (Post-batch)</option>
-              </select>
-            </div>
 
-            <div class="rule-form-field" style="grid-column: span 2;">
-              <label>Description / Semantic Purpose</label>
-              <input type="text" id="rule-form-desc" class="settings-input" placeholder="Read-only data retrieval transaction" />
+            <div class="rule-form-actions">
+              <button id="btn-save-archetype-rule" class="btn-primary" style="font-size:11px; padding:4px 14px;">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Save Archetype
+              </button>
+              <button id="btn-cancel-archetype-rule" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Cancel</button>
             </div>
-          </div>
-
-          <div class="rule-form-actions">
-            <button id="btn-save-archetype-rule" class="btn-primary" style="font-size:11px; padding:4px 14px;">
-              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-              Save Archetype
-            </button>
-            <button id="btn-cancel-archetype-rule" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Cancel</button>
           </div>
         </div>
 

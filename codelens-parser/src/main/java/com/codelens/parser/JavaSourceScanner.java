@@ -84,13 +84,16 @@ public class JavaSourceScanner {
 
     private static final int PARSER_THREADS = Math.max(2, Math.min(Runtime.getRuntime().availableProcessors(), 8));
 
-    private static final ThreadLocal<JavaParser> THREAD_PARSER = ThreadLocal.withInitial(() -> {
+    public static ParserConfiguration createDefaultParserConfig() {
         ParserConfiguration cfg = new ParserConfiguration();
         cfg.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
-        cfg.setStoreTokens(false);
+        // Must store tokens so AST nodes get Range (begin/end line numbers) for lines-of-code calculation
+        cfg.setStoreTokens(true);
         cfg.setAttributeComments(false);
-        return new JavaParser(cfg);
-    });
+        return cfg;
+    }
+
+    private static final ThreadLocal<JavaParser> THREAD_PARSER = ThreadLocal.withInitial(() -> new JavaParser(createDefaultParserConfig()));
 
     public JavaSourceScanner() {}
 

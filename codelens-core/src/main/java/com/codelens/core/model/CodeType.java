@@ -47,7 +47,13 @@ public class CodeType {
     public void setStartLine(int n)                { this.startLine = n; }
     public int getEndLine()                         { return endLine; }
     public void setEndLine(int n)                  { this.endLine = n; }
-    public int getLineCount()                       { return lineCount; }
+    public int getLineCount() {
+        if (lineCount > 0) return lineCount;
+        if (endLine > 0 && startLine > 0 && endLine >= startLine) {
+            return endLine - startLine + 1;
+        }
+        return lineCount;
+    }
     public void setLineCount(int n)                { this.lineCount = n; }
     public int getFieldCount()                      { return fieldCount; }
     public void setFieldCount(int n)               { this.fieldCount = n; }

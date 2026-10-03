@@ -5323,80 +5323,167 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
   viewEl.appendChild(headerBar);
 
-  // 1. Visual Coupling Topology Flow Map
+  // 1. Visual Coupling Topology Flow Map - Next-Gen Architectural Canvas
   const flowMap = createElement('div', { class: 'mod-dep-flow-map' });
   const inMods = depData.incomingModules || [];
   const outMods = depData.outgoingModules || [];
 
-  let inNodesHtml = '';
-  if (inMods.length === 0) {
-    inNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No incoming modules (Root / Independent)</div>';
-  } else {
-    inNodesHtml = inMods.map(m => {
-      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
-        : '#10b981';
-      const pts = m.totalTouchPoints || 0;
-      const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
-      return `
-        <div class="flow-node-card flow-in-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" style="border-left-color:${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
-          <div class="flow-node-info">
-            <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
-            <span class="flow-node-name">${esc(m.moduleName)}</span>
+  const inTotalPts = inMods.reduce((acc, m) => acc + (m.totalTouchPoints || 0), 0);
+  const outTotalPts = outMods.reduce((acc, m) => acc + (m.totalTouchPoints || 0), 0);
+
+  let flowSearchQuery = '';
+  let flowDensityMode = 'all'; // 'all' | 'top6'
+  let flowAnimActive = true;
+  let selectedFlowFqn = null;
+
+  function renderFlowCard(m, isIncoming, totalGroupPts) {
+    const pts = m.totalTouchPoints || 0;
+    const sharePct = totalGroupPts > 0 ? Math.round((pts / totalGroupPts) * 100) : 0;
+    const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
+      ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
+      : (isIncoming ? '#10b981' : '#38bdf8');
+    const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
+    const isSelected = selectedFlowFqn === m.packageFqn;
+
+    return `
+      <div class="flow-node-card ${isIncoming ? 'flow-in-node' : 'flow-out-node'} ${isSelected ? 'is-selected-flow-node' : ''}"
+           data-fqn="${esc(m.packageFqn)}" 
+           data-modname="${esc(m.moduleName)}"
+           data-pts="${pts}"
+           data-share="${sharePct}"
+           data-dir="${isIncoming ? 'in' : 'out'}"
+           data-usages-count="${(m.classUsages || []).length}"
+           style="--node-accent: ${modColor}; border-left-color: ${modColor};">
+        <div class="flow-node-main">
+          <div class="flow-node-top">
+            <div class="flow-node-info">
+              <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
+              <span class="flow-node-name" title="${esc(m.moduleName)}">${esc(m.moduleName)}</span>
+            </div>
+            <div class="flow-node-badges">
+              <span class="flow-node-pts ${tierCls}">${pts} pts</span>
+              <button class="flow-node-jump-btn" title="Jump to ${esc(m.moduleName)} dependency topology" data-action="jump">↗</button>
+            </div>
           </div>
-          <span class="flow-node-pts ${tierCls}">${pts} pts</span>
+          <div class="flow-node-spark-row" title="${pts} touch points (${sharePct}% of ${isIncoming ? 'inbound' : 'outbound'} volume)">
+            <div class="flow-node-sparkbar">
+              <div class="flow-node-sparkfill" style="width: ${Math.max(2, sharePct)}%; background: ${modColor};"></div>
+            </div>
+            <span class="flow-node-share-pct" style="color:${modColor};">${sharePct}%</span>
+          </div>
         </div>
-      `;
-    }).join('');
+      </div>
+    `;
   }
 
-  let outNodesHtml = '';
-  if (outMods.length === 0) {
-    outNodesHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;text-align:center;">No outgoing dependencies (Leaf / Self-contained)</div>';
-  } else {
-    outNodesHtml = outMods.map(m => {
-      const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
-        ? window.CodeLensPalette.getColor(m.packageFqn || m.moduleName, 0)
-        : '#38bdf8';
-      const pts = m.totalTouchPoints || 0;
-      const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
-      return `
-        <div class="flow-node-card flow-out-node" data-fqn="${esc(m.packageFqn)}" data-modname="${esc(m.moduleName)}" style="border-left-color:${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
-          <div class="flow-node-info">
-            <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
-            <span class="flow-node-name">${esc(m.moduleName)}</span>
-          </div>
-          <span class="flow-node-pts ${tierCls}">${pts} pts</span>
-        </div>
-      `;
-    }).join('');
+  function getFilteredModules(mods) {
+    let list = mods.slice();
+    if (flowSearchQuery) {
+      const q = flowSearchQuery.toLowerCase();
+      list = list.filter(m =>
+        (m.moduleName && m.moduleName.toLowerCase().includes(q)) ||
+        (m.packageFqn && m.packageFqn.toLowerCase().includes(q))
+      );
+    }
+    if (flowDensityMode === 'top6') {
+      list = list.slice(0, 6);
+    }
+    return list;
   }
+
+  function buildCardsHtml() {
+    const curIn = getFilteredModules(inMods);
+    const curOut = getFilteredModules(outMods);
+
+    let inHtml = '';
+    if (inMods.length === 0) {
+      inHtml = '<div style="font-size:11px;color:var(--text-muted);padding:14px 0;text-align:center;">No incoming modules (Root / Independent)</div>';
+    } else if (curIn.length === 0) {
+      inHtml = '<div style="font-size:11px;color:var(--text-muted);padding:14px 0;text-align:center;">No matching inbound callers</div>';
+    } else {
+      inHtml = curIn.map(m => renderFlowCard(m, true, inTotalPts)).join('');
+    }
+
+    let outHtml = '';
+    if (outMods.length === 0) {
+      outHtml = '<div style="font-size:11px;color:var(--text-muted);padding:14px 0;text-align:center;">No outgoing dependencies (Leaf / Self-contained)</div>';
+    } else if (curOut.length === 0) {
+      outHtml = '<div style="font-size:11px;color:var(--text-muted);padding:14px 0;text-align:center;">No matching outbound dependencies</div>';
+    } else {
+      outHtml = curOut.map(m => renderFlowCard(m, false, outTotalPts)).join('');
+    }
+
+    return { inHtml, outHtml, curInCount: curIn.length, curOutCount: curOut.length };
+  }
+
+  const initialCards = buildCardsHtml();
 
   flowMap.innerHTML = `
     <div class="flow-map-header">
-      <div class="flow-map-title-group">
-        <span class="flow-map-title">Coupling Topology Flow Map</span>
-        <span class="flow-map-subtitle">Inbound Callers (${inMods.length}) ➔ Current Module ➔ Outbound Dependencies (${outMods.length})</span>
+      <div class="flow-map-header-left">
+        <div class="flow-map-title-row">
+          <span class="flow-map-title-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </span>
+          <span class="flow-map-title">Coupling Topology Flow Map</span>
+          <span class="flow-map-live-badge">TELEMETRY</span>
+        </div>
+        <div class="flow-map-telemetry-row">
+          <span class="flow-pill-in" title="Inbound afferent callers"><span class="pill-dot"></span>Inbound: ${inMods.length} callers (${depData.totalInboundTouchPoints || inTotalPts} pts)</span>
+          <span class="flow-pill-sep">➔</span>
+          <span class="flow-pill-hub" title="Inspected target module">${esc(depData.moduleName || pkgFqn)}</span>
+          <span class="flow-pill-sep">➔</span>
+          <span class="flow-pill-out" title="Outbound efferent dependencies"><span class="pill-dot"></span>Outbound: ${outMods.length} deps (${depData.totalOutboundTouchPoints || outTotalPts} pts)</span>
+        </div>
       </div>
-      <button class="btn-flow-toggle" id="btn-flow-toggle" title="Toggle flow map visibility">
-        <span>▲ Hide Flow Map</span>
-      </button>
+      <div class="flow-map-toolbar">
+        <div class="flow-search-wrap">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="flow-search-input" id="flow-search-input" placeholder="Filter callers / deps..." value="${flowSearchQuery}" />
+          <button class="flow-search-clear" id="flow-search-clear" style="display:none;" title="Clear search">✕</button>
+        </div>
+        <div class="flow-segmented-btn-group">
+          <button class="flow-seg-btn active" data-density="all">All (${inMods.length + outMods.length})</button>
+          <button class="flow-seg-btn" data-density="top6">Top 6</button>
+        </div>
+        <button class="flow-tool-btn active" id="btn-flow-anim" title="Toggle energy pulses">
+          <span>⚡ Flow FX</span>
+        </button>
+        <button class="btn-flow-toggle" id="btn-flow-toggle" title="Toggle flow map visibility">
+          <span>▲ Hide</span>
+        </button>
+      </div>
     </div>
     <div class="flow-map-content" id="flow-map-content">
       <svg class="flow-conduits-svg" id="flow-conduits-svg"></svg>
+      <div class="flow-hud-tooltip" id="flow-hud-tooltip" style="display:none;"></div>
       <div class="flow-col flow-col-inbound">
         <div class="flow-col-header">
           <span class="flow-col-badge in">INBOUND CALLERS</span>
-          <span class="flow-col-count">(${inMods.length})</span>
+          <span class="flow-col-count" id="inbound-count-badge">(${initialCards.curInCount})</span>
         </div>
-        <div class="flow-nodes-list">${inNodesHtml}</div>
+        <div class="flow-nodes-list" id="flow-inbound-list">${initialCards.inHtml}</div>
       </div>
       <div class="flow-col flow-col-center">
-        <div class="flow-center-hub" id="flow-center-hub">
-          <span class="hub-kind-badge">TARGET MODULE</span>
-          <div class="hub-title" title="${esc(depData.moduleName || pkgFqn)}">${esc(depData.moduleName || pkgFqn)}</div>
+        <div class="flow-center-hub" id="flow-center-hub" title="Target Module: ${esc(depData.packageFqn || pkgFqn)}">
+          <div class="hub-header-tag">
+            <span class="hub-radar-beacon"></span>
+            <span class="hub-kind-badge">TARGET MODULE</span>
+          </div>
+          <div class="hub-title-wrap">
+            <div class="hub-title" title="${esc(depData.moduleName || pkgFqn)}">${esc(depData.moduleName || pkgFqn)}</div>
+            <div class="hub-pkg-sub" title="${esc(depData.packageFqn || pkgFqn)}">${esc(depData.packageFqn || pkgFqn)}</div>
+          </div>
           <div class="hub-kpis">
-            <span class="hub-pts">${depData.totalTouchPoints} Touch Points</span>
+            <div class="hub-pts-banner">
+              <span class="hub-pts-num">${depData.totalTouchPoints}</span>
+              <span class="hub-pts-label">Total Touch Points</span>
+            </div>
+            <div class="hub-metrics-row">
+              <span class="hub-sub-stat in">↓ ${inMods.length} Callers</span>
+              <span class="hub-sub-stat-sep">/</span>
+              <span class="hub-sub-stat out">↑ ${outMods.length} Deps</span>
+            </div>
             <span class="stability-rating-pill ${stabilityClass}">${esc(depData.stabilityRating || 'Balanced')}</span>
           </div>
         </div>
@@ -5404,18 +5491,100 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <div class="flow-col flow-col-outbound">
         <div class="flow-col-header">
           <span class="flow-col-badge out">OUTBOUND DEPENDENCIES</span>
-          <span class="flow-col-count">(${outMods.length})</span>
+          <span class="flow-col-count" id="outbound-count-badge">(${initialCards.curOutCount})</span>
         </div>
-        <div class="flow-nodes-list">${outNodesHtml}</div>
+        <div class="flow-nodes-list" id="flow-outbound-list">${initialCards.outHtml}</div>
       </div>
     </div>
   `;
   viewEl.appendChild(flowMap);
 
-  // SVG Flow Conduits Drawing
   const flowContent = flowMap.querySelector('#flow-map-content');
   const flowSvg = flowMap.querySelector('#flow-conduits-svg');
   const centerHub = flowMap.querySelector('#flow-center-hub');
+  const inList = flowMap.querySelector('#flow-inbound-list');
+  const outList = flowMap.querySelector('#flow-outbound-list');
+  const inCountBadge = flowMap.querySelector('#inbound-count-badge');
+  const outCountBadge = flowMap.querySelector('#outbound-count-badge');
+  const flowSearchInputEl = flowMap.querySelector('#flow-search-input');
+  const flowSearchClearEl = flowMap.querySelector('#flow-search-clear');
+  const animBtn = flowMap.querySelector('#btn-flow-anim');
+  const hudTooltip = flowMap.querySelector('#flow-hud-tooltip');
+
+  function showHudTooltip(e, name, fqn, dir, pts, share, usagesCount) {
+    if (!hudTooltip || !flowContent) return;
+    const isIncoming = dir === 'in';
+    hudTooltip.innerHTML = `
+      <div class="flow-hud-header">
+        <span class="flow-hud-title">${esc(name)}</span>
+        <span class="flow-hud-dir-badge ${isIncoming ? 'in' : 'out'}">${isIncoming ? 'INBOUND CALLER' : 'OUTBOUND DEP'}</span>
+      </div>
+      <div class="flow-hud-stat"><span>Touch Points:</span> <strong>${pts} pts</strong></div>
+      <div class="flow-hud-stat"><span>Traffic Share:</span> <strong>${share}%</strong></div>
+      <div class="flow-hud-stat"><span>Distinct Class Pairs:</span> <strong>${usagesCount || 0}</strong></div>
+      <div class="flow-hud-hint">Click card to filter table • ↗ to navigate</div>
+    `;
+    hudTooltip.style.display = 'flex';
+    positionHudTooltip(e);
+  }
+
+  function positionHudTooltip(e) {
+    if (!hudTooltip || !flowContent) return;
+    const contRect = flowContent.getBoundingClientRect();
+    const cursorX = e.clientX - contRect.left;
+    const cursorY = e.clientY - contRect.top;
+
+    const ttWidth = 220;
+    const ttHeight = 110;
+    let posX = cursorX + 16;
+    if (posX + ttWidth > contRect.width - 10) {
+      posX = cursorX - ttWidth - 16;
+    }
+    let posY = cursorY - 15;
+    if (posY < 8) posY = 8;
+    if (posY + ttHeight > contRect.height - 8) {
+      posY = Math.max(8, contRect.height - ttHeight - 8);
+    }
+
+    hudTooltip.style.left = `${posX}px`;
+    hudTooltip.style.top = `${posY}px`;
+  }
+
+  function hideHudTooltip() {
+    if (hudTooltip) hudTooltip.style.display = 'none';
+  }
+
+  function highlightNode(fqn) {
+    flowMap.querySelectorAll('.flow-node-card').forEach(c => {
+      if (c.dataset.fqn === fqn) {
+        c.classList.add('active-flow');
+      } else {
+        c.classList.remove('active-flow');
+      }
+    });
+    flowSvg.querySelectorAll('.flow-conduit').forEach(p => {
+      if (p.dataset.nodeFqn === fqn) {
+        p.classList.add('highlighted');
+        p.classList.remove('dimmed');
+      } else {
+        p.classList.add('dimmed');
+        p.classList.remove('highlighted');
+      }
+    });
+    flowSvg.querySelectorAll('.flow-terminal-dot').forEach(d => {
+      if (d.dataset.nodeFqn === fqn) {
+        d.classList.add('highlighted');
+      } else {
+        d.classList.remove('highlighted');
+      }
+    });
+  }
+
+  function resetHighlight() {
+    flowMap.querySelectorAll('.flow-node-card').forEach(c => c.classList.remove('active-flow'));
+    flowSvg.querySelectorAll('.flow-conduit').forEach(p => p.classList.remove('highlighted', 'dimmed'));
+    flowSvg.querySelectorAll('.flow-terminal-dot').forEach(d => d.classList.remove('highlighted'));
+  }
 
   function drawFlowConduits() {
     if (!flowSvg || !flowContent || !centerHub || flowContent.style.display === 'none' || flowContent.offsetHeight === 0) {
@@ -5423,96 +5592,293 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     }
     const contRect = flowContent.getBoundingClientRect();
     const hubRect = centerHub.getBoundingClientRect();
-
     if (contRect.width <= 0 || contRect.height <= 0) return;
 
     flowSvg.setAttribute('viewBox', `0 0 ${contRect.width} ${contRect.height}`);
-    flowSvg.innerHTML = '';
+
+    const defsHtml = `
+      <defs>
+        <marker id="flow-arrow-in" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#06b6d4" opacity="0.9"/>
+        </marker>
+        <marker id="flow-arrow-out" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#38bdf8" opacity="0.9"/>
+        </marker>
+        <filter id="flow-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="2.5" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+    `;
+    flowSvg.innerHTML = defsHtml;
 
     const hubLeftX = hubRect.left - contRect.left;
     const hubRightX = hubRect.right - contRect.left;
     const hubCenterY = hubRect.top - contRect.top + hubRect.height / 2;
+    const hubPad = 22;
+    const hubDockTop = hubRect.top - contRect.top + hubPad;
+    const hubDockHeight = Math.max(16, hubRect.height - (hubPad * 2));
 
-    // Draw Inbound conduits
-    const inCards = flowContent.querySelectorAll('.flow-in-node');
-    inCards.forEach(card => {
+    // Visible Inbound Cards
+    const inCards = Array.from(flowContent.querySelectorAll('.flow-in-node'));
+    const inListRect = inList ? inList.getBoundingClientRect() : null;
+    const visibleInCards = inCards.filter(card => {
+      if (card.offsetParent === null) return false;
+      if (!inListRect) return true;
+      const cr = card.getBoundingClientRect();
+      return cr.bottom >= inListRect.top - 12 && cr.top <= inListRect.bottom + 12;
+    });
+
+    // Sort strictly by vertical center to avoid conduit crossing
+    visibleInCards.sort((a, b) => {
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      return (ra.top + ra.height / 2) - (rb.top + rb.height / 2);
+    });
+
+    const inCount = visibleInCards.length;
+    visibleInCards.forEach((card, idx) => {
       const cRect = card.getBoundingClientRect();
       const x1 = cRect.right - contRect.left;
       const y1 = cRect.top - contRect.top + cRect.height / 2;
       const x2 = hubLeftX;
-      const y2 = hubCenterY;
-      const dx = Math.max(20, (x2 - x1) * 0.45);
+      const y2 = inCount === 1 ? hubCenterY : hubDockTop + (hubDockHeight * idx / (inCount - 1));
+      const dx = Math.max(26, (x2 - x1) * 0.48);
 
       const fqn = card.dataset.fqn;
       const modObj = inMods.find(m => m.packageFqn === fqn) || {};
-      const pts = modObj.totalTouchPoints || 1;
-      const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+      const pts = modObj.totalTouchPoints || parseInt(card.dataset.pts, 10) || 1;
+      const strokeW = Math.min(5, Math.max(1.8, Math.sqrt(pts) * 0.95));
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
-        : '#059669';
+        : '#10b981';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
-      path.setAttribute('class', 'flow-conduit in-conduit');
+      path.setAttribute('class', `flow-conduit in-conduit ${flowAnimActive ? 'is-anim' : ''}`);
       path.setAttribute('stroke-width', strokeW);
-      path.style.stroke = modColor;
-      path.style.strokeOpacity = '0.75';
+      path.setAttribute('stroke', modColor);
+      path.setAttribute('stroke-opacity', '0.75');
+      path.setAttribute('marker-end', 'url(#flow-arrow-in)');
       path.dataset.nodeFqn = fqn;
+      path.dataset.modname = card.dataset.modname;
+      path.dataset.pts = pts;
+      path.dataset.dir = 'in';
+      path.dataset.share = card.dataset.share;
+      path.dataset.usagesCount = card.dataset.usagesCount;
       flowSvg.appendChild(path);
+
+      // Terminal anchor dots
+      const dot1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot1.setAttribute('cx', x1);
+      dot1.setAttribute('cy', y1);
+      dot1.setAttribute('r', '3');
+      dot1.setAttribute('fill', modColor);
+      dot1.setAttribute('class', 'flow-terminal-dot');
+      dot1.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(dot1);
+
+      const dot2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot2.setAttribute('cx', x2);
+      dot2.setAttribute('cy', y2);
+      dot2.setAttribute('r', '3');
+      dot2.setAttribute('fill', '#06b6d4');
+      dot2.setAttribute('class', 'flow-terminal-dot');
+      dot2.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(dot2);
     });
 
-    // Draw Outbound conduits
-    const outCards = flowContent.querySelectorAll('.flow-out-node');
-    outCards.forEach(card => {
+    // Visible Outbound Cards
+    const outCards = Array.from(flowContent.querySelectorAll('.flow-out-node'));
+    const outListRect = outList ? outList.getBoundingClientRect() : null;
+    const visibleOutCards = outCards.filter(card => {
+      if (card.offsetParent === null) return false;
+      if (!outListRect) return true;
+      const cr = card.getBoundingClientRect();
+      return cr.bottom >= outListRect.top - 12 && cr.top <= outListRect.bottom + 12;
+    });
+
+    visibleOutCards.sort((a, b) => {
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      return (ra.top + ra.height / 2) - (rb.top + rb.height / 2);
+    });
+
+    const outCount = visibleOutCards.length;
+    visibleOutCards.forEach((card, idx) => {
       const cRect = card.getBoundingClientRect();
       const x1 = hubRightX;
-      const y1 = hubCenterY;
+      const y1 = outCount === 1 ? hubCenterY : hubDockTop + (hubDockHeight * idx / (outCount - 1));
       const x2 = cRect.left - contRect.left;
       const y2 = cRect.top - contRect.top + cRect.height / 2;
-      const dx = Math.max(20, (x2 - x1) * 0.45);
+      const dx = Math.max(26, (x2 - x1) * 0.48);
 
       const fqn = card.dataset.fqn;
       const modObj = outMods.find(m => m.packageFqn === fqn) || {};
-      const pts = modObj.totalTouchPoints || 1;
-      const strokeW = Math.min(5, Math.max(1.5, Math.sqrt(pts) * 0.9));
+      const pts = modObj.totalTouchPoints || parseInt(card.dataset.pts, 10) || 1;
+      const strokeW = Math.min(5, Math.max(1.8, Math.sqrt(pts) * 0.95));
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(fqn || card.dataset.modname, 0)
         : '#3b82f6';
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
-      path.setAttribute('class', 'flow-conduit out-conduit');
+      path.setAttribute('class', `flow-conduit out-conduit ${flowAnimActive ? 'is-anim' : ''}`);
       path.setAttribute('stroke-width', strokeW);
-      path.style.stroke = modColor;
-      path.style.strokeOpacity = '0.75';
+      path.setAttribute('stroke', modColor);
+      path.setAttribute('stroke-opacity', '0.75');
+      path.setAttribute('marker-end', 'url(#flow-arrow-out)');
       path.dataset.nodeFqn = fqn;
+      path.dataset.modname = card.dataset.modname;
+      path.dataset.pts = pts;
+      path.dataset.dir = 'out';
+      path.dataset.share = card.dataset.share;
+      path.dataset.usagesCount = card.dataset.usagesCount;
       flowSvg.appendChild(path);
+
+      // Terminal anchor dots
+      const dot1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot1.setAttribute('cx', x1);
+      dot1.setAttribute('cy', y1);
+      dot1.setAttribute('r', '3');
+      dot1.setAttribute('fill', '#06b6d4');
+      dot1.setAttribute('class', 'flow-terminal-dot');
+      dot1.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(dot1);
+
+      const dot2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot2.setAttribute('cx', x2);
+      dot2.setAttribute('cy', y2);
+      dot2.setAttribute('r', '3');
+      dot2.setAttribute('fill', modColor);
+      dot2.setAttribute('class', 'flow-terminal-dot');
+      dot2.dataset.nodeFqn = fqn;
+      flowSvg.appendChild(dot2);
     });
+
+    bindConduitHover();
   }
 
-  // Bind flow node interactions
-  flowMap.querySelectorAll('.flow-node-card').forEach(card => {
-    const fqn = card.dataset.fqn;
-    card.addEventListener('mouseenter', () => {
-      card.classList.add('active-flow');
-      flowSvg.querySelectorAll('.flow-conduit').forEach(p => {
-        if (p.dataset.nodeFqn === fqn) {
-          p.classList.add('highlighted');
+  function bindNodeCards() {
+    flowMap.querySelectorAll('.flow-node-card').forEach(card => {
+      const fqn = card.dataset.fqn;
+      const modName = card.dataset.modname;
+      const pts = card.dataset.pts;
+      const share = card.dataset.share;
+      const dir = card.dataset.dir;
+      const usagesCount = card.dataset.usagesCount;
+
+      card.addEventListener('mouseenter', (e) => {
+        highlightNode(fqn);
+        showHudTooltip(e, modName, fqn, dir, pts, share, usagesCount);
+      });
+      card.addEventListener('mousemove', (e) => {
+        positionHudTooltip(e);
+      });
+      card.addEventListener('mouseleave', () => {
+        resetHighlight();
+        hideHudTooltip();
+      });
+
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-action="jump"]')) {
+          e.stopPropagation();
+          selectModuleItem({ fqn, name: modName }, 'DEPENDENCIES');
+          return;
+        }
+
+        if (selectedFlowFqn === fqn) {
+          selectedFlowFqn = null;
+          card.classList.remove('is-selected-flow-node');
         } else {
-          p.classList.add('dimmed');
+          flowMap.querySelectorAll('.flow-node-card').forEach(c => c.classList.remove('is-selected-flow-node'));
+          selectedFlowFqn = fqn;
+          card.classList.add('is-selected-flow-node');
+        }
+
+        const tableSearch = viewEl.querySelector('.mod-dep-search-input');
+        const tableClear = viewEl.querySelector('.mod-dep-search-clear');
+        if (tableSearch) {
+          tableSearch.value = selectedFlowFqn ? modName : '';
+          if (tableClear) tableClear.style.display = selectedFlowFqn ? 'inline-block' : 'none';
+          tableSearch.dispatchEvent(new Event('input', { bubbles: true }));
         }
       });
     });
-    card.addEventListener('mouseleave', () => {
-      card.classList.remove('active-flow');
-      flowSvg.querySelectorAll('.flow-conduit').forEach(p => {
-        p.classList.remove('highlighted', 'dimmed');
+  }
+
+  function bindConduitHover() {
+    flowSvg.querySelectorAll('.flow-conduit').forEach(path => {
+      const fqn = path.dataset.nodeFqn;
+      const modName = path.dataset.modname;
+      const pts = path.dataset.pts;
+      const share = path.dataset.share;
+      const dir = path.dataset.dir;
+      const usagesCount = path.dataset.usagesCount;
+
+      path.addEventListener('mouseenter', (e) => {
+        highlightNode(fqn);
+        showHudTooltip(e, modName, fqn, dir, pts, share, usagesCount);
+      });
+      path.addEventListener('mousemove', (e) => {
+        positionHudTooltip(e);
+      });
+      path.addEventListener('mouseleave', () => {
+        resetHighlight();
+        hideHudTooltip();
+      });
+      path.addEventListener('click', () => {
+        const card = flowMap.querySelector(`.flow-node-card[data-fqn="${fqn}"]`);
+        if (card) card.click();
       });
     });
-    card.addEventListener('click', () => {
-      selectModuleItem({ fqn, name: card.dataset.modname }, 'DEPENDENCIES');
+  }
+
+  function updateLists() {
+    const updated = buildCardsHtml();
+    if (inList) inList.innerHTML = updated.inHtml;
+    if (outList) outList.innerHTML = updated.outHtml;
+    if (inCountBadge) inCountBadge.textContent = `(${updated.curInCount})`;
+    if (outCountBadge) outCountBadge.textContent = `(${updated.curOutCount})`;
+    bindNodeCards();
+    requestAnimationFrame(drawFlowConduits);
+  }
+
+  if (flowSearchInputEl) {
+    flowSearchInputEl.addEventListener('input', () => {
+      flowSearchQuery = flowSearchInputEl.value.trim();
+      if (flowSearchClearEl) flowSearchClearEl.style.display = flowSearchQuery ? 'inline-block' : 'none';
+      updateLists();
+    });
+  }
+  if (flowSearchClearEl) {
+    flowSearchClearEl.addEventListener('click', () => {
+      flowSearchInputEl.value = '';
+      flowSearchQuery = '';
+      flowSearchClearEl.style.display = 'none';
+      updateLists();
+    });
+  }
+
+  flowMap.querySelectorAll('.flow-seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      flowMap.querySelectorAll('.flow-seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      flowDensityMode = btn.dataset.density;
+      updateLists();
     });
   });
+
+  if (animBtn) {
+    animBtn.addEventListener('click', () => {
+      flowAnimActive = !flowAnimActive;
+      animBtn.classList.toggle('active', flowAnimActive);
+      drawFlowConduits();
+    });
+  }
 
   // Toggle Flow Map
   const toggleBtn = flowMap.querySelector('#btn-flow-toggle');
@@ -5520,15 +5886,36 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     toggleBtn.addEventListener('click', () => {
       const isHidden = flowContent.style.display === 'none';
       flowContent.style.display = isHidden ? 'grid' : 'none';
-      toggleBtn.innerHTML = isHidden ? '<span>▲ Hide Flow Map</span>' : '<span>▼ Show Flow Map</span>';
+      toggleBtn.innerHTML = isHidden ? '<span>▲ Hide</span>' : '<span>▼ Show</span>';
       if (isHidden) {
         requestAnimationFrame(() => drawFlowConduits());
       }
     });
   }
 
-  // Draw conduits on next frame and on resize
-  setTimeout(drawFlowConduits, 50);
+  // Real-time scroll synchronization
+  let scrollAnimId = null;
+  const onListScroll = () => {
+    if (scrollAnimId) cancelAnimationFrame(scrollAnimId);
+    scrollAnimId = requestAnimationFrame(drawFlowConduits);
+  };
+  if (inList) inList.addEventListener('scroll', onListScroll, { passive: true });
+  if (outList) outList.addEventListener('scroll', onListScroll, { passive: true });
+
+  if (centerHub) {
+    centerHub.addEventListener('click', () => {
+      if (typeof inspectReportPackage === 'function') {
+        inspectReportPackage(pkgFqn);
+      } else if (typeof selectModuleItem === 'function') {
+        selectModuleItem({ fqn: pkgFqn, name: depData.moduleName || pkgFqn });
+      } else if (typeof inspectReportEntity === 'function') {
+        inspectReportEntity(pkgFqn, 'knowledge');
+      }
+    });
+  }
+
+  bindNodeCards();
+  setTimeout(drawFlowConduits, 60);
   if (window.ResizeObserver) {
     const ro = new ResizeObserver(() => drawFlowConduits());
     ro.observe(flowContent);
@@ -6562,6 +6949,13 @@ function renderReviewFindings(findings, container) {
 
 /** Select a type by FQN or ID. */
 async function selectType(id) {
+  if (!id) return;
+  if (App.packages && App.packages.some(p => p.fqn === id)) {
+    const pkgObj = App.packages.find(p => p.fqn === id);
+    const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(id)}"]`);
+    selectPackage(pkgObj, itemEl);
+    return;
+  }
   setLoading();
   try {
     const data = await api.type(id);
@@ -6616,6 +7010,13 @@ async function selectMethod(id) {
 
 /** Select a field by FQN and load its impact graph. */
 async function selectField(id) {
+  if (!id) return;
+  if (App.packages && App.packages.some(p => p.fqn === id)) {
+    const pkgObj = App.packages.find(p => p.fqn === id);
+    const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(id)}"]`);
+    selectPackage(pkgObj, itemEl);
+    return;
+  }
   setLoading();
   try {
     const data = await api.field(id);
@@ -11130,9 +11531,16 @@ function _resolveClassFqn(fqn) {
   if (fqn.includes('#')) {
     return fqn.substring(0, fqn.indexOf('#'));
   }
+  if (App.packages && App.packages.some(p => p.fqn === fqn)) {
+    return fqn;
+  }
   const lastDot = fqn.lastIndexOf('.');
   if (lastDot > 0 && /^[a-z]/.test(fqn.substring(lastDot + 1))) {
-    return fqn.substring(0, lastDot);
+    const prefix = fqn.substring(0, lastDot);
+    const prefixLastSegment = prefix.substring(prefix.lastIndexOf('.') + 1);
+    if (/^[A-Z]/.test(prefixLastSegment)) {
+      return prefix;
+    }
   }
   return fqn;
 }
@@ -11141,15 +11549,34 @@ window.selectEntity = async function(fqn) {
   if (!fqn) return;
   if (fqn.includes('(')) {
     await selectMethod(fqn);
-  } else if (fqn.includes('#') || (fqn.lastIndexOf('.') > 0 && /^[a-z]/.test(fqn.substring(fqn.lastIndexOf('.') + 1)))) {
+  } else if (fqn.includes('#')) {
     await selectField(fqn.replace('#', '.'));
+  } else if (App.packages && App.packages.some(p => p.fqn === fqn)) {
+    await inspectReportPackage(fqn);
   } else {
+    const lastDot = fqn.lastIndexOf('.');
+    if (lastDot > 0 && /^[a-z]/.test(fqn.substring(lastDot + 1))) {
+      const prefix = fqn.substring(0, lastDot);
+      const prefixLastSeg = prefix.substring(prefix.lastIndexOf('.') + 1);
+      if (/^[A-Z]/.test(prefixLastSeg)) {
+        await selectField(fqn);
+        return;
+      }
+      if (!/[A-Z]/.test(fqn)) {
+        await inspectReportPackage(fqn);
+        return;
+      }
+    }
     await selectType(fqn);
   }
 };
 
 window.selectClass = async function(fqn) {
   if (!fqn) return;
+  if (App.packages && App.packages.some(p => p.fqn === fqn)) {
+    await inspectReportPackage(fqn);
+    return;
+  }
   const classFqn = _resolveClassFqn(fqn);
   switchTab('knowledge');
   await selectType(classFqn);
@@ -11157,6 +11584,17 @@ window.selectClass = async function(fqn) {
 
 window.inspectReportEntity = async function(fqn, targetTab = 'knowledge') {
   if (!fqn) return;
+
+  // Defensive check: If fqn is a package, route directly to package inspector
+  const isPackage = (App.packages && App.packages.some(p => p.fqn === fqn)) ||
+                    (!fqn.includes('(') && !fqn.includes('#') && !/[A-Z]/.test(fqn) && fqn.includes('.'));
+  if (isPackage) {
+    if (typeof inspectReportPackage === 'function') {
+      await inspectReportPackage(fqn);
+    }
+    return;
+  }
+
   const classFqn = _resolveClassFqn(fqn);
   const isMethod = fqn.includes('(');
   const isField = !isMethod && (fqn.includes('#') || fqn !== classFqn);
@@ -11203,11 +11641,28 @@ window.inspectReportPackage = async function(pkgFqn) {
   switchTab('knowledge');
   await loadKnowledgeBase(pkgFqn);
   const pkgObj = (App.packages || []).find(p => p.fqn === pkgFqn) || { name: pkgFqn.split('.').pop() || pkgFqn, fqn: pkgFqn };
+  App.selected = { kind: 'package', id: pkgFqn, data: pkgObj };
+  const itemEl = qs(`#explorer-tree [data-fqn="${CSS.escape(pkgFqn)}"]`);
+  if (itemEl) {
+    setActiveTreeItem(itemEl);
+    itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
   renderPackageDetail(pkgObj);
 };
 
 window.jumpToGraphHeat = async function(fqn) {
   if (!fqn) return;
+  const isPkg = (App.packages && App.packages.some(p => p.fqn === fqn)) ||
+                (!fqn.includes('(') && !fqn.includes('#') && !/[A-Z]/.test(fqn));
+  if (isPkg) {
+    switchTab('graph');
+    ensureGraph();
+    await loadGitHeatData();
+    const pkgObj = (App.packages || []).find(p => p.fqn === fqn) || { name: fqn.split('.').pop() || fqn, fqn };
+    App.selected = { kind: 'package', id: fqn, data: pkgObj };
+    renderPackageDetail(pkgObj);
+    return;
+  }
   const classFqn = _resolveClassFqn(fqn);
   switchTab('graph');
   ensureGraph();
@@ -12958,9 +13413,31 @@ function initArchetypeFilterControls() {
   }
 }
 
+function dockArchetypeFormToTop() {
+  const form = qs('#archetype-rule-form-wrap');
+  const anchor = qs('#archetype-form-default-anchor');
+  if (form && anchor && form.parentElement !== anchor) {
+    anchor.appendChild(form);
+  }
+}
+
+function closeArchetypeForm() {
+  const form = qs('#archetype-rule-form-wrap');
+  if (form) {
+    form.style.display = 'none';
+    form.classList.remove('is-inline');
+  }
+  document.querySelectorAll('.archetype-card.is-editing-target').forEach(c => {
+    c.classList.remove('is-editing-target');
+  });
+  dockArchetypeFormToTop();
+}
+
 function renderArchetypeRulesList() {
   const container = qs('#archetype-rules-list');
   if (!container || !window.CodeLensClassifier) return;
+
+  dockArchetypeFormToTop();
 
   initArchetypeFilterControls();
 
@@ -13160,33 +13637,77 @@ function renderArchetypeRulesList() {
 
   // Wire edit buttons
   container.querySelectorAll('.rule-btn-edit').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
       const id = btn.dataset.id;
+      const card = btn.closest('.archetype-card');
+      const form = qs('#archetype-rule-form-wrap');
+      if (!form) return;
+
+      // If already editing this exact card and form is visible, toggle close
+      if (card && card.classList.contains('is-editing-target') && form.style.display === 'block') {
+        closeArchetypeForm();
+        return;
+      }
+
+      // Remove editing target state from all cards
+      container.querySelectorAll('.archetype-card.is-editing-target').forEach(c => {
+        c.classList.remove('is-editing-target');
+      });
+
       const rule = window.CodeLensClassifier.getRules().find(r => r.id === id);
       if (!rule) return;
+
       const idEl = qs('#rule-form-id'); if (idEl) idEl.value = rule.id;
-      const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Edit Archetype Rule';
+      const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = `Edit Archetype: ${rule.label || rule.badge || 'Rule'}`;
       const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = rule.label || '';
       const badgeEl = qs('#rule-form-badge'); if (badgeEl) badgeEl.value = rule.badge || '';
       const iconEl = qs('#rule-form-icon'); if (iconEl) iconEl.value = rule.icon || 'tag';
-      const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = rule.color || '#3b82f6';
-      const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = rule.color || '#3b82f6';
-      const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = rule.scope || rule.target || 'METHOD';
-      const matchTypeEl = qs('#rule-form-match-type'); if (matchTypeEl && rule.matchType) matchTypeEl.value = rule.matchType;
+      const colorVal = rule.color || '#3b82f6';
+      const colorEl = qs('#rule-form-color'); if (colorEl) colorEl.value = colorVal;
+      const colorTextEl = qs('#rule-form-color-text'); if (colorTextEl) colorTextEl.value = colorVal;
+      const targetEl = qs('#rule-form-target') || qs('#rule-form-scope'); if (targetEl) targetEl.value = (rule.scope || rule.target || 'METHOD').toUpperCase();
+      const matchTypeEl = qs('#rule-form-match-type'); if (matchTypeEl) matchTypeEl.value = (rule.matchType || 'PREFIX').toUpperCase();
       const patternEl = qs('#rule-form-pattern'); if (patternEl) patternEl.value = rule.pattern || '';
       const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = rule.description || '';
-      const form = qs('#archetype-rule-form-wrap');
-      if (form) form.style.display = 'block';
+
+      if (card) {
+        card.classList.add('is-editing-target');
+        card.insertAdjacentElement('afterend', form);
+        form.classList.add('is-inline');
+        form.style.setProperty('--arch-edit-color', colorVal);
+      }
+      form.style.display = 'block';
       updateFormLivePreview();
+
+      setTimeout(() => {
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (labelEl) {
+          labelEl.focus();
+          labelEl.select();
+        }
+      }, 50);
     };
   });
 
   // Wire delete buttons
   container.querySelectorAll('.rule-btn-delete').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
       const id = btn.dataset.id;
+      const rule = window.CodeLensClassifier.getRules().find(r => r.id === id);
+      const label = rule ? rule.label : 'this archetype rule';
+      if (!confirm(`Are you sure you want to delete archetype "${label}"?`)) {
+        return;
+      }
+      closeArchetypeForm();
       window.CodeLensClassifier.deleteRule(id);
       renderArchetypeRulesList();
+      if (typeof toast !== 'undefined' && toast.info) {
+        toast.info(`Deleted archetype "${label}"`);
+      } else {
+        showBanner(`Deleted archetype "${label}"`);
+      }
     };
   });
 
@@ -13579,6 +14100,7 @@ function initSettings() {
   if (btnPresetBancs) {
     btnPresetBancs.addEventListener('click', () => {
       if (window.CodeLensClassifier) {
+        closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('bancs');
         renderArchetypeRulesList();
         showBanner('Loaded Banking / BaNCS transaction archetypes');
@@ -13590,6 +14112,7 @@ function initSettings() {
   if (btnPresetSpring) {
     btnPresetSpring.addEventListener('click', () => {
       if (window.CodeLensClassifier) {
+        closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('spring');
         renderArchetypeRulesList();
         showBanner('Loaded Spring REST / MVC archetypes');
@@ -13601,6 +14124,7 @@ function initSettings() {
   if (btnPresetDdd) {
     btnPresetDdd.addEventListener('click', () => {
       if (window.CodeLensClassifier) {
+        closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('ddd');
         renderArchetypeRulesList();
         showBanner('Loaded Domain-Driven Design / Clean Architecture archetypes');
@@ -13612,6 +14136,7 @@ function initSettings() {
   if (btnResetArchetypes) {
     btnResetArchetypes.addEventListener('click', () => {
       if (window.CodeLensClassifier) {
+        closeArchetypeForm();
         window.CodeLensClassifier.resetRules();
         renderArchetypeRulesList();
         showBanner('Reset archetype rules to defaults');
@@ -13624,6 +14149,8 @@ function initSettings() {
   const formWrap = qs('#archetype-rule-form-wrap');
   if (btnAddRule && formWrap) {
     btnAddRule.addEventListener('click', () => {
+      closeArchetypeForm();
+      dockArchetypeFormToTop();
       const idEl = qs('#rule-form-id'); if (idEl) idEl.value = '';
       const titleEl = qs('#rule-form-title'); if (titleEl) titleEl.textContent = 'Add Archetype Rule';
       const labelEl = qs('#rule-form-label'); if (labelEl) labelEl.value = '';
@@ -13635,22 +14162,31 @@ function initSettings() {
       const matchTypeEl = qs('#rule-form-match-type'); if (matchTypeEl) matchTypeEl.value = 'PREFIX';
       const patternEl = qs('#rule-form-pattern'); if (patternEl) patternEl.value = '{MODULE}';
       const descEl = qs('#rule-form-desc'); if (descEl) descEl.value = '';
+      formWrap.classList.remove('is-inline');
+      formWrap.style.setProperty('--arch-edit-color', '#10b981');
       formWrap.style.display = 'block';
       updateFormLivePreview();
+
+      setTimeout(() => {
+        formWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (labelEl) {
+          labelEl.focus();
+        }
+      }, 50);
     });
   }
 
   const btnCloseRule = qs('#btn-close-rule-form');
-  if (btnCloseRule && formWrap) {
+  if (btnCloseRule) {
     btnCloseRule.addEventListener('click', () => {
-      formWrap.style.display = 'none';
+      closeArchetypeForm();
     });
   }
 
   const btnCancelRule = qs('#btn-cancel-archetype-rule');
-  if (btnCancelRule && formWrap) {
+  if (btnCancelRule) {
     btnCancelRule.addEventListener('click', () => {
-      formWrap.style.display = 'none';
+      closeArchetypeForm();
     });
   }
 
@@ -13659,18 +14195,42 @@ function initSettings() {
   if (colorInput && colorTextInput) {
     colorInput.addEventListener('input', () => {
       colorTextInput.value = colorInput.value;
+      if (formWrap) formWrap.style.setProperty('--arch-edit-color', colorInput.value);
       updateFormLivePreview();
     });
     colorTextInput.addEventListener('input', () => {
       colorInput.value = colorTextInput.value;
+      if (formWrap) formWrap.style.setProperty('--arch-edit-color', colorTextInput.value);
       updateFormLivePreview();
     });
   }
 
-  ['#rule-form-label', '#rule-form-badge', '#rule-form-icon'].forEach(sel => {
+  ['#rule-form-label', '#rule-form-badge', '#rule-form-icon', '#rule-form-target', '#rule-form-match-type'].forEach(sel => {
     const el = qs(sel);
     if (el) el.addEventListener('input', updateFormLivePreview);
     if (el) el.addEventListener('change', updateFormLivePreview);
+  });
+
+  if (formWrap) {
+    formWrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeArchetypeForm();
+      }
+    });
+  }
+
+  ['#rule-form-label', '#rule-form-badge', '#rule-form-pattern', '#rule-form-desc'].forEach(sel => {
+    const el = qs(sel);
+    if (el) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const btnSave = qs('#btn-save-archetype-rule');
+          if (btnSave) btnSave.click();
+        }
+      });
+    }
   });
 
   const btnSaveRule = qs('#btn-save-archetype-rule');
@@ -13690,19 +14250,39 @@ function initSettings() {
       const description = qs('#rule-form-desc') ? qs('#rule-form-desc').value.trim() : '';
 
       if (!label || !pattern) {
-        alert('Please provide at least a Rule Label and Pattern.');
+        if (typeof toast !== 'undefined' && toast.warning) {
+          toast.warning('Please provide at least an Archetype Name and Pattern.');
+        } else {
+          alert('Please provide at least an Archetype Name and Pattern.');
+        }
         return;
       }
 
       if (window.CodeLensClassifier) {
+        let saved = null;
         if (id) {
-          window.CodeLensClassifier.updateRule(id, { label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description });
+          saved = window.CodeLensClassifier.updateRule(id, { label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description });
         } else {
-          window.CodeLensClassifier.addRule({ label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description, enabled: true });
+          saved = window.CodeLensClassifier.addRule({ label, badge: badge || label, icon, color, scope, target: scope, matchType, pattern, description, enabled: true });
         }
-        formWrap.style.display = 'none';
+        closeArchetypeForm();
         renderArchetypeRulesList();
-        showBanner(`Saved rule "${label}"`);
+
+        const targetId = id || (saved ? saved.id : null);
+        if (targetId) {
+          const cardEl = qs(`.archetype-card[data-id="${targetId}"]`);
+          if (cardEl) {
+            cardEl.classList.add('card-updated-flash');
+            cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setTimeout(() => cardEl.classList.remove('card-updated-flash'), 2000);
+          }
+        }
+
+        if (typeof toast !== 'undefined' && toast.success) {
+          toast.success(`Saved archetype "${label}"`);
+        } else {
+          showBanner(`Saved archetype "${label}"`);
+        }
       }
     });
   }
@@ -14132,8 +14712,18 @@ const ReportsHub = {
   },
 
   async regenerate() {
+    const reportKey = ReportsHub.activeReport || 'change-risk';
+    const meta = REPORTS_METADATA[reportKey] || REPORTS_METADATA['change-risk'];
+    const reportTitle = meta ? meta.title : reportKey;
+
     try {
-      ReportsHub.cache = {};
+      // Invalidate cache for THIS report only
+      delete ReportsHub.cache[reportKey + '_json'];
+      delete ReportsHub.cache[reportKey + '_html'];
+      delete ReportsHub.cache[reportKey + '_markdown'];
+      delete ReportsHub.cache[reportKey + '_md'];
+      delete ReportsHub.cache[reportKey + '_csv'];
+
       if (ReportsHub.pollTimer) {
         clearTimeout(ReportsHub.pollTimer);
         ReportsHub.pollTimer = null;
@@ -14144,20 +14734,21 @@ const ReportsHub = {
         btn.disabled = true;
       }
       if (typeof showToast === 'function') {
-        showToast('Regenerating all 10 reports in background...', 'info');
+        showToast(`Regenerating ${reportTitle} report…`, 'info');
       }
-      const res = await fetch('/api/reports/regenerate', { method: 'POST' });
+      const res = await fetch(`/api/reports/regenerate?report=${encodeURIComponent(reportKey)}`, { method: 'POST' });
       if (res.ok) {
-        ReportsHub.cache = {};
-        ReportsHub.preloadAllReports().then(() => {
-          ReportsHub.loadActiveReport();
-        }).catch(() => {
-          ReportsHub.loadActiveReport();
-        });
+        if (typeof showToast === 'function') {
+          showToast(`${reportTitle} regenerated successfully!`, 'success');
+        }
+        await ReportsHub.loadActiveReport();
+      } else {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || `HTTP ${res.status}`);
       }
     } catch (err) {
       if (typeof showToast === 'function') {
-        showToast('Failed to trigger report regeneration: ' + err.message, 'error');
+        showToast(`Failed to regenerate ${reportTitle}: ${err.message}`, 'error');
       }
     } finally {
       const btn = qs('#btn-reports-regenerate');
@@ -14215,6 +14806,11 @@ const ReportsHub = {
     qsa('#reports-format-switcher .report-format-pill').forEach(pill => {
       pill.classList.toggle('active', pill.dataset.format === ReportsHub.activeFormat);
     });
+
+    const regenBtn = qs('#btn-reports-regenerate');
+    if (regenBtn) {
+      regenBtn.title = `Regenerate ${meta.title} report`;
+    }
   },
 
   async loadActiveReport() {
@@ -14645,26 +15241,33 @@ const ReportsHub = {
                 </tr>
               </thead>
               <tbody>
-                ${d.highRiskMethods.slice(0, 20).map(m => {
-                  const mFqn = m.methodFqn || (m.declaringClass + '.' + m.simpleName + '()');
-                  const rClass = m.riskScore >= 50 ? 'risk-critical' : (m.riskScore >= 25 ? 'risk-high' : 'risk-medium');
+                ${(d.highRiskMethods || []).map(m => {
+                  const mFqn = m.methodFqn || (m.declaringClass + '.' + (m.simpleName || 'method') + '()');
+                  const simpleName = m.simpleName || (m.methodFqn ? (m.methodFqn.includes('(') ? m.methodFqn.substring(0, m.methodFqn.indexOf('(')).split('.').pop() + '()' : m.methodFqn.split('.').pop()) : 'method()');
+                  const rScore = m.riskScore != null ? m.riskScore : (m.callerCount != null ? (m.callerCount * 2 + (m.calleeCount || 0) + (m.totalBlastRadius || 0) * 3) : 0);
+                  const rLevel = m.riskLevel || (rScore >= 50 ? 'CRITICAL' : (rScore >= 25 ? 'HIGH' : 'MEDIUM'));
+                  const rClass = (rLevel === 'CRITICAL' || rScore >= 50) ? 'risk-critical' : ((rLevel === 'HIGH' || rScore >= 25) ? 'risk-high' : 'risk-medium');
+                  const cc = m.complexity != null ? m.complexity : (m.cyclomaticComplexity != null ? m.cyclomaticComplexity : '-');
+                  const callers = m.directCallers != null ? m.directCallers : (m.callerCount != null ? m.callerCount : 0);
+                  const fieldsMutated = m.fieldsWritten != null ? m.fieldsWritten : (m.fieldMutationsCount != null ? m.fieldMutationsCount : 0);
+                  const riskFactor = m.riskFactor || (m.totalBlastRadius ? `Blast: ${m.totalBlastRadius} | Callers: ${callers}` : rLevel);
                   return `
                     <tr>
-                      <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Inspect ${esc(mFqn)}">
-                        <a href="#" onclick="event.preventDefault(); selectMethod('${esc(mFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#f43f5e; text-decoration:none; cursor:pointer;">${esc(m.simpleName)}</a>
+                      <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Inspect ${esc(mFqn)}">
+                        <a href="#" onclick="event.preventDefault(); selectMethod('${esc(mFqn)}');" style="font-family:var(--font-mono); font-weight:700; color:#f43f5e; text-decoration:none; cursor:pointer;">${esc(simpleName)}</a>
                       </td>
-                      <td>
-                        <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.declaringClass)}</a>
+                      <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(m.declaringClass || '')}">
+                        <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(m.declaringClass || '')}', 'knowledge');" style="font-family:var(--font-mono); color:var(--text-muted); text-decoration:none; cursor:pointer;">${esc(m.declaringClass || '-')}</a>
                       </td>
-                      <td><span class="risk-badge ${rClass}">${m.riskScore}</span></td>
-                      <td style="font-family:var(--font-mono);">${m.complexity}</td>
-                      <td style="font-family:var(--font-mono);">${m.directCallers}</td>
-                      <td style="font-family:var(--font-mono);">${m.fieldsWritten}</td>
-                      <td style="color:var(--text-muted); font-size:11.5px;">${esc(m.riskFactor)}</td>
+                      <td><span class="risk-badge ${rClass}">${rScore}</span></td>
+                      <td style="font-family:var(--font-mono);">${cc}</td>
+                      <td style="font-family:var(--font-mono);">${callers}</td>
+                      <td style="font-family:var(--font-mono);">${fieldsMutated}</td>
+                      <td style="color:var(--text-muted); font-size:11.5px;">${esc(riskFactor)}</td>
                       <td>
                         <div style="display:flex; align-items:center; gap:4px;">
-                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(m.declaringClass)}', 'knowledge');">KB →</button>
-                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(mFqn)}');">Call Graph →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(m.declaringClass || mFqn)}', 'knowledge');" title="Inspect in Knowledge Base">KB →</button>
+                          <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="selectMethod('${esc(mFqn)}');" title="Inspect Call Graph">Call Graph →</button>
                         </div>
                       </td>
                     </tr>
@@ -14735,7 +15338,7 @@ const ReportsHub = {
             <tbody>
     `;
 
-    (d.orphanedMethods || []).slice(0, 20).forEach(m => {
+    (d.orphanedMethods || []).forEach(m => {
       const methodTarget = m.methodFqn || (m.declaringClass + '.' + m.simpleName + '()');
       html += `
         <tr>
@@ -14794,7 +15397,7 @@ const ReportsHub = {
             <tbody>
     `;
 
-    (d.orphanedClasses || []).slice(0, 20).forEach(c => {
+    (d.orphanedClasses || []).forEach(c => {
       html += `
         <tr>
           <td>
@@ -14849,7 +15452,7 @@ const ReportsHub = {
                 </tr>
               </thead>
               <tbody>
-                ${d.unreferencedFields.slice(0, 20).map(f => {
+                ${(d.unreferencedFields || []).map(f => {
                   const fFqn = f.fieldFqn || (f.declaringClass + '.' + f.fieldName);
                   return `
                     <tr>
@@ -15277,7 +15880,7 @@ const ReportsHub = {
                 </tr>
               </thead>
               <tbody>
-                ${d.topCoupledClasses.slice(0, 15).map(c => {
+                ${(d.topCoupledClasses || []).map(c => {
                   const fqn = c.classFqn || c.fqn || '';
                   const simple = c.simpleName || fqn.split('.').pop() || fqn;
                   const pkg = c.packageName || fqn.split('.').slice(0, -1).join('.');
@@ -15359,7 +15962,7 @@ const ReportsHub = {
                 </tr>
               </thead>
               <tbody>
-                ${d.findings.slice(0, 25).map(f => {
+                ${(d.findings || []).map(f => {
                   const sClass = f.severity === 'CRITICAL' || f.severity === 'ERROR' ? 'risk-critical' : (f.severity === 'WARNING' ? 'risk-high' : 'risk-medium');
                   return `
                     <tr>
@@ -15431,7 +16034,7 @@ const ReportsHub = {
                 </tr>
               </thead>
               <tbody>
-                ${d.types.slice(0, 30).map(t => {
+                ${(d.types || []).map(t => {
                   const fqn = t.fqn || t.id || '';
                   const simple = t.simpleName || t.name || fqn.split('.').pop() || fqn;
                   const pkg = t.packageName || t.packageFqn || fqn.split('.').slice(0, -1).join('.');

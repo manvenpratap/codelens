@@ -10,6 +10,9 @@ import java.io.FilterWriter;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -25,7 +28,9 @@ import java.util.stream.Collectors;
 public class ReportService {
 
     private static final Logger log = LoggerFactory.getLogger(ReportService.class);
-    private static final ObjectMapper jsonMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private static final ObjectMapper jsonMapper = new ObjectMapper()
+        .enable(SerializationFeature.INDENT_OUTPUT)
+        .disable(com.fasterxml.jackson.core.JsonGenerator.Feature.AUTO_CLOSE_TARGET);
 
     private final CallGraphAnalyzer callGraph;
     private final FieldImpactAnalyzer fieldImpact;
@@ -649,20 +654,32 @@ public class ReportService {
         d.totalTypes = types.size();
         d.totalMethods = methods.size();
         d.totalFields = fields.size();
-        d.totalLines = types.stream().mapToInt(CodeType::getLineCount).sum();
-
+        Map<String, Integer> fileLinesCache = new HashMap<>();
         for (CodeType t : types) {
             TypeMetricRow row = new TypeMetricRow();
             row.fqn = t.getFqn();
             row.simpleName = t.getSimpleName();
             row.packageName = t.getPackageFqn();
             row.kind = t.getKind();
-            row.lineCount = t.getLineCount();
+            int lc = t.getLineCount();
+            if (lc <= 0 && t.getSourceFile() != null && !t.getSourceFile().isBlank()) {
+                lc = fileLinesCache.computeIfAbsent(t.getSourceFile(), sf -> {
+                    try {
+                        Path p = Paths.get(sf);
+                        if (Files.isRegularFile(p)) {
+                            return (int) Files.lines(p).count();
+                        }
+                    } catch (Exception ignored) {}
+                    return 0;
+                });
+            }
+            row.lineCount = lc;
             row.methodCount = t.getMethodCount();
             row.fieldCount = t.getFieldCount();
             row.sourceFile = t.getSourceFile();
             d.types.add(row);
         }
+        d.totalLines = d.types.stream().mapToInt(r -> r.lineCount).sum();
         d.types.sort(Comparator.comparing(t -> t.fqn));
         return d;
     }
@@ -828,12 +845,18 @@ public class ReportService {
 
     public static class HighRiskMethodItem {
         public String methodFqn;
+        public String simpleName;
         public String declaringClass;
         public int callerCount;
+        public int directCallers;
         public int calleeCount;
         public int fieldMutationsCount;
+        public int fieldsWritten;
         public int totalBlastRadius;
+        public int complexity;
+        public int riskScore;
         public String riskLevel;
+        public String riskFactor;
     }
 
     public ChangeRiskReportData buildChangeRiskData(List<CodeType> types,
@@ -998,13 +1021,21 @@ public class ReportService {
             if (callers >= 5 || blast >= 3 || (callers + callees) >= 15) {
                 HighRiskMethodItem mItem = new HighRiskMethodItem();
                 mItem.methodFqn = m.getFqn();
+                mItem.simpleName = (m.getSimpleName() != null && !m.getSimpleName().isBlank())
+                    ? m.getSimpleName()
+                    : (m.getFqn() != null ? m.getFqn().split("\\(")[0].substring(m.getFqn().split("\\(")[0].lastIndexOf('.') + 1) : "method");
                 mItem.declaringClass = m.getDeclaringTypeFqn();
                 mItem.callerCount = callers;
+                mItem.directCallers = callers;
                 mItem.calleeCount = callees;
                 mItem.fieldMutationsCount = writtenFields.size();
+                mItem.fieldsWritten = writtenFields.size();
                 mItem.totalBlastRadius = blast;
+                mItem.complexity = m.getCyclomaticComplexity();
                 int methodScore = callers * 2 + callees + blast * 3;
+                mItem.riskScore = methodScore;
                 mItem.riskLevel = methodScore >= 50 ? "CRITICAL" : (methodScore >= 25 ? "HIGH" : "MEDIUM");
+                mItem.riskFactor = String.format("Blast: %d | Mutates: %d fields | Callers: %d", blast, writtenFields.size(), callers);
                 data.highRiskMethods.add(mItem);
             }
         }
@@ -1278,6 +1309,24 @@ public class ReportService {
             sb.append("</tbody></table>\n");
         }
 
+        if (!d.highRiskMethods.isEmpty()) {
+            sb.append("<h2>Top High-Risk Methods (Complexity × Blast Radius × State Mutation)</h2>\n");
+            sb.append("<table><thead><tr><th>Method Signature</th><th>Declaring Class</th><th style=\"text-align:right;\">Risk Score</th><th style=\"text-align:right;\">CC</th><th style=\"text-align:right;\">Callers</th><th style=\"text-align:right;\">Fields Written</th><th>Risk Factor</th></tr></thead><tbody>\n");
+            for (HighRiskMethodItem m : d.highRiskMethods) {
+                String badgeCls = "CRITICAL".equalsIgnoreCase(m.riskLevel) ? "badge-crit" : ("HIGH".equalsIgnoreCase(m.riskLevel) ? "badge-high" : "badge-med");
+                sb.append("<tr>");
+                sb.append("<td><code>").append(escapeHtml(m.simpleName != null ? m.simpleName : m.methodFqn)).append("</code></td>");
+                sb.append("<td style=\"font-family:monospace; color:var(--muted); font-size:12px;\">").append(escapeHtml(m.declaringClass != null ? m.declaringClass : "")).append("</td>");
+                sb.append("<td style=\"text-align:right;\"><span class=\"badge ").append(badgeCls).append("\">").append(m.riskScore).append("</span></td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(m.complexity).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(m.callerCount).append("</td>");
+                sb.append("<td style=\"text-align:right; font-family:monospace;\">").append(m.fieldMutationsCount).append("</td>");
+                sb.append("<td style=\"font-size:12px; color:var(--muted);\">").append(escapeHtml(m.riskFactor != null ? m.riskFactor : m.riskLevel)).append("</td>");
+                sb.append("</tr>\n");
+            }
+            sb.append("</tbody></table>\n");
+        }
+
         appendHtmlReportPaginationAssets(sb);
         sb.append("</body>\n</html>");
         return sb.toString();
@@ -1313,6 +1362,23 @@ public class ReportService {
                   .append(escapeCsv(h.riskTier)).append(",")
                   .append(escapeCsv(h.lastAuthor)).append(",")
                   .append(escapeCsv(h.recommendation)).append("\n");
+            }
+        }
+        if (d.highRiskMethods != null && !d.highRiskMethods.isEmpty()) {
+            sb.append("\n# HIGH_RISK_METHODS\n");
+            sb.append("MethodFqn,SimpleName,DeclaringClass,RiskScore,RiskLevel,Complexity,DirectCallers,CalleeCount,FieldsWritten,TotalBlastRadius,RiskFactor\n");
+            for (HighRiskMethodItem m : d.highRiskMethods) {
+                sb.append(escapeCsv(m.methodFqn)).append(",")
+                  .append(escapeCsv(m.simpleName)).append(",")
+                  .append(escapeCsv(m.declaringClass)).append(",")
+                  .append(m.riskScore).append(",")
+                  .append(escapeCsv(m.riskLevel)).append(",")
+                  .append(m.complexity).append(",")
+                  .append(m.callerCount).append(",")
+                  .append(m.calleeCount).append(",")
+                  .append(m.fieldMutationsCount).append(",")
+                  .append(m.totalBlastRadius).append(",")
+                  .append(escapeCsv(m.riskFactor)).append("\n");
             }
         }
         return sb.toString();
@@ -3080,13 +3146,19 @@ public class ReportService {
         sb.append("  // Init sequence: resize canvas, load data, hide loading overlay\n");
         sb.append("  resizeCanvas();\n");
         sb.append("  requestAnimationFrame(() => {\n");
-        sb.append("    loadGraphData();\n");
-        sb.append("    loop();\n");
-        sb.append("    // Hide loading overlay after first frame\n");
-        sb.append("    setTimeout(() => {\n");
-        sb.append("      if (loadingOverlay) loadingOverlay.classList.add('hidden');\n");
-        sb.append("      setTimeout(() => { if (loadingOverlay) loadingOverlay.style.display = 'none'; }, 500);\n");
-        sb.append("    }, 200);\n");
+        sb.append("    try {\n");
+        sb.append("      loadGraphData();\n");
+        sb.append("      loop();\n");
+        sb.append("    } catch (err) {\n");
+        sb.append("      console.error('Failed to load snapshot graph:', err);\n");
+        sb.append("      const sub = document.getElementById('loading-sub');\n");
+        sb.append("      if (sub) sub.textContent = 'Error: ' + (err && err.message ? err.message : err);\n");
+        sb.append("    } finally {\n");
+        sb.append("      setTimeout(() => {\n");
+        sb.append("        if (loadingOverlay) loadingOverlay.classList.add('hidden');\n");
+        sb.append("        setTimeout(() => { if (loadingOverlay) loadingOverlay.style.display = 'none'; }, 500);\n");
+        sb.append("      }, 200);\n");
+        sb.append("    }\n");
         sb.append("  });\n");
         sb.append("})();\n");
         sb.append("</script>\n");
@@ -4559,7 +4631,7 @@ public class ReportService {
         @Override
         public void close() throws IOException {
             flush();
-            super.close();
+            // Intentionally do NOT close underlying stream so caller can continue streaming subsequent sections into it.
         }
     }
 }

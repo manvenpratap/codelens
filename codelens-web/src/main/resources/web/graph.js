@@ -110,15 +110,27 @@ function expandHull(hullPoints, pad = 32) {
   });
 }
 
+const RGBA_CACHE = new Map();
+
 function hexToRgba(hex, alpha = 1) {
+  const aClamped = Math.max(0, Math.min(1, alpha));
+  const aKey = Math.round(aClamped * 100);
+  const cacheKey = (hex || '#ffffff') + '_' + aKey;
+  let cached = RGBA_CACHE.get(cacheKey);
+  if (cached) return cached;
+
   let c = String(hex || '#ffffff').replace('#', '');
   if (c.length === 3) c = c.split('').map(x => x + x).join('');
   const num = parseInt(c, 16);
-  if (isNaN(num)) return `rgba(255, 255, 255, ${alpha})`;
+  if (isNaN(num)) return `rgba(255, 255, 255, ${aClamped})`;
   const r = (num >> 16) & 255;
   const g = (num >> 8) & 255;
   const b = num & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const result = `rgba(${r}, ${g}, ${b}, ${aClamped})`;
+  if (RGBA_CACHE.size < 2000) {
+    RGBA_CACHE.set(cacheKey, result);
+  }
+  return result;
 }
 
 function lerpColor(c1, c2, factor) {
@@ -135,6 +147,148 @@ function lerpColor(c1, c2, factor) {
   const g = Math.round(g1 + (g2 - g1) * f);
   const b = Math.round(b1 + (b2 - b1) * f);
   return `rgb(${r}, ${g}, ${b})`;
+}
+
+const SPECULAR_CACHE = new Map();
+function getSpecularColors(color) {
+  const key = color || '#3b82f6';
+  let cached = SPECULAR_CACHE.get(key);
+  if (!cached) {
+    cached = {
+      highlight: lerpColor(key, '#ffffff', 0.55),
+      base: key,
+      shadow: lerpColor(key, '#000000', 0.20),
+    };
+    SPECULAR_CACHE.set(key, cached);
+  }
+  return cached;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Spatial Hash Grid Broadphase (O(N) Pairwise Separation & Hit Testing)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+class SpatialHashGrid {
+  constructor(cellW = 160, cellH = 100) {
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.invW = 1 / cellW;
+    this.invH = 1 / cellH;
+    this.cells = new Map();
+    this.activeCellKeys = [];
+  }
+
+  clear() {
+    this.cells.clear();
+    this.activeCellKeys.length = 0;
+  }
+
+  build(nodes, filterHidden = false) {
+    this.clear();
+    const invW = this.invW;
+    const invH = this.invH;
+    const n = nodes.length;
+    for (let i = 0; i < n; i++) {
+      const node = nodes[i];
+      if (filterHidden && (node.hidden || node._hidden)) continue;
+      const cx = Math.floor(node.x * invW);
+      const cy = Math.floor(node.y * invH);
+      const key = (((cx & 0xFFFF) << 16) | (cy & 0xFFFF));
+      let cell = this.cells.get(key);
+      if (!cell) {
+        cell = { cx, cy, nodes: [] };
+        this.cells.set(key, cell);
+        this.activeCellKeys.push(key);
+      }
+      cell.nodes.push(node);
+    }
+  }
+
+  forEachPair(callback) {
+    const cells = this.cells;
+    const keys = this.activeCellKeys;
+    const numActive = keys.length;
+
+    for (let k = 0; k < numActive; k++) {
+      const cell = cells.get(keys[k]);
+      if (!cell) continue;
+      const cNodes = cell.nodes;
+      const cCount = cNodes.length;
+
+      // 1. Internal cell pairs (i < j)
+      for (let i = 0; i < cCount; i++) {
+        const ni = cNodes[i];
+        for (let j = i + 1; j < cCount; j++) {
+          callback(ni, cNodes[j]);
+        }
+      }
+
+      // 2. Forward neighbor cells: (1, 0), (-1, 1), (0, 1), (1, 1)
+      const cx = cell.cx;
+      const cy = cell.cy;
+
+      const k1 = ((((cx + 1) & 0xFFFF) << 16) | (cy & 0xFFFF));
+      const n1 = cells.get(k1);
+      if (n1) this._checkCross(cNodes, n1.nodes, callback);
+
+      const k2 = ((((cx - 1) & 0xFFFF) << 16) | ((cy + 1) & 0xFFFF));
+      const n2 = cells.get(k2);
+      if (n2) this._checkCross(cNodes, n2.nodes, callback);
+
+      const k3 = (((cx & 0xFFFF) << 16) | ((cy + 1) & 0xFFFF));
+      const n3 = cells.get(k3);
+      if (n3) this._checkCross(cNodes, n3.nodes, callback);
+
+      const k4 = ((((cx + 1) & 0xFFFF) << 16) | ((cy + 1) & 0xFFFF));
+      const n4 = cells.get(k4);
+      if (n4) this._checkCross(cNodes, n4.nodes, callback);
+    }
+  }
+
+  _checkCross(nodesA, nodesB, callback) {
+    const na = nodesA.length;
+    const nb = nodesB.length;
+    for (let i = 0; i < na; i++) {
+      const a = nodesA[i];
+      for (let j = 0; j < nb; j++) {
+        callback(a, nodesB[j]);
+      }
+    }
+  }
+
+  queryPoint(x, y, radius) {
+    const invW = this.invW;
+    const invH = this.invH;
+    const minCx = Math.floor((x - radius) * invW);
+    const maxCx = Math.floor((x + radius) * invW);
+    const minCy = Math.floor((y - radius) * invH);
+    const maxCy = Math.floor((y + radius) * invH);
+
+    let closestNode = null;
+    let closestDistSq = Infinity;
+
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        const key = (((cx & 0xFFFF) << 16) | (cy & 0xFFFF));
+        const cell = this.cells.get(key);
+        if (cell) {
+          const cNodes = cell.nodes;
+          for (let i = 0; i < cNodes.length; i++) {
+            const n = cNodes[i];
+            const dx = x - n.x;
+            const dy = y - n.y;
+            const dSq = dx * dx + dy * dy;
+            const hitR = (n.radius || 12) + 6;
+            if (dSq <= hitR * hitR && dSq < closestDistSq) {
+              closestDistSq = dSq;
+              closestNode = n;
+            }
+          }
+        }
+      }
+    }
+    return closestNode;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +332,14 @@ class ForceGraph {
     this._lastInteractionTime = Date.now();
     this._physicsEnabled = true;
     this._showHulls   = true;
+    this._hullsDirty  = true;
+    this._hasSingleRoot = false;
+
+    // Spatial broadphase acceleration & minimap cache
+    this._spatialGrid = new SpatialHashGrid(160, 100);
+    this._minimapCacheCanvas = document.createElement('canvas');
+    this._minimapCacheCtx = this._minimapCacheCanvas.getContext('2d');
+    this._minimapDirty = true;
 
     // Visual toggle flags (controlled by Settings)
     this._showParticles = true;
@@ -536,13 +698,18 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const sortedPkgs = Object.keys(pkgCounts).sort((a, b) => pkgCounts[b] - pkgCounts[a]);
     this._communities = sortedPkgs.map((pkg, idx) => {
       const color = GRAPHIFY_COLORS[idx % GRAPHIFY_COLORS.length];
+      const label = this._formatPackageLabel(pkg);
+      const labelWidth = Math.round(label.length * 7.2) + 12;
       const comm = {
         cid: idx,
         rawLabel: pkg,
-        label: this._formatPackageLabel(pkg),
+        label,
+        _labelWidth: labelWidth,
+        _labelPw: labelWidth + 16,
         color,
         count: pkgCounts[pkg],
         nodes: new Set(),
+        memberNodes: [],
         hidden: false,
       };
       this._communityMap.set(pkg, comm);
@@ -578,7 +745,12 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           ? window.CodeLensPalette.getClassColor(n.id, n.type || 'METHOD')
           : (comm ? comm.color : '#3b82f6');
 
-        allProcessedNodes.push({
+        const maxChars = 22;
+        const fullLabel = n.label || n.id.split('.').pop() || '';
+        const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
+        const labelWidth = Math.round(labelText.length * 6.6) + 4;
+
+        const nodeObj = {
           ...n,
           x: typeof n.x === 'number' ? n.x : cx + (Math.random() - 0.5) * 200,
           y: typeof n.y === 'number' ? n.y : cy + (Math.random() - 0.5) * 200,
@@ -599,8 +771,13 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           vy: 0,
           _fx: 0,
           _fy: 0,
+          _labelText: labelText,
+          _labelWidth: labelWidth,
           pinned: false,
-        });
+        };
+
+        if (comm) comm.memberNodes.push(nodeObj);
+        allProcessedNodes.push(nodeObj);
       }
 
       // Resolve any remaining node/label overlaps in precomputed layouts
@@ -634,8 +811,24 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       for (let i = 0; i < allProcessedNodes.length; i++) {
         this._nodeIndex.set(allProcessedNodes[i].id, i);
       }
+      this._hasSingleRoot = allProcessedNodes.filter(n => n.role === 'root').length === 1;
 
-      this._edges = edges.map(e => ({ ...e }));
+      this._edges = edges.map(e => {
+        const srcId = typeof e.source === 'object' ? e.source.id : e.source;
+        const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+        const si = this._nodeIndex.get(srcId);
+        const ti = this._nodeIndex.get(tgtId);
+        return {
+          ...e,
+          _src: si !== undefined ? allProcessedNodes[si] : null,
+          _tgt: ti !== undefined ? allProcessedNodes[ti] : null,
+        };
+      });
+
+      this._spatialGrid.build(this._nodes, true);
+      this._hullsDirty = true;
+      this._minimapDirty = true;
+
       this._ticks = PHYSICS.maxTicks; // mark simulation as finished
       this._particles = [];
       this._hoveredNode = null;
@@ -684,6 +877,11 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         ? window.CodeLensPalette.getClassColor(n.id, n.type || 'METHOD')
         : comm.color;
 
+      const maxChars = 22;
+      const fullLabel = n.label || n.id.split('.').pop() || '';
+      const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
+      const labelWidth = Math.round(labelText.length * 6.6) + 4;
+
       const nodeObj = {
         ...n,
         package: finalPkg,
@@ -703,9 +901,12 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         vy: 0,
         _fx: 0,
         _fy: 0,
+        _labelText: labelText,
+        _labelWidth: labelWidth,
         pinned: false,
       };
 
+      if (comm) comm.memberNodes.push(nodeObj);
       if (!branchMap.has(finalPkg)) branchMap.set(finalPkg, []);
       branchMap.get(finalPkg).push(nodeObj);
     }
@@ -849,8 +1050,23 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     for (let i = 0; i < allProcessedNodes.length; i++) {
       this._nodeIndex.set(allProcessedNodes[i].id, i);
     }
+    this._hasSingleRoot = allProcessedNodes.filter(n => n.role === 'root').length === 1;
 
-    this._edges = edges.map(e => ({ ...e }));
+    this._edges = edges.map(e => {
+      const srcId = typeof e.source === 'object' ? e.source.id : e.source;
+      const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+      const si = this._nodeIndex.get(srcId);
+      const ti = this._nodeIndex.get(tgtId);
+      return {
+        ...e,
+        _src: si !== undefined ? allProcessedNodes[si] : null,
+        _tgt: ti !== undefined ? allProcessedNodes[ti] : null,
+      };
+    });
+
+    this._spatialGrid.build(this._nodes, true);
+    this._hullsDirty = true;
+    this._minimapDirty = true;
     this._ticks = 0;
     this._particles = [];
     this._hoveredNode = null;
@@ -1280,53 +1496,54 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   _resolvePrecomputedOverlaps(nodes) {
     if (!nodes || nodes.length <= 1) return;
     const n = nodes.length;
-    const passes = n > 1500 ? 6 : (n > 500 ? 12 : 20);
+    const passes = n > 1500 ? 5 : (n > 500 ? 8 : 12);
+    const grid = this._spatialGrid || new SpatialHashGrid(165, 100);
+
     for (let pass = 0; pass < passes; pass++) {
-      for (let i = 0; i < n; i++) {
-        const ni = nodes[i];
-        for (let j = i + 1; j < n; j++) {
-          const nj = nodes[j];
-          let dx = nj.x - ni.x;
-          let dy = nj.y - ni.y;
-          if (Math.abs(dx) > 160 || Math.abs(dy) > 95) continue;
+      grid.build(nodes, false);
+      grid.forEachPair((ni, nj) => {
+        let dx = nj.x - ni.x;
+        let dy = nj.y - ni.y;
+        if (Math.abs(dx) > 160 || Math.abs(dy) > 95) return;
+
+        const isSameComm = ni.community === nj.community;
+        const minX = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 96 : 135);
+        const minY = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 48 : 72);
+        const nx = dx / minX;
+        const ny = dy / minY;
+        const normDistSq = nx * nx + ny * ny;
+
+        if (normDistSq < 1.0) {
           let dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 0.05) {
-            dx = Math.cos(j * 2.39996);
-            dy = Math.sin(j * 2.39996);
+            dx = 1.0;
+            dy = 0.0;
             dist = 1.0;
           }
-          // Elliptical bounding box accounting for horizontal text label below each node
-          const isSameComm = ni.community === nj.community;
-          const minX = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 96 : 135);
-          const minY = (ni.radius || 12) + (nj.radius || 12) + (isSameComm ? 48 : 72);
-          const nx = dx / minX;
-          const ny = dy / minY;
-          const normDist = Math.sqrt(nx * nx + ny * ny);
-          if (normDist < 1.0) {
-            const push = (1.0 - normDist) * 0.52;
-            const px = (dx / dist) * (minX * 0.65) * push;
-            const py = (dy / dist) * (minY * 0.85) * push;
-            if (ni.role === 'root') {
-              nj.x += px * 1.8;
-              nj.y += py * 1.8;
-            } else if (nj.role === 'root') {
-              ni.x -= px * 1.8;
-              ni.y -= py * 1.8;
-            } else {
-              ni.x -= px;
-              ni.y -= py;
-              nj.x += px;
-              nj.y += py;
-            }
+          const normDist = Math.sqrt(normDistSq);
+          const push = (1.0 - normDist) * 0.52;
+          const px = (dx / dist) * (minX * 0.65) * push;
+          const py = (dy / dist) * (minY * 0.85) * push;
+          if (ni.role === 'root') {
+            nj.x += px * 1.8;
+            nj.y += py * 1.8;
+          } else if (nj.role === 'root') {
+            ni.x -= px * 1.8;
+            ni.y -= py * 1.8;
+          } else {
+            ni.x -= px;
+            ni.y -= py;
+            nj.x += px;
+            nj.y += py;
           }
         }
-      }
+      });
     }
   }
 
   _runInitialStabilization() {
-    // Warm up offline avoiding freezing on large graphs
-    const ticks = this._nodes.length > 500 ? 15 : (this._nodes.length > 100 ? 40 : 80);
+    // Fast warmup offline - with SpatialHashGrid acceleration each tick takes <2ms
+    const ticks = this._nodes.length > 500 ? 10 : (this._nodes.length > 100 ? 25 : 45);
     for (let i = 0; i < ticks; i++) {
       this._simulateTick();
     }
@@ -1453,21 +1670,18 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     // 4. Repulsion force between node pairs (differentiated intra vs inter community)
     if (n > 300) {
       // High-performance spatial clustering: calculate repulsion within each community bloom
-      // Phase A: Intra-community repulsion (full N² within each community)
+      // Phase A: Intra-community repulsion (using cached memberNodes)
       for (const comm of this._communities) {
         if (this._hiddenCommunities.has(comm.cid)) continue;
-        const cNodes = [];
-        for (const id of comm.nodes) {
-          const idx = this._nodeIndex ? this._nodeIndex.get(id) : undefined;
-          if (idx !== undefined) {
-            const nd = nodes[idx];
-            if (nd && !this._isNodeHidden(nd)) cNodes.push(nd);
-          }
-        }
+        const cNodes = comm.memberNodes;
+        if (!cNodes || cNodes.length <= 1) continue;
         const cn = cNodes.length;
         for (let i = 0; i < cn; i++) {
+          const ni = cNodes[i];
+          if (this._isNodeHidden(ni)) continue;
           for (let j = i + 1; j < cn; j++) {
-            const ni = cNodes[i], nj = cNodes[j];
+            const nj = cNodes[j];
+            if (this._isNodeHidden(nj)) continue;
             const dx = nj.x - ni.x;
             const dy = nj.y - ni.y;
             const distSq = dx * dx + dy * dy || 0.01;
@@ -1518,14 +1732,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     // 5. Spring attraction along edges (tighter intra-class/cluster, non-overlapping cross-cluster)
     for (const e of this._edges) {
-      const srcId = typeof e.source === 'object' ? e.source.id : e.source;
-      const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
-      const si = this._nodeIndex ? this._nodeIndex.get(srcId) : undefined;
-      const ti = this._nodeIndex ? this._nodeIndex.get(tgtId) : undefined;
-      if (si === undefined || ti === undefined) continue;
-
-      const src = nodes[si], tgt = nodes[ti];
-      if (this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
+      const src = e._src, tgt = e._tgt;
+      if (!src || !tgt || this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
 
       const dx = tgt.x - src.x;
       const dy = tgt.y - src.y;
@@ -1653,40 +1861,40 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
     }
 
-    // 8B. Hard Node & Label Box Elliptical Separation
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const ni = nodes[i], nj = nodes[j];
-        if (this._isNodeHidden(ni) || this._isNodeHidden(nj)) continue;
+    // 8B. Hard Node & Label Box Elliptical Separation (Accelerated via SpatialHashGrid broadphase)
+    this._spatialGrid.build(nodes, true);
+    this._spatialGrid.forEachPair((ni, nj) => {
+      const dx = nj.x - ni.x;
+      const dy = nj.y - ni.y;
+      if (Math.abs(dx) > 155 || Math.abs(dy) > 95) return;
 
-        const dx = nj.x - ni.x;
-        const dy = nj.y - ni.y;
-        if (Math.abs(dx) > 155 || Math.abs(dy) > 95) continue;
+      const isSameComm = ni.community === nj.community;
+      const minX = ni.radius + nj.radius + (isSameComm ? 98 : 132);
+      const minY = ni.radius + nj.radius + (isSameComm ? 52 : 72);
+      const nx = dx / minX;
+      const ny = dy / minY;
+      const normDistSq = nx * nx + ny * ny;
+
+      if (normDistSq < 1.0) {
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const isSameComm = ni.community === nj.community;
-        const minX = ni.radius + nj.radius + (isSameComm ? 98 : 132);
-        const minY = ni.radius + nj.radius + (isSameComm ? 52 : 72);
-        const nx = dx / minX;
-        const ny = dy / minY;
-        const normDist = Math.sqrt(nx * nx + ny * ny);
+        const normDist = Math.sqrt(normDistSq);
+        const push = (1.0 - normDist) * 0.55;
+        const px = (dx / dist) * (minX * 0.65) * push;
+        const py = (dy / dist) * (minY * 0.85) * push;
 
-        if (normDist < 1.0) {
-          const push = (1.0 - normDist) * 0.55;
-          const px = (dx / dist) * (minX * 0.65) * push;
-          const py = (dy / dist) * (minY * 0.85) * push;
-
-          if (!ni.pinned) {
-            ni.x -= px;
-            ni.y -= py;
-          }
-          if (!nj.pinned) {
-            nj.x += px;
-            nj.y += py;
-          }
+        if (!ni.pinned) {
+          ni.x -= px;
+          ni.y -= py;
+        }
+        if (!nj.pinned) {
+          nj.x += px;
+          nj.y += py;
         }
       }
-    }
+    });
 
+    this._hullsDirty = true;
+    this._minimapDirty = true;
     this._ticks++;
   }
 
@@ -1924,19 +2132,20 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         ctx.stroke();
         ctx.restore();
 
-        // Bio-spore matrix dots
+        // Bio-spore matrix dots (batched path)
         const step = 34;
         const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
         ctx.fillStyle = 'rgba(74, 222, 128, 0.16)';
+        ctx.beginPath();
         for (let x = offX; x < W; x += step * this._sc) {
           for (let y = offY; y < H; y += step * this._sc) {
-            ctx.beginPath();
+            ctx.moveTo(x + 1.2, y);
             ctx.arc(x, y, 1.2, 0, Math.PI * 2);
-            ctx.fill();
           }
         }
+        ctx.fill();
       }
 
     } else if (themeKey === 'swiss' || (!themeKey && (document.body.classList.contains('theme-swiss') || (document.body.dataset && document.body.dataset.theme === 'swiss')))) {
@@ -2028,15 +2237,16 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         const offX = (this._tx % (step * this._sc) + step * this._sc) % (step * this._sc);
         const offY = (this._ty % (step * this._sc) + step * this._sc) % (step * this._sc);
 
-        // Ultra-subtle micro-dots (radius 0.75px, soft opacity, no plus signs)
+        // Ultra-subtle micro-dots (batched single path)
         ctx.fillStyle = 'rgba(148, 163, 184, 0.07)';
+        ctx.beginPath();
         for (let x = offX; x < W; x += step * this._sc) {
           for (let y = offY; y < H; y += step * this._sc) {
-            ctx.beginPath();
+            ctx.moveTo(x + 0.75, y);
             ctx.arc(x, y, 0.75, 0, Math.PI * 2);
-            ctx.fill();
           }
         }
+        ctx.fill();
       }
     }
   }
@@ -2044,18 +2254,41 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   /* ── 1. Graphify Community Convex Hulls ───────────────────────────────────── */
 
   _drawCommunityHulls(ctx) {
+    const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
+    const recompute = this._hullsDirty;
+
     for (const comm of this._communities) {
       if (this._hiddenCommunities.has(comm.cid)) continue;
 
-      const memberNodes = this._nodes.filter(n => n.community === comm.cid);
-      if (memberNodes.length < 2) continue;
+      const memberNodes = comm.memberNodes;
+      if (!memberNodes || memberNodes.length < 2) continue;
 
-      const pts = memberNodes.map(n => ({ x: n.x, y: n.y }));
-      const hull = getConvexHull(pts);
-      const expanded = expandHull(hull, 36);
-      if (expanded.length < 2) continue;
+      let expanded = comm._cachedHull;
+      let cx = comm._cachedCx;
+      let minY = comm._cachedMinY;
 
-      ctx.save();
+      if (recompute || !expanded) {
+        const pts = [];
+        for (let i = 0; i < memberNodes.length; i++) {
+          const n = memberNodes[i];
+          if (!this._isNodeHidden(n)) pts.push({ x: n.x, y: n.y });
+        }
+        if (pts.length < 2) continue;
+        const hull = getConvexHull(pts);
+        expanded = expandHull(hull, 36);
+        if (!expanded || expanded.length < 2) continue;
+
+        cx = expanded.reduce((s, p) => s + p.x, 0) / expanded.length;
+        minY = Infinity;
+        for (let i = 0; i < expanded.length; i++) {
+          if (expanded[i].y < minY) minY = expanded[i].y;
+        }
+
+        comm._cachedHull = expanded;
+        comm._cachedCx = cx;
+        comm._cachedMinY = minY;
+      }
+
       ctx.beginPath();
       ctx.moveTo(expanded[0].x, expanded[0].y);
       for (let i = 1; i < expanded.length; i++) {
@@ -2074,22 +2307,17 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       ctx.stroke();
 
       // Community / Package Tag Label
-      const cx = expanded.reduce((s, p) => s + p.x, 0) / expanded.length;
-      const minY = Math.min(...expanded.map(p => p.y));
-
       ctx.font = '600 11px Space Grotesk, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
 
       // Label background pill
       const labelText = comm.label;
-      const metrics = ctx.measureText(labelText);
-      const pw = metrics.width + 16;
+      const pw = comm._labelPw || (comm.label.length * 7 + 28);
       const ph = 18;
       const px = cx - pw / 2;
       const py = minY - 8 - ph;
 
-      const isBodyLight = document.body.classList.contains('theme-light') || (document.body.dataset && document.body.dataset.theme === 'light');
       ctx.fillStyle = isBodyLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(13, 17, 23, 0.85)';
       ctx.strokeStyle = isBodyLight ? hexToRgba(comm.color, 0.6) : hexToRgba(comm.color, 0.4);
       ctx.lineWidth = 1;
@@ -2100,9 +2328,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
       ctx.fillStyle = isBodyLight ? '#0f172a' : comm.color;
       ctx.fillText(labelText, cx, minY - 11);
-
-      ctx.restore();
     }
+
+    this._hullsDirty = false;
   }
 
   /* ── 2. Curved Directed Edges & Flow Particles ───────────────────────────── */
@@ -2137,16 +2365,22 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const vxMax = (canvasW - this._tx) / this._sc + 80;
     const vyMax = (canvasH - this._ty) / this._sc + 80;
 
-    for (let i = 0; i < this._edges.length; i++) {
-      const e = this._edges[i];
-      const srcId = typeof e.source === 'object' ? e.source.id : e.source;
-      const tgtId = typeof e.target === 'object' ? e.target.id : e.target;
-      const si = this._nodeIndex ? this._nodeIndex.get(srcId) : undefined;
-      const ti = this._nodeIndex ? this._nodeIndex.get(tgtId) : undefined;
-      if (si === undefined || ti === undefined) continue;
+    // Index active particles by edgeIdx once per frame (O(P) instead of O(E * P))
+    const particlesByEdge = new Map();
+    if (this._showParticles && !reducedMotion && this._particles.length > 0) {
+      for (let pIdx = 0; pIdx < this._particles.length; pIdx++) {
+        const p = this._particles[pIdx];
+        let list = particlesByEdge.get(p.edgeIdx);
+        if (!list) { list = []; particlesByEdge.set(p.edgeIdx, list); }
+        list.push(p);
+      }
+    }
 
-      const src = this._nodes[si], tgt = this._nodes[ti];
-      if (this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
+    const numEdges = this._edges.length;
+    for (let i = 0; i < numEdges; i++) {
+      const e = this._edges[i];
+      const src = e._src, tgt = e._tgt;
+      if (!src || !tgt || this._isNodeHidden(src) || this._isNodeHidden(tgt)) continue;
 
       // Viewport frustum culling: skip edge if both endpoints are outside the viewport on the same side
       if ((src.x < vxMin && tgt.x < vxMin) ||
@@ -2170,7 +2404,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         opacity = isIncident ? 1.0 : 0.12;
       }
 
-      const edgeParticles = this._particles.filter(p => p.edgeIdx === i);
+      const edgeParticles = particlesByEdge.get(i) || null;
       this._drawSingleEdge(ctx, src, tgt, e, opacity, edgeParticles, cpEdge);
     }
   }
@@ -2201,8 +2435,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       : (isSameComm && src.communityColor
           ? hexToRgba(src.communityColor, 0.45)
           : (GC.edgeKind[edge.kind] || GC.edgeKind.default));
-
-    ctx.save();
 
     // Critical Path edge halo
     if (isCritical) {
@@ -2274,8 +2506,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         ctx.fill();
       }
     }
-
-    ctx.restore();
   }
 
   /* ── 3. Graphify Nodes Rendering ─────────────────────────────────────────── */
@@ -2343,7 +2573,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     let mainColor = isCriticalNode ? (cpNode && cpNode.archetypeColor ? cpNode.archetypeColor : '#f59e0b') : node.communityColor;
     let heatRatio = 0;
 
-    const hasSingleRoot = this._nodes && this._nodes.filter(n => n.role === 'root').length === 1;
+    const hasSingleRoot = this._hasSingleRoot;
 
     if (this._heatMode && !isCriticalNode) {
       const raw = (this._heatData[node.id] !== undefined)
@@ -2403,9 +2633,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     const fillGrad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
-    fillGrad.addColorStop(0, lerpColor(mainColor, '#ffffff', 0.55));
-    fillGrad.addColorStop(0.65, mainColor);
-    fillGrad.addColorStop(1, lerpColor(mainColor, '#000000', 0.20));
+    const spec = getSpecularColors(mainColor);
+    fillGrad.addColorStop(0, spec.highlight);
+    fillGrad.addColorStop(0.65, spec.base);
+    fillGrad.addColorStop(1, spec.shadow);
     ctx.fillStyle = fillGrad;
     ctx.fill();
 
@@ -2456,9 +2687,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels & shouldDrawLabel)
     if (!this._showLabels || !shouldDrawLabel) { ctx.restore(); return; }
-    const maxChars = 22;
-    const fullLabel = node.label || node.id.split('.').pop() || '';
-    const labelText = fullLabel.length > maxChars ? fullLabel.slice(0, maxChars - 1) + '…' : fullLabel;
+    const labelText = node._labelText || (node.label || node.id.split('.').pop() || '');
+    const labelWidth = node._labelWidth || (labelText.length * 6.6 + 4);
 
     ctx.font = `${node.role === 'root' || isSelected || isCriticalNode ? 'bold' : '500'} 11px Space Grotesk, system-ui, sans-serif`;
     ctx.textAlign = 'left';
@@ -2466,11 +2696,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
     const lblY = y + r + 11;
 
-    // Measure text width + add space for colorful dot indicator
-    const textMetrics = ctx.measureText(labelText);
+    // Fast precalculated pill width
     const dotRadius = 3;
     const dotMargin = 6;
-    const pw = textMetrics.width + dotRadius * 2 + dotMargin + 14;
+    const pw = labelWidth + dotRadius * 2 + dotMargin + 14;
     const ph = 18;
     const px = x - pw / 2;
 
@@ -2579,44 +2808,83 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       mmVpFill = 'rgba(56, 189, 248, 0.08)';
     }
 
+    if (this._nodes.length === 0) {
+      mctx.clearRect(0, 0, MW, MH);
+      mctx.fillStyle = mmBg;
+      mctx.fillRect(0, 0, MW, MH);
+      return;
+    }
+
+    // Rebuild minimap cached texture when dirty or dimensions change
+    if (this._minimapDirty || this._minimapCacheCanvas.width !== MW || this._minimapCacheCanvas.height !== MH) {
+      this._minimapCacheCanvas.width = MW;
+      this._minimapCacheCanvas.height = MH;
+      const cctx = this._minimapCacheCtx;
+      cctx.clearRect(0, 0, MW, MH);
+      cctx.fillStyle = mmBg;
+      cctx.fillRect(0, 0, MW, MH);
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < this._nodes.length; i++) {
+        const n = this._nodes[i];
+        if (n.x < minX) minX = n.x;
+        if (n.x > maxX) maxX = n.x;
+        if (n.y < minY) minY = n.y;
+        if (n.y > maxY) maxY = n.y;
+      }
+
+      const pad = 80;
+      const gw = Math.max(maxX - minX + pad * 2, 100);
+      const gh = Math.max(maxY - minY + pad * 2, 100);
+
+      this._mmScale = Math.min((MW - 12) / gw, (MH - 12) / gh);
+      this._mmOx = MW / 2 - ((minX + maxX) / 2) * this._mmScale;
+      this._mmOy = MH / 2 - ((minY + maxY) / 2) * this._mmScale;
+
+      const mScale = this._mmScale;
+      const mOx = this._mmOx;
+      const mOy = this._mmOy;
+
+      // Group and draw minimap dots by community color for efficient batching
+      const colorGroups = new Map();
+      for (let i = 0; i < this._nodes.length; i++) {
+        const n = this._nodes[i];
+        if (this._isNodeHidden(n)) continue;
+        const col = n.communityColor || '#2563eb';
+        let group = colorGroups.get(col);
+        if (!group) { group = []; colorGroups.set(col, group); }
+        group.push(n);
+      }
+
+      for (const [col, group] of colorGroups.entries()) {
+        cctx.fillStyle = col;
+        cctx.beginPath();
+        for (let i = 0; i < group.length; i++) {
+          const n = group[i];
+          const mx = n.x * mScale + mOx;
+          const my = n.y * mScale + mOy;
+          const mr = Math.max(2, n.radius * mScale);
+          cctx.moveTo(mx + mr, my);
+          cctx.arc(mx, my, mr, 0, Math.PI * 2);
+        }
+        cctx.fill();
+      }
+
+      this._minimapDirty = false;
+    }
+
+    // Fast blit cached nodes canvas (0.02ms)
     mctx.clearRect(0, 0, MW, MH);
-    mctx.fillStyle = mmBg;
-    mctx.fillRect(0, 0, MW, MH);
-
-    if (this._nodes.length === 0) return;
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const n of this._nodes) {
-      minX = Math.min(minX, n.x);
-      maxX = Math.max(maxX, n.x);
-      minY = Math.min(minY, n.y);
-      maxY = Math.max(maxY, n.y);
-    }
-
-    const pad = 80;
-    const gw = Math.max(maxX - minX + pad * 2, 100);
-    const gh = Math.max(maxY - minY + pad * 2, 100);
-
-    const mScale = Math.min((MW - 12) / gw, (MH - 12) / gh);
-    const mOx = MW / 2 - ((minX + maxX) / 2) * mScale;
-    const mOy = MH / 2 - ((minY + maxY) / 2) * mScale;
-
-    // Draw minimap nodes
-    for (const n of this._nodes) {
-      if (this._isNodeHidden(n)) continue;
-      const mx = n.x * mScale + mOx;
-      const my = n.y * mScale + mOy;
-
-      mctx.beginPath();
-      mctx.arc(mx, my, Math.max(2, n.radius * mScale), 0, Math.PI * 2);
-      mctx.fillStyle = n.communityColor || '#2563eb';
-      mctx.fill();
-    }
+    mctx.drawImage(this._minimapCacheCanvas, 0, 0);
 
     // Draw camera viewport box
     const dpr = window.devicePixelRatio || 1;
     const W = this._canvas.width / dpr;
     const H = this._canvas.height / dpr;
+
+    const mScale = this._mmScale || 1;
+    const mOx = this._mmOx || 0;
+    const mOy = this._mmOy || 0;
 
     const viewX = (-this._tx / this._sc);
     const viewY = (-this._ty / this._sc);
@@ -3230,12 +3498,16 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         this._isDragging = true;
         hit.pinned = true;
         cv.style.cursor = 'grabbing';
+        window.addEventListener('mousemove', this._onMouseMove);
+        window.addEventListener('mouseup', this._onMouseUp);
         this.requestFrame();
       } else {
         isPanning = true;
         this._isPanning = true;
         lastPoint = { x: e.offsetX, y: e.offsetY };
         cv.style.cursor = 'grabbing';
+        window.addEventListener('mousemove', this._onMouseMove);
+        window.addEventListener('mouseup', this._onMouseUp);
         this.requestFrame();
       }
     };
@@ -3253,6 +3525,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         draggingNode.y = wp.y;
         draggingNode.vx = 0;
         draggingNode.vy = 0;
+        this._hullsDirty = true;
+        this._minimapDirty = true;
         this.requestFrame();
       } else if (isPanning && lastPoint) {
         this._tx += ox - lastPoint.x;
@@ -3278,6 +3552,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     };
 
     this._onMouseUp = e => {
+      window.removeEventListener('mousemove', this._onMouseMove);
+      window.removeEventListener('mouseup', this._onMouseUp);
+
       if (draggingNode) {
         this._isDragging = false;
         const rect = cv.getBoundingClientRect();
@@ -3293,6 +3570,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         }
         draggingNode.pinned = false;
         draggingNode = null;
+        this._hullsDirty = true;
+        this._minimapDirty = true;
         this.requestFrame();
       }
       isPanning = false;
@@ -3328,8 +3607,6 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     cv.addEventListener('mousedown', this._onMouseDown);
     cv.addEventListener('mousemove', this._onMouseMove);
     cv.addEventListener('mouseup', this._onMouseUp);
-    window.addEventListener('mousemove', this._onMouseMove);
-    window.addEventListener('mouseup', this._onMouseUp);
     cv.addEventListener('mouseleave', this._onMouseLeave);
     cv.addEventListener('wheel', this._onWheel, { passive: false });
   }
@@ -3358,6 +3635,16 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
   _hitTest(screenX, screenY) {
     const wp = this._screenToWorld(screenX, screenY);
+    if (this._spatialGrid) {
+      const hit = this._spatialGrid.queryPoint(wp.x, wp.y, 45);
+      if (hit && !this._isNodeHidden(hit)) {
+        const dx = wp.x - hit.x;
+        const dy = wp.y - hit.y;
+        if (dx * dx + dy * dy <= (hit.radius + 6) * (hit.radius + 6)) {
+          return hit;
+        }
+      }
+    }
     for (let i = this._nodes.length - 1; i >= 0; i--) {
       const n = this._nodes[i];
       if (this._isNodeHidden(n)) continue;
