@@ -92,22 +92,155 @@ function getConvexHull(points) {
 
   upper.pop();
   lower.pop();
-  return lower.concat(upper);
+  const hull = lower.concat(upper);
+  return hull.length > 0 ? hull : pts.slice();
 }
 
-function expandHull(hullPoints, pad = 32) {
-  if (!hullPoints || hullPoints.length < 2) return hullPoints;
-  const cx = hullPoints.reduce((s, p) => s + p.x, 0) / hullPoints.length;
-  const cy = hullPoints.reduce((s, p) => s + p.y, 0) / hullPoints.length;
-  return hullPoints.map(p => {
-    const dx = p.x - cx;
-    const dy = p.y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    return {
-      x: p.x + (dx / dist) * pad,
-      y: p.y + (dy / dist) * pad,
-    };
-  });
+function _buildCapsulePolygon(p0, p1, pad, dx, dy, dist) {
+  const angle = Math.atan2(dy, dx);
+  const steps = 10;
+  const poly = [];
+
+  // Arc around p0 from angle + PI/2 to angle - PI/2 (clockwise)
+  const a0Start = angle + Math.PI / 2;
+  for (let s = 0; s <= steps; s++) {
+    const ang = a0Start + (s / steps) * Math.PI;
+    poly.push({
+      x: p0.x + pad * Math.cos(ang),
+      y: p0.y + pad * Math.sin(ang),
+    });
+  }
+
+  // Arc around p1 from angle - PI/2 to angle + PI/2 (clockwise)
+  const a1Start = angle - Math.PI / 2;
+  for (let s = 0; s <= steps; s++) {
+    const ang = a1Start + (s / steps) * Math.PI;
+    poly.push({
+      x: p1.x + pad * Math.cos(ang),
+      y: p1.y + pad * Math.sin(ang),
+    });
+  }
+
+  return poly;
+}
+
+/**
+ * Generate a 2D dilated polygon / capsule boundary around a set of points with radius `pad`.
+ *
+ * Guarantees:
+ * - 1 point: smooth circle of radius `pad`.
+ * - 2 points: smooth rounded capsule / stadium enclosing both points with radius `pad`.
+ * - 3+ collinear or near-collinear points: smooth rounded capsule enclosing all points.
+ * - 3+ non-collinear points: smooth dilated convex hull with rounded corners and offset edges.
+ *
+ * NEVER collapses to a 1D straight line or zero-area degenerate shape.
+ */
+function generateDilatedHull(points, pad = 42) {
+  if (!points || points.length === 0) return [];
+
+  // Case 1: Single point -> circular bubble
+  if (points.length === 1) {
+    const p0 = points[0];
+    const steps = 24;
+    const poly = [];
+    for (let i = 0; i < steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      poly.push({
+        x: p0.x + pad * Math.cos(ang),
+        y: p0.y + pad * Math.sin(ang),
+      });
+    }
+    return poly;
+  }
+
+  // Case 2: 2 points -> rounded capsule / stadium
+  if (points.length === 2) {
+    const p0 = points[0];
+    const p1 = points[1];
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) {
+      return generateDilatedHull([p0], pad);
+    }
+    return _buildCapsulePolygon(p0, p1, pad, dx, dy, dist);
+  }
+
+  // Case 3: 3+ points -> compute convex hull & test for collinearity
+  let hull = getConvexHull(points);
+
+  let area2 = 0;
+  for (let i = 0; i < hull.length; i++) {
+    const j = (i + 1) % hull.length;
+    area2 += hull[i].x * hull[j].y - hull[j].x * hull[i].y;
+  }
+
+  // If points are collinear, nearly collinear, or hull collapsed:
+  // Find the two farthest points in the set and build a capsule enclosing them
+  if (hull.length < 3 || Math.abs(area2) < 120) {
+    let maxDist = -1;
+    let bestPair = [points[0], points[1]];
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const d = Math.hypot(points[j].x - points[i].x, points[j].y - points[i].y);
+        if (d > maxDist) {
+          maxDist = d;
+          bestPair = [points[i], points[j]];
+        }
+      }
+    }
+    const dx = bestPair[1].x - bestPair[0].x;
+    const dy = bestPair[1].y - bestPair[0].y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) {
+      return generateDilatedHull([bestPair[0]], pad);
+    }
+    return _buildCapsulePolygon(bestPair[0], bestPair[1], pad, dx, dy, dist);
+  }
+
+  // Ensure counter-clockwise winding
+  if (area2 < 0) {
+    hull.reverse();
+  }
+
+  // Dilate convex polygon: rounded arcs at vertices connected by offset edge tangents
+  const k = hull.length;
+  const normals = [];
+  for (let i = 0; i < k; i++) {
+    const p1 = hull[i];
+    const p2 = hull[(i + 1) % k];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    normals.push({ x: dy / dist, y: -dx / dist });
+  }
+
+  const polygon = [];
+  for (let i = 0; i < k; i++) {
+    const p = hull[i];
+    const prevN = normals[(i - 1 + k) % k];
+    const nextN = normals[i];
+    const a1 = Math.atan2(prevN.y, prevN.x);
+    const a2 = Math.atan2(nextN.y, nextN.x);
+    let sweep = a2 - a1;
+    while (sweep < 0) sweep += Math.PI * 2;
+    while (sweep > Math.PI * 2) sweep -= Math.PI * 2;
+
+    const numArcSteps = Math.max(2, Math.ceil(sweep / (Math.PI / 8)));
+    for (let s = 0; s <= numArcSteps; s++) {
+      const ang = a1 + (s / numArcSteps) * sweep;
+      polygon.push({
+        x: p.x + pad * Math.cos(ang),
+        y: p.y + pad * Math.sin(ang),
+      });
+    }
+  }
+
+  return polygon;
+}
+
+function expandHull(hullPoints, pad = 42) {
+  return generateDilatedHull(hullPoints, pad);
 }
 
 const RGBA_CACHE = new Map();
@@ -1236,6 +1369,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     } else {
       this._hiddenCommunities.add(cid);
     }
+    this._hullsDirty = true;
     this.requestFrame();
   }
 
@@ -1251,6 +1385,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         this._hiddenClasses.add(id);
       }
     });
+    this._hullsDirty = true;
     this.requestFrame();
   }
 
@@ -2261,7 +2396,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       if (this._hiddenCommunities.has(comm.cid)) continue;
 
       const memberNodes = comm.memberNodes;
-      if (!memberNodes || memberNodes.length < 2) continue;
+      if (!memberNodes || memberNodes.length === 0) continue;
 
       let expanded = comm._cachedHull;
       let cx = comm._cachedCx;
@@ -2269,13 +2404,18 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
       if (recompute || !expanded) {
         const pts = [];
+        let maxR = 16;
         for (let i = 0; i < memberNodes.length; i++) {
           const n = memberNodes[i];
-          if (!this._isNodeHidden(n)) pts.push({ x: n.x, y: n.y });
+          if (!this._isNodeHidden(n)) {
+            pts.push({ x: n.x, y: n.y });
+            if (n.radius && n.radius > maxR) maxR = n.radius;
+          }
         }
-        if (pts.length < 2) continue;
-        const hull = getConvexHull(pts);
-        expanded = expandHull(hull, 36);
+        if (pts.length === 0) continue;
+
+        const pad = Math.max(38, Math.min(52, maxR + 24));
+        expanded = generateDilatedHull(pts, pad);
         if (!expanded || expanded.length < 2) continue;
 
         cx = expanded.reduce((s, p) => s + p.x, 0) / expanded.length;
@@ -2296,14 +2436,20 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
       ctx.closePath();
 
+      const isCommHovered = this._hoveredNode && this._hoveredNode.community === comm.cid;
+      const fillAlpha = isCommHovered ? 0.14 : (isBodyLight ? 0.08 : 0.07);
+      const strokeAlpha = isCommHovered ? 0.68 : (isBodyLight ? 0.44 : 0.38);
+      const strokeW = isCommHovered ? 2.0 : 1.5;
+
       // Shaded translucent fill
-      ctx.fillStyle = hexToRgba(comm.color, 0.07);
+      ctx.fillStyle = hexToRgba(comm.color, fillAlpha);
       ctx.fill();
 
       // Glowing border line
-      ctx.strokeStyle = hexToRgba(comm.color, 0.38);
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = hexToRgba(comm.color, strokeAlpha);
+      ctx.lineWidth = strokeW;
       ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.stroke();
 
       // Community / Package Tag Label
@@ -3082,6 +3228,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           const list = legendList.querySelector(`#graph-legend-classes-${cid}`);
           if (list) list.querySelectorAll('.legend-class-item').forEach(ci => ci.classList.add('dimmed'));
         }
+        this._hullsDirty = true;
+        this.requestFrame();
       };
     });
 
@@ -3097,6 +3245,8 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
           this._hiddenClasses.add(clsName);
           item.classList.add('dimmed');
         }
+        this._hullsDirty = true;
+        this.requestFrame();
       };
     });
   }
