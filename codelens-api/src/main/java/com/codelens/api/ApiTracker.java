@@ -170,6 +170,7 @@ public class ApiTracker {
         addRoute("GET",  "/api/reports/review",                "Reports", "Consolidated code review report", true);
         addRoute("GET",  "/api/reports/metrics",               "Reports", "Comprehensive codebase metrics report", true);
         addRoute("GET",  "/api/reports/api-catalog",           "Reports", "Exportable OpenAPI-style documentation catalog for all CodeLens APIs", true);
+        addRoute("GET",  "/api/reports/module-coupling",       "Reports", "Module coupling, instability (I), abstractness (A), and main sequence distance report", true);
         addRoute("GET",  "/api/reports/html-snapshot",         "Reports", "Generate standalone interactive HTML snapshot", true);
         addRoute("GET",  "/api/reports/download",              "Reports", "Download generated report in requested format", false);
 

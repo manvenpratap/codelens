@@ -4433,6 +4433,566 @@ public class ReportService {
     }
 
     // =========================================================================
+    // 13. MODULE COUPLING & STABILITY INSIGHTS REPORT
+    // =========================================================================
+
+    public static class ModuleCouplingReportData {
+        public String generatedAt;
+        public int totalModules;
+        public int totalClasses;
+        public int totalCrossModuleRelationships;
+        public double avgInstability;
+        public double avgAbstractness;
+        public double avgDistance;
+        public int decouplingScore; // 0 - 100
+        public String decouplingRating;
+        public int bidirectionalTanglesCount;
+        public int zoneOfPainCount;
+        public int zoneOfUselessnessCount;
+        public int balancedCount;
+        public String mostDependedModule;
+        public String mostDependentModule;
+        public List<ModuleCouplingItem> modules = new ArrayList<>();
+        public List<ModulePairCouplingItem> topCoupledPairs = new ArrayList<>();
+        public List<String> decouplingRecommendations = new ArrayList<>();
+    }
+
+    public static class ModuleCouplingItem {
+        public String moduleName;
+        public int classCount;
+        public int interfaceCount;
+        public double abstractness; // A = interfaceCount / classCount
+        public int afferentCoupling; // Ca (incoming modules)
+        public int efferentCoupling; // Ce (outgoing modules)
+        public int totalCoupling;    // Ca + Ce
+        public int incomingCalls;    // Total incoming relationships
+        public int outgoingCalls;    // Total outgoing relationships
+        public double instability;   // I = Ce / (Ca + Ce)
+        public double distanceMainSequence; // D = |A + I - 1|
+        public String couplingZone;  // BALANCED, ZONE_OF_PAIN, ZONE_OF_USELESSNESS, VOLATILE, STABLE, ISOLATED, MODERATE
+        public String healthGrade;   // A, B, C, D, F
+        public List<String> topTargetModules = new ArrayList<>();
+        public List<String> topSourceModules = new ArrayList<>();
+    }
+
+    public static class ModulePairCouplingItem {
+        public String sourceModule;
+        public String targetModule;
+        public int calls;
+        public boolean isBidirectional;
+        public int reverseCalls;
+        public String couplingStrength; // LOW, MEDIUM, TIGHT
+        public String bridgeSample;
+    }
+
+    public ModuleCouplingReportData buildModuleCouplingData(List<CodeType> types,
+                                                            List<CodeMethod> methods,
+                                                            List<CodeField> fields,
+                                                            List<CodeRelationship> relationships) {
+        ModuleCouplingReportData data = new ModuleCouplingReportData();
+        data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        if (types == null) types = Collections.emptyList();
+        if (methods == null) methods = Collections.emptyList();
+        if (fields == null) fields = Collections.emptyList();
+        if (relationships == null) relationships = Collections.emptyList();
+
+        data.totalClasses = types.size();
+
+        // 1. Group types by module (package)
+        Map<String, List<CodeType>> byModule = new HashMap<>();
+        Map<String, String> typeToModule = new HashMap<>();
+        for (CodeType t : types) {
+            String pkg = (t.getPackageFqn() != null && !t.getPackageFqn().isBlank()) ? t.getPackageFqn().trim() : "(default)";
+            byModule.computeIfAbsent(pkg, k -> new ArrayList<>()).add(t);
+            if (t.getFqn() != null) {
+                typeToModule.put(t.getFqn(), pkg);
+            }
+        }
+        data.totalModules = byModule.size();
+
+        // 2. Maps for method -> declaring type and field -> declaring type
+        Map<String, String> methodToType = new HashMap<>();
+        for (CodeMethod m : methods) {
+            if (m.getFqn() != null && m.getDeclaringTypeFqn() != null) {
+                methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
+            }
+        }
+        Map<String, String> fieldToType = new HashMap<>();
+        for (CodeField f : fields) {
+            if (f.getFqn() != null && f.getDeclaringTypeFqn() != null) {
+                fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
+            }
+        }
+
+        // 3. Track cross-module calls and bridge samples
+        Map<String, Map<String, Integer>> outCalls = new HashMap<>();
+        Map<String, Map<String, Integer>> inCalls = new HashMap<>();
+        Map<String, String> bridgeSamples = new HashMap<>();
+        int totalCrossRels = 0;
+
+        for (CodeRelationship r : relationships) {
+            String fromEntity = r.getFromEntityFqn();
+            String toEntity = r.getToEntityFqn();
+            if (fromEntity == null || toEntity == null) continue;
+
+            String fromType = methodToType.get(fromEntity);
+            if (fromType == null) fromType = fieldToType.get(fromEntity);
+            if (fromType == null) fromType = fromEntity;
+
+            String toType = methodToType.get(toEntity);
+            if (toType == null) toType = fieldToType.get(toEntity);
+            if (toType == null) toType = toEntity;
+
+            String srcMod = typeToModule.get(fromType);
+            if (srcMod == null) {
+                int lastDot = fromType.lastIndexOf('.');
+                srcMod = lastDot > 0 ? fromType.substring(0, lastDot) : "(default)";
+            }
+
+            String tgtMod = typeToModule.get(toType);
+            if (tgtMod == null) {
+                int lastDot = toType.lastIndexOf('.');
+                tgtMod = lastDot > 0 ? toType.substring(0, lastDot) : "(default)";
+            }
+
+            if (!srcMod.equals(tgtMod)) {
+                totalCrossRels++;
+                outCalls.computeIfAbsent(srcMod, k -> new HashMap<>()).merge(tgtMod, 1, Integer::sum);
+                inCalls.computeIfAbsent(tgtMod, k -> new HashMap<>()).merge(srcMod, 1, Integer::sum);
+
+                String pairKey = srcMod + " -> " + tgtMod;
+                if (!bridgeSamples.containsKey(pairKey)) {
+                    String simpleFrom = fromType.contains(".") ? fromType.substring(fromType.lastIndexOf('.') + 1) : fromType;
+                    String simpleTo = toType.contains(".") ? toType.substring(toType.lastIndexOf('.') + 1) : toType;
+                    bridgeSamples.put(pairKey, simpleFrom + " \u2794 " + simpleTo);
+                }
+            }
+        }
+        data.totalCrossModuleRelationships = totalCrossRels;
+
+        // 4. Calculate metrics for each module
+        List<ModuleCouplingItem> moduleList = new ArrayList<>();
+        double sumInstability = 0.0;
+        int activeInstabilityCount = 0;
+        double sumAbstractness = 0.0;
+        double sumDistance = 0.0;
+        int activeDistanceCount = 0;
+
+        String maxDependedMod = "N/A";
+        int maxCa = -1;
+        String maxDependentMod = "N/A";
+        int maxCe = -1;
+
+        for (Map.Entry<String, List<CodeType>> entry : byModule.entrySet()) {
+            String modName = entry.getKey();
+            List<CodeType> modTypes = entry.getValue();
+
+            ModuleCouplingItem item = new ModuleCouplingItem();
+            item.moduleName = modName;
+            item.classCount = modTypes.size();
+
+            int interfaces = 0;
+            for (CodeType t : modTypes) {
+                boolean isIface = "INTERFACE".equalsIgnoreCase(t.getKind()) ||
+                    (t.getModifiers() != null && t.getModifiers().toLowerCase().contains("abstract"));
+                if (isIface) interfaces++;
+            }
+            item.interfaceCount = interfaces;
+            item.abstractness = item.classCount > 0 ? Math.round(((double) interfaces / item.classCount) * 1000.0) / 1000.0 : 0.0;
+            sumAbstractness += item.abstractness;
+
+            Map<String, Integer> targets = outCalls.getOrDefault(modName, Collections.emptyMap());
+            Map<String, Integer> sources = inCalls.getOrDefault(modName, Collections.emptyMap());
+
+            item.efferentCoupling = targets.size();
+            item.afferentCoupling = sources.size();
+            item.totalCoupling = item.afferentCoupling + item.efferentCoupling;
+
+            item.outgoingCalls = targets.values().stream().mapToInt(Integer::intValue).sum();
+            item.incomingCalls = sources.values().stream().mapToInt(Integer::intValue).sum();
+
+            if (item.totalCoupling > 0) {
+                item.instability = Math.round(((double) item.efferentCoupling / item.totalCoupling) * 1000.0) / 1000.0;
+                sumInstability += item.instability;
+                activeInstabilityCount++;
+            } else {
+                item.instability = 0.0;
+            }
+
+            // Distance from Main Sequence: D = |A + I - 1|
+            item.distanceMainSequence = Math.round(Math.abs(item.abstractness + item.instability - 1.0) * 1000.0) / 1000.0;
+            if (item.totalCoupling > 0) {
+                sumDistance += item.distanceMainSequence;
+                activeDistanceCount++;
+            }
+
+            // Zone Classification
+            if (item.totalCoupling == 0) {
+                item.couplingZone = "ISOLATED";
+                item.healthGrade = "B";
+            } else if (item.abstractness < 0.2 && item.instability < 0.3 && item.distanceMainSequence > 0.4) {
+                item.couplingZone = "ZONE_OF_PAIN";
+                item.healthGrade = "F";
+                data.zoneOfPainCount++;
+            } else if (item.abstractness > 0.5 && item.instability > 0.6 && item.distanceMainSequence > 0.4) {
+                item.couplingZone = "ZONE_OF_USELESSNESS";
+                item.healthGrade = "D";
+                data.zoneOfUselessnessCount++;
+            } else if (item.distanceMainSequence <= 0.35) {
+                item.couplingZone = "BALANCED";
+                item.healthGrade = "A";
+                data.balancedCount++;
+            } else if (item.instability >= 0.75) {
+                item.couplingZone = "VOLATILE";
+                item.healthGrade = "B";
+            } else if (item.instability <= 0.25) {
+                item.couplingZone = "STABLE";
+                item.healthGrade = "B";
+            } else {
+                item.couplingZone = "MODERATE";
+                item.healthGrade = "C";
+            }
+
+            // Top targets & sources
+            item.topTargetModules = targets.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(4)
+                .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                .collect(Collectors.toList());
+
+            item.topSourceModules = sources.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(4)
+                .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                .collect(Collectors.toList());
+
+            if (item.afferentCoupling > maxCa) {
+                maxCa = item.afferentCoupling;
+                maxDependedMod = modName;
+            }
+            if (item.efferentCoupling > maxCe) {
+                maxCe = item.efferentCoupling;
+                maxDependentMod = modName;
+            }
+
+            moduleList.add(item);
+        }
+
+        // Sort modules by totalCoupling desc, then distance desc
+        moduleList.sort((a, b) -> {
+            int cmp = Integer.compare(b.totalCoupling, a.totalCoupling);
+            if (cmp != 0) return cmp;
+            return Double.compare(b.distanceMainSequence, a.distanceMainSequence);
+        });
+        data.modules = moduleList;
+
+        data.mostDependedModule = maxDependedMod;
+        data.mostDependentModule = maxDependentMod;
+        data.avgInstability = activeInstabilityCount > 0 ? Math.round((sumInstability / activeInstabilityCount) * 1000.0) / 1000.0 : 0.0;
+        data.avgAbstractness = byModule.size() > 0 ? Math.round((sumAbstractness / byModule.size()) * 1000.0) / 1000.0 : 0.0;
+        data.avgDistance = activeDistanceCount > 0 ? Math.round((sumDistance / activeDistanceCount) * 1000.0) / 1000.0 : 0.0;
+
+        // 5. Inter-Module Coupling Pairs & Bidirectional Tangle Detection
+        List<ModulePairCouplingItem> pairs = new ArrayList<>();
+        Set<String> processedUndirectedPairs = new HashSet<>();
+        int biTangles = 0;
+
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : outCalls.entrySet()) {
+            String src = srcEntry.getKey();
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                String tgt = tgtEntry.getKey();
+                int calls = tgtEntry.getValue();
+
+                int reverseCalls = outCalls.getOrDefault(tgt, Collections.emptyMap()).getOrDefault(src, 0);
+                boolean isBi = reverseCalls > 0;
+
+                String undirectedKey = src.compareTo(tgt) < 0 ? src + " <-> " + tgt : tgt + " <-> " + src;
+                if (isBi && !processedUndirectedPairs.contains(undirectedKey)) {
+                    biTangles++;
+                    processedUndirectedPairs.add(undirectedKey);
+                }
+
+                ModulePairCouplingItem pair = new ModulePairCouplingItem();
+                pair.sourceModule = src;
+                pair.targetModule = tgt;
+                pair.calls = calls;
+                pair.isBidirectional = isBi;
+                pair.reverseCalls = reverseCalls;
+                pair.couplingStrength = (calls > 20 || isBi) ? "TIGHT" : (calls >= 6 ? "MEDIUM" : "LOW");
+                pair.bridgeSample = bridgeSamples.getOrDefault(src + " -> " + tgt, "N/A");
+
+                pairs.add(pair);
+            }
+        }
+
+        pairs.sort((a, b) -> {
+            if (a.isBidirectional != b.isBidirectional) return Boolean.compare(b.isBidirectional, a.isBidirectional);
+            return Integer.compare(b.calls, a.calls);
+        });
+        data.topCoupledPairs = pairs;
+        data.bidirectionalTanglesCount = biTangles;
+
+        // 6. Decoupling Score calculation
+        int penalty = (biTangles * 8) + (data.zoneOfPainCount * 5) + (data.zoneOfUselessnessCount * 3);
+        if (data.avgDistance > 0.45) penalty += 6;
+        data.decouplingScore = Math.max(15, Math.min(100, 100 - penalty));
+
+        if (data.decouplingScore >= 85) data.decouplingRating = "EXCELLENT (A)";
+        else if (data.decouplingScore >= 70) data.decouplingRating = "GOOD (B)";
+        else if (data.decouplingScore >= 55) data.decouplingRating = "MODERATE (C)";
+        else if (data.decouplingScore >= 40) data.decouplingRating = "HIGH RISK (D)";
+        else data.decouplingRating = "SEVERELY TANGLED (F)";
+
+        // 7. Architectural Decoupling Recommendations
+        List<String> recs = new ArrayList<>();
+        if (biTangles > 0) {
+            recs.add("Resolve " + biTangles + " bidirectional module tangle(s): Mutual dependencies between modules violate the Acyclic Dependencies Principle (ADP). Decouple via dependency inversion (interfaces) or event-driven messaging.");
+            Set<String> shownTangles = new HashSet<>();
+            for (ModulePairCouplingItem p : pairs) {
+                if (p.isBidirectional) {
+                    String undirected = p.sourceModule.compareTo(p.targetModule) < 0 ? p.sourceModule + " <-> " + p.targetModule : p.targetModule + " <-> " + p.sourceModule;
+                    if (shownTangles.add(undirected) && shownTangles.size() <= 3) {
+                        recs.add("Tangle: `" + p.sourceModule + "` \u21c4 `" + p.targetModule + "` (" + p.calls + " calls vs " + p.reverseCalls + " return calls). Extract common shared models or introduce an interface contract.");
+                    }
+                }
+            }
+        }
+        if (data.zoneOfPainCount > 0) {
+            recs.add("Refactor " + data.zoneOfPainCount + " module(s) in the Zone of Pain: These modules have low abstractness and high afferent coupling (many dependents). Introduce abstract interfaces to shield clients from concrete implementation changes.");
+        }
+        if (data.zoneOfUselessnessCount > 0) {
+            recs.add("Review " + data.zoneOfUselessnessCount + " module(s) in the Zone of Uselessness: These modules contain high interface/abstract class ratios without sufficient incoming callers. Consider removing superfluous abstractions.");
+        }
+        if (recs.isEmpty()) {
+            recs.add("Codebase exhibits healthy modular decoupling with low cross-module tangling and balanced instability metrics.");
+        }
+        data.decouplingRecommendations = recs;
+
+        return data;
+    }
+
+    public String renderModuleCouplingJson(ModuleCouplingReportData d) {
+        try {
+            return jsonMapper.writeValueAsString(d);
+        } catch (Exception e) {
+            return "{\"error\":\"" + escapeHtml(e.getMessage()) + "\"}";
+        }
+    }
+
+    public String renderModuleCouplingCsv(ModuleCouplingReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Section,ModuleName,ClassCount,InterfaceCount,Abstractness_A,AfferentCoupling_Ca,EfferentCoupling_Ce,TotalCoupling,Instability_I,DistanceMainSequence_D,CouplingZone,HealthGrade,IncomingCalls,OutgoingCalls\n");
+        for (ModuleCouplingItem m : d.modules) {
+            sb.append("MODULE,")
+              .append(escapeCsv(m.moduleName)).append(",")
+              .append(m.classCount).append(",")
+              .append(m.interfaceCount).append(",")
+              .append(m.abstractness).append(",")
+              .append(m.afferentCoupling).append(",")
+              .append(m.efferentCoupling).append(",")
+              .append(m.totalCoupling).append(",")
+              .append(m.instability).append(",")
+              .append(m.distanceMainSequence).append(",")
+              .append(escapeCsv(m.couplingZone)).append(",")
+              .append(escapeCsv(m.healthGrade)).append(",")
+              .append(m.incomingCalls).append(",")
+              .append(m.outgoingCalls).append("\n");
+        }
+        sb.append("\nSection,SourceModule,TargetModule,CallCount,IsBidirectional,ReverseCallCount,CouplingStrength,BridgeSample\n");
+        for (ModulePairCouplingItem p : d.topCoupledPairs) {
+            sb.append("PAIR,")
+              .append(escapeCsv(p.sourceModule)).append(",")
+              .append(escapeCsv(p.targetModule)).append(",")
+              .append(p.calls).append(",")
+              .append(p.isBidirectional).append(",")
+              .append(p.reverseCalls).append(",")
+              .append(escapeCsv(p.couplingStrength)).append(",")
+              .append(escapeCsv(p.bridgeSample)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public String renderModuleCouplingMarkdown(ModuleCouplingReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 📦 CodeLens Module Coupling & Stability Insights Report\n\n");
+        sb.append("> **Generated**: `").append(d.generatedAt).append("` | **Decoupling Score**: `")
+          .append(d.decouplingScore).append("/100 (").append(d.decouplingRating).append(")`\n\n");
+
+        sb.append("## 1. Executive Summary\n\n");
+        sb.append("| Architectural Metric | Value | Architectural Significance |\n");
+        sb.append("| :--- | :---: | :--- |\n");
+        sb.append("| **Total Modules Analyzed** | **").append(d.totalModules).append("** | Distinct architectural packages |\n");
+        sb.append("| **Cross-Module Relationships** | **").append(d.totalCrossModuleRelationships).append("** | Total calls & references crossing package boundaries |\n");
+        sb.append("| **Average Instability ($I_{avg}$)** | **").append(d.avgInstability).append("** | System-wide efferent ratio ($0.0$ = rock-solid core, $1.0$ = volatile leaf) |\n");
+        sb.append("| **Average Abstractness ($A_{avg}$)** | **").append(d.avgAbstractness).append("** | Ratio of interfaces & abstract classes to total types |\n");
+        sb.append("| **Main Sequence Distance ($D_{avg}$)** | **").append(d.avgDistance).append("** | Normalized deviation from optimal stability/abstractness balance |\n");
+        sb.append("| **Bidirectional Tangles** | **").append(d.bidirectionalTanglesCount).append("** | ").append(d.bidirectionalTanglesCount == 0 ? "✅ No mutual co-dependent loops" : "⚠️ Mutual package coupling violating Acyclic Dependencies").append(" |\n");
+        sb.append("| **Modules in Zone of Pain** | **").append(d.zoneOfPainCount).append("** | Rigid concrete modules with heavy incoming dependencies |\n");
+        sb.append("| **Modules in Zone of Uselessness** | **").append(d.zoneOfUselessnessCount).append("** | Over-abstracted modules with zero/minimal clients |\n");
+        sb.append("| **Main Sequence Modules (Balanced)** | **").append(d.balancedCount).append("** | Healthy modular balance between abstractness and stability |\n\n");
+
+        sb.append("## 2. Decoupling Action Items & Recommendations\n\n");
+        for (int i = 0; i < d.decouplingRecommendations.size(); i++) {
+            sb.append((i + 1)).append(". ").append(d.decouplingRecommendations.get(i)).append("\n");
+        }
+        sb.append("\n");
+
+        sb.append("## 3. Module Coupling Matrix (Robert C. Martin Metrics)\n\n");
+        sb.append("| Module / Package | Classes | Iface | Afferent ($Ca$) | Efferent ($Ce$) | Instability ($I$) | Abstractness ($A$) | Distance ($D$) | Zone | Grade |\n");
+        sb.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- | :---: |\n");
+        for (ModuleCouplingItem m : d.modules) {
+            sb.append("| `").append(m.moduleName).append("` | ")
+              .append(m.classCount).append(" | ")
+              .append(m.interfaceCount).append(" | ")
+              .append(m.afferentCoupling).append(" | ")
+              .append(m.efferentCoupling).append(" | ")
+              .append(m.instability).append(" | ")
+              .append(m.abstractness).append(" | ")
+              .append(m.distanceMainSequence).append(" | **")
+              .append(m.couplingZone).append("** | `")
+              .append(m.healthGrade).append("` |\n");
+        }
+        sb.append("\n");
+
+        if (!d.topCoupledPairs.isEmpty()) {
+            sb.append("## 4. Top Inter-Module Coupling Pairs & Cross-Traffic\n\n");
+            sb.append("| Source Module | Target Module | Call Volume | Mutual Tangle? | Coupling Strength | Example Bridge |\n");
+            sb.append("| :--- | :--- | :---: | :---: | :---: | :--- |\n");
+            for (int i = 0; i < Math.min(25, d.topCoupledPairs.size()); i++) {
+                ModulePairCouplingItem p = d.topCoupledPairs.get(i);
+                sb.append("| `").append(p.sourceModule).append("` | `")
+                  .append(p.targetModule).append("` | ")
+                  .append(p.calls).append(" | ")
+                  .append(p.isBidirectional ? "⚠️ **YES** (" + p.reverseCalls + " return calls)" : "✅ No")
+                  .append(" | **").append(p.couplingStrength).append("** | `")
+                  .append(p.bridgeSample).append("` |\n");
+            }
+            sb.append("\n");
+        }
+
+        if (d.topCoupledPairs.size() > 0) {
+            sb.append("## 5. Architectural Dependency Diagram\n\n");
+            sb.append("```mermaid\nflowchart LR\n");
+            Set<String> addedNodes = new HashSet<>();
+            int maxEdges = Math.min(15, d.topCoupledPairs.size());
+            for (int i = 0; i < maxEdges; i++) {
+                ModulePairCouplingItem p = d.topCoupledPairs.get(i);
+                String srcId = "M" + Math.abs(p.sourceModule.hashCode() % 10000);
+                String tgtId = "M" + Math.abs(p.targetModule.hashCode() % 10000);
+                if (addedNodes.add(srcId)) {
+                    sb.append("  ").append(srcId).append("[\"").append(p.sourceModule).append("\"]\n");
+                }
+                if (addedNodes.add(tgtId)) {
+                    sb.append("  ").append(tgtId).append("[\"").append(p.targetModule).append("\"]\n");
+                }
+                if (p.isBidirectional) {
+                    sb.append("  ").append(srcId).append(" <-- ").append(p.calls).append("/").append(p.reverseCalls).append(" --> ").append(tgtId).append("\n");
+                } else {
+                    sb.append("  ").append(srcId).append(" -- ").append(p.calls).append(" --> ").append(tgtId).append("\n");
+                }
+            }
+            sb.append("```\n\n");
+        }
+
+        return sb.toString();
+    }
+
+    public String renderModuleCouplingHtml(ModuleCouplingReportData d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n");
+        sb.append("<title>CodeLens Module Coupling & Stability Insights</title>\n");
+        sb.append("<style>\n");
+        sb.append(":root { --bg: #0b0f19; --surface: #131b2e; --border: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --accent: #06b6d4; --red: #ef4444; --orange: #f97316; --green: #10b981; --purple: #8b5cf6; }\n");
+        sb.append("@media print { body { background: #fff !important; color: #000 !important; } .card, .report-html-table-wrapper { border: 1px solid #ccc !important; background: #fff !important; } }\n");
+        sb.append("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; max-width: 1200px; margin: 0 auto; line-height: 1.6; }\n");
+        sb.append("h1, h2, h3 { color: #fff; margin-top: 24px; }\n");
+        sb.append(".header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; }\n");
+        sb.append(".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }\n");
+        sb.append(".card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }\n");
+        sb.append(".card-val { font-size: 26px; font-weight: 700; font-family: monospace; }\n");
+        sb.append(".card-lbl { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; margin-top: 4px; }\n");
+        sb.append("table { width: 100%; border-collapse: collapse; font-size: 13px; }\n");
+        sb.append("th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }\n");
+        sb.append("th { background: var(--surface); color: var(--muted); font-size: 11px; text-transform: uppercase; }\n");
+        sb.append("code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }\n");
+        sb.append(".badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }\n");
+        sb.append(".badge-green { background: rgba(16,185,129,0.2); color: #4ade80; border: 1px solid rgba(16,185,129,0.4); }\n");
+        sb.append(".badge-blue { background: rgba(6,182,212,0.2); color: #38bdf8; border: 1px solid rgba(6,182,212,0.4); }\n");
+        sb.append(".badge-orange { background: rgba(249,115,22,0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); }\n");
+        sb.append(".badge-red { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }\n");
+        sb.append(".badge-purple { background: rgba(139,92,246,0.2); color: #c084fc; border: 1px solid rgba(139,92,246,0.4); }\n");
+        sb.append(".recs-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin: 20px 0; }\n");
+        sb.append(".recs-box li { margin-bottom: 10px; font-size: 13.5px; }\n");
+        sb.append("</style>\n</head>\n<body>\n");
+
+        sb.append("<div class=\"header\"><div><h1>📦 CodeLens Module Coupling &amp; Stability Insights</h1>");
+        sb.append("<p style=\"color:var(--muted); margin:4px 0;\">Evaluated on ").append(d.generatedAt).append("</p></div>");
+        sb.append("<div><span class=\"badge ").append(d.decouplingScore >= 75 ? "badge-green" : (d.decouplingScore >= 50 ? "badge-orange" : "badge-red"))
+          .append("\" style=\"font-size:15px; padding:6px 14px;\">Decoupling Score: ").append(d.decouplingScore).append("/100 (").append(d.decouplingRating).append(")</span></div></div>\n");
+
+        sb.append("<div class=\"grid\">");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--accent);\">").append(d.totalModules).append("</div><div class=\"card-lbl\">Modules Analyzed</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:#38bdf8;\">").append(d.totalCrossModuleRelationships).append("</div><div class=\"card-lbl\">Cross-Module Calls</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.bidirectionalTanglesCount == 0 ? "var(--green)" : "var(--red)").append(";\">").append(d.bidirectionalTanglesCount).append("</div><div class=\"card-lbl\">Mutual Tangles</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--purple);\">").append(d.avgInstability).append("</div><div class=\"card-lbl\">Avg Instability (I)</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:").append(d.zoneOfPainCount == 0 ? "var(--green)" : "var(--orange)").append(";\">").append(d.zoneOfPainCount).append("</div><div class=\"card-lbl\">Zone of Pain</div></div>");
+        sb.append("<div class=\"card\"><div class=\"card-val\" style=\"color:var(--green);\">").append(d.balancedCount).append("</div><div class=\"card-lbl\">Main Sequence</div></div>");
+        sb.append("</div>\n");
+
+        sb.append("<div class=\"recs-box\"><h3>🎯 Architectural Decoupling Recommendations</h3><ul>");
+        for (String rec : d.decouplingRecommendations) {
+            sb.append("<li>").append(escapeHtml(rec)).append("</li>");
+        }
+        sb.append("</ul></div>\n");
+
+        sb.append("<h2>Module Coupling Metrics (Ca / Ce / Instability / Distance)</h2>\n");
+        sb.append("<div class=\"report-html-table-wrapper\">\n");
+        sb.append("<table><thead><tr><th>Module</th><th>Classes</th><th>Iface</th><th>Ca</th><th>Ce</th><th>Total</th><th>Instability (I)</th><th>Distance (D)</th><th>Zone</th><th>Grade</th></tr></thead><tbody>\n");
+        for (ModuleCouplingItem m : d.modules) {
+            String zoneClass = m.couplingZone.equals("BALANCED") ? "badge-green" :
+                               m.couplingZone.equals("ZONE_OF_PAIN") ? "badge-red" :
+                               m.couplingZone.equals("ZONE_OF_USELESSNESS") ? "badge-orange" :
+                               m.couplingZone.equals("ISOLATED") ? "badge-purple" : "badge-blue";
+            sb.append("<tr>")
+              .append("<td><code>").append(escapeHtml(m.moduleName)).append("</code></td>")
+              .append("<td>").append(m.classCount).append("</td>")
+              .append("<td>").append(m.interfaceCount).append("</td>")
+              .append("<td><strong>").append(m.afferentCoupling).append("</strong></td>")
+              .append("<td><strong>").append(m.efferentCoupling).append("</strong></td>")
+              .append("<td>").append(m.totalCoupling).append("</td>")
+              .append("<td><code>").append(m.instability).append("</code></td>")
+              .append("<td><code>").append(m.distanceMainSequence).append("</code></td>")
+              .append("<td><span class=\"badge ").append(zoneClass).append("\">").append(escapeHtml(m.couplingZone)).append("</span></td>")
+              .append("<td><strong>").append(escapeHtml(m.healthGrade)).append("</strong></td>")
+              .append("</tr>\n");
+        }
+        sb.append("</tbody></table></div>\n");
+
+        if (!d.topCoupledPairs.isEmpty()) {
+            sb.append("<h2>Top Inter-Module Coupling Pairs &amp; Cross-Traffic</h2>\n");
+            sb.append("<div class=\"report-html-table-wrapper\">\n");
+            sb.append("<table><thead><tr><th>Source Module</th><th>Target Module</th><th>Calls</th><th>Mutual Tangle?</th><th>Coupling Intensity</th><th>Sample Bridge</th></tr></thead><tbody>\n");
+            for (ModulePairCouplingItem p : d.topCoupledPairs) {
+                String strClass = p.couplingStrength.equals("TIGHT") ? "badge-red" : (p.couplingStrength.equals("MEDIUM") ? "badge-orange" : "badge-green");
+                sb.append("<tr>")
+                  .append("<td><code>").append(escapeHtml(p.sourceModule)).append("</code></td>")
+                  .append("<td><code>").append(escapeHtml(p.targetModule)).append("</code></td>")
+                  .append("<td><strong>").append(p.calls).append("</strong></td>")
+                  .append("<td>").append(p.isBidirectional ? "<span class=\"badge badge-red\">⚠️ Mutual Tangle (" + p.reverseCalls + " return calls)</span>" : "<span class=\"badge badge-green\">One-way</span>").append("</td>")
+                  .append("<td><span class=\"badge ").append(strClass).append("\">").append(escapeHtml(p.couplingStrength)).append("</span></td>")
+                  .append("<td><code>").append(escapeHtml(p.bridgeSample)).append("</code></td>")
+                  .append("</tr>\n");
+            }
+            sb.append("</tbody></table></div>\n");
+        }
+
+        appendHtmlReportPaginationAssets(sb);
+        sb.append("</body>\n</html>");
+        return sb.toString();
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

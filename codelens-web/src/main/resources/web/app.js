@@ -907,12 +907,12 @@ function getPhaseMetricsData(stageKey, s) {
         pill: 'Phase 6',
         name: 'Codebase Intelligence Reports',
         summary: stepInfo.summary || 'Precomputing all 13 architecture, risk, quality, and concurrency reports',
-        detailText: stepInfo.detail || 'Generated all 13 intelligence reports with offline standalone HTML snapshot.',
+        detailText: stepInfo.detail || 'Generated all 14 intelligence reports with offline standalone HTML snapshot.',
         duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'REPORTS' ? 'RUNNING' : 'PENDING')),
         cards: [
           {
-            val: metrics['Reports Ready'] || `${reportsCount} / 13`,
+            val: metrics['Reports Ready'] || `${reportsCount} / 14`,
             lbl: 'Reports Generated',
             colorClass: 'icon-emerald-bg',
             iconColor: 'icon-emerald',
@@ -920,7 +920,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'
           },
           {
-            val: metrics['Active Report'] || (s.status === 'COMPLETE' ? 'All 13 Ready' : 'In Progress'),
+            val: metrics['Active Report'] || (s.status === 'COMPLETE' ? 'All 14 Ready' : 'In Progress'),
             lbl: 'Active Report',
             colorClass: 'icon-cyan-bg',
             iconColor: 'icon-cyan',
@@ -928,7 +928,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
           },
           {
-            val: metrics['Artifacts'] || '13 Reports',
+            val: metrics['Artifacts'] || '14 Reports',
             lbl: 'Audit Artifacts',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -14828,6 +14828,12 @@ const REPORTS_METADATA = {
     badge: 'STRUCTURAL',
     badgeClass: 'tag-arch'
   },
+  'module-coupling': {
+    title: 'Module Coupling & Stability Insights',
+    subtitle: 'Package coupling (Ca/Ce), instability (I), abstractness (A), distance from main sequence (D), and bidirectional tangles.',
+    badge: 'COUPLING',
+    badgeClass: 'tag-arch'
+  },
   'review': {
     title: 'Code Quality & Security Audit',
     subtitle: 'Comprehensive audit across 32 AST and call-graph rules with CWE mappings and remediation recommendations.',
@@ -15211,6 +15217,8 @@ const ReportsHub = {
       ReportsHub.renderArchetypeGovernanceDashboard(container, data);
     } else if (type === 'architecture') {
       ReportsHub.renderArchitectureDashboard(container, data);
+    } else if (type === 'module-coupling') {
+      ReportsHub.renderModuleCouplingDashboard(container, data);
     } else if (type === 'review') {
       ReportsHub.renderReviewDashboard(container, data);
     } else if (type === 'metrics') {
@@ -17021,6 +17029,215 @@ const ReportsHub = {
         </div>
       </div>
     `;
+    container.innerHTML = html;
+  },
+
+  renderModuleCouplingDashboard(container, d) {
+    const score = d.decouplingScore || 0;
+    const scoreBadgeClass = score >= 80 ? 'risk-low' : (score >= 60 ? 'risk-medium' : 'risk-critical');
+    const tanglesCount = d.bidirectionalTanglesCount || 0;
+    const tangleBadgeClass = tanglesCount === 0 ? 'risk-low' : 'risk-critical';
+
+    const getZoneBadgeClass = (z) => {
+      if (z === 'ZONE_OF_PAIN') return 'risk-critical';
+      if (z === 'ZONE_OF_USELESSNESS') return 'risk-high';
+      if (z === 'BALANCED') return 'risk-low';
+      if (z === 'STABLE' || z === 'VOLATILE') return 'risk-medium';
+      return 'risk-low';
+    };
+
+    const getGradeBadgeClass = (g) => {
+      if (g === 'A' || g === 'B') return 'risk-low';
+      if (g === 'C') return 'risk-medium';
+      if (g === 'D') return 'risk-high';
+      return 'risk-critical';
+    };
+
+    let html = `
+      <div class="report-kpi-grid">
+        <div class="report-kpi-card" style="--kpi-accent: #10b981;">
+          <span class="report-kpi-label">Decoupling Health</span>
+          <div class="report-kpi-val">
+            <span>${score}</span>
+            <span class="risk-badge ${scoreBadgeClass}">${esc(d.decouplingRating || 'OPTIMAL')}</span>
+          </div>
+          <span class="report-kpi-sub">Cross-Module Calls: <strong>${d.totalCrossModuleRelationships || 0}</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #3b82f6;">
+          <span class="report-kpi-label">Modules Analyzed</span>
+          <div class="report-kpi-val">
+            <span>${d.totalModules || 0}</span>
+            <span class="risk-badge risk-low">${d.totalClasses || 0} Classes</span>
+          </div>
+          <span class="report-kpi-sub">Balanced: <strong>${d.balancedCount || 0}</strong> &bull; Isolated: <strong>${d.modules ? d.modules.filter(m => m.couplingZone === 'ISOLATED').length : 0}</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #f59e0b;">
+          <span class="report-kpi-label">Bidirectional Tangles</span>
+          <div class="report-kpi-val">
+            <span>${tanglesCount}</span>
+            <span class="risk-badge ${tangleBadgeClass}">${tanglesCount === 0 ? 'CLEAN' : 'TANGLES'}</span>
+          </div>
+          <span class="report-kpi-sub">Zone of Pain: <strong>${d.zoneOfPainCount || 0}</strong> &bull; Uselessness: <strong>${d.zoneOfUselessnessCount || 0}</strong></span>
+        </div>
+
+        <div class="report-kpi-card" style="--kpi-accent: #8b5cf6;">
+          <span class="report-kpi-label">Main Sequence Distance</span>
+          <div class="report-kpi-val">
+            <span>${(d.avgDistance != null ? Number(d.avgDistance).toFixed(3) : '0.000')}</span>
+            <span class="risk-badge risk-low">D = |A+I-1|</span>
+          </div>
+          <span class="report-kpi-sub">Avg Instability (I): <strong>${(d.avgInstability != null ? Number(d.avgInstability).toFixed(2) : '0.00')}</strong></span>
+        </div>
+      </div>
+    `;
+
+    if (d.decouplingRecommendations && d.decouplingRecommendations.length > 0) {
+      html += `
+        <div class="report-section-card">
+          <div class="report-section-header">
+            <div class="report-section-title">Decoupling &amp; Modularity Guidance</div>
+            <span class="report-section-badge">${d.decouplingRecommendations.length} Insights</span>
+          </div>
+          <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;">
+            ${d.decouplingRecommendations.map(rec => `
+              <div style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--text-secondary);">
+                <span style="color:#10b981; font-size:14px; line-height:1;">💡</span>
+                <div>${esc(rec)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">Inter-Module Coupling Pairs &amp; Tangles</div>
+          <span class="report-section-badge">${(d.topCoupledPairs || []).length} Pairs</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Source Module</th>
+                <th>Target Module</th>
+                <th>Calls (A &rarr; B)</th>
+                <th>Reverse Calls (B &rarr; A)</th>
+                <th>Tangle Status</th>
+                <th>Strength</th>
+                <th>Bridge Sample</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (!d.topCoupledPairs || d.topCoupledPairs.length === 0) {
+      html += `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:20px;">No cross-module dependencies detected.</td></tr>`;
+    } else {
+      d.topCoupledPairs.forEach(p => {
+        const isTangle = p.isBidirectional;
+        const tangleBadge = isTangle
+          ? `<span class="risk-badge risk-critical">TANGLE</span>`
+          : `<span class="risk-badge risk-low">ONE-WAY</span>`;
+        const strengthBadge = p.couplingStrength === 'TIGHT'
+          ? `<span class="risk-badge risk-critical">TIGHT</span>`
+          : (p.couplingStrength === 'MEDIUM' ? `<span class="risk-badge risk-medium">MEDIUM</span>` : `<span class="risk-badge risk-low">LOW</span>`);
+
+        html += `
+          <tr>
+            <td>
+              <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(p.sourceModule)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Inspect ${esc(p.sourceModule)} in Knowledge Base">${esc(p.sourceModule)}</a>
+            </td>
+            <td>
+              <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(p.targetModule)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Inspect ${esc(p.targetModule)} in Knowledge Base">${esc(p.targetModule)}</a>
+            </td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${p.calls || 0}</td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${p.reverseCalls || 0}</td>
+            <td>${tangleBadge}</td>
+            <td>${strengthBadge}</td>
+            <td style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(p.bridgeSample || '')}">${esc(p.bridgeSample || '-')}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportPackage('${esc(p.sourceModule)}');" title="Inspect source module">KB →</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="report-section-card">
+        <div class="report-section-header">
+          <div class="report-section-title">Module Coupling &amp; Stability Metrics (Martin's Main Sequence)</div>
+          <span class="report-section-badge">${(d.modules || []).length} Modules</span>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Module Name</th>
+                <th>Classes</th>
+                <th>Interfaces</th>
+                <th>Abstractness (A)</th>
+                <th>Afferent In (Ca)</th>
+                <th>Efferent Out (Ce)</th>
+                <th>Total Coupling</th>
+                <th>Instability (I)</th>
+                <th>Distance (D)</th>
+                <th>Coupling Zone</th>
+                <th>Grade</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    (d.modules || []).forEach(m => {
+      const zClass = getZoneBadgeClass(m.couplingZone);
+      const gClass = getGradeBadgeClass(m.healthGrade);
+      const aVal = (m.abstractness != null ? Number(m.abstractness).toFixed(2) : '0.00');
+      const iVal = (m.instability != null ? Number(m.instability).toFixed(2) : '0.00');
+      const dVal = (m.distanceMainSequence != null ? Number(m.distanceMainSequence).toFixed(2) : '0.00');
+
+      html += `
+        <tr>
+          <td>
+            <a href="#" onclick="event.preventDefault(); inspectReportPackage('${esc(m.moduleName)}');" style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); text-decoration:none; cursor:pointer;" title="Inspect package in Knowledge Base">${esc(m.moduleName)}</a>
+          </td>
+          <td style="font-family:var(--font-mono);">${m.classCount || 0}</td>
+          <td style="font-family:var(--font-mono);">${m.interfaceCount || 0}</td>
+          <td style="font-family:var(--font-mono);">${aVal}</td>
+          <td style="font-family:var(--font-mono);">${m.afferentCoupling || 0}</td>
+          <td style="font-family:var(--font-mono);">${m.efferentCoupling || 0}</td>
+          <td style="font-family:var(--font-mono); font-weight:700;">${m.totalCoupling || 0}</td>
+          <td><span class="risk-badge ${Number(iVal) > 0.7 ? 'risk-high' : 'risk-low'}">${iVal}</span></td>
+          <td><span class="risk-badge ${Number(dVal) > 0.5 ? 'risk-critical' : (Number(dVal) > 0.3 ? 'risk-medium' : 'risk-low')}">${dVal}</span></td>
+          <td><span class="risk-badge ${zClass}">${esc(m.couplingZone || 'BALANCED')}</span></td>
+          <td><span class="risk-badge ${gClass}">${esc(m.healthGrade || 'A')}</span></td>
+          <td>
+            <button class="btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="inspectReportPackage('${esc(m.moduleName)}');" title="Inspect package in Knowledge Base">KB →</button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
     container.innerHTML = html;
   },
 

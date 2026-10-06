@@ -683,7 +683,7 @@ public class CodeLensServer {
     }
 
     public void precomputeAllReports(ScanProgress progress, boolean force) {
-        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 13) {
+        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 14) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -694,7 +694,7 @@ public class CodeLensServer {
         }
 
         // 1. Try disk cache first if not forced
-        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 13) {
+        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 14) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -705,7 +705,7 @@ public class CodeLensServer {
         }
 
         synchronized (reportsPrecomputeLock) {
-            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 13) {
+            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 14) {
                 if (progress != null) {
                     progress.setActiveStage("REPORTS");
                     progress.setReportsFound(cachedReportsJson.size());
@@ -725,18 +725,18 @@ public class CodeLensServer {
             reportsPrecomputePhase.set("Reading entities snapshot from database");
             long startTotal = System.currentTimeMillis();
             logProcessBanner("REPORTS_PRECOMPUTE_STARTED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
-                "Starting sequential precomputation of all 13 architecture, risk, persistence and concurrency reports");
+                "Starting sequential precomputation of all 14 architecture, risk, persistence, coupling and concurrency reports");
 
             try {
                 if (progress != null) {
                     progress.setActiveStage("REPORTS");
-                    progress.setCurrentPhase("Generating Reports [0/13]");
+                    progress.setCurrentPhase("Generating Reports [0/14]");
                     progress.setMessage("Reading entities snapshot from database for reports generator…");
                     progress.setCurrentDetail("Reading database entities for reports generator…");
                     progress.setPercentage(93);
-                    progress.setSubProgress(0, 13, "Reading entities snapshot");
+                    progress.setSubProgress(0, 14, "Reading entities snapshot");
                     progress.setDynamicMetrics(
-                        "Reports Ready", "0 / 13",
+                        "Reports Ready", "0 / 14",
                         "Active Report", "Initializing…",
                         "Artifacts", "0",
                         "Snapshot", "Pending"
@@ -794,7 +794,7 @@ public class CodeLensServer {
 
                 final List<CodeType> types = resolvedTypes;
 
-                final int TOTAL_REPORTS = 13;
+                final int TOTAL_REPORTS = 14;
 
                 // ── Helper runner for individual sequential report execution ─────────
                 class ReportTaskRunner {
@@ -815,7 +815,7 @@ public class CodeLensServer {
                                 "Reports Ready", String.format("%d / %d", index - 1, TOTAL_REPORTS),
                                 "Active Report", title,
                                 "Artifacts", String.valueOf(cachedReportArtifacts.size()),
-                                "Snapshot", index == 13 ? "Compiling" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
+                                "Snapshot", index == 14 ? "Compiling" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
                             );
                         }
 
@@ -835,7 +835,7 @@ public class CodeLensServer {
                                     "Reports Ready", String.format("%d / %d", index, TOTAL_REPORTS),
                                     "Active Report", title,
                                     "Artifacts", String.valueOf(cachedReportArtifacts.size()),
-                                    "Snapshot", index == 13 ? "Ready" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
+                                    "Snapshot", index == 14 ? "Ready" : (cachedReportArtifacts.contains("html-snapshot:html") ? "Ready" : "Pending")
                                 );
                             }
                         } catch (Throwable t) {
@@ -987,8 +987,17 @@ public class CodeLensServer {
                         reportService.renderConcurrencyAuditCsv(data));
                 });
 
-                // 13. Standalone Offline Graph Snapshot
-                runner.run(13, "html-snapshot", "Standalone Offline HTML Snapshot", () -> {
+                // 13. Module Coupling Insights
+                runner.run(13, "module-coupling", "Module Coupling & Stability Insights", () -> {
+                    ReportService.ModuleCouplingReportData data = reportService.buildModuleCouplingData(types, methods, fields, rels);
+                    cacheReport("module-coupling", data,
+                        reportService.renderModuleCouplingHtml(data),
+                        reportService.renderModuleCouplingMarkdown(data),
+                        reportService.renderModuleCouplingCsv(data));
+                });
+
+                // 14. Standalone Offline Graph Snapshot
+                runner.run(14, "html-snapshot", "Standalone Offline HTML Snapshot", () -> {
                     Object fullGraph = callGraph.precomputedFullGraphView(false);
                     Object archGraph = callGraph.precomputedArchitectureGraphView(null, null);
                     String projectName = (!types.isEmpty() && types.get(0).getPackageFqn() != null && !types.get(0).getPackageFqn().isBlank() ? types.get(0).getPackageFqn() : "Codebase");
@@ -1046,7 +1055,7 @@ public class CodeLensServer {
                     progress.setCurrentDetail(String.format("Precomputed all %d codebase intelligence reports & artifacts", TOTAL_REPORTS));
                     progress.setSubProgress(TOTAL_REPORTS, TOTAL_REPORTS, "All reports precomputed");
                     progress.setDynamicMetrics(
-                        "Reports Ready", "13 / 13",
+                        "Reports Ready", "14 / 14",
                         "Active Report", "All Reports Complete",
                         "Artifacts", String.valueOf(cachedReportArtifacts.size()),
                         "Snapshot", "Ready"
@@ -1396,6 +1405,7 @@ public class CodeLensServer {
         app.get("/api/reports/api-catalog",           this::getApiCatalogReport);
         app.get("/api/reports/database-access",       this::getDatabaseAccessReport);
         app.get("/api/reports/concurrency-audit",      this::getConcurrencyAuditReport);
+        app.get("/api/reports/module-coupling",        this::getModuleCouplingReport);
         app.get("/api/reports/html-snapshot",         this::getHtmlSnapshotReport);
         app.get("/api/reports/download",              this::downloadReport);
         app.post("/api/reports/regenerate",           this::regenerateReports);
@@ -4693,6 +4703,10 @@ public class CodeLensServer {
         serveReport(ctx, "concurrency-audit", "json");
     }
 
+    private void getModuleCouplingReport(Context ctx) {
+        serveReport(ctx, "module-coupling", "json");
+    }
+
     public synchronized boolean regenerateSingleReport(String reportKey) {
         if (reportKey == null || reportKey.isBlank()) return false;
         String key = reportKey.trim().toLowerCase();
@@ -4834,6 +4848,14 @@ public class CodeLensServer {
                     reportService.renderConcurrencyAuditHtml(data),
                     reportService.renderConcurrencyAuditMarkdown(data),
                     reportService.renderConcurrencyAuditCsv(data));
+                break;
+            }
+            case "module-coupling": {
+                ReportService.ModuleCouplingReportData data = reportService.buildModuleCouplingData(types, methods, fields, rels);
+                cacheReport("module-coupling", data,
+                    reportService.renderModuleCouplingHtml(data),
+                    reportService.renderModuleCouplingMarkdown(data),
+                    reportService.renderModuleCouplingCsv(data));
                 break;
             }
             case "html-snapshot": {

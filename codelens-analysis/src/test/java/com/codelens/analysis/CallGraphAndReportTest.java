@@ -634,5 +634,88 @@ public class CallGraphAndReportTest {
         ReportService.ConcurrencyAuditReportData conc = new ReportService.ConcurrencyAuditReportData();
         String concHtml = reportService.renderConcurrencyAuditHtml(conc);
         assertTrue(concHtml.contains("report-html-pagination"), "ConcurrencyAudit HTML should contain pagination");
+
+        // 13. Module Coupling Insights
+        ReportService.ModuleCouplingReportData modCoupling = new ReportService.ModuleCouplingReportData();
+        String modHtml = reportService.renderModuleCouplingHtml(modCoupling);
+        assertTrue(modHtml.contains("report-html-pagination"), "ModuleCoupling HTML should contain pagination");
+    }
+
+    public void testModuleCouplingInsights() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+        FieldImpactAnalyzer fieldImpact = new FieldImpactAnalyzer();
+        CodeReviewEngine reviewEngine = new CodeReviewEngine();
+        ReportService reportService = new ReportService(analyzer, fieldImpact, reviewEngine);
+
+        List<CodeType> types = new ArrayList<>();
+        CodeType t1 = new CodeType();
+        t1.setFqn("com.example.service.OrderService");
+        t1.setSimpleName("OrderService");
+        t1.setPackageFqn("com.example.service");
+        t1.setKind("CLASS");
+        types.add(t1);
+
+        CodeType t2 = new CodeType();
+        t2.setFqn("com.example.model.Order");
+        t2.setSimpleName("Order");
+        t2.setPackageFqn("com.example.model");
+        t2.setKind("CLASS");
+        types.add(t2);
+
+        CodeType t3 = new CodeType();
+        t3.setFqn("com.example.model.OrderContract");
+        t3.setSimpleName("OrderContract");
+        t3.setPackageFqn("com.example.model");
+        t3.setKind("INTERFACE");
+        types.add(t3);
+
+        List<CodeMethod> methods = new ArrayList<>();
+        CodeMethod m1 = new CodeMethod();
+        m1.setFqn("com.example.service.OrderService.create");
+        m1.setDeclaringTypeFqn("com.example.service.OrderService");
+        methods.add(m1);
+
+        CodeMethod m2 = new CodeMethod();
+        m2.setFqn("com.example.model.Order.getId");
+        m2.setDeclaringTypeFqn("com.example.model.Order");
+        methods.add(m2);
+
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship r1 = new CodeRelationship();
+        r1.setFromEntityFqn("com.example.service.OrderService.create");
+        r1.setToEntityFqn("com.example.model.Order.getId");
+        r1.setKind("CALLS");
+        rels.add(r1);
+
+        // Add reverse call to create a bidirectional tangle
+        CodeRelationship r2 = new CodeRelationship();
+        r2.setFromEntityFqn("com.example.model.Order.getId");
+        r2.setToEntityFqn("com.example.service.OrderService.create");
+        r2.setKind("CALLS");
+        rels.add(r2);
+
+        ReportService.ModuleCouplingReportData data = reportService.buildModuleCouplingData(types, methods, Collections.emptyList(), rels);
+
+        assertNotNull(data, "ModuleCouplingReportData not null");
+        assertEquals(2, data.totalModules, "Total modules should be 2");
+        assertEquals(2, data.totalCrossModuleRelationships, "Total cross relationships should be 2");
+        assertEquals(1, data.bidirectionalTanglesCount, "Should detect 1 bidirectional tangle");
+        assertTrue(data.decouplingScore > 0, "Decoupling score should be positive");
+
+        // Verify multi-format exports
+        String json = reportService.renderModuleCouplingJson(data);
+        assertTrue(json.contains("\"totalModules\" : 2"), "JSON export should contain totalModules");
+
+        String html = reportService.renderModuleCouplingHtml(data);
+        assertTrue(html.contains("report-html-pagination"), "HTML export should contain pagination");
+        assertTrue(html.contains("Module Coupling &amp; Stability Insights"), "HTML should contain report title");
+
+        String md = reportService.renderModuleCouplingMarkdown(data);
+        assertTrue(md.contains("# 📦 CodeLens Module Coupling & Stability Insights Report"), "Markdown should contain header");
+        assertTrue(md.contains("com.example.service"), "Markdown should contain module name");
+
+        String csv = reportService.renderModuleCouplingCsv(data);
+        assertTrue(csv.contains("MODULE,com.example.service"), "CSV should contain module row");
+        assertTrue(csv.contains("PAIR,com.example.service,com.example.model"), "CSV should contain pair row");
     }
 }

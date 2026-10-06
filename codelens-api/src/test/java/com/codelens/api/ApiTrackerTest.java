@@ -25,11 +25,11 @@ public class ApiTrackerTest {
     public void testCatalogRegistration() {
         ApiTracker tracker = new ApiTracker();
         Map<String, Object> summary = tracker.getSummary();
-        assertEquals(95, summary.get("totalEndpoints"), "Should register all 95 API endpoints");
+        assertEquals(96, summary.get("totalEndpoints"), "Should register all 96 API endpoints");
         assertEquals(0L, summary.get("totalRequests"), "Initial total requests should be 0");
 
         List<Map<String, Object>> endpoints = tracker.getEndpoints();
-        assertEquals(95, endpoints.size(), "Endpoint catalog should contain 95 entries");
+        assertEquals(96, endpoints.size(), "Endpoint catalog should contain 96 entries");
     }
 
     public void testDirectTelemetryRecording() {
