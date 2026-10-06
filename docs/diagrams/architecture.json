@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CodeLens - System Architecture",
+    "output": "architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "browser", "type": "frontend", "label": "Web Workspace", "sublabel": "Verlet Canvas / 3D WebGL", "pos": [40, 260], "size": [140, 60] },
+    { "id": "api", "type": "backend", "label": "Javalin Server", "sublabel": "Embedded Jetty REST / WS", "pos": [280, 260], "size": [140, 60], "tag": ":8080" },
+    { "id": "parser", "type": "backend", "label": "AST Parser", "sublabel": "JavaParser 3.25.8", "pos": [520, 120], "size": [140, 60] },
+    { "id": "analyzer", "type": "backend", "label": "Analysis Core", "sublabel": "JGraphT Call Graph & DSM", "pos": [520, 260], "size": [140, 60] },
+    { "id": "git_engine", "type": "backend", "label": "Git Churn Engine", "sublabel": "JGit Blame & Heatmap", "pos": [520, 400], "size": [140, 60] },
+    { "id": "h2_store", "type": "database", "label": "H2 Database", "sublabel": "LZF MVStore Persistence", "pos": [780, 180], "size": [140, 60] },
+    { "id": "lucene_idx", "type": "database", "label": "Lucene Search", "sublabel": "Full-Text Code Index", "pos": [780, 340], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "JVM Fat-JAR Runtime (Zero Cloud Dependencies)", "wraps": ["api", "parser", "analyzer", "git_engine", "h2_store", "lucene_idx"] },
+    { "kind": "security-group", "label": "Storage Subsystem", "wraps": ["h2_store", "lucene_idx"] }
+  ],
+  "connections": [
+    { "id": "c1", "from": "browser", "to": "api", "label": "REST / WS", "variant": "emphasis" },
+    { "id": "c2", "from": "api", "to": "parser", "fromSide": "top", "toSide": "left" },
+    { "id": "c3", "from": "api", "to": "analyzer", "label": "query graph", "variant": "emphasis" },
+    { "id": "c4", "from": "api", "to": "git_engine", "fromSide": "bottom", "toSide": "left" },
+    { "id": "c5", "from": "parser", "to": "h2_store", "label": "batch insert", "variant": "emphasis" },
+    { "id": "c6", "from": "parser", "to": "lucene_idx", "fromSide": "bottom", "toSide": "top" },
+    { "id": "c7", "from": "analyzer", "to": "h2_store", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Zero Dependencies", "items": ["Runs on local JVM 17+ without external services", "Embedded file-based H2 database and Lucene index", "100% offline security boundary"] },
+    { "dot": "cyan", "title": "High Scale", "items": ["Supports 125k+ classes with LOD culling and sparse matrices", "LZF compressed page storage with bulk chunk commits", "Sub-100ms API response times across multi-hop BFS queries"] }
+  ]
+}

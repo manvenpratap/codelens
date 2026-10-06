@@ -54,7 +54,89 @@ const App = {
   activeAltRenderer: null,
   // Current codebase graph level
   codebaseGraphLevel: 'arch',
+  // Server-Sent Events (SSE) state
+  liveEventSource: null,
+  sseConnected: false,
+  sseLastActive: 0,
 };
+
+/* ── Dynamic Lazy Script Loader ────────────────────────────────────────────── */
+const _loadedScripts = new Map();
+function loadScript(src) {
+  if (_loadedScripts.has(src)) return _loadedScripts.get(src);
+  const p = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', (e) => reject(new Error(`Failed to load ${src}`)));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => {
+      s.dataset.loaded = 'true';
+      resolve();
+    };
+    s.onerror = (e) => {
+      _loadedScripts.delete(src);
+      reject(new Error(`Failed to load ${src}`));
+    };
+    document.head.appendChild(s);
+  });
+  _loadedScripts.set(src, p);
+  return p;
+}
+
+async function ensure3DStudioDependencies() {
+  if (window.THREE && window.THREE.OrbitControls && window.THREE.EffectComposer && window.CodeCity3DRenderer && window.Galaxy3DRenderer) {
+    return;
+  }
+  if (!window.THREE) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js');
+  }
+  await Promise.all([
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/VignetteShader.js')
+  ]);
+  await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js');
+  await Promise.all([
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js')
+  ]);
+  await Promise.all([
+    loadScript('/city3d.js?v=1.0.6'),
+    loadScript('/galaxy3d.js?v=1.0.6')
+  ]);
+}
+
+async function ensureTreemapLoaded() {
+  if (window.TreemapRenderer) return;
+  await loadScript('/treemap.js?v=1.0.6');
+}
+
+async function ensureSunburstLoaded() {
+  if (window.SunburstRenderer) return;
+  await loadScript('/sunburst.js?v=1.0.6');
+}
+
+async function ensureDSMLoaded() {
+  if (window.DSMRenderer) return;
+  await loadScript('/dsm.js?v=1.0.6');
+}
+
+async function ensureChordLoaded() {
+  if (window.ChordRenderer) return;
+  await loadScript('/chord.js?v=1.0.6');
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    2. API client - thin fetch wrapper
@@ -492,11 +574,64 @@ async function startScan(targetPath) {
   }
 }
 
-/** Poll /api/scan/status every 350 ms until COMPLETE or ERROR. */
+/** Initialize native SSE live telemetry bus */
+function initLiveEventBus() {
+  if (typeof EventSource === 'undefined') return;
+  try {
+    const es = new EventSource('/api/events/live');
+    App.liveEventSource = es;
+
+    es.addEventListener('scan_status', (e) => {
+      try {
+        const s = JSON.parse(e.data);
+        App.sseLastActive = Date.now();
+        App.sseConnected = true;
+        updateScanProgress(s);
+
+        if (s.status === 'COMPLETE') {
+          if (App.scanPollHandle) {
+            clearInterval(App.scanPollHandle);
+            App.scanPollHandle = null;
+          }
+          onScanComplete(s);
+        } else if (s.status === 'ERROR') {
+          if (App.scanPollHandle) {
+            clearInterval(App.scanPollHandle);
+            App.scanPollHandle = null;
+          }
+          setScanUI('idle');
+          qs('#scan-status-bar')?.classList.remove('visible');
+          qs('#scan-progress-bar').style.width = '0%';
+          showError('Scan stopped: ' + (s.errorDetail || s.message));
+          updateScanSummaryUI(s);
+        }
+      } catch (err) {
+        console.warn('Error processing SSE scan_status:', err);
+      }
+    });
+
+    es.onopen = () => {
+      App.sseConnected = true;
+      App.sseLastActive = Date.now();
+    };
+
+    es.onerror = () => {
+      App.sseConnected = false;
+    };
+  } catch (err) {
+    console.warn('EventSource failed to initialize:', err);
+  }
+}
+
+/** Poll /api/scan/status every 350 ms until COMPLETE or ERROR (suspended while SSE is actively streaming). */
 function pollScanStatus() {
   if (App.scanPollHandle) clearInterval(App.scanPollHandle);
 
   App.scanPollHandle = setInterval(async () => {
+    // If SSE push is actively delivering events (within last 1500ms), suspend HTTP polling!
+    if (App.sseConnected && App.sseLastActive && (Date.now() - App.sseLastActive < 2000)) {
+      return;
+    }
     try {
       const s = await api.scanStatus();
       updateScanProgress(s);
@@ -3666,6 +3801,7 @@ function buildPackageTree(packages, presentationMode = App.packagePresentation |
 
 /** Recursively render the package tree into a container element. */
 function renderPackageTree(nodes, container, depth) {
+  const fragment = document.createDocumentFragment();
   for (const node of nodes) {
     const hasSubPackages = node.children && node.children.length > 0;
     // A package can have sub-packages AND/OR direct types
@@ -3728,14 +3864,14 @@ function renderPackageTree(nodes, container, depth) {
       showExplorerContextMenu(e.clientX, e.clientY, { type: 'PACKAGE', fqn: node.fqn, name: node.name || node.fqn, el: item, childContainer });
     });
 
-    container.appendChild(item);
+    fragment.appendChild(item);
 
     // Child nodes container (types + sub-packages)
     const childContainer = createElement('div', {
       class: 'tree-children',
       style: !isOpen ? 'display:none' : '',
     });
-    container.appendChild(childContainer);
+    fragment.appendChild(childContainer);
 
     // If previously open and has types, load them
     if (isOpen && node.typeCount > 0 && !childContainer.dataset.loaded) {
@@ -3776,6 +3912,7 @@ function renderPackageTree(nodes, container, depth) {
       renderPackageTree(node.children, childContainer, depth + 1);
     }
   }
+  container.appendChild(fragment);
 }
 
 /** Load types for a package and append them to the tree. */
@@ -3806,6 +3943,7 @@ async function loadTypesInTree(pkgFqn, container, depth) {
       ? window.CodeLensPalette.getColor(pkgFqn, depth)
       : '#10b981';
 
+    const fragment = document.createDocumentFragment();
     for (const t of typeEls) {
       const item = createElement('div', {
         class: `tree-item tree-type-item${App.selected.id === t.id ? ' active' : ''}`,
@@ -3857,8 +3995,9 @@ async function loadTypesInTree(pkgFqn, container, depth) {
         selectType(t.id);
       });
 
-      container.appendChild(item);
+      fragment.appendChild(item);
     }
+    container.appendChild(fragment);
   } catch (e) {
     console.warn('Failed to load types for', pkgFqn, e);
   }
@@ -4414,27 +4553,36 @@ function initTabDragAndDrop() {
 function initMonaco() {
   if (App.editorPromise) return App.editorPromise;
 
-  App.editorPromise = new Promise((resolve) => {
+  App.editorPromise = (async () => {
+    if (typeof require === 'undefined') {
+      try {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js');
+      } catch (err) {
+        console.warn('Monaco loader CDN load failed/blocked, using fallback viewer:', err);
+        return null;
+      }
+    }
     if (typeof require === 'undefined') {
       console.warn('Monaco AMD loader not available (offline/blocked), using fallback viewer.');
-      resolve(null);
-      return;
+      return null;
     }
-    try {
-      require.config({
-        paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
-      });
-      require(['vs/editor/editor.main'], () => {
-        resolve(window.monaco);
-      }, err => {
-        console.warn('Monaco CDN load failed/blocked, using fallback viewer:', err);
+    return new Promise((resolve) => {
+      try {
+        require.config({
+          paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
+        });
+        require(['vs/editor/editor.main'], () => {
+          resolve(window.monaco);
+        }, err => {
+          console.warn('Monaco CDN load failed/blocked, using fallback viewer:', err);
+          resolve(null);
+        });
+      } catch (e) {
+        console.warn('Monaco require error, using fallback viewer:', e);
         resolve(null);
-      });
-    } catch (e) {
-      console.warn('Monaco require error, using fallback viewer:', e);
-      resolve(null);
-    }
-  });
+      }
+    });
+  })();
 
   return App.editorPromise;
 }
@@ -7294,6 +7442,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
     try {
       if (effectiveLevel === 'city3d') {
         showBanner(isMethods ? 'Building 3D Software City (Methods)...' : 'Building 3D Software City (Classes)...');
+        await ensure3DStudioDependencies();
         const [graphData, treeData] = await Promise.all([
           isMethods ? api.fullGraph() : api.architectureGraph('classes'),
           api.treemapData()
@@ -7317,6 +7466,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'galaxy3d') {
         showBanner(isMethods ? 'Generating 3D Force Galaxy (Methods)...' : 'Generating 3D Force Galaxy (Classes)...');
+        await ensure3DStudioDependencies();
         const data = isMethods ? await api.fullGraph() : await api.architectureGraph('classes');
         if (!data.nodes || data.nodes.length === 0) {
           showCodebaseEmpty('No graph data available for 3D Galaxy. Run a scan first.');
@@ -7388,6 +7538,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'treemap') {
         showBanner('Loading Treemap...');
+        await ensureTreemapLoaded();
         const data = await api.treemapData();
         if (!data.children || data.children.length === 0) {
           showCodebaseEmpty('No hierarchy data available for Treemap. Run a scan first.');
@@ -7402,6 +7553,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'sunburst') {
         showBanner('Loading Sunburst...');
+        await ensureSunburstLoaded();
         const data = await api.treemapData();
         if (!data.children || data.children.length === 0) {
           showCodebaseEmpty('No hierarchy data available for Sunburst. Run a scan first.');
@@ -7417,6 +7569,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
       } else if (effectiveLevel === 'dsm') {
         const dsmScope = isMethods ? 'methods' : 'classes';
         showBanner(`Loading Dependency Structure Matrix (${dsmScope})...`);
+        await ensureDSMLoaded();
         const data = await api.dsmData(dsmScope);
         if (!data.classes || data.classes.length === 0) {
           showCodebaseEmpty('No class data available for DSM. Run a scan first.');
@@ -7459,6 +7612,7 @@ async function loadWholeCodebaseGraph(level, granularity) {
 
       } else if (effectiveLevel === 'chord') {
         showBanner(isMethods ? 'Loading Chord Diagram (Methods)...' : 'Loading Chord Diagram (Classes)...');
+        await ensureChordLoaded();
         const data = isMethods ? await api.fullGraph() : await api.architectureGraph('classes');
         if (!data.nodes || data.nodes.length === 0) {
           showCodebaseEmpty('No graph data available for Chord diagram. Run a scan first.');
@@ -12152,6 +12306,9 @@ function initScopeManagement() {
 
   // Initialize Command Palette (⌘K)
   if (typeof initCommandPalette === 'function') initCommandPalette();
+
+  // Initialize SSE Live Telemetry Bus
+  initLiveEventBus();
 }
 
 document.addEventListener('DOMContentLoaded', init);

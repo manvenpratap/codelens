@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CodeLens - Codebase Ingestion & Analysis Workflow",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "output": "workflow.html"
+  },
+  "lanes": [
+    { "id": "trigger", "label": "Invocation & Target" },
+    { "id": "parse", "label": "Parser & Extraction" },
+    { "id": "store", "label": "Indexing & Storage" },
+    { "id": "explore", "label": "Analytics & Workspace" }
+  ],
+  "phases": [
+    { "id": "p1", "label": "1. Scan", "fromCol": 0, "toCol": 1 },
+    { "id": "p2", "label": "2. Index", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "p3", "label": "3. Explore", "fromCol": 4, "toCol": 5 }
+  ],
+  "groups": [
+    { "id": "index_group", "label": "Bulk Pipeline", "lane": "store", "fromCol": 2, "toCol": 3, "variant": "emphasis" }
+  ],
+  "mainPath": ["init_scan", "ast_walk", "chunk_commit", "build_graph", "heat_score", "render_workspace"],
+  "nodes": [
+    { "id": "init_scan", "lane": "trigger", "col": 0, "type": "external", "label": "Scan Request", "sublabel": "CLI / Web UI trigger", "width": 140 },
+    { "id": "ast_walk", "lane": "parse", "col": 1, "type": "backend", "label": "JavaParser Walk", "sublabel": "extract AST records", "width": 140 },
+    { "id": "chunk_commit", "lane": "store", "col": 2, "type": "database", "label": "Bulk H2 Commit", "sublabel": "LZF chunk write", "tag": "fast batch", "width": 140 },
+    { "id": "build_graph", "lane": "store", "col": 3, "type": "backend", "label": "Build JGraphT", "sublabel": "resolve call edges", "width": 140 },
+    { "id": "heat_score", "lane": "explore", "col": 4, "type": "backend", "label": "Compute Churn", "sublabel": "JGit + CC metrics", "width": 140 },
+    { "id": "render_workspace", "lane": "explore", "col": 5, "type": "frontend", "label": "Load Workspace", "sublabel": "Canvas / 3D City / DSM", "tag": "interactive", "width": 140 }
+  ],
+  "edges": [
+    { "id": "e1", "from": "init_scan", "to": "ast_walk", "variant": "emphasis" },
+    { "id": "e2", "from": "ast_walk", "to": "chunk_commit", "label": "AST entities", "variant": "emphasis" },
+    { "id": "e3", "from": "chunk_commit", "to": "build_graph", "variant": "default" },
+    { "id": "e4", "from": "build_graph", "to": "heat_score", "variant": "emphasis" },
+    { "id": "e5", "from": "heat_score", "to": "render_workspace", "label": "telemetry", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Bulk Ingestion Pipeline", "items": ["Secondary indexes dropped during full scans to maintain O(1) insertion rate", "Indexes rebuilt upon completion before building call graphs"] }
+  ]
+}

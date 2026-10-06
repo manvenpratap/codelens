@@ -2944,6 +2944,8 @@ body.theme-light .search-clear-btn:hover {
 
 /* Tree node item */
 .tree-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 28px;
   display: flex;
   align-items: center;
   gap: 8px;

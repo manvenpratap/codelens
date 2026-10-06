@@ -114,6 +114,19 @@ codelens/
 └── sample-project/       Realistic 5-class algorithmic trading system for demonstration and tests
 ```
 
+#### 🧭 Compiled Archify Interactive Diagrams & Architecture Specs
+
+CodeLens architecture, scanning pipelines, and lifecycles are formally modeled and compiled via [Archify](https://github.com/tt-a1i/archify):
+
+* 📐 **System Architecture**: [Interactive HTML View](./docs/diagrams/architecture.html) | [Spec](./docs/diagrams/architecture.json)
+* 🔄 **Ingestion Workflow**: [Interactive HTML View](./docs/diagrams/workflow.html) | [Spec](./docs/diagrams/workflow.json)
+* ⚡ **Execution Sequence**: [Interactive HTML View](./docs/diagrams/sequence.html) | [Spec](./docs/diagrams/sequence.json)
+* 🌊 **Data Flow Pipeline**: [Interactive HTML View](./docs/diagrams/dataflow.html) | [Spec](./docs/diagrams/dataflow.json)
+* ⏱️ **Server & Ingestion Lifecycle**: [Interactive HTML View](./docs/diagrams/lifecycle.html) | [Spec](./docs/diagrams/lifecycle.json)
+
+See [**`PROJECT_CONTEXT.md`**](./PROJECT_CONTEXT.md) for full architectural blueprints, diagrams, and domain modeling.
+
+
 ### Architectural Decisions (ADRs)
 
 - **AST Parsing (JavaParser 3.25.8)**: Full Java 17 record, sealed class, and pattern-matching support without needing heavy bytecode compilation, maven builds, or runtime classpath dependencies.

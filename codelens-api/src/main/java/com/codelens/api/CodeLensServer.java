@@ -14,6 +14,8 @@ import com.codelens.storage.*;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.http.sse.SseClient;
+import io.javalin.http.sse.SseHandler;
 import io.javalin.json.JavalinJackson;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -122,6 +124,12 @@ public class CodeLensServer {
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
     private final ApiTracker apiTracker = new ApiTracker();
+    private final Set<SseClient> sseClients = ConcurrentHashMap.newKeySet();
+    private final ScheduledExecutorService sseBroadcaster = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "codelens-sse-broadcaster");
+        t.setDaemon(true);
+        return t;
+    });
 
     // ── Precomputed Reports Cache & Disk Persistence ────────────────────────
     private final Map<String, Object> cachedReportsJson = new ConcurrentHashMap<>();
@@ -1280,6 +1288,7 @@ public class CodeLensServer {
         app.post("/api/scan",              this::startScan);
         app.post("/api/scan/cancel",       this::cancelScan);
         app.get("/api/scan/status",        this::getScanStatus);
+        app.get("/api/events/live",        new SseHandler(this::handleSseConnection));
         app.get("/api/scan/changes",       this::getScanChanges);
         app.post("/api/scan/incremental",  this::startIncrementalScan);
         app.get("/api/scan/browse",        this::browseFolder);
@@ -1511,6 +1520,17 @@ public class CodeLensServer {
         app.start(port);
         log.info("CodeLens server started on http://localhost:{}", port);
 
+        // Schedule periodic real-time SSE progress push during active scans
+        sseBroadcaster.scheduleAtFixedRate(() -> {
+            try {
+                if (sseClients.isEmpty()) return;
+                ScanProgress sp = scanState.get();
+                if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+                    broadcastSseEvent("scan_status", sp);
+                }
+            } catch (Exception ignored) {}
+        }, 200, 200, TimeUnit.MILLISECONDS);
+
         // Build call graph from database on startup with streaming cursor (independent of scanState)
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
@@ -1554,6 +1574,11 @@ public class CodeLensServer {
         cancelRequested = true;
         heapWatchdog.stopWatchdog();
         orchestrator.shutdown();
+        try { sseBroadcaster.shutdownNow(); } catch (Exception ignored) {}
+        for (SseClient c : sseClients) {
+            try { c.close(); } catch (Exception ignored) {}
+        }
+        sseClients.clear();
         if (app != null) {
             try { app.stop(); } catch (Exception ignored) {}
         }
@@ -2453,6 +2478,7 @@ public class CodeLensServer {
         } else {
             orchestrator.submit("scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> runScan(finalPath, finalExcludes, progress));
         }
+        broadcastSseEvent("scan_status", progress);
 
         ctx.status(202).json(Map.of("status", "accepted", "sourcePath", sourcePath, "resumed", isResume));
     }
@@ -2462,6 +2488,41 @@ public class CodeLensServer {
     // ─────────────────────────────────────────────────────────────────────────
     private void getScanStatus(Context ctx) {
         ctx.json(scanState.get());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SSE Handler: GET /api/events/live
+    // ─────────────────────────────────────────────────────────────────────────
+    private void handleSseConnection(SseClient client) {
+        client.keepAlive();
+        sseClients.add(client);
+        client.onClose(() -> sseClients.remove(client));
+        try {
+            client.sendEvent("scan_status", scanState.get());
+        } catch (Exception e) {
+            log.debug("Failed sending initial SSE state to client: {}", e.getMessage());
+        }
+    }
+
+    public void broadcastSseEvent(String eventName, Object data) {
+        if (sseClients.isEmpty()) return;
+        List<SseClient> deadClients = null;
+        for (SseClient client : sseClients) {
+            try {
+                if (client.terminated()) {
+                    if (deadClients == null) deadClients = new ArrayList<>();
+                    deadClients.add(client);
+                } else {
+                    client.sendEvent(eventName, data);
+                }
+            } catch (Exception e) {
+                if (deadClients == null) deadClients = new ArrayList<>();
+                deadClients.add(client);
+            }
+        }
+        if (deadClients != null) {
+            sseClients.removeAll(deadClients);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3754,7 +3815,8 @@ public class CodeLensServer {
         }
         String safeScope = (scope == null || scope.isBlank()) ? "architecture" : scope.replaceAll("[^a-zA-Z0-9_-]", "_");
         ctx.header("Content-Disposition", "attachment; filename=\"codelens-" + safeScope + "-graph.json\"")
-           .json(view);
+           .contentType("application/json");
+        jsonMapper.writeValue(ctx.outputStream(), view);
     }
 
     private void getDSM(Context ctx) throws Exception {

@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "CodeLens - Ingestion & Server Lifecycle",
+    "output": "lifecycle.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Engine Phases" },
+    { "id": "watch", "label": "Background Services" },
+    { "id": "terminal", "label": "Terminal Exits" }
+  ],
+  "states": [
+    { "id": "boot", "type": "start", "label": "JVM Boot", "sublabel": "bind port & init H2", "lane": "main", "col": 0, "step": "01", "tag": "ready" },
+    { "id": "idle", "type": "waiting", "label": "Idle Ready", "sublabel": "awaiting scan trigger", "lane": "main", "col": 1, "step": "02", "tag": "standby" },
+    { "id": "scanning", "type": "active", "label": "AST Walk", "sublabel": "parsing source trees", "lane": "main", "col": 2, "step": "03", "tag": "parsing" },
+    { "id": "indexing", "type": "active", "label": "Index & Cache", "sublabel": "rebuild H2 & Lucene", "lane": "main", "col": 3, "step": "04", "tag": "indexing" },
+    { "id": "serving", "type": "success", "label": "Workspace Live", "sublabel": "sub-100ms graph queries", "lane": "main", "col": 4, "step": "05", "tag": "active" },
+    { "id": "delta_watch", "type": "active", "label": "Delta Watcher", "sublabel": "incremental Git poll", "lane": "watch", "col": 3, "tag": "watcher" },
+    { "id": "error", "type": "failure", "label": "Scan Interrupted", "sublabel": "syntax error or abort", "lane": "terminal", "col": 2, "tag": "terminal" },
+    { "id": "shutdown", "type": "success", "label": "Clean Shutdown", "sublabel": "H2 compacted & closed", "lane": "terminal", "col": 4, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "from": "boot", "to": "idle", "label": "init complete" },
+    { "from": "idle", "to": "scanning", "label": "trigger scan" },
+    { "from": "scanning", "to": "indexing", "label": "AST parsed" },
+    { "from": "scanning", "to": "error", "label": "fatal abort", "variant": "security" },
+    { "from": "indexing", "to": "serving", "label": "indices ready" },
+    { "from": "serving", "to": "delta_watch", "variant": "dashed" },
+    { "from": "delta_watch", "to": "scanning", "label": "file modified" },
+    { "from": "serving", "to": "shutdown", "label": "SIGTERM / quit", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Crash Recovery", "items": ["Interrupted scans automatically roll back uncommitted chunks", "Compact LZF store guarantees zero data corruption on forced exit"] }
+  ]
+}

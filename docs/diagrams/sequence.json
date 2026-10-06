@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "CodeLens - Scan & Call Graph Sequence",
+    "output": "sequence.html",
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "Developer", "sublabel": "Browser / CLI" },
+    { "id": "api", "type": "backend", "label": "Javalin API", "sublabel": "REST Controller" },
+    { "id": "parser", "type": "backend", "label": "Parser Engine", "sublabel": "JavaParser Worker" },
+    { "id": "storage", "type": "database", "label": "Storage Core", "sublabel": "H2 + Lucene" },
+    { "id": "graph", "type": "backend", "label": "Graph Engine", "sublabel": "JGraphT BFS" },
+    { "id": "ui", "type": "frontend", "label": "Workspace UI", "sublabel": "Canvas & Monaco" }
+  ],
+  "segments": [
+    { "from": 150, "to": 260, "label": "Scan Trigger" },
+    { "from": 270, "to": 390, "label": "Batch Ingestion" },
+    { "from": 400, "to": 510, "label": "Graph Query" }
+  ],
+  "messages": [
+    { "id": "m1", "from": "user", "to": "api", "y": 160, "label": "POST /api/scan", "variant": "emphasis" },
+    { "id": "m2", "from": "api", "to": "parser", "y": 190, "label": "Start Async AST Walk", "variant": "emphasis" },
+    { "id": "m3", "from": "parser", "to": "storage", "y": 230, "label": "Stream Entity Chunks", "variant": "emphasis" },
+    { "id": "m4", "from": "storage", "to": "api", "y": 290, "label": "Batch Flushed", "variant": "return" },
+    { "id": "m5", "from": "parser", "to": "api", "y": 340, "label": "Scan Complete", "variant": "return" },
+    { "id": "m6", "from": "api", "to": "ui", "y": 370, "label": "WebSocket Progress 100%", "variant": "return" },
+    { "id": "m7", "from": "ui", "to": "graph", "y": 420, "label": "GET /api/graph/call-hierarchy", "variant": "emphasis" },
+    { "id": "m8", "from": "graph", "to": "ui", "y": 460, "label": "Return BFS Node & Edges", "variant": "return" },
+    { "id": "m9", "from": "ui", "to": "user", "y": 490, "label": "Render Verlet Force Graph", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "api", "from": 160, "to": 380, "type": "backend" },
+    { "participant": "parser", "from": 190, "to": 350, "type": "backend" },
+    { "participant": "storage", "from": 230, "to": 310, "type": "database" },
+    { "participant": "ui", "from": 370, "to": 500, "type": "frontend" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Asynchronous Non-Blocking Scans", "items": ["The API immediately responds with scan task ID", "Progress events stream via WebSockets while ingestion executes"] }
+  ]
+}
