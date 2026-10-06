@@ -6794,7 +6794,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         <div class="mod-dep-card-body">
           <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">External references and calls to third-party or standard library types.</div>
           <div class="mod-dep-calls-acc-body">
-            ${(m.touchPoints || []).slice(0, 50).map(tp => `
+            ${(m.touchPoints || []).map(tp => `
               <div class="mod-dep-call-row">
                 <div class="mod-dep-call-chain">
                   <span class="rel-dot ${tp.kind}"></span>

@@ -162,8 +162,8 @@ public class ModuleDependencyAnalyzer {
         void accept(String fromEntity, String toEntity, String kind, int sourceLine);
     }
 
-    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_MODULE = 50;
-    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE = 20;
+    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_MODULE = Integer.MAX_VALUE;
+    public static final int MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE = Integer.MAX_VALUE;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Analysis Methods
@@ -345,9 +345,7 @@ public class ModuleDependencyAnalyzer {
                         cm.totalTouchPoints++;
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
-                        if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
-                            cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
-                        }
+                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
                     } else {
                         miSrc.totalOutboundTouchPoints++;
                         miSrc.totalTouchPoints++;
@@ -359,9 +357,7 @@ public class ModuleDependencyAnalyzer {
                         cm.totalTouchPoints++;
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
-                        if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
-                            cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
-                        }
+                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
 
                         if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                             String classPairKey = srcType + "->" + tgtType;
@@ -370,9 +366,7 @@ public class ModuleDependencyAnalyzer {
                                 .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                             cus.touchPointCount++;
                             increment(cus.kinds, kind);
-                            if (cus.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE) {
-                                cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
-                            }
+                            cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
                         }
                     }
                 }
@@ -392,9 +386,7 @@ public class ModuleDependencyAnalyzer {
                     cm.totalTouchPoints++;
                     if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                     increment(cm.kinds, kind);
-                    if (cm.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_MODULE) {
-                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
-                    }
+                    cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
 
                     if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                         String classPairKey = srcType + "->" + tgtType;
@@ -403,9 +395,7 @@ public class ModuleDependencyAnalyzer {
                             .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                         cus.touchPointCount++;
                         increment(cus.kinds, kind);
-                        if (cus.touchPoints.size() < MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE) {
-                            cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
-                        }
+                        cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
                     }
                 }
             }

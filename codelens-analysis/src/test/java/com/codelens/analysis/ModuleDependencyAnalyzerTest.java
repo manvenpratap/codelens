@@ -433,4 +433,65 @@ public class ModuleDependencyAnalyzerTest {
         assertNotNull(overview, "overview should not be null");
         assertEquals(2, overview.totalInterModuleTouchPoints, "2 inter-module touch points total");
     }
+
+    public void testUncappedTouchPointsAboveFifty() {
+        ModuleDependencyAnalyzer analyzer = new ModuleDependencyAnalyzer();
+        List<CodePackage> packages = new ArrayList<>();
+        List<CodeType> types = new ArrayList<>();
+        List<CodeMethod> methods = new ArrayList<>();
+        List<CodeField> fields = new ArrayList<>();
+        List<CodeRelationship> relationships = new ArrayList<>();
+
+        CodePackage pkgA = new CodePackage("com.example.modA");
+        pkgA.setName("modA");
+        packages.add(pkgA);
+
+        CodePackage pkgB = new CodePackage("com.example.modB");
+        pkgB.setName("modB");
+        packages.add(pkgB);
+
+        CodeType typeA = new CodeType();
+        typeA.setFqn("com.example.modA.ServiceA");
+        typeA.setSimpleName("ServiceA");
+        typeA.setPackageFqn("com.example.modA");
+        types.add(typeA);
+
+        CodeType typeB = new CodeType();
+        typeB.setFqn("com.example.modB.ServiceB");
+        typeB.setSimpleName("ServiceB");
+        typeB.setPackageFqn("com.example.modB");
+        types.add(typeB);
+
+        // Generate 75 relationships from modA to modB
+        final int TOTAL_CALLS = 75;
+        for (int i = 1; i <= TOTAL_CALLS; i++) {
+            CodeRelationship rel = new CodeRelationship();
+            rel.setFromEntityFqn("com.example.modA.ServiceA.call" + i + "()");
+            rel.setToEntityFqn("com.example.modB.ServiceB.handle" + i + "()");
+            rel.setKind("CALLS");
+            rel.setSourceLine(i);
+            relationships.add(rel);
+        }
+
+        ModuleDependencyAnalyzer.ModuleDependencyInsights insightsA = analyzer.analyzeModule(
+            "modA", packages, types, methods, fields, relationships
+        );
+        assertNotNull(insightsA, "insightsA should not be null");
+        assertEquals(TOTAL_CALLS, insightsA.totalTouchPoints, "Total touch points should match total calls");
+        assertEquals(1, insightsA.outgoingModules.size(), "Should have 1 outgoing module");
+
+        ModuleDependencyAnalyzer.ConnectedModule outModB = insightsA.outgoingModules.get(0);
+        assertEquals(TOTAL_CALLS, outModB.totalTouchPoints, "Total touch points count should be 75");
+        assertEquals(TOTAL_CALLS, outModB.touchPoints.size(), "Touch points list must not be capped at 50; expected 75 items");
+
+        // Verify incoming on modB as well
+        ModuleDependencyAnalyzer.ModuleDependencyInsights insightsB = analyzer.analyzeModule(
+            "modB", packages, types, methods, fields, relationships
+        );
+        assertNotNull(insightsB, "insightsB should not be null");
+        assertEquals(1, insightsB.incomingModules.size(), "Should have 1 incoming module");
+        ModuleDependencyAnalyzer.ConnectedModule inModA = insightsB.incomingModules.get(0);
+        assertEquals(TOTAL_CALLS, inModA.totalTouchPoints, "Inbound total touch points count should be 75");
+        assertEquals(TOTAL_CALLS, inModA.touchPoints.size(), "Inbound touch points list must not be capped at 50; expected 75 items");
+    }
 }
