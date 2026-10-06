@@ -15036,6 +15036,435 @@ const REPORTS_METADATA = {
   }
 };
 
+const REPORT_FILTERS_CONFIG = {
+  'api-catalog': {
+    badge: 'API Endpoints',
+    icon: `<svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
+    placeholder: 'Filter endpoints, routes, controllers…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'GET', label: 'GET', match: (tr, t) => tr.querySelector('.badge-get') !== null || t.includes('get') },
+      { id: 'POST', label: 'POST', match: (tr, t) => tr.querySelector('.badge-post') !== null || t.includes('post') },
+      { id: 'PUT', label: 'PUT', match: (tr, t) => tr.querySelector('.badge-put') !== null || t.includes('put') },
+      { id: 'DELETE', label: 'DELETE', match: (tr, t) => tr.querySelector('.badge-delete') !== null || t.includes('delete') },
+      { id: 'PROTECTED', label: 'Protected', match: (tr, t) => t.includes('protected') },
+      { id: 'PUBLIC', label: 'Public', match: (tr, t) => t.includes('public') },
+      { id: 'HIGH_RISK', label: 'High Risk', match: (tr, t) => tr.querySelector('.risk-critical, .risk-high') !== null || t.includes('high') }
+    ],
+    selects: [
+      {
+        id: 'verb',
+        label: 'All HTTP Verbs',
+        options: [
+          { val: 'GET', label: 'GET', match: (tr, t) => tr.querySelector('.badge-get') !== null || t.includes('get') },
+          { val: 'POST', label: 'POST', match: (tr, t) => tr.querySelector('.badge-post') !== null || t.includes('post') },
+          { val: 'PUT', label: 'PUT', match: (tr, t) => tr.querySelector('.badge-put') !== null || t.includes('put') },
+          { val: 'DELETE', label: 'DELETE', match: (tr, t) => tr.querySelector('.badge-delete') !== null || t.includes('delete') }
+        ]
+      },
+      {
+        id: 'guard',
+        label: 'All Auth Guards',
+        options: [
+          { val: 'PROTECTED', label: 'Protected (Token / Auth)', match: (tr, t) => t.includes('protected') },
+          { val: 'PUBLIC', label: 'Public / Open Surface', match: (tr, t) => t.includes('public') },
+          { val: 'HIGH_RISK', label: 'High Blast Radius', match: (tr, t) => tr.querySelector('.risk-critical, .risk-high') !== null || t.includes('high') }
+        ]
+      }
+    ]
+  },
+  'database-access': {
+    badge: 'Database Access',
+    icon: `<svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    placeholder: 'Filter tables, queries, DAOs, repositories…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'WRITES', label: 'Writes', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('write') || t.includes('insert') || t.includes('update') || t.includes('delete') },
+      { id: 'READS', label: 'Reads', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('read') || t.includes('select') },
+      { id: 'TX_GUARD', label: 'Tx Guard', match: (tr, t) => t.includes('tx guard') || t.includes('transaction') },
+      { id: 'AUTOCOMMIT', label: 'Autocommit Risk', match: (tr, t) => t.includes('autocommit') }
+    ],
+    selects: [
+      {
+        id: 'op',
+        label: 'All Operations',
+        options: [
+          { val: 'WRITE', label: 'Writes / Mutations', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('write') },
+          { val: 'READ', label: 'Reads (SELECT)', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('read') }
+        ]
+      },
+      {
+        id: 'tx',
+        label: 'All Transaction Boundaries',
+        options: [
+          { val: 'TX_GUARD', label: 'Enclosed in Transaction', match: (tr, t) => t.includes('tx guard') || t.includes('transaction') },
+          { val: 'AUTOCOMMIT', label: 'Autocommit / Unenclosed', match: (tr, t) => t.includes('autocommit') }
+        ]
+      }
+    ]
+  },
+  'module-coupling': {
+    badge: 'Module Coupling',
+    icon: `<svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    placeholder: 'Filter modules, packages, cross-module calls…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'PAIN', label: 'Zone of Pain', match: (tr, t) => t.includes('pain') },
+      { id: 'USELESS', label: 'Zone of Uselessness', match: (tr, t) => t.includes('useless') },
+      { id: 'BALANCED', label: 'Balanced', match: (tr, t) => t.includes('balanced') || t.includes('one-way') },
+      { id: 'TANGLE', label: 'Tangles', match: (tr, t) => t.includes('tangle') },
+      { id: 'GRADE_A', label: 'Grade A', match: (tr, t) => t.includes('grade a') || (tr.querySelector('.risk-low') !== null && t.includes('a')) },
+      { id: 'GRADE_DF', label: 'Grade D/F', match: (tr, t) => t.includes('grade d') || t.includes('grade f') || tr.querySelector('.risk-critical, .risk-high') !== null }
+    ],
+    selects: [
+      {
+        id: 'zone',
+        label: 'All Coupling Zones',
+        options: [
+          { val: 'ZONE_OF_PAIN', label: 'Zone of Pain', match: (tr, t) => t.includes('pain') },
+          { val: 'ZONE_OF_USELESSNESS', label: 'Zone of Uselessness', match: (tr, t) => t.includes('useless') },
+          { val: 'BALANCED', label: 'Balanced Sequence', match: (tr, t) => t.includes('balanced') },
+          { val: 'STABLE', label: 'Stable Core', match: (tr, t) => t.includes('stable') },
+          { val: 'VOLATILE', label: 'Volatile Leaf', match: (tr, t) => t.includes('volatile') }
+        ]
+      },
+      {
+        id: 'grade',
+        label: 'All Health Grades',
+        options: [
+          { val: 'A', label: 'Grade A (Healthy)', match: (tr, t) => t.includes('a') && tr.querySelector('.risk-low') !== null },
+          { val: 'B', label: 'Grade B (Moderate)', match: (tr, t) => t.includes('b') },
+          { val: 'C', label: 'Grade C (Borderline)', match: (tr, t) => t.includes('c') || tr.querySelector('.risk-medium') !== null },
+          { val: 'D', label: 'Grade D / F (High Coupling)', match: (tr, t) => t.includes('d') || t.includes('f') || tr.querySelector('.risk-critical, .risk-high') !== null }
+        ]
+      }
+    ]
+  },
+  'dead-code': {
+    badge: 'Dead Code',
+    icon: `<svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    placeholder: 'Filter dead methods, orphaned classes, fields…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'METHODS', label: 'Orphaned Methods', match: (tr, t) => t.includes('(') || t.includes('method') || t.includes('caller') },
+      { id: 'CLASSES', label: 'Orphaned Classes', match: (tr, t) => !t.includes('(') && (t.includes('class') || t.includes('inbound') || t.includes('incoming')) },
+      { id: 'FIELDS', label: 'Unreferenced Fields', match: (tr, t) => t.includes('field') },
+      { id: 'LARGE', label: 'Large (≥50 LOC)', match: (tr, t) => /\b([5-9]\d|[1-9]\d{2,})\b/.test(t) }
+    ],
+    selects: [
+      {
+        id: 'type',
+        label: 'All Artifact Kinds',
+        options: [
+          { val: 'METHOD', label: 'Orphaned Methods', match: (tr, t) => t.includes('(') || t.includes('method') || t.includes('caller') },
+          { val: 'CLASS', label: 'Orphaned Classes', match: (tr, t) => !t.includes('(') && (t.includes('class') || t.includes('inbound') || t.includes('incoming')) },
+          { val: 'FIELD', label: 'Unreferenced Fields', match: (tr, t) => t.includes('field') }
+        ]
+      },
+      {
+        id: 'loc',
+        label: 'All Line Sizes',
+        options: [
+          { val: 'LOC_50', label: '≥ 50 Lines of Code', match: (tr, t) => /\b([5-9]\d|[1-9]\d{2,})\b/.test(t) },
+          { val: 'LOC_100', label: '≥ 100 Lines of Code', match: (tr, t) => /\b([1-9]\d{2,})\b/.test(t) }
+        ]
+      }
+    ]
+  },
+  'change-risk': {
+    badge: 'Change Risk',
+    icon: `<svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    placeholder: 'Filter classes, methods, churn hotspots…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'CRITICAL', label: 'Critical (≥75)', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+      { id: 'HIGH', label: 'High (≥50)', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('high') },
+      { id: 'MEDIUM', label: 'Medium (≥25)', match: (tr, t) => tr.querySelector('.risk-medium') !== null || t.includes('medium') },
+      { id: 'MUTATIONS', label: 'Field Mutations', match: (tr, t) => t.includes('mutation') || t.includes('field') },
+      { id: 'HOTSPOTS', label: 'Churn Hotspots', match: (tr, t) => t.includes('hotspot') || t.includes('churn') }
+    ],
+    selects: [
+      {
+        id: 'tier',
+        label: 'All Risk Tiers',
+        options: [
+          { val: 'CRITICAL', label: 'Critical (≥ 75 Score)', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+          { val: 'HIGH', label: 'High (≥ 50 Score)', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('high') },
+          { val: 'MEDIUM', label: 'Medium (≥ 25 Score)', match: (tr, t) => tr.querySelector('.risk-medium') !== null || t.includes('medium') },
+          { val: 'LOW', label: 'Low (< 25 Score)', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('low') }
+        ]
+      },
+      {
+        id: 'factor',
+        label: 'All Risk Dimensions',
+        options: [
+          { val: 'CHURN', label: 'Git Churn × Complexity', match: (tr, t) => t.includes('churn') || t.includes('hotspot') },
+          { val: 'MUTATION', label: 'Field Mutations', match: (tr, t) => t.includes('mutation') || t.includes('field') },
+          { val: 'FAN_OUT', label: 'High Fan-Out / Blast', match: (tr, t) => t.includes('fan-out') || t.includes('blast') }
+        ]
+      }
+    ]
+  },
+  'technical-debt': {
+    badge: 'Technical Debt',
+    icon: `<svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    placeholder: 'Filter SQALE debt items, God Classes, remediations…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'GOD_CLASS', label: 'God Classes', match: (tr, t) => t.includes('god class') || t.includes('large class') },
+      { id: 'BRAIN_METHOD', label: 'Brain Methods', match: (tr, t) => t.includes('brain method') || t.includes('complex') || t.includes('long method') },
+      { id: 'HIGH_ROI', label: 'High ROI', match: (tr, t) => t.includes('high roi') || t.includes('quick win') || (t.includes('high') && t.includes('roi')) },
+      { id: 'HIGH_EFFORT', label: 'High Effort (≥4h)', match: (tr, t) => t.includes('4h') || t.includes('8h') || t.includes('16h') || t.includes('high effort') }
+    ],
+    selects: [
+      {
+        id: 'category',
+        label: 'All Debt Smells',
+        options: [
+          { val: 'GOD_CLASS', label: 'God Class / Large Class', match: (tr, t) => t.includes('god class') || t.includes('large class') },
+          { val: 'BRAIN_METHOD', label: 'Brain Method / Long Method', match: (tr, t) => t.includes('brain method') || t.includes('complex') },
+          { val: 'COUPLING', label: 'Feature Envy / Tight Coupling', match: (tr, t) => t.includes('coupling') || t.includes('envy') },
+          { val: 'CYCLOMATIC', label: 'Excessive Cyclomatic Complexity', match: (tr, t) => t.includes('complexity') || t.includes('cyclomatic') }
+        ]
+      },
+      {
+        id: 'roi',
+        label: 'All ROI Tiers',
+        options: [
+          { val: 'HIGH', label: 'High ROI (Quick Win)', match: (tr, t) => t.includes('high') && (t.includes('roi') || tr.querySelector('.risk-low') !== null) },
+          { val: 'MEDIUM', label: 'Medium ROI (Balanced)', match: (tr, t) => t.includes('medium') },
+          { val: 'STRATEGIC', label: 'Strategic / High Effort', match: (tr, t) => t.includes('strategic') || t.includes('high effort') || t.includes('4h') || t.includes('8h') }
+        ]
+      }
+    ]
+  },
+  'circular-dependencies': {
+    badge: 'Circular Dependencies',
+    icon: `<svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+    placeholder: 'Filter dependency cycles, packages, classes…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'CLASS_CYCLES', label: 'Class Cycles', match: (tr, t) => t.includes('class') || !t.includes('pkg') },
+      { id: 'PKG_TANGLES', label: 'Package Tangles', match: (tr, t) => t.includes('package') || t.includes('pkg') || t.includes('tangle') },
+      { id: 'DIRECT_2', label: 'Direct (2-Node)', match: (tr, t) => t.includes('2-node') || t.includes('2 nodes') || t.includes('direct') },
+      { id: 'MULTI_3', label: 'Multi-Hop (3+)', match: (tr, t) => t.includes('3 nodes') || t.includes('4 nodes') || t.includes('5 nodes') || t.includes('multi') }
+    ],
+    selects: [
+      {
+        id: 'scope',
+        label: 'All Cycle Scopes',
+        options: [
+          { val: 'CLASS', label: 'Class-Level Cycles', match: (tr, t) => t.includes('class') },
+          { val: 'PACKAGE', label: 'Package-Level Tangles', match: (tr, t) => t.includes('package') || t.includes('pkg') }
+        ]
+      },
+      {
+        id: 'depth',
+        label: 'All Cycle Depths',
+        options: [
+          { val: '2_NODE', label: 'Direct 2-Node Reciprocal', match: (tr, t) => t.includes('2-node') || t.includes('2 nodes') || t.includes('direct') },
+          { val: 'MULTI_HOP', label: 'Multi-Hop 3+ Nodes Chain', match: (tr, t) => t.includes('3 nodes') || t.includes('4 nodes') || t.includes('multi') }
+        ]
+      }
+    ]
+  },
+  'archetype-governance': {
+    badge: 'Archetype Governance',
+    icon: `<svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    placeholder: 'Filter governance violations, bypasses, mutations…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'MUTATIONS', label: 'Unaudited Mutations', match: (tr, t) => t.includes('mutation') || t.includes('grabber') },
+      { id: 'BYPASS', label: 'Layer Bypass', match: (tr, t) => t.includes('bypass') || t.includes('controller-to-dao') || t.includes('inversion') || t.includes('dao') },
+      { id: 'CRITICAL', label: 'Critical', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+      { id: 'WARNING', label: 'Warning', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('warning') || t.includes('warn') }
+    ],
+    selects: [
+      {
+        id: 'rule',
+        label: 'All Rule Violations',
+        options: [
+          { val: 'MUTATION', label: 'State Mutation Bypasses', match: (tr, t) => t.includes('mutation') || t.includes('grabber') },
+          { val: 'LAYER', label: 'Layer Violations (Controller → DAO)', match: (tr, t) => t.includes('bypass') || t.includes('layer') || t.includes('dao') },
+          { val: 'NAMING', label: 'Archetype / Naming Drift', match: (tr, t) => t.includes('naming') || t.includes('archetype') }
+        ]
+      },
+      {
+        id: 'sev',
+        label: 'All Severities',
+        options: [
+          { val: 'CRITICAL', label: 'Critical Violation', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+          { val: 'WARNING', label: 'Warning Violation', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('warning') || t.includes('warn') },
+          { val: 'INFO', label: 'Info / Advisory', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('info') }
+        ]
+      }
+    ]
+  },
+  'architecture': {
+    badge: 'Architecture',
+    icon: `<svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+    placeholder: 'Filter architecture layers, packages, stability…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'STABLE', label: 'Stable Core', match: (tr, t) => t.includes('stable') },
+      { id: 'VOLATILE', label: 'Volatile', match: (tr, t) => t.includes('flexible') || t.includes('dependent') || t.includes('volatile') },
+      { id: 'FAN_IN', label: 'High Fan-In (Ca)', match: (tr, t) => t.includes('ca') || t.includes('afferent') },
+      { id: 'FAN_OUT', label: 'High Fan-Out (Ce)', match: (tr, t) => t.includes('ce') || t.includes('efferent') }
+    ],
+    selects: [
+      {
+        id: 'profile',
+        label: 'All Stability Profiles',
+        options: [
+          { val: 'STABLE', label: 'Stable Core (I < 0.3)', match: (tr, t) => t.includes('stable') },
+          { val: 'BALANCED', label: 'Balanced Layers (0.3 ≤ I ≤ 0.7)', match: (tr, t) => t.includes('balanced') },
+          { val: 'VOLATILE', label: 'Volatile / Leaf (I > 0.7)', match: (tr, t) => t.includes('volatile') || t.includes('flexible') || t.includes('dependent') }
+        ]
+      },
+      {
+        id: 'tier',
+        label: 'All Architectural Tiers',
+        options: [
+          { val: 'API', label: 'API / Controllers', match: (tr, t) => t.includes('api') || t.includes('controller') || t.includes('web') },
+          { val: 'CORE', label: 'Domain Core / Services', match: (tr, t) => t.includes('service') || t.includes('core') || t.includes('domain') },
+          { val: 'DATA', label: 'Data Access / Storage', match: (tr, t) => t.includes('data') || t.includes('dao') || t.includes('repository') }
+        ]
+      }
+    ]
+  },
+  'review': {
+    badge: 'Code Review',
+    icon: `<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+    placeholder: 'Filter review findings, CWEs, rules, files…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'CRITICAL', label: 'Critical', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+      { id: 'WARNING', label: 'Warning', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('warning') },
+      { id: 'SECURITY', label: 'Security / CWE', match: (tr, t) => t.includes('security') || t.includes('cwe') || t.includes('vulnerab') },
+      { id: 'BUGS', label: 'Bug Hazards', match: (tr, t) => t.includes('bug') || t.includes('defect') || t.includes('hazard') },
+      { id: 'PERF', label: 'Performance', match: (tr, t) => t.includes('perf') || t.includes('memory') || t.includes('leak') }
+    ],
+    selects: [
+      {
+        id: 'sev',
+        label: 'All Severities',
+        options: [
+          { val: 'CRITICAL', label: 'Critical Severity', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
+          { val: 'WARNING', label: 'Warning Severity', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('warning') },
+          { val: 'INFO', label: 'Info / Notice', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('info') }
+        ]
+      },
+      {
+        id: 'cat',
+        label: 'All Rule Categories',
+        options: [
+          { val: 'SECURITY', label: 'Security & CWE Hazards', match: (tr, t) => t.includes('security') || t.includes('cwe') },
+          { val: 'BUG', label: 'Bug Hazards & Reliability', match: (tr, t) => t.includes('bug') || t.includes('defect') },
+          { val: 'PERF', label: 'Performance & Latency', match: (tr, t) => t.includes('perf') || t.includes('memory') },
+          { val: 'MAINTAINABILITY', label: 'Maintainability & Smells', match: (tr, t) => t.includes('maintain') || t.includes('smell') }
+        ]
+      }
+    ]
+  },
+  'metrics': {
+    badge: 'Code Metrics',
+    icon: `<svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    placeholder: 'Filter complexity, LOC, classes, methods…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'HIGH_CC', label: 'Complexity (CC ≥10)', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('high') || /\b([1-9]\d{1,})\b/.test(t) },
+      { id: 'LARGE_LOC', label: 'Large Classes (LOC ≥250)', match: (tr, t) => /\b([2-9]\d{2,}|\d{4,})\b/.test(t) },
+      { id: 'INTERFACES', label: 'Interfaces', match: (tr, t) => t.includes('interface') },
+      { id: 'RECORDS', label: 'Records & Enums', match: (tr, t) => t.includes('record') || t.includes('enum') }
+    ],
+    selects: [
+      {
+        id: 'cc',
+        label: 'All Complexity Tiers',
+        options: [
+          { val: 'HIGH', label: 'High Complexity (CC ≥ 10)', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('high') },
+          { val: 'MODERATE', label: 'Moderate Complexity (CC 5–9)', match: (tr, t) => tr.querySelector('.risk-medium') !== null || t.includes('moderate') },
+          { val: 'LOW', label: 'Low Complexity (CC < 5)', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('low') }
+        ]
+      },
+      {
+        id: 'kind',
+        label: 'All Entity Types',
+        options: [
+          { val: 'CLASS', label: 'Classes', match: (tr, t) => t.includes('class') },
+          { val: 'INTERFACE', label: 'Interfaces', match: (tr, t) => t.includes('interface') },
+          { val: 'RECORD', label: 'Records & Enums', match: (tr, t) => t.includes('record') || t.includes('enum') }
+        ]
+      }
+    ]
+  },
+  'concurrency-audit': {
+    badge: 'Concurrency Audit',
+    icon: `<svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+    placeholder: 'Filter thread safety, locks, volatile state, hazards…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'LOCKS', label: 'Locks & Sync', match: (tr, t) => t.includes('lock') || t.includes('synchronized') },
+      { id: 'VOLATILE', label: 'Volatile & Atomics', match: (tr, t) => t.includes('volatile') || t.includes('atomic') },
+      { id: 'UNSAFE', label: 'Unsafe Collections', match: (tr, t) => t.includes('unsafe') || t.includes('hashmap') || t.includes('arraylist') },
+      { id: 'HAZARDS', label: 'Race Hazards', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('hazard') || t.includes('race') }
+    ],
+    selects: [
+      {
+        id: 'primitive',
+        label: 'All Concurrency Primitives',
+        options: [
+          { val: 'LOCK', label: 'Locks & Synchronized', match: (tr, t) => t.includes('lock') || t.includes('synchronized') },
+          { val: 'ATOMIC', label: 'Atomics & Volatile State', match: (tr, t) => t.includes('atomic') || t.includes('volatile') },
+          { val: 'COLLECTION', label: 'Non-Thread-Safe Collections', match: (tr, t) => t.includes('unsafe') || t.includes('hashmap') || t.includes('arraylist') }
+        ]
+      },
+      {
+        id: 'risk',
+        label: 'All Risk Levels',
+        options: [
+          { val: 'CRITICAL', label: 'High / Critical Hazard', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') || t.includes('high') },
+          { val: 'MEDIUM', label: 'Moderate Risk', match: (tr, t) => tr.querySelector('.risk-medium') !== null || t.includes('medium') },
+          { val: 'LOW', label: 'Guarded / Low Risk', match: (tr, t) => tr.querySelector('.risk-low') !== null || t.includes('low') }
+        ]
+      }
+    ]
+  },
+  'executive-summary': {
+    badge: 'Executive Summary',
+    icon: `<svg class="svg-icon icon-emerald icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    placeholder: 'Filter roadmap actions, priorities, domains…',
+    pills: [
+      { id: 'ALL', label: 'All' },
+      { id: 'P0', label: 'P0 Critical', match: (tr, t) => t.includes('p0') },
+      { id: 'P1', label: 'P1 Near-Term', match: (tr, t) => t.includes('p1') },
+      { id: 'P2', label: 'P2 Planned', match: (tr, t) => t.includes('p2') },
+      { id: 'ARCH', label: 'Architecture', match: (tr, t) => t.includes('architecture') || t.includes('modularity') },
+      { id: 'SECURITY', label: 'Security', match: (tr, t) => t.includes('security') || t.includes('auth') }
+    ],
+    selects: [
+      {
+        id: 'priority',
+        label: 'All Roadmap Priorities',
+        options: [
+          { val: 'P0', label: 'P0 - Immediate Critical Fix', match: (tr, t) => t.includes('p0') },
+          { val: 'P1', label: 'P1 - Near-Term Sprint Target', match: (tr, t) => t.includes('p1') },
+          { val: 'P2', label: 'P2 - Planned Architectural Refactor', match: (tr, t) => t.includes('p2') }
+        ]
+      },
+      {
+        id: 'domain',
+        label: 'All Architectural Domains',
+        options: [
+          { val: 'ARCH', label: 'Modularity & Coupling', match: (tr, t) => t.includes('architecture') || t.includes('modularity') || t.includes('coupling') },
+          { val: 'SECURITY', label: 'Security & Auth Surface', match: (tr, t) => t.includes('security') || t.includes('auth') },
+          { val: 'DEBT', label: 'Technical Debt & Hygiene', match: (tr, t) => t.includes('debt') || t.includes('hygiene') }
+        ]
+      }
+    ]
+  }
+};
+
 const ReportsHub = {
   activeReport: 'change-risk',
   activeFormat: 'dashboard',
@@ -15043,6 +15472,14 @@ const ReportsHub = {
   loading: false,
   initialized: false,
   pollTimer: null,
+  activeTables: [],
+  filterState: {
+    report: 'change-risk',
+    pill: 'ALL',
+    select1: 'ALL',
+    select2: 'ALL',
+    search: ''
+  },
 
   init() {
     if (ReportsHub.initialized) return;
@@ -15182,6 +15619,13 @@ const ReportsHub = {
     if (reportKey && REPORTS_METADATA[reportKey]) {
       ReportsHub.activeReport = reportKey;
     }
+    ReportsHub.filterState = {
+      report: ReportsHub.activeReport,
+      pill: 'ALL',
+      select1: 'ALL',
+      select2: 'ALL',
+      search: ''
+    };
     if (ReportsHub.activeReport === 'html-snapshot') {
       ReportsHub.activeFormat = 'html';
     } else {
@@ -15198,6 +15642,10 @@ const ReportsHub = {
       ReportsHub.pollTimer = null;
     }
     ReportsHub.activeFormat = format;
+    const filterBar = qs('#reports-filter-bar');
+    if (filterBar && (ReportsHub.activeFormat !== 'dashboard' || ReportsHub.activeReport === 'html-snapshot')) {
+      filterBar.style.display = 'none';
+    }
     ReportsHub.syncUI();
     ReportsHub.loadActiveReport();
   },
@@ -15234,11 +15682,13 @@ const ReportsHub = {
     const codeContainer = qs('#reports-code-container');
     const htmlFrame = qs('#reports-html-frame');
     const codeOutput = qs('#reports-code-output');
+    const filterBar = qs('#reports-filter-bar');
 
     if (!dashContainer || !htmlContainer || !codeContainer) return;
 
     // Snapshot only supports HTML/Dashboard preview
     if (ReportsHub.activeReport === 'html-snapshot') {
+      if (filterBar) filterBar.style.display = 'none';
       dashContainer.style.display = 'none';
       codeContainer.style.display = 'none';
       htmlContainer.style.display = 'block';
@@ -15259,6 +15709,7 @@ const ReportsHub = {
         return;
       }
 
+      if (filterBar) filterBar.style.display = 'none';
       dashContainer.innerHTML = `
         <div class="reports-loading-state">
           <div class="loading-spinner"></div>
@@ -15296,6 +15747,8 @@ const ReportsHub = {
       }
       return;
     }
+
+    if (filterBar) filterBar.style.display = 'none';
 
     if (ReportsHub.activeFormat === 'html') {
       dashContainer.style.display = 'none';
@@ -15363,9 +15816,182 @@ const ReportsHub = {
     }
   },
 
+  renderReportFilterBar(type, data) {
+    const bar = qs('#reports-filter-bar');
+    if (!bar) return;
+
+    if (ReportsHub.activeFormat !== 'dashboard' || type === 'html-snapshot') {
+      bar.style.display = 'none';
+      return;
+    }
+
+    const cfg = REPORT_FILTERS_CONFIG[type];
+    if (!cfg) {
+      bar.style.display = 'none';
+      return;
+    }
+
+    if (!ReportsHub.filterState || ReportsHub.filterState.report !== type) {
+      ReportsHub.filterState = {
+        report: type,
+        pill: 'ALL',
+        select1: 'ALL',
+        select2: 'ALL',
+        search: ''
+      };
+    }
+
+    const state = ReportsHub.filterState;
+
+    bar.innerHTML = `
+      <div class="reports-filter-bar-left">
+        <span class="report-filter-badge-icon">
+          ${cfg.icon || ''}
+          <span>${esc(cfg.badge || 'Report Filters')}</span>
+        </span>
+
+        <div class="report-filter-pills" role="group" aria-label="Quick filters">
+          ${(cfg.pills || []).map(p => `
+            <button type="button" class="report-filter-pill ${state.pill === p.id ? 'active' : ''}" data-pill="${esc(p.id)}">
+              ${esc(p.label)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="reports-filter-bar-right">
+        ${(cfg.selects && cfg.selects.length > 0) ? `
+          <div class="report-filter-selectors">
+            ${cfg.selects.map((sel, idx) => `
+              <div class="report-filter-select-wrap">
+                <select class="report-filter-select" data-select-idx="${idx}" aria-label="${esc(sel.label)}">
+                  <option value="ALL" ${state['select' + (idx + 1)] === 'ALL' ? 'selected' : ''}>${esc(sel.label)}</option>
+                  ${(sel.options || []).map(opt => `
+                    <option value="${esc(opt.val)}" ${state['select' + (idx + 1)] === opt.val ? 'selected' : ''}>${esc(opt.label)}</option>
+                  `).join('')}
+                </select>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="report-filter-search-wrap">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" class="report-filter-search-input" placeholder="${esc(cfg.placeholder || 'Filter report…')}" value="${esc(state.search || '')}" aria-label="Search active report" />
+        </div>
+
+        <div class="report-filter-stats">
+          <span class="report-filter-count-badge" id="report-filter-count-badge">Calculating…</span>
+          <button type="button" class="report-filter-reset-btn" id="report-filter-reset-btn" title="Reset all filters">Reset</button>
+        </div>
+      </div>
+    `;
+
+    bar.style.display = 'flex';
+
+    bar.querySelectorAll('.report-filter-pill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bar.querySelectorAll('.report-filter-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.pill = btn.dataset.pill || 'ALL';
+        ReportsHub.applyReportFilters();
+      });
+    });
+
+    bar.querySelectorAll('.report-filter-select').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.selectIdx, 10);
+        state['select' + (idx + 1)] = e.target.value;
+        ReportsHub.applyReportFilters();
+      });
+    });
+
+    const searchInput = bar.querySelector('.report-filter-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        state.search = e.target.value || '';
+        ReportsHub.applyReportFilters();
+      });
+    }
+
+    const resetBtn = bar.querySelector('#report-filter-reset-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        ReportsHub.resetReportFilters();
+      });
+    }
+  },
+
+  resetReportFilters() {
+    const type = ReportsHub.activeReport;
+    ReportsHub.filterState = {
+      report: type,
+      pill: 'ALL',
+      select1: 'ALL',
+      select2: 'ALL',
+      search: ''
+    };
+    const bar = qs('#reports-filter-bar');
+    if (bar) {
+      bar.querySelectorAll('.report-filter-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.pill === 'ALL');
+      });
+      bar.querySelectorAll('.report-filter-select').forEach(sel => {
+        sel.value = 'ALL';
+      });
+      const input = bar.querySelector('.report-filter-search-input');
+      if (input) input.value = '';
+    }
+    ReportsHub.applyReportFilters();
+  },
+
+  applyReportFilters() {
+    let totalAll = 0;
+    let totalFiltered = 0;
+
+    (ReportsHub.activeTables || []).forEach(tblObj => {
+      if (typeof tblObj.applyFilter === 'function') {
+        tblObj.applyFilter();
+        totalAll += (tblObj.allRows ? tblObj.allRows.length : 0);
+        totalFiltered += (typeof tblObj.getFilteredCount === 'function' ? tblObj.getFilteredCount() : 0);
+      }
+    });
+
+    const countBadge = qs('#report-filter-count-badge');
+    const resetBtn = qs('#report-filter-reset-btn');
+    const isFiltered = ReportsHub.filterState && (
+      (ReportsHub.filterState.pill && ReportsHub.filterState.pill !== 'ALL') ||
+      (ReportsHub.filterState.select1 && ReportsHub.filterState.select1 !== 'ALL') ||
+      (ReportsHub.filterState.select2 && ReportsHub.filterState.select2 !== 'ALL') ||
+      (ReportsHub.filterState.search && ReportsHub.filterState.search.trim().length > 0)
+    );
+
+    if (countBadge) {
+      if (totalAll === 0) {
+        countBadge.textContent = '0 items';
+        countBadge.classList.remove('is-filtered');
+      } else if (!isFiltered) {
+        countBadge.textContent = `${totalAll} items`;
+        countBadge.classList.remove('is-filtered');
+      } else {
+        countBadge.textContent = `${totalFiltered} / ${totalAll} matched`;
+        countBadge.classList.add('is-filtered');
+      }
+    }
+
+    if (resetBtn) {
+      resetBtn.style.opacity = isFiltered ? '1' : '0.6';
+      resetBtn.style.pointerEvents = isFiltered ? 'auto' : 'none';
+    }
+  },
+
   renderDashboard(type, data) {
     const container = qs('#reports-dashboard-container');
     if (!container) return;
+
+    ReportsHub.activeTables = [];
+    ReportsHub.renderReportFilterBar(type, data);
 
     if (type === 'executive-summary') {
       ReportsHub.renderExecutiveSummaryDashboard(container, data);
@@ -15398,6 +16024,7 @@ const ReportsHub = {
     }
 
     ReportsHub.enhanceInteractiveTables(container);
+    ReportsHub.applyReportFilters();
   },
 
   renderChangeRiskDashboard(container, d) {
@@ -17421,10 +18048,7 @@ const ReportsHub = {
       let header = card ? card.querySelector('.report-section-header') : null;
       const tableWrap = table.closest('.report-table-wrap') || table.parentElement;
 
-      // Check if table contains risk/severity badges for quick pill filtering
-      const hasRiskBadges = tbody.querySelector('.risk-critical, .risk-high, .risk-medium, .risk-low') !== null;
-
-      // Create interactive filter & rows-per-page controls inside header or right above table
+      // Create rows-per-page controls inside header or right above table
       let controlsWrap = header ? header.querySelector('.report-table-controls') : null;
       if (!controlsWrap) {
         controlsWrap = document.createElement('div');
@@ -17437,18 +18061,6 @@ const ReportsHub = {
       }
 
       controlsWrap.innerHTML = `
-        ${hasRiskBadges ? `
-          <div class="report-severity-pills" role="group" aria-label="Filter by severity">
-            <button type="button" class="report-sev-pill active" data-sev="ALL">All (${allRows.length})</button>
-            <button type="button" class="report-sev-pill sev-critical" data-sev="CRITICAL">Critical</button>
-            <button type="button" class="report-sev-pill sev-high" data-sev="HIGH">High</button>
-            <button type="button" class="report-sev-pill sev-medium" data-sev="MEDIUM">Medium</button>
-          </div>
-        ` : ''}
-        <div class="report-table-search-wrap">
-          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="search" class="report-table-filter-input" placeholder="Filter ${allRows.length} rows…" aria-label="Filter table rows" />
-        </div>
         <div class="report-table-size-wrap">
           <label>Rows: </label>
           <select class="report-pagination-size-select" aria-label="Rows per page">
@@ -17478,8 +18090,6 @@ const ReportsHub = {
         }
       }
 
-      let activeSev = 'ALL';
-      let queryText = '';
       let pageSize = 15;
       let currentPage = 1;
       let filteredRows = allRows.slice();
@@ -17503,9 +18113,16 @@ const ReportsHub = {
           tr.style.display = visibleSet.has(tr) ? '' : 'none';
         });
 
+        const isFilterActive = ReportsHub.filterState && (
+          (ReportsHub.filterState.pill && ReportsHub.filterState.pill !== 'ALL') ||
+          (ReportsHub.filterState.select1 && ReportsHub.filterState.select1 !== 'ALL') ||
+          (ReportsHub.filterState.select2 && ReportsHub.filterState.select2 !== 'ALL') ||
+          (ReportsHub.filterState.search && ReportsHub.filterState.search.trim().length > 0)
+        );
+
         // Entry counter
         if (total === 0) {
-          pageInfoEl.textContent = 'Showing 0 of 0 entries' + (queryText || activeSev !== 'ALL' ? ` (filtered from ${allRows.length})` : '');
+          pageInfoEl.textContent = 'Showing 0 of 0 entries' + (isFilterActive ? ` (filtered from ${allRows.length})` : '');
         } else {
           const filterSuffix = (total < allRows.length) ? ` (filtered from ${allRows.length})` : '';
           pageInfoEl.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} entries${filterSuffix}`;
@@ -17515,6 +18132,20 @@ const ReportsHub = {
           badgeEl.textContent = (total === allRows.length)
             ? origBadgeText
             : `${total} / ${allRows.length} shown`;
+        }
+
+        let emptyRow = tbody.querySelector('.report-empty-row');
+        if (total === 0) {
+          if (!emptyRow) {
+            emptyRow = document.createElement('tr');
+            emptyRow.className = 'report-empty-row';
+            const colCount = table.querySelectorAll('thead th').length || 6;
+            emptyRow.innerHTML = `<td colspan="${colCount}" style="text-align:center; padding:28px 16px; color:var(--text-muted); font-size:12.5px; font-style:italic;">No records match the current filter criteria.</td>`;
+            tbody.appendChild(emptyRow);
+          }
+          emptyRow.style.display = '';
+        } else if (emptyRow) {
+          emptyRow.style.display = 'none';
         }
 
         // Render page buttons
@@ -17575,29 +18206,62 @@ const ReportsHub = {
       };
 
       const applyFilter = () => {
-        const q = queryText.trim().toLowerCase();
+        const state = ReportsHub.filterState || { pill: 'ALL', select1: 'ALL', select2: 'ALL', search: '' };
+        const q = (state.search || '').trim().toLowerCase();
+        const cfg = REPORT_FILTERS_CONFIG[ReportsHub.activeReport];
+
         filteredRows = allRows.filter(tr => {
-          const textMatch = !q || tr.textContent.toLowerCase().includes(q);
-          let sevMatch = true;
-          if (activeSev !== 'ALL') {
-            const cls = activeSev === 'CRITICAL' ? '.risk-critical'
-                      : activeSev === 'HIGH' ? '.risk-high'
-                      : '.risk-medium';
-            sevMatch = tr.querySelector(cls) !== null || tr.textContent.toUpperCase().includes(activeSev);
+          const rowText = tr.textContent.toLowerCase();
+
+          // 1. Contextual Search Query
+          if (q && !rowText.includes(q)) {
+            return false;
           }
-          return textMatch && sevMatch;
+
+          // 2. Report Quick Pill Filter
+          if (cfg && state.pill && state.pill !== 'ALL') {
+            const pillCfg = (cfg.pills || []).find(p => p.id === state.pill);
+            if (pillCfg) {
+              if (typeof pillCfg.match === 'function') {
+                if (!pillCfg.match(tr, rowText)) return false;
+              } else if (!rowText.includes(pillCfg.id.toLowerCase())) {
+                return false;
+              }
+            }
+          }
+
+          // 3. Dropdown Selector 1
+          if (cfg && cfg.selects && cfg.selects[0] && state.select1 && state.select1 !== 'ALL') {
+            const selCfg = cfg.selects[0];
+            const optCfg = (selCfg.options || []).find(o => o.val === state.select1);
+            if (optCfg) {
+              if (typeof optCfg.match === 'function') {
+                if (!optCfg.match(tr, rowText)) return false;
+              } else if (!rowText.includes(optCfg.val.toLowerCase())) {
+                return false;
+              }
+            }
+          }
+
+          // 4. Dropdown Selector 2
+          if (cfg && cfg.selects && cfg.selects[1] && state.select2 && state.select2 !== 'ALL') {
+            const selCfg = cfg.selects[1];
+            const optCfg = (selCfg.options || []).find(o => o.val === state.select2);
+            if (optCfg) {
+              if (typeof optCfg.match === 'function') {
+                if (!optCfg.match(tr, rowText)) return false;
+              } else if (!rowText.includes(optCfg.val.toLowerCase())) {
+                return false;
+              }
+            }
+          }
+
+          return true;
         });
+
         currentPage = 1;
         renderPagination();
       };
-
-      const searchInput = controlsWrap.querySelector('.report-table-filter-input');
-      if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-          queryText = e.target.value || '';
-          applyFilter();
-        });
-      }
 
       const sizeSelect = controlsWrap.querySelector('.report-pagination-size-select');
       if (sizeSelect) {
@@ -17607,16 +18271,6 @@ const ReportsHub = {
           renderPagination();
         });
       }
-
-      controlsWrap.querySelectorAll('.report-sev-pill').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          controlsWrap.querySelectorAll('.report-sev-pill').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          activeSev = btn.dataset.sev || 'ALL';
-          applyFilter();
-        });
-      });
 
       // Add click-to-sort on table headers
       const ths = Array.from(table.querySelectorAll('thead th'));
@@ -17659,6 +18313,13 @@ const ReportsHub = {
           allRows.forEach(r => tbody.appendChild(r));
           applyFilter();
         });
+      });
+
+      ReportsHub.activeTables.push({
+        table,
+        applyFilter,
+        allRows,
+        getFilteredCount: () => filteredRows.length
       });
 
       renderPagination();
