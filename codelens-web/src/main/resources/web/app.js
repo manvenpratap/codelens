@@ -6395,41 +6395,105 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       });
 
       const classGrid = card.querySelector('.mod-dep-class-grid');
-      const classUsages = m.classUsages || [];
+      const rawUsages = m.classUsages || [];
+
+      // Filter class usages by current search query and kind filter
+      const classUsages = rawUsages.filter(cu => {
+        if (currentKindFilter !== 'ALL') {
+          if (!cu.kinds || !cu.kinds[currentKindFilter]) return false;
+        }
+        if (q) {
+          const matches = (cu.sourceClassSimpleName || '').toLowerCase().includes(q) ||
+                          (cu.targetClassSimpleName || '').toLowerCase().includes(q) ||
+                          (cu.sourceClassFqn || '').toLowerCase().includes(q) ||
+                          (cu.targetClassFqn || '').toLowerCase().includes(q);
+          if (!matches) return false;
+        }
+        return true;
+      });
+
+      // Sort class usages
+      classUsages.sort((a, b) => {
+        if (currentSortMode === 'src-asc') return (a.sourceClassSimpleName || a.sourceClassFqn || '').localeCompare(b.sourceClassSimpleName || b.sourceClassFqn || '');
+        if (currentSortMode === 'tgt-asc') return (a.targetClassSimpleName || a.targetClassFqn || '').localeCompare(b.targetClassSimpleName || b.targetClassFqn || '');
+        return (b.touchPointCount || 0) - (a.touchPointCount || 0);
+      });
+
+      // Update class section title with active count
+      const classSecTitle = card.querySelector('.mod-dep-class-sec-title');
+      if (classSecTitle) {
+        classSecTitle.innerHTML = `
+          <span>Intermodular Class Usage (${classUsages.length}${classUsages.length !== rawUsages.length ? ` of ${rawUsages.length}` : ''} pairs)</span>
+        `;
+      }
+
+      const getPkgShort = (fqn) => {
+        if (!fqn) return '';
+        const parts = fqn.split('.');
+        parts.pop();
+        return parts.slice(-2).join('.') || parts.join('.');
+      };
+
       if (classUsages.length === 0) {
-        classGrid.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No direct class usages recorded.</div>';
+        classGrid.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:8px 12px;background:var(--bg-elevated);border-radius:var(--radius-xs);">No direct class usages recorded${q ? ` matching "${esc(q)}"` : ''}.</div>`;
       } else {
         for (const cu of classUsages) {
           const pairCard = createElement('div', { class: 'mod-dep-class-pair-card' });
           const cuPts = cu.touchPointCount || 0;
           const tierCls = cuPts >= 50 ? 'tier-hot' : (cuPts >= 15 ? 'tier-warm' : (cuPts >= 5 ? 'tier-mid' : 'tier-low'));
+          const srcPkgShort = getPkgShort(cu.sourceClassFqn);
+          const tgtPkgShort = getPkgShort(cu.targetClassFqn);
+
           let cuKindsHtml = '';
           if (cu.kinds) {
             for (const [k, count] of Object.entries(cu.kinds)) {
-              cuKindsHtml += `<span class="class-kind-pill ${k}">${k}: ${count}</span>`;
+              cuKindsHtml += `<span class="class-kind-pill ${k}">${k}${count > 1 ? ` (${count})` : ''}</span>`;
             }
           }
+
           pairCard.innerHTML = `
-            <div class="class-pair-row-top">
-              <div class="class-pair-flow">
-                <a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a>
-                <span class="class-arrow-icon">➔</span>
-                <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
+            <div class="class-pair-header">
+              <div class="class-pair-badges">
+                <span class="class-pair-pts-badge ${tierCls}">
+                  <strong>${cuPts}</strong> ${cuPts === 1 ? 'call' : 'calls'}
+                </span>
+                ${cuKindsHtml}
               </div>
               <div class="class-pair-actions">
-                <span class="class-pair-pts-badge ${tierCls}">${cuPts} ${cuPts === 1 ? 'pt' : 'pts'}</span>
-                <button class="btn-peek-calls" title="Peek function calls between these two classes">
-                  <span class="peek-txt">Peek Calls</span>
+                <button class="btn-peek-calls" title="Peek individual calls between these two classes">
+                  <span class="peek-txt">Peek Calls (${cuPts})</span>
                   <span class="peek-chevron">▼</span>
                 </button>
-                <button class="btn-copy-pair" title="Copy class pair to clipboard">
-                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <button class="btn-copy-pair" title="Copy class pair: ${esc(cu.sourceClassSimpleName || '')} ➔ ${esc(cu.targetClassSimpleName || '')}">
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 </button>
               </div>
             </div>
-            <div class="class-pair-kinds">
-              ${cuKindsHtml}
+
+            <div class="class-pair-flow-body">
+              <div class="class-node-row src-row">
+                <span class="class-role-badge src-role" title="Calling class (Source)">FROM</span>
+                <div class="class-node-meta">
+                  <a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a>
+                  ${srcPkgShort ? `<span class="class-pkg-chip" title="${esc(cu.sourceClassFqn)}">${esc(srcPkgShort)}</span>` : ''}
+                </div>
+              </div>
+
+              <div class="class-flow-arrow-row">
+                <span class="class-flow-arrow-line"></span>
+                <span class="class-flow-arrow-icon">➔</span>
+                <span class="class-flow-arrow-line"></span>
+              </div>
+
+              <div class="class-node-row tgt-row">
+                <span class="class-role-badge tgt-role" title="Called class (Target)">TO</span>
+                <div class="class-node-meta">
+                  <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
+                  ${tgtPkgShort ? `<span class="class-pkg-chip" title="${esc(cu.targetClassFqn)}">${esc(tgtPkgShort)}</span>` : ''}
+                </div>
+              </div>
             </div>
+
             <div class="class-pair-drawer" style="display:none;"></div>
           `;
 
@@ -6467,28 +6531,33 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
             if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
 
             if (!isOpen && !drawerLoaded) {
-              const matchingCalls = (m.touchPoints || []).filter(tp => {
-                const srcMatch = (tp.fromType === cu.sourceClassFqn) || (tp.fromEntity && tp.fromEntity.includes(cu.sourceClassSimpleName));
-                const tgtMatch = (tp.toType === cu.targetClassFqn) || (tp.toEntity && tp.toEntity.includes(cu.targetClassSimpleName));
-                return srcMatch && tgtMatch;
-              });
+              const matchingCalls = (cu.touchPoints && cu.touchPoints.length > 0)
+                ? cu.touchPoints
+                : (m.touchPoints || []).filter(tp => {
+                    const srcMatch = (tp.fromType === cu.sourceClassFqn) || (tp.fromEntity && tp.fromEntity.includes(cu.sourceClassSimpleName));
+                    const tgtMatch = (tp.toType === cu.targetClassFqn) || (tp.toEntity && tp.toEntity.includes(cu.targetClassSimpleName));
+                    return srcMatch && tgtMatch;
+                  });
 
               if (matchingCalls.length === 0) {
                 drawer.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>';
               } else {
-                drawer.innerHTML = matchingCalls.map(tp => `
-                  <div class="class-pair-call-item">
-                    <div style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;">
-                      <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                      <div class="class-pair-call-chain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                        ${formatSignatureHtml(tp.fromEntity)}
-                        <span style="color:var(--text-muted);margin:0 4px;">➔</span>
-                        ${formatSignatureHtml(tp.toEntity)}
-                      </div>
-                    </div>
-                    ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
+                drawer.innerHTML = `
+                  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">
+                    Intermodular Calls (${matchingCalls.length})
                   </div>
-                `).join('');
+                  ${matchingCalls.map(tp => `
+                    <div class="class-pair-call-item">
+                      <div class="call-item-main">
+                        <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
+                        <div class="call-sig-from" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</div>
+                        <span class="call-sig-arrow">➔</span>
+                        <div class="call-sig-to" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</div>
+                      </div>
+                      ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
+                    </div>
+                  `).join('')}
+                `;
               }
               drawerLoaded = true;
             }
@@ -6554,6 +6623,13 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   // --- SUBVIEW 2: CLASS USAGE MATRIX ---
   function renderClassUsageSubView() {
     const q = currentSearchQuery.toLowerCase();
+    const getPkgShort = (fqn) => {
+      if (!fqn) return '';
+      const parts = fqn.split('.');
+      parts.pop();
+      return parts.slice(-2).join('.') || parts.join('.');
+    };
+
     const filtered = allClassUsages.filter(cu => {
       if (currentDirectionFilter !== 'ALL' && cu.direction !== currentDirectionFilter) {
         return false;
@@ -6564,6 +6640,8 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       if (q) {
         const matches = (cu.sourceClassFqn || '').toLowerCase().includes(q) ||
                         (cu.targetClassFqn || '').toLowerCase().includes(q) ||
+                        (cu.sourceClassSimpleName || '').toLowerCase().includes(q) ||
+                        (cu.targetClassSimpleName || '').toLowerCase().includes(q) ||
                         (cu.targetModule || '').toLowerCase().includes(q) ||
                         (cu.sourceModule || '').toLowerCase().includes(q);
         if (!matches) return false;
@@ -6573,8 +6651,8 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
     // Sort class usages
     filtered.sort((a, b) => {
-      if (currentSortMode === 'src-asc') return (a.sourceClassFqn || '').localeCompare(b.sourceClassFqn || '');
-      if (currentSortMode === 'tgt-asc') return (a.targetClassFqn || '').localeCompare(b.targetClassFqn || '');
+      if (currentSortMode === 'src-asc') return (a.sourceClassSimpleName || a.sourceClassFqn || '').localeCompare(b.sourceClassSimpleName || b.sourceClassFqn || '');
+      if (currentSortMode === 'tgt-asc') return (a.targetClassSimpleName || a.targetClassFqn || '').localeCompare(b.targetClassSimpleName || b.targetClassFqn || '');
       if (currentSortMode === 'mod-asc') {
         const modA = a.targetModule || a.sourceModule || '';
         const modB = b.targetModule || b.sourceModule || '';
@@ -6602,11 +6680,12 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <thead>
         <tr>
           <th>Direction</th>
-          <th>Source Class</th>
-          <th>Target Class</th>
+          <th>Caller Class (Source)</th>
+          <th>Callee Class (Target)</th>
           <th>Connected Module</th>
           <th>Kinds</th>
           <th style="text-align:right;">Touch Points</th>
+          <th style="text-align:center;width:95px;">Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -6616,31 +6695,56 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     for (const cu of filtered) {
       const tr = createElement('tr');
       const dirCls = cu.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
-      const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUTBOUND' : '⬅ INBOUND';
+      const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
       const modName = cu.targetModule || cu.sourceModule || '-';
       const modColor = (window.CodeLensPalette && window.CodeLensPalette.getColor)
         ? window.CodeLensPalette.getColor(modName, 0)
         : '#38bdf8';
       const cuPts = cu.touchPointCount || 0;
       const tierCls = cuPts >= 50 ? 'tier-hot' : (cuPts >= 15 ? 'tier-warm' : (cuPts >= 5 ? 'tier-mid' : 'tier-low'));
+      const srcPkgShort = getPkgShort(cu.sourceClassFqn);
+      const tgtPkgShort = getPkgShort(cu.targetClassFqn);
 
       let kindsHtml = '';
       if (cu.kinds) {
         for (const [k, count] of Object.entries(cu.kinds)) {
-          kindsHtml += `<span class="class-kind-pill ${k}">${k}: ${count}</span> `;
+          kindsHtml += `<span class="class-kind-pill ${k}">${k}${count > 1 ? ` (${count})` : ''}</span> `;
         }
       }
 
       tr.innerHTML = `
         <td><span class="mod-dep-direction-tag ${dirCls}">${dirLabel}</span></td>
-        <td><a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a></td>
-        <td><a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a></td>
+        <td>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <span class="class-role-badge src-role">SRC</span>
+            <a href="#" class="class-entity-link src-link" title="${esc(cu.sourceClassFqn)}">${esc(cu.sourceClassSimpleName || cu.sourceClassFqn)}</a>
+            ${srcPkgShort ? `<span class="class-pkg-chip" title="${esc(cu.sourceClassFqn)}">${esc(srcPkgShort)}</span>` : ''}
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <span class="class-role-badge tgt-role">TGT</span>
+            <a href="#" class="class-entity-link tgt-link" title="${esc(cu.targetClassFqn)}">${esc(cu.targetClassSimpleName || cu.targetClassFqn)}</a>
+            ${tgtPkgShort ? `<span class="class-pkg-chip" title="${esc(cu.targetClassFqn)}">${esc(tgtPkgShort)}</span>` : ''}
+          </div>
+        </td>
         <td>
           <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55; margin-right:4px;">[MOD]</span>
           <strong style="color:var(--text-primary);font-family:var(--font-display);">${esc(modName)}</strong>
         </td>
         <td>${kindsHtml}</td>
-        <td style="text-align:right;"><span class="class-pair-pts-badge ${tierCls}">${cuPts}</span></td>
+        <td style="text-align:right;"><span class="class-pair-pts-badge ${tierCls}"><strong>${cuPts}</strong></span></td>
+        <td style="text-align:center;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+            <button class="btn-peek-calls btn-tbl-peek" title="Peek individual calls">
+              <span class="peek-txt">Peek</span>
+              <span class="peek-chevron">▼</span>
+            </button>
+            <button class="btn-copy-pair" title="Copy class pair">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            </button>
+          </div>
+        </td>
       `;
 
       tr.querySelector('.src-link')?.addEventListener('click', (e) => {
@@ -6650,6 +6754,66 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       tr.querySelector('.tgt-link')?.addEventListener('click', (e) => {
         e.preventDefault();
         selectType(cu.targetClassFqn);
+      });
+
+      tr.querySelector('.btn-copy-pair')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textToCopy = `${cu.sourceClassFqn} ➔ ${cu.targetClassFqn}`;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            if (typeof showToast === 'function') showToast('Copied class pair to clipboard');
+          });
+        }
+      });
+
+      // Expandable drawer row in table
+      let detailTr = null;
+      tr.querySelector('.btn-tbl-peek')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const peekBtn = tr.querySelector('.btn-tbl-peek');
+        if (detailTr) {
+          detailTr.remove();
+          detailTr = null;
+          peekBtn.classList.remove('open');
+          peekBtn.querySelector('.peek-chevron').textContent = '▼';
+        } else {
+          peekBtn.classList.add('open');
+          peekBtn.querySelector('.peek-chevron').textContent = '▲';
+          detailTr = createElement('tr', { class: 'table-detail-row' });
+          const matchingCalls = (cu.touchPoints && cu.touchPoints.length > 0)
+            ? cu.touchPoints
+            : (allFunctionCalls || []).filter(tp => {
+                const srcMatch = (tp.fromType === cu.sourceClassFqn) || (tp.fromEntity && tp.fromEntity.includes(cu.sourceClassSimpleName));
+                const tgtMatch = (tp.toType === cu.targetClassFqn) || (tp.toEntity && tp.toEntity.includes(cu.targetClassSimpleName));
+                return srcMatch && tgtMatch;
+              });
+
+          const callsHtml = matchingCalls.length === 0
+            ? '<div style="font-size:10.5px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>'
+            : matchingCalls.map(tp => `
+                <div class="class-pair-call-item">
+                  <div class="call-item-main">
+                    <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
+                    <div class="call-sig-from" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</div>
+                    <span class="call-sig-arrow">➔</span>
+                    <div class="call-sig-to" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</div>
+                  </div>
+                  ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
+                </div>
+              `).join('');
+
+          detailTr.innerHTML = `
+            <td colspan="7" class="table-drawer-cell">
+              <div class="class-pair-drawer" style="max-height:200px;">
+                <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">
+                  Intermodular Calls (${matchingCalls.length})
+                </div>
+                ${callsHtml}
+              </div>
+            </td>
+          `;
+          tr.after(detailTr);
+        }
       });
 
       tbody.appendChild(tr);
