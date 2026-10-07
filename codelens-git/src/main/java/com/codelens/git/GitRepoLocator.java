@@ -26,21 +26,7 @@ public class GitRepoLocator {
     /**
      * DTO containing validation details for a specified repository path.
      */
-    public static class ValidationResult {
-        private final boolean valid;
-        private final String  repoPath;
-        private final String  branch;
-        private final String  headCommit;
-        private final String  error;
-
-        private ValidationResult(boolean valid, String repoPath, String branch, String headCommit, String error) {
-            this.valid      = valid;
-            this.repoPath   = repoPath;
-            this.branch     = branch;
-            this.headCommit = headCommit;
-            this.error      = error;
-        }
-
+    public record ValidationResult(boolean isValid, String repoPath, String branch, String headCommit, String error) {
         public static ValidationResult valid(String repoPath, String branch, String headCommit) {
             return new ValidationResult(true, repoPath, branch, headCommit, null);
         }
@@ -49,7 +35,6 @@ public class GitRepoLocator {
             return new ValidationResult(false, null, null, null, error);
         }
 
-        public boolean isValid()        { return valid; }
         public String getRepoPath()     { return repoPath; }
         public String getBranch()       { return branch; }
         public String getHeadCommit()   { return headCommit; }

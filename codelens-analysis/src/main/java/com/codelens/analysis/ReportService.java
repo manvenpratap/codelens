@@ -233,47 +233,20 @@ public class ReportService {
     }
 
     private static final int MAX_REPORTED_CYCLES = 25;
-    private static final int MAX_DFS_CYCLE_DEPTH = 512;
 
     private static List<List<String>> findCycles(Map<String, Set<String>> graph) {
-        List<List<String>> cycles = new ArrayList<>();
-        Set<String> visited = new HashSet<>();
-        Set<String> inStack = new HashSet<>();
-        List<String> path = new ArrayList<>();
-
-        for (String node : graph.keySet()) {
-            if (cycles.size() >= MAX_REPORTED_CYCLES) break;
-            if (!visited.contains(node)) {
-                dfsCycle(node, graph, visited, inStack, path, cycles);
+        if (graph == null || graph.isEmpty()) return Collections.emptyList();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g =
+            new org.jgrapht.graph.DefaultDirectedGraph<>(org.jgrapht.graph.DefaultEdge.class);
+        for (Map.Entry<String, Set<String>> entry : graph.entrySet()) {
+            g.addVertex(entry.getKey());
+            for (String target : entry.getValue()) {
+                g.addVertex(target);
+                g.addEdge(entry.getKey(), target);
             }
         }
-        return cycles;
-    }
-
-    private static void dfsCycle(String u, Map<String, Set<String>> graph,
-                                 Set<String> visited, Set<String> inStack,
-                                 List<String> path, List<List<String>> cycles) {
-        if (cycles.size() >= MAX_REPORTED_CYCLES) return;
-        visited.add(u);
-        inStack.add(u);
-        path.add(u);
-
-        if (path.size() < MAX_DFS_CYCLE_DEPTH) {
-            for (String v : graph.getOrDefault(u, Collections.emptySet())) {
-                if (cycles.size() >= MAX_REPORTED_CYCLES) break;
-                if (!visited.contains(v)) {
-                    dfsCycle(v, graph, visited, inStack, path, cycles);
-                } else if (inStack.contains(v)) {
-                    int startIdx = path.indexOf(v);
-                    if (startIdx >= 0) {
-                        cycles.add(new ArrayList<>(path.subList(startIdx, path.size())));
-                    }
-                }
-            }
-        }
-
-        path.remove(path.size() - 1);
-        inStack.remove(u);
+        List<List<String>> cycles = new org.jgrapht.alg.cycle.TarjanSimpleCycles<>(g).findSimpleCycles();
+        return cycles.size() > MAX_REPORTED_CYCLES ? cycles.subList(0, MAX_REPORTED_CYCLES) : cycles;
     }
 
     public String renderArchitectureMarkdown(ArchitectureReportData d) {
@@ -2301,11 +2274,7 @@ public class ReportService {
     // ─────────────────────────────────────────────────────────────────────────
 
     private static String extractClassFromFqn(String entityFqn) {
-        if (entityFqn == null) return "";
-        int paren = entityFqn.indexOf('(');
-        String base = (paren > 0) ? entityFqn.substring(0, paren) : entityFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(0, dot) : base;
+        return CallGraphAnalyzer.extractClassFqn(entityFqn);
     }
 
     private static String extractClassSimple(String classFqn) {

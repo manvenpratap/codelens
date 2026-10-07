@@ -51,16 +51,10 @@ public class CallGraphAnalyzer {
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Functional interface for streaming call edges during graph construction. */
-    @FunctionalInterface
-    public interface EdgeConsumer {
-        void accept(String from, String to);
-    }
-
     /** Functional interface for providing an edge stream. */
     @FunctionalInterface
     public interface EdgeStreamer {
-        void stream(EdgeConsumer consumer) throws Exception;
+        void stream(java.util.function.BiConsumer<String, String> consumer) throws Exception;
     }
 
     @FunctionalInterface
@@ -208,35 +202,6 @@ public class CallGraphAnalyzer {
 
     public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer) throws Exception {
         rebuild(allMethodFqns, edgeStreamer, null);
-    }
-
-    /**
-     * Rebuilds the call graph from pre-fetched (from, to) String pairs with progress reporting.
-     */
-    public synchronized void rebuildWithPairs(List<String> allMethodFqns, List<String[]> callPairs, ProgressListener listener) throws Exception {
-        int totalPairs = callPairs != null ? callPairs.size() : 0;
-        rebuild(allMethodFqns, consumer -> {
-            if (callPairs != null) {
-                int pCount = 0;
-                int pStride = Math.max(2500, totalPairs / 100);
-                for (String[] pair : callPairs) {
-                    consumer.accept(pair[0], pair[1]);
-                    pCount++;
-                    if (listener != null && (pCount % pStride == 0 || pCount == totalPairs)) {
-                        listener.onProgress("Call Graph: Mapping Edges", pCount, totalPairs,
-                            String.format("Mapped %,d / %,d call edges (%s → %s)",
-                                pCount, totalPairs, simpleMethodName(pair[0]), simpleMethodName(pair[1])));
-                    }
-                }
-            }
-        }, listener);
-    }
-
-    /**
-     * Rebuilds the call graph from pre-fetched (from, to) String pairs.
-     */
-    public synchronized void rebuildWithPairs(List<String> allMethodFqns, List<String[]> callPairs) throws Exception {
-        rebuildWithPairs(allMethodFqns, callPairs, null);
     }
 
     /**
@@ -1156,7 +1121,8 @@ public class CallGraphAnalyzer {
         return classFqn;
     }
 
-    private String extractClassFqn(String methodFqn) {
+    public static String extractClassFqn(String methodFqn) {
+        if (methodFqn == null) return "";
         int paren = methodFqn.indexOf('(');
         String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
         int dot = base.lastIndexOf('.');
@@ -1335,7 +1301,7 @@ public class CallGraphAnalyzer {
         if (normScope.length() < 3) return null;
 
         for (String c : candidates) {
-            String classFqn = extractClassFqnStatic(c);
+            String classFqn = extractClassFqn(c);
             String simple = classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : classFqn;
             String normClass = simple.replace("_", "").toLowerCase(Locale.ROOT);
             if (normScope.equals(normClass) || normScope.contains(normClass) || normClass.contains(normScope)) {
@@ -1349,16 +1315,9 @@ public class CallGraphAnalyzer {
         if (methodFqns == null || methodFqns.isEmpty()) return Collections.emptySet();
         Set<String> set = new HashSet<>(4);
         for (String m : methodFqns) {
-            set.add(extractClassFqnStatic(m));
+            set.add(extractClassFqn(m));
         }
         return set;
-    }
-
-    private static String extractClassFqnStatic(String methodFqn) {
-        int paren = methodFqn.indexOf('(');
-        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(0, dot) : base;
     }
 
     private static String disambiguateByCaller(String from, List<String> candidates) {
@@ -1369,11 +1328,11 @@ public class CallGraphAnalyzer {
         }
 
         // 1. Same-class candidate match (e.g. self-call / recursion / inner class)
-        String callerClass = extractClassFqnStatic(from);
+        String callerClass = extractClassFqn(from);
         if (callerClass != null && !callerClass.isEmpty()) {
             List<String> sameClassCandidates = new ArrayList<>(2);
             for (String c : candidates) {
-                if (callerClass.equalsIgnoreCase(extractClassFqnStatic(c))) {
+                if (callerClass.equalsIgnoreCase(extractClassFqn(c))) {
                     sameClassCandidates.add(c);
                 }
             }

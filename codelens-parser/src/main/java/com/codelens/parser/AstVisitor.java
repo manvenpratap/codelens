@@ -832,8 +832,6 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         }
     });
 
-    private static final char[] HEX_ARRAY = "0123456789abcdef".toCharArray();
-
     /** First 16 hex chars of SHA-256 of normalised body text without regex or String.format churn. */
     private String hashBody(String body) {
         if (body == null || body.isEmpty()) return "0000000000000000";
@@ -857,13 +855,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             }
 
             byte[] hash = md.digest();
-            char[] hexChars = new char[16];
-            for (int j = 0; j < 8; j++) {
-                int v = hash[j] & 0xFF;
-                hexChars[j * 2]     = HEX_ARRAY[v >>> 4];
-                hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
-            }
-            return new String(hexChars);
+            return java.util.HexFormat.of().formatHex(hash, 0, 8);
         } catch (Exception e) {
             return "0000000000000000";
         }

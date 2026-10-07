@@ -377,7 +377,7 @@ public class JavaSourceScannerTest {
         JavaSourceScanner.ScanResult res = scanner.scan(
             tempDir.toString(),
             null,
-            (pkgs, types, fields, methods, rels) -> {
+            (pkgs, types, fields, methods, rels, fileMetas) -> {
                 flushedBatches.incrementAndGet();
                 flushedTypes.addAndGet(types.size());
                 flushedMethods.addAndGet(methods.size());

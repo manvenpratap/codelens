@@ -526,14 +526,6 @@ public class CriticalPathAnalyzer {
         return dot >= 0 ? clean.substring(dot + 1) : clean;
     }
 
-    private static String extractClassFqn(String methodFqn) {
-        if (methodFqn == null) return "";
-        int paren = methodFqn.indexOf('(');
-        String clean = paren > 0 ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = clean.lastIndexOf('.');
-        return dot >= 0 ? clean.substring(0, dot) : clean;
-    }
-
     private static String extractPackageFqn(String classFqn) {
         if (classFqn == null) return "";
         int dot = classFqn.lastIndexOf('.');
@@ -631,7 +623,7 @@ public class CriticalPathAnalyzer {
         for (int i = 0; i < totalHops; i++) {
             String fqn = scored.path.get(i);
             String simpleName = extractSimpleMethodName(fqn);
-            String classFqn = extractClassFqn(fqn);
+            String classFqn = CallGraphAnalyzer.extractClassFqn(fqn);
             String packageFqn = extractPackageFqn(classFqn);
 
             CodeMethod m = methodMap != null ? methodMap.get(fqn) : null;

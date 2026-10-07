@@ -64,15 +64,15 @@ public class JavaSourceScanner {
                      List<CodeType> types,
                      List<CodeField> fields,
                      List<CodeMethod> methods,
-                     List<CodeRelationship> relationships) throws Exception;
+                     List<CodeRelationship> relationships,
+                     List<FileMeta> fileMetas) throws Exception;
 
         default void onBatch(List<CodePackage> packages,
                              List<CodeType> types,
                              List<CodeField> fields,
                              List<CodeMethod> methods,
-                             List<CodeRelationship> relationships,
-                             List<FileMeta> fileMetas) throws Exception {
-            onBatch(packages, types, fields, methods, relationships);
+                             List<CodeRelationship> relationships) throws Exception {
+            onBatch(packages, types, fields, methods, relationships, Collections.emptyList());
         }
     }
 

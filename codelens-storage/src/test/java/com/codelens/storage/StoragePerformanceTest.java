@@ -186,10 +186,10 @@ public class StoragePerformanceTest {
             dao.batchInsertRelationshipsFast(rels);
 
             // 5. Test inserting the exact same lists again (re-scan scenario)
-            dao.batchInsertPackages(pkgs);
-            dao.batchInsertTypes(types);
-            dao.batchInsertMethods(methods);
-            dao.batchInsertRelationships(rels);
+            dao.batchInsertPackagesFast(pkgs);
+            dao.batchInsertTypesFast(types);
+            dao.batchInsertMethodsFast(methods);
+            dao.batchInsertRelationshipsFast(rels);
 
             Map<String, Object> stats = dao.getStats();
             assertEquals(1, ((Number) stats.get("packages")).intValue(), "packages should deduplicate to 1");

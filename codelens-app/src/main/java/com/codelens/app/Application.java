@@ -74,25 +74,9 @@ public class Application {
             com.codelens.parser.JavaSourceScanner.ScanResult result = scanner.scan(
                 targetPath,
                 java.util.Collections.emptyList(),
-                new com.codelens.parser.JavaSourceScanner.BatchConsumer() {
-                    @Override
-                    public void onBatch(java.util.List<com.codelens.core.model.CodePackage> pkgs,
-                                        java.util.List<com.codelens.core.model.CodeType> types,
-                                        java.util.List<com.codelens.core.model.CodeField> fields,
-                                        java.util.List<com.codelens.core.model.CodeMethod> methods,
-                                        java.util.List<com.codelens.core.model.CodeRelationship> rels) throws Exception {
-                        onBatch(pkgs, types, fields, methods, rels, java.util.Collections.emptyList());
-                    }
-                    @Override
-                    public void onBatch(java.util.List<com.codelens.core.model.CodePackage> pkgs,
-                                        java.util.List<com.codelens.core.model.CodeType> types,
-                                        java.util.List<com.codelens.core.model.CodeField> fields,
-                                        java.util.List<com.codelens.core.model.CodeMethod> methods,
-                                        java.util.List<com.codelens.core.model.CodeRelationship> rels,
-                                        java.util.List<com.codelens.core.model.FileMeta> fileMetas) throws Exception {
-                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
-                        lucene.addBatch(types, methods, fields);
-                    }
+                (pkgs, types, fields, methods, rels, fileMetas) -> {
+                    dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
+                    lucene.addBatch(types, methods, fields);
                 },
                 (done, total, file) -> {
                     if (done % 100 == 0 || done == total) {

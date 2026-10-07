@@ -631,11 +631,6 @@ public class EntityDao {
         }
     }
 
-    public void batchInsertPackages(List<CodePackage> packages) throws SQLException {
-        batchInsertPackagesFast(packages);
-    }
-
-
     public List<CodePackage> findAllPackages() throws SQLException {
         List<CodePackage> list = new ArrayList<>();
         try (Connection c = db.getConnection();
@@ -703,10 +698,6 @@ public class EntityDao {
                 }
             }
         }
-    }
-
-    public void batchInsertTypes(List<CodeType> types) throws SQLException {
-        batchInsertTypesFast(types);
     }
 
     public List<CodeType> findAllTypes() throws SQLException {
@@ -847,10 +838,6 @@ public class EntityDao {
         }
     }
 
-    public void batchInsertFields(List<CodeField> fields) throws SQLException {
-        batchInsertFieldsFast(fields);
-    }
-
     public List<CodeField> findFieldsByType(String typeFqn) throws SQLException {
         List<CodeField> list = new ArrayList<>();
         try (Connection c = db.getConnection();
@@ -938,10 +925,6 @@ public class EntityDao {
                 }
             }
         }
-    }
-
-    public void batchInsertMethods(List<CodeMethod> methods) throws SQLException {
-        batchInsertMethodsFast(methods);
     }
 
     public List<CodeMethod> findMethodsByType(String typeFqn) throws SQLException {
@@ -1048,11 +1031,6 @@ public class EntityDao {
             }
         }
     }
-
-    public void batchInsertRelationships(List<CodeRelationship> rels) throws SQLException {
-        batchInsertRelationshipsFast(rels);
-    }
-
 
     public List<CodeRelationship> findAllRelationships() throws SQLException {
         List<CodeRelationship> list = new ArrayList<>();
@@ -2065,7 +2043,7 @@ public class EntityDao {
             }
         }
         if (!pkgs.isEmpty()) {
-            batchInsertPackages(pkgs);
+            batchInsertPackagesFast(pkgs);
         }
         try (Connection c = db.getConnection();
              Statement stmt = c.createStatement()) {

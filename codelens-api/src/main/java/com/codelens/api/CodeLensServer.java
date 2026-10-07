@@ -1550,7 +1550,7 @@ public class CodeLensServer {
                 graphWarmupPhase.set("Call Graph Analysis");
                 graphWarmupPercentage.set(15);
 
-                callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+                callGraph.rebuild(allMethodFqns, dao::streamCallRelationships);
                 graphWarmupPhase.set("Field Impact Analysis");
                 graphWarmupPercentage.set(50);
                 int totalFieldRels = dao.countFieldRelationships();
@@ -2724,21 +2724,10 @@ public class CodeLensServer {
             JavaSourceScanner.ScanResult result = scanner.scan(
                 sourcePath,
                 excludePatterns,
-                new JavaSourceScanner.BatchConsumer() {
-                    @Override
-                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                                        List<CodeMethod> methods, List<CodeRelationship> rels) throws Exception {
-                        onBatch(pkgs, types, fields, methods, rels, Collections.emptyList());
-                    }
-
-                    @Override
-                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                                        List<CodeMethod> methods, List<CodeRelationship> rels,
-                                        List<FileMeta> fileMetas) throws Exception {
-                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
-                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fb.fileMetas);
-                        lucene.addBatch(fb.types, fb.methods, fb.fields);
-                    }
+                (pkgs, types, fields, methods, rels, fileMetas) -> {
+                    FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
+                    dao.batchInsertChunkFast(fb.pkgs(), fb.types(), fb.fields(), fb.methods(), fb.rels(), fb.fileMetas());
+                    lucene.addBatch(fb.types(), fb.methods(), fb.fields());
                 },
                 new JavaSourceScanner.ProgressCallback() {
                     @Override
@@ -2882,7 +2871,7 @@ public class CodeLensServer {
             progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, dao::streamCallRelationships, (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(70 + (int)(f * 6)); // 70% -> 76%
@@ -3180,21 +3169,10 @@ public class CodeLensServer {
             JavaSourceScanner.ScanResult result = scanner.scanFiles(
                 root,
                 toParse,
-                new JavaSourceScanner.BatchConsumer() {
-                    @Override
-                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                                        List<CodeMethod> methods, List<CodeRelationship> rels) throws Exception {
-                        onBatch(pkgs, types, fields, methods, rels, Collections.emptyList());
-                    }
-
-                    @Override
-                    public void onBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                                        List<CodeMethod> methods, List<CodeRelationship> rels,
-                                        List<FileMeta> fileMetas) throws Exception {
-                        FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
-                        dao.batchInsertChunkFast(fb.pkgs, fb.types, fb.fields, fb.methods, fb.rels, fb.fileMetas);
-                        lucene.indexBatch(fb.types, fb.methods, fb.fields);
-                    }
+                (pkgs, types, fields, methods, rels, fileMetas) -> {
+                    FilteredBatch fb = filterExcludedScopeBatch(pkgs, types, fields, methods, rels, fileMetas, excludedTypeFqns, excludedPkgFqns, excludedSourceFiles);
+                    dao.batchInsertChunkFast(fb.pkgs(), fb.types(), fb.fields(), fb.methods(), fb.rels(), fb.fileMetas());
+                    lucene.indexBatch(fb.types(), fb.methods(), fb.fields());
                 },
                 new JavaSourceScanner.ProgressCallback() {
                     @Override
@@ -3306,7 +3284,7 @@ public class CodeLensServer {
             progress.setCurrentDetail(String.format("Found %,d call relationships; building graph vertices…", totalCallEdges));
             progress.setSubProgress(2, 4, "Mapping call graph");
 
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept), (phase, curr, total, detail) -> {
+            callGraph.rebuild(allMethodFqns, dao::streamCallRelationships, (phase, curr, total, detail) -> {
                 if ("Call Graph: Indexing Methods".equals(phase)) {
                     float f = total > 0 ? (float) curr / total : 1f;
                     progress.setPercentage(70 + (int)(f * 6)); // 70% -> 76%
@@ -5137,7 +5115,7 @@ public class CodeLensServer {
             // Invalidate layout cache and rebuild in-memory call graph and field impact
             invalidateGraphCache();
             List<String> allMethodFqns = dao.findAllMethodFqns();
-            callGraph.rebuild(allMethodFqns, consumer -> dao.streamCallRelationships(consumer::accept));
+            callGraph.rebuild(allMethodFqns, dao::streamCallRelationships);
             int totalFieldRels = dao.countFieldRelationships();
             fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callGraph.getCallingMethodFqns());
 
@@ -5265,24 +5243,8 @@ public class CodeLensServer {
         }
     }
 
-    private static class FilteredBatch {
-        final List<CodePackage> pkgs;
-        final List<CodeType> types;
-        final List<CodeField> fields;
-        final List<CodeMethod> methods;
-        final List<CodeRelationship> rels;
-        final List<FileMeta> fileMetas;
-
-        FilteredBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
-                      List<CodeMethod> methods, List<CodeRelationship> rels, List<FileMeta> fileMetas) {
-            this.pkgs = pkgs;
-            this.types = types;
-            this.fields = fields;
-            this.methods = methods;
-            this.rels = rels;
-            this.fileMetas = fileMetas;
-        }
-    }
+    private record FilteredBatch(List<CodePackage> pkgs, List<CodeType> types, List<CodeField> fields,
+                                 List<CodeMethod> methods, List<CodeRelationship> rels, List<FileMeta> fileMetas) {}
 
     private FilteredBatch filterExcludedScopeBatch(List<CodePackage> pkgs, List<CodeType> types,
                                                   List<CodeField> fields, List<CodeMethod> methods,
