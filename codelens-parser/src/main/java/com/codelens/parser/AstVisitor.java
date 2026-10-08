@@ -48,6 +48,11 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         // Deduplication set for relationships within the active method/constructor scope
         public Set<String> currentMethodRels = new HashSet<>();
 
+        // Extended semantic graph context (APIs, Database Tables, Events)
+        public String currentTypeBaseEndpointPath = "";
+        public String currentTypeTableName = "";
+        public final Set<String> registeredSyntheticTypes = new HashSet<>();
+
         public final List<CodePackage>      packages      = new ArrayList<>();
         public final List<CodeType>         types         = new ArrayList<>();
         public final List<CodeField>        fields        = new ArrayList<>();
@@ -88,6 +93,8 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         String prevTypeFqn                 = ctx.currentTypeFqn;
         Set<String> prevFields             = ctx.currentTypeFieldNames;
         Map<String, String> prevFieldTypes = ctx.currentTypeFieldTypes;
+        String prevBaseEndpoint            = ctx.currentTypeBaseEndpointPath;
+        String prevTableName               = ctx.currentTypeTableName;
 
         String simpleName = n.getNameAsString();
         String fqn = (prevTypeFqn != null && !prevTypeFqn.isEmpty())
@@ -96,6 +103,37 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         ctx.currentTypeFqn       = fqn;
         ctx.currentTypeFieldNames = new HashSet<>();
         ctx.currentTypeFieldTypes = new HashMap<>();
+
+        // Extract class-level annotations for REST base paths and Database Tables
+        String baseEndpoint = "";
+        String tableName = "";
+        for (AnnotationExpr a : n.getAnnotations()) {
+            String aName = a.getNameAsString();
+            if (aName.endsWith("RequestMapping") || aName.endsWith("Path")) {
+                String p = extractAnnotationString(a, "value");
+                if (p.isEmpty()) p = extractAnnotationString(a, "path");
+                if (!p.isEmpty()) baseEndpoint = p;
+            } else if (aName.endsWith("Table") || aName.endsWith("TableName")) {
+                String t = extractAnnotationString(a, "name");
+                if (t.isEmpty()) t = extractAnnotationString(a, "value");
+                if (!t.isEmpty()) tableName = t;
+            } else if (aName.endsWith("Entity") || aName.endsWith("Document")) {
+                if (tableName.isEmpty()) {
+                    tableName = guessTableFromClassName(simpleName);
+                }
+            }
+        }
+
+        // Heuristic: for Repository / DAO classes without explicit table annotation, infer table from class name
+        if (tableName.isEmpty() && (simpleName.endsWith("Repository") || simpleName.endsWith("Dao"))) {
+            String entityName = simpleName.replace("Repository", "").replace("Dao", "");
+            if (!entityName.isEmpty()) {
+                tableName = guessTableFromClassName(entityName);
+            }
+        }
+
+        ctx.currentTypeBaseEndpointPath = baseEndpoint;
+        ctx.currentTypeTableName = tableName;
 
         CodeType type = new CodeType();
         type.setId(fqn);
@@ -128,12 +166,20 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         ifaces.forEach(iface ->
             addRelationship(ctx, fqn, iface, "IMPLEMENTS", 0));
 
+        // If class is an entity or maps to a database table, register table and MAPS_TO_TABLE relationship
+        if (!tableName.isEmpty() && (n.getAnnotations().stream().anyMatch(a -> a.getNameAsString().endsWith("Entity") || a.getNameAsString().endsWith("Table")) || simpleName.endsWith("Entity"))) {
+            int line = n.getRange().map(r -> r.begin.line).orElse(0);
+            registerTableNode(ctx, tableName, fqn, "MAPS_TO_TABLE", line);
+        }
+
         ctx.types.add(type);
         super.visit(n, ctx);   // recurse into children (fields, methods, inner classes)
 
-        ctx.currentTypeFqn       = prevTypeFqn;
-        ctx.currentTypeFieldNames = prevFields;
-        ctx.currentTypeFieldTypes = prevFieldTypes;
+        ctx.currentTypeFqn               = prevTypeFqn;
+        ctx.currentTypeFieldNames         = prevFields;
+        ctx.currentTypeFieldTypes         = prevFieldTypes;
+        ctx.currentTypeBaseEndpointPath   = prevBaseEndpoint;
+        ctx.currentTypeTableName          = prevTableName;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -410,6 +456,98 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         n.getBody().ifPresent(body -> method.setBodyHash(hashBody(body.toString())));
 
         ctx.methods.add(method);
+
+        int methodLine = n.getRange().map(r -> r.begin.line).orElse(0);
+
+        // A. Inspect method annotations for Endpoints, Queries, and Event Listeners
+        for (AnnotationExpr a : n.getAnnotations()) {
+            String aName = a.getNameAsString();
+            String httpVerb = null;
+            String subPath = "";
+
+            if (aName.endsWith("GetMapping") || aName.equals("GET")) {
+                httpVerb = "GET";
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+            } else if (aName.endsWith("PostMapping") || aName.equals("POST")) {
+                httpVerb = "POST";
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+            } else if (aName.endsWith("PutMapping") || aName.equals("PUT")) {
+                httpVerb = "PUT";
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+            } else if (aName.endsWith("DeleteMapping") || aName.equals("DELETE")) {
+                httpVerb = "DELETE";
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+            } else if (aName.endsWith("PatchMapping") || aName.equals("PATCH")) {
+                httpVerb = "PATCH";
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+            } else if (aName.endsWith("RequestMapping") || aName.endsWith("Path")) {
+                subPath = extractAnnotationString(a, "value");
+                if (subPath.isEmpty()) subPath = extractAnnotationString(a, "path");
+                String methodAttr = extractAnnotationString(a, "method");
+                httpVerb = methodAttr.isEmpty() ? "GET" : methodAttr.replace("RequestMethod.", "").toUpperCase();
+            }
+
+            if (httpVerb != null) {
+                String fullPath = cleanPath(ctx.currentTypeBaseEndpointPath, subPath);
+                registerEndpointNode(ctx, httpVerb, fullPath, fqn, methodLine);
+            }
+
+            // B. Database Queries via Annotation (@Query, @Select, @Insert, etc.)
+            if (aName.endsWith("Query") || aName.endsWith("Select") || aName.endsWith("Insert") || aName.endsWith("Update") || aName.endsWith("Delete")) {
+                String sql = extractAnnotationString(a, "value");
+                if (!sql.isEmpty()) {
+                    List<String> tables = extractSqlTables(sql);
+                    boolean isWrite = aName.endsWith("Insert") || aName.endsWith("Update") || aName.endsWith("Delete") || sql.matches("(?i).*\\b(INSERT|UPDATE|DELETE)\\b.*");
+                    for (String tbl : tables) {
+                        registerTableNode(ctx, tbl, fqn, isWrite ? CodeRelationship.KIND_WRITES_TABLE : CodeRelationship.KIND_READS_TABLE, methodLine);
+                        registerTableNode(ctx, tbl, fqn, CodeRelationship.KIND_ACCESSES_TABLE, methodLine);
+                    }
+                }
+            }
+
+            // C. Event Listeners (@EventListener, @KafkaListener, @RabbitListener)
+            if (aName.endsWith("EventListener") || aName.endsWith("TransactionalEventListener")) {
+                String eventName = extractAnnotationString(a, "classes");
+                if (eventName.isEmpty() && !n.getParameters().isEmpty()) {
+                    eventName = normalizeTypeName(n.getParameter(0).getType().asString());
+                    int dot = eventName.lastIndexOf('.');
+                    if (dot >= 0) eventName = eventName.substring(dot + 1);
+                }
+                if (!eventName.isEmpty()) {
+                    registerEventNode(ctx, eventName, fqn, CodeRelationship.KIND_LISTENS_EVENT, methodLine);
+                }
+            } else if (aName.endsWith("KafkaListener")) {
+                String topic = extractAnnotationString(a, "topics");
+                if (topic.isEmpty()) topic = extractAnnotationString(a, "value");
+                if (!topic.isEmpty()) {
+                    registerEventNode(ctx, topic, fqn, CodeRelationship.KIND_LISTENS_EVENT, methodLine);
+                }
+            } else if (aName.endsWith("RabbitListener")) {
+                String queue = extractAnnotationString(a, "queues");
+                if (queue.isEmpty()) queue = extractAnnotationString(a, "value");
+                if (!queue.isEmpty()) {
+                    registerEventNode(ctx, queue, fqn, CodeRelationship.KIND_LISTENS_EVENT, methodLine);
+                }
+            }
+        }
+
+        // D. Link Repository / DAO data access methods to the table
+        if (ctx.currentTypeTableName != null && !ctx.currentTypeTableName.isEmpty()) {
+            String mName = n.getNameAsString().toLowerCase();
+            if (mName.startsWith("save") || mName.startsWith("find") || mName.startsWith("delete") ||
+                mName.startsWith("update") || mName.startsWith("insert") || mName.startsWith("get") ||
+                mName.startsWith("count") || mName.startsWith("exists")) {
+                boolean isWrite = mName.startsWith("save") || mName.startsWith("delete") || mName.startsWith("update") || mName.startsWith("insert");
+                registerTableNode(ctx, ctx.currentTypeTableName, fqn, isWrite ? CodeRelationship.KIND_WRITES_TABLE : CodeRelationship.KIND_READS_TABLE, methodLine);
+                registerTableNode(ctx, ctx.currentTypeTableName, fqn, CodeRelationship.KIND_ACCESSES_TABLE, methodLine);
+            }
+        }
+
         super.visit(n, ctx);   // recurse to pick up variables & calls inside this method
 
         ctx.currentMethodRels = prevMethodRels;
@@ -561,6 +699,50 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
         int line = n.getRange().map(r -> r.begin.line).orElse(0);
         addRelationship(ctx, ctx.currentMethodFqn, calleeTarget, "CALLS", line);
 
+        // Event publishing calls (publishEvent, send, convertAndSend, emit)
+        if (calleeName.equals("publishEvent") || calleeName.equals("send") || calleeName.equals("convertAndSend") || calleeName.equals("emit")) {
+            if (!n.getArguments().isEmpty()) {
+                Expression arg0 = n.getArgument(0);
+                String eventName = null;
+                if (arg0.isObjectCreationExpr()) {
+                    eventName = normalizeTypeName(arg0.asObjectCreationExpr().getType().asString());
+                } else if (arg0.isStringLiteralExpr()) {
+                    eventName = arg0.asStringLiteralExpr().getValue();
+                } else if (arg0.isNameExpr()) {
+                    String varName = arg0.asNameExpr().getNameAsString();
+                    eventName = ctx.currentScopeVarTypes.get(varName);
+                    if (eventName == null) eventName = ctx.currentTypeFieldTypes.get(varName);
+                    if (eventName == null) eventName = varName;
+                }
+                if (eventName != null && !eventName.isEmpty()) {
+                    int dot = eventName.lastIndexOf('.');
+                    if (dot >= 0) eventName = eventName.substring(dot + 1);
+                    registerEventNode(ctx, eventName, ctx.currentMethodFqn, CodeRelationship.KIND_PUBLISHES_EVENT, line);
+                }
+            }
+        }
+
+        super.visit(n, ctx);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // String literal expression → SQL Table & Query relationship
+    // Detects raw SQL DML queries (SELECT, INSERT, UPDATE, DELETE) inside methods
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void visit(StringLiteralExpr n, VisitContext ctx) {
+        if (ctx.currentMethodFqn != null && !ctx.currentMethodFqn.isEmpty()) {
+            String lit = n.getValue();
+            if (lit != null && lit.length() > 8 && lit.matches("(?i).*\\b(SELECT|INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\b.*")) {
+                List<String> tables = extractSqlTables(lit);
+                int line = n.getRange().map(r -> r.begin.line).orElse(0);
+                boolean isWrite = lit.matches("(?i).*\\b(INSERT|UPDATE|DELETE)\\b.*");
+                for (String tbl : tables) {
+                    registerTableNode(ctx, tbl, ctx.currentMethodFqn, isWrite ? CodeRelationship.KIND_WRITES_TABLE : CodeRelationship.KIND_READS_TABLE, line);
+                    registerTableNode(ctx, tbl, ctx.currentMethodFqn, CodeRelationship.KIND_ACCESSES_TABLE, line);
+                }
+            }
+        }
         super.visit(n, ctx);
     }
 
@@ -879,5 +1061,150 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             }
         }
         return s;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Semantic Graph Extraction Helpers (Endpoints, Tables, Events)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static String extractAnnotationString(AnnotationExpr a, String memberName) {
+        if (a == null) return "";
+        try {
+            if (a.isSingleMemberAnnotationExpr()) {
+                return expressionToString(a.asSingleMemberAnnotationExpr().getMemberValue());
+            } else if (a.isNormalAnnotationExpr()) {
+                for (MemberValuePair pair : a.asNormalAnnotationExpr().getPairs()) {
+                    if (memberName == null || pair.getNameAsString().equalsIgnoreCase(memberName) || "value".equalsIgnoreCase(pair.getNameAsString())) {
+                        return expressionToString(pair.getValue());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    private static String expressionToString(Expression val) {
+        if (val == null) return "";
+        if (val.isStringLiteralExpr()) {
+            return val.asStringLiteralExpr().getValue();
+        }
+        if (val.isArrayInitializerExpr()) {
+            var elements = val.asArrayInitializerExpr().getValues();
+            if (!elements.isEmpty()) {
+                return expressionToString(elements.get(0));
+            }
+        }
+        String s = val.toString().trim();
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length() >= 2) {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
+    private static String cleanPath(String base, String sub) {
+        if (base == null) base = "";
+        if (sub == null) sub = "";
+        base = base.trim();
+        sub = sub.trim();
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        if (!sub.isEmpty() && !sub.startsWith("/")) sub = "/" + sub;
+        String res = base + sub;
+        if (res.isEmpty()) res = "/";
+        return res;
+    }
+
+    private static String guessTableFromClassName(String simpleName) {
+        if (simpleName == null || simpleName.isEmpty()) return "";
+        String s = simpleName;
+        if (s.endsWith("Entity")) s = s.substring(0, s.length() - 6);
+        if (s.endsWith("Model"))  s = s.substring(0, s.length() - 5);
+        if (s.endsWith("DO"))     s = s.substring(0, s.length() - 2);
+        if (s.endsWith("PO"))     s = s.substring(0, s.length() - 2);
+        if (s.isEmpty()) return "";
+        return s.replaceAll("([a-z])([A-Z])", "$1_$2").toUpperCase();
+    }
+
+    private static final java.util.regex.Pattern SQL_TABLE_PATTERN =
+        java.util.regex.Pattern.compile("(?i)\\b(?:FROM|JOIN|INTO|UPDATE)\\s+[`\"\\[]?([a-zA-Z0-9_]+)[`\"\\]]?");
+
+    private static List<String> extractSqlTables(String sql) {
+        if (sql == null || sql.isBlank()) return Collections.emptyList();
+        List<String> list = new ArrayList<>();
+        var m = SQL_TABLE_PATTERN.matcher(sql);
+        while (m.find()) {
+            String tbl = m.group(1).trim().toUpperCase();
+            if (tbl.equalsIgnoreCase("SET") || tbl.equalsIgnoreCase("VALUES") ||
+                tbl.equalsIgnoreCase("WHERE") || tbl.equalsIgnoreCase("SELECT") ||
+                tbl.equalsIgnoreCase("DUAL") || tbl.equalsIgnoreCase("ORDER") || tbl.length() < 2) {
+                continue;
+            }
+            if (!list.contains(tbl)) list.add(tbl);
+        }
+        return list;
+    }
+
+    private void registerEndpointNode(VisitContext ctx, String verb, String path, String methodFqn, int line) {
+        String endpointFqn = "endpoint:" + verb + " " + path;
+        if (ctx.registeredSyntheticTypes.add(endpointFqn)) {
+            CodeType ep = new CodeType();
+            ep.setId(endpointFqn);
+            ep.setFqn(endpointFqn);
+            ep.setSimpleName(verb + " " + path);
+            ep.setPackageFqn(ctx.packageName.isEmpty() ? "api" : ctx.packageName);
+            ep.setKind(CodeType.KIND_ENDPOINT);
+            ep.setModifiers("HTTP " + verb);
+            ep.setSourceFile(ctx.sourceFile);
+            ep.setStartLine(line);
+            ep.setEndLine(line);
+            ctx.types.add(ep);
+        }
+        addRelationship(ctx, endpointFqn, methodFqn, CodeRelationship.KIND_HANDLED_BY, line);
+        addRelationship(ctx, methodFqn, endpointFqn, CodeRelationship.KIND_EXPOSES_ENDPOINT, line);
+    }
+
+    private void registerTableNode(VisitContext ctx, String tableName, String fromFqn, String relKind, int line) {
+        if (tableName == null || tableName.isBlank()) return;
+        String cleanTable = tableName.trim().toUpperCase();
+        if (cleanTable.length() < 2 || cleanTable.equalsIgnoreCase("DUAL")) return;
+        String tableFqn = "table:" + cleanTable;
+        if (ctx.registeredSyntheticTypes.add(tableFqn)) {
+            CodeType tbl = new CodeType();
+            tbl.setId(tableFqn);
+            tbl.setFqn(tableFqn);
+            tbl.setSimpleName(cleanTable);
+            tbl.setPackageFqn("database");
+            tbl.setKind(CodeType.KIND_TABLE);
+            tbl.setModifiers("DATABASE TABLE");
+            tbl.setSourceFile(ctx.sourceFile);
+            tbl.setStartLine(line);
+            tbl.setEndLine(line);
+            ctx.types.add(tbl);
+        }
+        if (fromFqn != null && !fromFqn.isBlank()) {
+            addRelationship(ctx, fromFqn, tableFqn, relKind != null ? relKind : CodeRelationship.KIND_ACCESSES_TABLE, line);
+        }
+    }
+
+    private void registerEventNode(VisitContext ctx, String eventName, String fromFqn, String relKind, int line) {
+        if (eventName == null || eventName.isBlank()) return;
+        String cleanEvent = eventName.trim();
+        if (cleanEvent.length() < 2) return;
+        String eventFqn = "event:" + cleanEvent;
+        if (ctx.registeredSyntheticTypes.add(eventFqn)) {
+            CodeType ev = new CodeType();
+            ev.setId(eventFqn);
+            ev.setFqn(eventFqn);
+            ev.setSimpleName(cleanEvent);
+            ev.setPackageFqn("events");
+            ev.setKind(CodeType.KIND_EVENT);
+            ev.setModifiers("DOMAIN EVENT");
+            ev.setSourceFile(ctx.sourceFile);
+            ev.setStartLine(line);
+            ev.setEndLine(line);
+            ctx.types.add(ev);
+        }
+        if (fromFqn != null && !fromFqn.isBlank()) {
+            addRelationship(ctx, fromFqn, eventFqn, relKind != null ? relKind : CodeRelationship.KIND_PUBLISHES_EVENT, line);
+        }
     }
 }

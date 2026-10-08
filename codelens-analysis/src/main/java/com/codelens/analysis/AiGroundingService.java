@@ -260,9 +260,20 @@ public class AiGroundingService {
         if (matchedType != null) {
             exp.simpleName = matchedType.getSimpleName();
             exp.classFqn = matchedType.getFqn();
-            exp.role = inferTypeRole(matchedType.getSimpleName());
-            exp.summary = String.format("%s is a %s component containing %d methods.",
-                matchedType.getSimpleName(), exp.role, matchedType.getMethods().size());
+            if ("TABLE".equalsIgnoreCase(matchedType.getKind())) {
+                exp.role = "Database Table";
+                exp.summary = String.format("Database Table `%s` mapped by persistent models and accessed by repositories.", matchedType.getSimpleName());
+            } else if ("ENDPOINT".equalsIgnoreCase(matchedType.getKind())) {
+                exp.role = "API Endpoint";
+                exp.summary = String.format("REST API Endpoint `%s` exposed for client and gateway traffic.", matchedType.getSimpleName());
+            } else if ("EVENT".equalsIgnoreCase(matchedType.getKind())) {
+                exp.role = "Domain Event";
+                exp.summary = String.format("Asynchronous Domain Event `%s` published to messaging queues and event listeners.", matchedType.getSimpleName());
+            } else {
+                exp.role = inferTypeRole(matchedType.getSimpleName());
+                exp.summary = String.format("%s is a %s component containing %d methods.",
+                    matchedType.getSimpleName(), exp.role, matchedType.getMethods().size());
+            }
             exp.citations.add(new Citation(matchedType.getSourceFile(), matchedType.getStartLine(), matchedType.getSimpleName(), exp.role));
         } else if (matchedMethod != null) {
             exp.simpleName = matchedMethod.getSimpleName();
@@ -274,6 +285,24 @@ public class AiGroundingService {
             CodeType parent = types != null ? types.stream().filter(ty -> ty.getFqn().equals(matchedMethod.getDeclaringTypeFqn())).findFirst().orElse(null) : null;
             String file = parent != null ? parent.getSourceFile() : "";
             exp.citations.add(new Citation(file, matchedMethod.getStartLine(), matchedMethod.getSimpleName(), exp.role));
+        } else if (fqn.startsWith("table:")) {
+            String tblName = fqn.substring(6);
+            exp.simpleName = tblName;
+            exp.classFqn = fqn;
+            exp.role = "Database Table";
+            exp.summary = String.format("Database Table `%s` accessed by repositories and services.", tblName);
+        } else if (fqn.startsWith("endpoint:")) {
+            String epName = fqn.substring(9);
+            exp.simpleName = epName;
+            exp.classFqn = fqn;
+            exp.role = "API Endpoint";
+            exp.summary = String.format("REST API Endpoint `%s` routing inbound client traffic.", epName);
+        } else if (fqn.startsWith("event:")) {
+            String evName = fqn.substring(6);
+            exp.simpleName = evName;
+            exp.classFqn = fqn;
+            exp.role = "Domain Event";
+            exp.summary = String.format("Domain Event `%s` dispatched via messaging infrastructure.", evName);
         } else {
             exp.simpleName = extractSimpleName(fqn);
             exp.classFqn = extractClassFqn(fqn);

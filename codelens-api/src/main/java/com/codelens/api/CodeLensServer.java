@@ -4244,25 +4244,45 @@ public class CodeLensServer {
         String moduleName = null;
 
         if ("AUTO".equals(resolvedKind)) {
-            Optional<CodeField> optF = dao.findFieldById(fqn);
-            if (optF.isPresent()) {
-                resolvedKind = "FIELD";
+            if (fqn.startsWith("table:")) {
+                resolvedKind = "TABLE";
+            } else if (fqn.startsWith("endpoint:")) {
+                resolvedKind = "ENDPOINT";
+            } else if (fqn.startsWith("event:")) {
+                resolvedKind = "EVENT";
             } else {
-                Optional<CodeMethod> optM = dao.findMethodById(fqn);
-                if (optM.isPresent()) {
-                    resolvedKind = "METHOD";
+                Optional<CodeField> optF = dao.findFieldById(fqn);
+                if (optF.isPresent()) {
+                    resolvedKind = "FIELD";
                 } else {
-                    Optional<CodeType> optT = dao.findTypeById(fqn);
-                    if (optT.isPresent()) {
-                        resolvedKind = "CLASS";
-                    } else if (fqn.contains("(")) {
+                    Optional<CodeMethod> optM = dao.findMethodById(fqn);
+                    if (optM.isPresent()) {
                         resolvedKind = "METHOD";
                     } else {
-                        int lastDot = fqn.lastIndexOf('.');
-                        if (lastDot > 0 && Character.isUpperCase(fqn.charAt(lastDot + 1))) {
-                            resolvedKind = "CLASS";
+                        Optional<CodeType> optT = dao.findTypeById(fqn);
+                        if (optT.isEmpty()) {
+                            optT = dao.findTypeById("table:" + fqn);
+                            if (optT.isEmpty()) {
+                                optT = dao.findTypeById("endpoint:" + fqn);
+                                if (optT.isEmpty()) {
+                                    optT = dao.findTypeById("event:" + fqn);
+                                }
+                            }
+                            if (optT.isPresent()) {
+                                fqn = optT.get().getFqn();
+                            }
+                        }
+                        if (optT.isPresent()) {
+                            resolvedKind = optT.get().getKind() != null ? optT.get().getKind() : "CLASS";
+                        } else if (fqn.contains("(")) {
+                            resolvedKind = "METHOD";
                         } else {
-                            resolvedKind = "PACKAGE";
+                            int lastDot = fqn.lastIndexOf('.');
+                            if (lastDot > 0 && Character.isUpperCase(fqn.charAt(lastDot + 1))) {
+                                resolvedKind = "CLASS";
+                            } else {
+                                resolvedKind = "PACKAGE";
+                            }
                         }
                     }
                 }
@@ -4321,6 +4341,32 @@ public class CodeLensServer {
                 int dot = fqn.lastIndexOf('.');
                 simpleName = dot >= 0 ? fqn.substring(dot + 1) : fqn;
                 declaringClass = fqn;
+            }
+        } else if ("TABLE".equals(resolvedKind) || "ENDPOINT".equals(resolvedKind) || "EVENT".equals(resolvedKind)
+                || fqn.startsWith("table:") || fqn.startsWith("endpoint:") || fqn.startsWith("event:")) {
+            Optional<CodeType> optT = dao.findTypeById(fqn);
+            if (optT.isPresent()) {
+                CodeType t = optT.get();
+                resolvedKind = t.getKind() != null ? t.getKind() : resolvedKind;
+                simpleName = t.getSimpleName();
+                declaringClass = t.getFqn();
+                sourceFile = t.getSourceFile();
+                startLine = t.getStartLine();
+                packageFqn = t.getPackageFqn();
+                moduleName = "semantic";
+            } else {
+                if (fqn.startsWith("table:")) {
+                    resolvedKind = "TABLE";
+                    simpleName = fqn.substring(6);
+                } else if (fqn.startsWith("endpoint:")) {
+                    resolvedKind = "ENDPOINT";
+                    simpleName = fqn.substring(9);
+                } else if (fqn.startsWith("event:")) {
+                    resolvedKind = "EVENT";
+                    simpleName = fqn.substring(6);
+                }
+                declaringClass = fqn;
+                moduleName = "semantic";
             }
         } else {
             resolvedKind = "PACKAGE";

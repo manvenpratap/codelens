@@ -14,10 +14,25 @@ package com.codelens.core.model;
  * (e.g. "~repository.save") that needs post-scan resolution by the analyzer.
  */
 public class CodeRelationship {
-    private String id;              // UUID
+    // Standard relationship kinds
+    public static final String KIND_CALLS            = "CALLS";
+    public static final String KIND_READS_FIELD      = "READS_FIELD";
+    public static final String KIND_WRITES_FIELD     = "WRITES_FIELD";
+    public static final String KIND_EXTENDS          = "EXTENDS";
+    public static final String KIND_IMPLEMENTS       = "IMPLEMENTS";
+    public static final String KIND_HANDLED_BY       = "HANDLED_BY";
+    public static final String KIND_EXPOSES_ENDPOINT = "EXPOSES_ENDPOINT";
+    public static final String KIND_ACCESSES_TABLE   = "ACCESSES_TABLE";
+    public static final String KIND_READS_TABLE      = "READS_TABLE";
+    public static final String KIND_WRITES_TABLE     = "WRITES_TABLE";
+    public static final String KIND_MAPS_TO_TABLE    = "MAPS_TO_TABLE";
+    public static final String KIND_PUBLISHES_EVENT  = "PUBLISHES_EVENT";
+    public static final String KIND_LISTENS_EVENT    = "LISTENS_EVENT";
+
+    private String id;              // UUID or deterministic hash
     private String fromEntityFqn;
     private String toEntityFqn;
-    private String kind;            // CALLS | READS_FIELD | WRITES_FIELD | EXTENDS | IMPLEMENTS
+    private String kind;            // e.g. CALLS, HANDLED_BY, ACCESSES_TABLE, PUBLISHES_EVENT
     private int sourceLine;         // line number in the source file
 
     public CodeRelationship() {}

@@ -8,11 +8,20 @@ import java.util.List;
  * Avoids clashing with java.lang.Class or java.reflect.Type.
  */
 public class CodeType {
+    public static final String KIND_CLASS      = "CLASS";
+    public static final String KIND_INTERFACE  = "INTERFACE";
+    public static final String KIND_ENUM       = "ENUM";
+    public static final String KIND_ANNOTATION = "ANNOTATION";
+    public static final String KIND_RECORD     = "RECORD";
+    public static final String KIND_ENDPOINT   = "ENDPOINT";
+    public static final String KIND_TABLE      = "TABLE";
+    public static final String KIND_EVENT      = "EVENT";
+
     private String id;              // == fqn; PK
     private String fqn;             // e.g. "com.example.trading.OrderService"
     private String simpleName;      // e.g. "OrderService"
     private String packageFqn;      // parent package
-    private String kind;            // CLASS | INTERFACE | ENUM | ANNOTATION
+    private String kind;            // CLASS | INTERFACE | ENUM | ANNOTATION | RECORD | ENDPOINT | TABLE | EVENT
     private String modifiers;       // "public abstract" etc.
     private String superClass;      // simple or unresolved FQN of parent class
     private List<String> interfaces = new ArrayList<>(); // implemented interfaces

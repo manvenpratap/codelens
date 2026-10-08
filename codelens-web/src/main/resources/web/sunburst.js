@@ -645,6 +645,9 @@ class SunburstRenderer {
       if (kind === 'CLASS' || kind === 'RECORD' || kind === 'INTERFACE') kindClass = 'kind-class';
       else if (kind === 'METHOD' || kind === 'CONSTRUCTOR') kindClass = 'kind-method';
       else if (kind === 'FIELD') kindClass = 'kind-field';
+      else if (kind === 'ENDPOINT') kindClass = 'kind-endpoint';
+      else if (kind === 'TABLE') kindClass = 'kind-table';
+      else if (kind === 'EVENT') kindClass = 'kind-event';
 
       this._tooltip.style.display = 'block';
       this._tooltip.style.left = (e.clientX - this._container.getBoundingClientRect().left + 14) + 'px';

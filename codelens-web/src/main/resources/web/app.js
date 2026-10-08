@@ -4106,7 +4106,7 @@ async function runSearch(q) {
         const clearBtn = qs('#search-clear-btn');
         if (clearBtn) clearBtn.style.display = 'none';
         showExplorer();
-        if      (hit.kind === 'TYPE' || hit.kind === 'CLASS' || hit.kind === 'INTERFACE' || hit.kind === 'ENUM' || hit.kind === 'RECORD') selectType(hit.id);
+        if      (hit.kind === 'TYPE' || hit.kind === 'CLASS' || hit.kind === 'INTERFACE' || hit.kind === 'ENUM' || hit.kind === 'RECORD' || hit.kind === 'ENDPOINT' || hit.kind === 'TABLE' || hit.kind === 'EVENT') selectType(hit.id);
         else if (hit.kind === 'METHOD') selectMethod(hit.id);
         else if (hit.kind === 'FIELD')  selectField(hit.id);
       });
@@ -8553,7 +8553,7 @@ function renderTypeDetail(data) {
 
   // Action buttons
   body.appendChild(actionRow([
-    { label: '🎯 Blast Radius Flow', title: 'Trace complete blast radius & touch points flow across modules, classes, and methods', action: () => openBlastRadiusExplorer(type.fqn, 'CLASS') },
+    { label: '🎯 Blast Radius Flow', title: 'Trace complete blast radius & touch points flow across modules, classes, and methods', action: () => openBlastRadiusExplorer(type.fqn, type.kind || 'CLASS') },
     { label: '🎯 Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
     { label: '🌐 Hub Explorer', title: 'Explore cross-package callers & callees for this class', action: () => { switchTab('graph'); if (window.hubExplorerInstance) window.hubExplorerInstance.load(type.fqn, 'callers'); } },
     { label: 'View All Methods', badge: methods.length, title: `View all ${methods.length} methods in Knowledge Base`, action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
@@ -8653,7 +8653,7 @@ function renderKnowledgeBaseForType(data) {
     loadAndVisualizeCriticalPath(type.fqn);
   });
   hero.querySelector('#kb-btn-blast')?.addEventListener('click', () => {
-    openBlastRadiusExplorer(type.fqn, 'CLASS');
+    openBlastRadiusExplorer(type.fqn, type.kind || 'CLASS');
   });
 
   view.appendChild(hero);
@@ -13077,7 +13077,7 @@ function formatDate(epochMs) {
 
 /** Map Java type kind to a clean label glyph. */
 function kindIcon(kind) {
-  return { CLASS: 'C', INTERFACE: 'I', ENUM: 'E', RECORD: 'R', ANNOTATION: '@' }[kind] || 'T';
+  return { CLASS: 'C', INTERFACE: 'I', ENUM: 'E', RECORD: 'R', ANNOTATION: '@', ENDPOINT: '🌐', TABLE: '🗄️', EVENT: '⚡' }[kind] || 'T';
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

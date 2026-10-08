@@ -27,7 +27,10 @@ public class StoryEngine {
         BUSINESS_LOGIC("BUSINESS_LOGIC", "Domain Service", "#fbbf24", "⚙️"),
         PERSISTENCE("PERSISTENCE", "Database / Storage", "#10b981", "💾"),
         AUDIT_EVENT("AUDIT_EVENT", "Audit & Event Sink", "#f43f5e", "📢"),
-        PROCESSING("PROCESSING", "Internal Processing", "#64748b", "🔄");
+        PROCESSING("PROCESSING", "Internal Processing", "#64748b", "🔄"),
+        ENDPOINT("ENDPOINT", "API Endpoint", "#06b6d4", "🌐"),
+        DATABASE_TABLE("DATABASE_TABLE", "Database Table", "#f59e0b", "🗄️"),
+        DOMAIN_EVENT("DOMAIN_EVENT", "Domain Event / Message", "#ec4899", "📨");
 
         public final String key;
         public final String label;
@@ -457,10 +460,22 @@ public class StoryEngine {
     }
 
     private StepRole classifyRole(int index, int totalSteps, String methodName, String className) {
-        if (index == 0) return StepRole.ENTRY;
-
         String mLower = methodName.toLowerCase(Locale.ROOT);
         String cLower = className.toLowerCase(Locale.ROOT);
+
+        if (mLower.startsWith("table:") || cLower.startsWith("table:")) {
+            return StepRole.DATABASE_TABLE;
+        }
+        if (mLower.startsWith("event:") || cLower.startsWith("event:")) {
+            return StepRole.DOMAIN_EVENT;
+        }
+        if (mLower.startsWith("endpoint:") || cLower.startsWith("endpoint:")) {
+            return StepRole.ENDPOINT;
+        }
+
+        if (index == 0) {
+            return StepRole.ENTRY;
+        }
 
         if (mLower.contains("valid") || mLower.contains("check") || mLower.contains("guard") || mLower.contains("verify") || cLower.contains("validator")) {
             return StepRole.VALIDATION;
@@ -481,14 +496,20 @@ public class StoryEngine {
 
     private String generateStepAction(StepRole role, String methodName, String className) {
         switch (role) {
+            case ENDPOINT:
+                return "Exposes inbound API interface and routes payload to " + className + "." + methodName;
             case ENTRY:
                 return "Initiates request flow and parses input parameters via " + className + "." + methodName;
             case VALIDATION:
                 return "Verifies business constraints and payload integrity in " + className + "." + methodName;
             case BUSINESS_LOGIC:
                 return "Executes core domain logic and coordinates state transitions in " + className + "." + methodName;
+            case DATABASE_TABLE:
+                return "Queries or modifies persistent database schema records via " + className + "." + methodName;
             case PERSISTENCE:
                 return "Commits persistent state to database storage via " + className + "." + methodName;
+            case DOMAIN_EVENT:
+                return "Publishes or listens to asynchronous domain event messages via " + className + "." + methodName;
             case AUDIT_EVENT:
                 return "Records compliance audit trail and publishes downstream events via " + className + "." + methodName;
             case PROCESSING:
