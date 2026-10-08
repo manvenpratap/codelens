@@ -190,6 +190,32 @@ public class Application {
             return;
         }
 
+        // ── CLI What-If mode: java -jar codelens-app.jar what-if <fqn> ────────
+        if (args.length > 0 && ("what-if".equalsIgnoreCase(args[0]) || "whatif".equalsIgnoreCase(args[0]))) {
+            if (args.length < 2) {
+                System.err.println("Usage: java -jar codelens-app.jar what-if <method-fqn>");
+                return;
+            }
+            if (tryExecuteCliViaHttp(port, args)) {
+                return;
+            }
+            DatabaseManager db = new DatabaseManager(dataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
+            com.codelens.analysis.StoryEngine.ChangeImpactStory impact = storyEngine.analyzeChangeImpact(args[1], types, methods, callGraph.getCallGraph());
+            printWhatIfCli(impact);
+            db.close();
+            return;
+        }
+
         printBanner(port);
 
         long maxMem = Runtime.getRuntime().maxMemory();
@@ -304,6 +330,9 @@ public class Application {
             if ("trace".equals(mode)) {
                 if (query == null || query.isBlank()) return false;
                 url = "http://127.0.0.1:" + port + "/api/storyline?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+            } else if ("what-if".equals(mode) || "whatif".equals(mode)) {
+                if (query == null || query.isBlank()) return false;
+                url = "http://127.0.0.1:" + port + "/api/storyline/what-if?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
             } else {
                 if (query != null && (query.contains(".") || query.contains("("))) {
                     url = "http://127.0.0.1:" + port + "/api/storyline?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
@@ -346,6 +375,8 @@ public class Application {
                         System.out.printf("     Action: %s%n", step.path("narrativeAction").asText());
                     }
                     System.out.println();
+                } else if (root.has("impactNarrative")) {
+                    printWhatIfJsonCli(root);
                 }
                 return true;
             }
@@ -376,6 +407,54 @@ public class Application {
             System.out.printf("  %d. [%-14s] %s.%s (%s:%d)%n",
                 step.stepIndex, step.roleLabel, step.classSimpleName, step.simpleName, shortFile, step.startLine);
             System.out.printf("     Action: %s%n", step.narrativeAction);
+        }
+        System.out.println();
+    }
+
+    private static void printWhatIfCli(com.codelens.analysis.StoryEngine.ChangeImpactStory impact) {
+        System.out.printf("%n=== CodeStory What-If Analysis: %s ===%n%n", impact.targetMethod);
+        System.out.printf("Impact Narrative: %s%n%n", impact.impactNarrative);
+        System.out.printf("Directly Affected Workflows (%d):%n", impact.affectedStorylines.size());
+        for (String s : impact.affectedStorylines) {
+            System.out.printf("  • %s%n", s);
+        }
+        System.out.printf("%nUpstream Callers (%d):%n", impact.upstreamCallers.size());
+        for (String c : impact.upstreamCallers) {
+            System.out.printf("  ↑ %s%n", c);
+        }
+        System.out.printf("%nDownstream Components (%d):%n", impact.downstreamCallees.size());
+        for (String d : impact.downstreamCallees) {
+            System.out.printf("  ↓ %s%n", d);
+        }
+        System.out.printf("%nCovering Automated Tests (%d):%n", impact.coveringTests.size());
+        for (String t : impact.coveringTests) {
+            System.out.printf("  ✓ %s%n", t);
+        }
+        System.out.println();
+    }
+
+    private static void printWhatIfJsonCli(com.fasterxml.jackson.databind.JsonNode root) {
+        System.out.printf("%n=== CodeStory What-If Analysis: %s ===%n%n", root.path("targetMethod").asText());
+        System.out.printf("Impact Narrative: %s%n%n", root.path("impactNarrative").asText());
+        var aff = root.path("affectedStorylines");
+        System.out.printf("Directly Affected Workflows (%d):%n", aff.size());
+        for (int i = 0; i < aff.size(); i++) {
+            System.out.printf("  • %s%n", aff.get(i).asText());
+        }
+        var up = root.path("upstreamCallers");
+        System.out.printf("%nUpstream Callers (%d):%n", up.size());
+        for (int i = 0; i < up.size(); i++) {
+            System.out.printf("  ↑ %s%n", up.get(i).asText());
+        }
+        var down = root.path("downstreamCallees");
+        System.out.printf("%nDownstream Components (%d):%n", down.size());
+        for (int i = 0; i < down.size(); i++) {
+            System.out.printf("  ↓ %s%n", down.get(i).asText());
+        }
+        var tests = root.path("coveringTests");
+        System.out.printf("%nCovering Automated Tests (%d):%n", tests.size());
+        for (int i = 0; i < tests.size(); i++) {
+            System.out.printf("  ✓ %s%n", tests.get(i).asText());
         }
         System.out.println();
     }

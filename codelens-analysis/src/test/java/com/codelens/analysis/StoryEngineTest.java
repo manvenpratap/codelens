@@ -113,6 +113,22 @@ public class StoryEngineTest {
         assertFalse(detail.evidence.isEmpty(), "Evidence should not be empty");
         assertEquals("src/LoanController.java", detail.evidence.get(0).sourceFile, "Evidence file");
         assertEquals(12, detail.evidence.get(0).line, "Evidence line");
+
+        // Verify Change-Impact Story ("What-If I modify this method?")
+        StoryEngine.ChangeImpactStory impact = engine.analyzeChangeImpact("com.bank.loan.LoanService.processDisbursement()", types, methods, callGraph.getCallGraph());
+        assertNotNull(impact, "Change impact should not be null");
+        assertEquals(1, impact.totalAffectedWorkflows, "Should affect 1 storyline");
+        assertEquals("Loan: Disburse Flow", impact.affectedStorylines.get(0), "Affected storyline name");
+        assertTrue(impact.impactNarrative.contains("LoanService.processDisbursement"), "Narrative should name target method");
+
+        // Verify "Teach Me" 5-Level Progressive Guide
+        StoryEngine.TeachMeGuide guide = engine.generateTeachMeGuide(detail);
+        assertNotNull(guide, "Teach me guide should not be null");
+        assertNotNull(guide.level1ExecutiveOverview, "Level 1 executive overview");
+        assertEquals(5, guide.level2ArchitectureComponents.size(), "Level 2 should have 5 architecture components");
+        assertEquals(5, guide.level3ExecutionFlow.size(), "Level 3 should have 5 sequence steps");
+        assertEquals(5, guide.level4CodeDetails.size(), "Level 4 should have 5 code detail entries");
+        assertEquals(5, guide.level5Evidence.size(), "Level 5 should have 5 verified evidence citations");
     }
 
     private CodeType createType(String fqn, String simpleName, String sourceFile, int line) {

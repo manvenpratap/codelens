@@ -1923,6 +1923,24 @@
                   <div class="storyline-entrypoint-sub" id="storyline-hero-entry">Entry Point: <code>...</code></div>
                 </div>
                 <div class="storyline-actions-row">
+                  <div class="storyline-mode-pills" role="group" aria-label="Storyline display mode">
+                    <button class="storyline-mode-pill active" data-mode="timeline" title="Chronological Timeline View">
+                      <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      <span>Timeline</span>
+                    </button>
+                    <button class="storyline-mode-pill" data-mode="flowchart" title="Visual Flowchart Diagram">
+                      <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="6" x="2" y="3" rx="1"/><rect width="8" height="6" x="14" y="3" rx="1"/><rect width="8" height="6" x="8" y="15" rx="1"/><path d="M6 9v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9"/><path d="M12 13v2"/></svg>
+                      <span>Visual Flow</span>
+                    </button>
+                    <button class="storyline-mode-pill" data-mode="teachme" title="Teach Me: 5-Level Progressive Understanding">
+                      <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                      <span>Teach Me</span>
+                    </button>
+                  </div>
+                  <button id="storyline-btn-what-if" class="btn btn-sm btn-secondary" title="Analyze change impact with What-If prediction">
+                    <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+                    <span>What If?</span>
+                  </button>
                   <button id="storyline-btn-trace-impact" class="btn btn-sm btn-secondary" title="Analyze impact in Blast Radius Explorer">
                     <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
                     <span>Blast Radius</span>
@@ -1945,27 +1963,49 @@
                 </p>
               </section>
 
-              <!-- Step Sequence Header -->
-              <div class="storyline-steps-section-header">
-                <span class="storyline-steps-heading">Execution Sequence</span>
-                <span class="storyline-steps-sub">Reconstructed Call Chain with Verified Code Citations</span>
+              <!-- View 1: Timeline Mode Container -->
+              <div class="storyline-mode-view active" id="storyline-mode-timeline">
+                <div class="storyline-steps-section-header">
+                  <span class="storyline-steps-heading">Execution Sequence</span>
+                  <span class="storyline-steps-sub">Reconstructed Call Chain with Verified Code Citations</span>
+                </div>
+                <!-- Vertical Timeline of Step Cards -->
+                <div class="storyline-timeline" id="storyline-timeline" role="list">
+                  <!-- Dynamically populated step cards -->
+                </div>
+                <!-- Evidence Ledger -->
+                <section class="storyline-evidence-section" aria-label="Evidence Citations">
+                  <div class="storyline-evidence-header">
+                    <span class="storyline-evidence-title">Verified Source Citations (<span id="storyline-evidence-count">0</span>)</span>
+                    <span class="storyline-evidence-badge">AST Grounded</span>
+                  </div>
+                  <div class="storyline-evidence-grid" id="storyline-evidence-grid">
+                    <!-- Dynamically populated evidence chips -->
+                  </div>
+                </section>
               </div>
 
-              <!-- Vertical Timeline of Step Cards -->
-              <div class="storyline-timeline" id="storyline-timeline" role="list">
-                <!-- Dynamically populated step cards -->
+              <!-- View 2: Visual Flowchart Mode Container -->
+              <div class="storyline-mode-view" id="storyline-mode-flowchart" style="display:none;">
+                <div class="storyline-steps-section-header">
+                  <span class="storyline-steps-heading">Visual Architectural Flow</span>
+                  <span class="storyline-steps-sub">Horizontal Interactive Execution Flowchart</span>
+                </div>
+                <div class="storyline-flowchart-canvas" id="storyline-flowchart-canvas">
+                  <!-- Dynamically populated horizontal flowchart cards with directional connectors -->
+                </div>
               </div>
 
-              <!-- Evidence Ledger -->
-              <section class="storyline-evidence-section" aria-label="Evidence Citations">
-                <div class="storyline-evidence-header">
-                  <span class="storyline-evidence-title">Verified Source Citations (<span id="storyline-evidence-count">0</span>)</span>
-                  <span class="storyline-evidence-badge">AST Grounded</span>
+              <!-- View 3: Teach Me 5-Level Progressive Guide Mode Container -->
+              <div class="storyline-mode-view" id="storyline-mode-teachme" style="display:none;">
+                <div class="storyline-steps-section-header">
+                  <span class="storyline-steps-heading">Progressive Architecture Breakdown</span>
+                  <span class="storyline-steps-sub">From 10,000-ft Executive Overview down to AST Source Evidence</span>
                 </div>
-                <div class="storyline-evidence-grid" id="storyline-evidence-grid">
-                  <!-- Dynamically populated evidence chips -->
+                <div class="storyline-teachme-stack" id="storyline-teachme-stack">
+                  <!-- Dynamically populated 5 progressive level cards -->
                 </div>
-              </section>
+              </div>
             </div>
           </main>
         </div>
@@ -4591,6 +4631,109 @@
           <p>No classes or packages are currently excluded. All codebase elements are included in the analysis, visualizations, and reports.</p>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     WHAT-IF IMPACT ANALYSIS MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="storyline-whatif-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="whatif-modal-title">
+  <div class="modal-dialog whatif-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon"><svg class="svg-icon icon-purple icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="m4.93 4.93 4.24 4.24"/></svg></span>
+        <div>
+          <h2 id="whatif-modal-title">What-If Impact Analysis</h2>
+          <p class="modal-subtitle">Predict architectural blast radius, affected storylines, and covering test suites before changing code</p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="whatif-modal-close" aria-label="Close What-If Analysis">
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body whatif-body">
+      <!-- Target Method Banner -->
+      <div class="whatif-target-card">
+        <span class="whatif-target-label">Target Method</span>
+        <code class="whatif-target-fqn" id="whatif-target-fqn">Analyzing...</code>
+      </div>
+
+      <!-- Quick Impact Metrics -->
+      <div class="whatif-metrics-grid">
+        <div class="whatif-metric-tile">
+          <div class="whatif-metric-num" id="whatif-workflows-count">0</div>
+          <div class="whatif-metric-label">Affected Storylines</div>
+        </div>
+        <div class="whatif-metric-tile">
+          <div class="whatif-metric-num" id="whatif-blast-count">0</div>
+          <div class="whatif-metric-label">Total Blast Radius</div>
+        </div>
+        <div class="whatif-metric-tile">
+          <div class="whatif-metric-num" id="whatif-tests-count">0</div>
+          <div class="whatif-metric-label">Covering Test Suites</div>
+        </div>
+      </div>
+
+      <!-- Impact Narrative -->
+      <div class="whatif-narrative-card">
+        <div class="whatif-section-title">
+          <svg class="svg-icon icon-blue icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          Architectural Impact Narrative
+        </div>
+        <p class="whatif-narrative-text" id="whatif-narrative-text">Evaluating change impact against discovered architectural workflows...</p>
+      </div>
+
+      <!-- Affected Storylines List -->
+      <div class="whatif-section">
+        <div class="whatif-section-title">
+          <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Affected Business &amp; Architectural Storylines (<span id="whatif-affected-count">0</span>)
+        </div>
+        <div class="whatif-storylines-wrap" id="whatif-storylines-wrap">
+          <!-- Chips of affected storylines -->
+        </div>
+      </div>
+
+      <!-- Call Graph Propagation: Upstream Callers & Downstream Callees -->
+      <div class="whatif-columns-grid">
+        <div class="whatif-column">
+          <div class="whatif-col-header">
+            <span>Upstream Callers (<span id="whatif-callers-count">0</span>)</span>
+            <span class="whatif-badge-in">Incoming</span>
+          </div>
+          <div class="whatif-list-box" id="whatif-callers-list">
+            <!-- Callers -->
+          </div>
+        </div>
+        <div class="whatif-column">
+          <div class="whatif-col-header">
+            <span>Downstream Callees (<span id="whatif-callees-count">0</span>)</span>
+            <span class="whatif-badge-out">Outgoing</span>
+          </div>
+          <div class="whatif-list-box" id="whatif-callees-list">
+            <!-- Callees -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Automated Test Coverage -->
+      <div class="whatif-section">
+        <div class="whatif-section-title">
+          <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Covering Automated Tests (<span id="whatif-tests-badge-count">0</span>)
+        </div>
+        <div class="whatif-tests-wrap" id="whatif-tests-wrap">
+          <!-- Test suites or empty warning -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer whatif-footer">
+      <button class="btn btn-secondary" id="whatif-btn-blast-radius">
+        <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <span>Explore Full Blast Radius</span>
+      </button>
+      <button class="btn btn-primary" id="whatif-btn-done">Done</button>
     </div>
   </div>
 </div>

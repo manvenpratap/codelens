@@ -20248,6 +20248,37 @@ function initStorylinesView() {
       }
     });
   }
+
+  const whatIfHeroBtn = qs('#storyline-btn-what-if');
+  if (whatIfHeroBtn) {
+    whatIfHeroBtn.addEventListener('click', () => {
+      const ep = currentStorylineDetail ? (currentStorylineDetail.entryPointFqn || currentStorylineDetail.entryPoint) : null;
+      if (ep) {
+        openWhatIfModal(ep);
+      }
+    });
+  }
+
+  qsa('.storyline-mode-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const mode = pill.getAttribute('data-mode');
+      if (mode) switchStorylineMode(mode);
+    });
+  });
+
+  const whatIfModalClose = qs('#whatif-modal-close');
+  const whatIfDoneBtn = qs('#whatif-btn-done');
+  const whatIfBlastBtn = qs('#whatif-btn-blast-radius');
+  if (whatIfModalClose) whatIfModalClose.addEventListener('click', closeWhatIfModal);
+  if (whatIfDoneBtn) whatIfDoneBtn.addEventListener('click', closeWhatIfModal);
+  if (whatIfBlastBtn) {
+    whatIfBlastBtn.addEventListener('click', () => {
+      if (window._currentWhatIfFqn) {
+        closeWhatIfModal();
+        openBlastRadiusExplorer(window._currentWhatIfFqn);
+      }
+    });
+  }
 }
 
 async function loadStorylines(force = false) {
@@ -20413,6 +20444,7 @@ function renderStorylineDetail(story) {
       const shortFile = src.includes('/')
         ? src.substring(src.lastIndexOf('/') + 1)
         : (src || 'source');
+      const stepFqn = step.entityFqn || step.methodFqn || '';
 
       return `
         <div class="storyline-step-item" role="listitem">
@@ -20428,7 +20460,11 @@ function renderStorylineDetail(story) {
                 <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 <span>${esc(shortFile)}:${step.startLine}</span>
               </button>
-              <button class="storyline-impact-trigger" data-fqn="${esc(step.methodFqn)}" title="Trace Blast Radius for this method">
+              <button class="storyline-whatif-trigger" data-fqn="${esc(stepFqn)}" title="Analyze change impact with What-If prediction">
+                <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+                <span>What If?</span>
+              </button>
+              <button class="storyline-impact-trigger" data-fqn="${esc(stepFqn)}" title="Trace Blast Radius for this method">
                 <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
                 <span>Blast Radius</span>
               </button>
@@ -20443,6 +20479,13 @@ function renderStorylineDetail(story) {
         const file = btn.getAttribute('data-file');
         const line = parseInt(btn.getAttribute('data-line'), 10);
         if (file) openSourceFile(file, line);
+      });
+    });
+
+    timelineEl.querySelectorAll('.storyline-whatif-trigger').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fqn = btn.getAttribute('data-fqn');
+        if (fqn) openWhatIfModal(fqn);
       });
     });
 
@@ -20478,6 +20521,374 @@ function renderStorylineDetail(story) {
         if (file) openSourceFile(file, line);
       });
     });
+  }
+
+  if (currentStorylineMode === 'flowchart') {
+    renderVisualFlowchart(story);
+  } else if (currentStorylineMode === 'teachme') {
+    loadAndRenderTeachMe(story);
+  }
+}
+
+let currentStorylineMode = 'timeline';
+
+function switchStorylineMode(mode) {
+  currentStorylineMode = mode;
+  qsa('.storyline-mode-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.getAttribute('data-mode') === mode);
+  });
+
+  const timelineView = qs('#storyline-mode-timeline');
+  const flowchartView = qs('#storyline-mode-flowchart');
+  const teachmeView = qs('#storyline-mode-teachme');
+
+  if (timelineView) timelineView.style.display = (mode === 'timeline') ? 'block' : 'none';
+  if (flowchartView) flowchartView.style.display = (mode === 'flowchart') ? 'block' : 'none';
+  if (teachmeView) teachmeView.style.display = (mode === 'teachme') ? 'block' : 'none';
+
+  if (currentStorylineDetail) {
+    if (mode === 'flowchart') {
+      renderVisualFlowchart(currentStorylineDetail);
+    } else if (mode === 'teachme') {
+      loadAndRenderTeachMe(currentStorylineDetail);
+    }
+  }
+}
+
+function renderVisualFlowchart(story) {
+  const canvas = qs('#storyline-flowchart-canvas');
+  if (!canvas || !story) return;
+
+  const steps = story.steps || [];
+  if (steps.length === 0) {
+    canvas.innerHTML = '<div style="padding: 24px; color: var(--text-muted); font-size: 13px;">No execution steps found in this storyline.</div>';
+    return;
+  }
+
+  const itemsHtml = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const roleClass = 'role-' + (step.role || 'processing').toLowerCase().replace(/_/g, '-');
+    const src = step.sourceFile || '';
+    const shortFile = src.includes('/') ? src.substring(src.lastIndexOf('/') + 1) : (src || 'source');
+
+    const stepFqn = step.entityFqn || step.methodFqn || '';
+    itemsHtml.push(`
+      <div class="flowchart-step-node" data-fqn="${esc(stepFqn)}">
+        <div class="flowchart-node-top">
+          <span class="flowchart-node-badge">${step.stepIndex}</span>
+          <span class="storyline-role-pill ${roleClass}">${esc(step.roleLabel || step.role)}</span>
+        </div>
+        <div class="flowchart-node-sig" title="${esc(step.classSimpleName)}.${esc(step.simpleName)}">
+          ${esc(step.classSimpleName)}.${esc(step.simpleName)}
+        </div>
+        <div class="flowchart-node-action">${esc(step.narrativeAction)}</div>
+        <div class="flowchart-node-footer">
+          <button class="storyline-cite-btn" data-file="${esc(step.sourceFile)}" data-line="${step.startLine}" title="Jump to source in Monaco Editor">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>${esc(shortFile)}:${step.startLine}</span>
+          </button>
+          <div style="display:flex; gap:4px;">
+            <button class="storyline-whatif-trigger" data-fqn="${esc(stepFqn)}" title="Analyze change impact with What-If prediction">
+              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+              <span>What If?</span>
+            </button>
+            <button class="storyline-impact-trigger" data-fqn="${esc(stepFqn)}" title="Trace Blast Radius for this method">
+              <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <span>Radius</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `);
+
+    if (i < steps.length - 1) {
+      itemsHtml.push(`
+        <div class="flowchart-connector">
+          <svg class="svg-icon icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </div>
+      `);
+    }
+  }
+
+  canvas.innerHTML = itemsHtml.join('');
+
+  canvas.querySelectorAll('.storyline-cite-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const file = btn.getAttribute('data-file');
+      const line = parseInt(btn.getAttribute('data-line'), 10);
+      if (file) openSourceFile(file, line);
+    });
+  });
+
+  canvas.querySelectorAll('.storyline-whatif-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fqn = btn.getAttribute('data-fqn');
+      if (fqn) openWhatIfModal(fqn);
+    });
+  });
+
+  canvas.querySelectorAll('.storyline-impact-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fqn = btn.getAttribute('data-fqn');
+      if (fqn) openBlastRadiusExplorer(fqn);
+    });
+  });
+}
+
+async function loadAndRenderTeachMe(story) {
+  const stack = qs('#storyline-teachme-stack');
+  if (!stack || !story) return;
+
+  stack.innerHTML = `
+    <div style="padding: 24px; color: var(--text-muted); font-size: 13px;">
+      Synthesizing 5-level progressive breakdown for <strong>${esc(story.title)}</strong>...
+    </div>
+  `;
+
+  try {
+    const ep = story.entryPointFqn || story.entryPoint || '';
+    const res = await fetch(`/api/storyline/teach-me?id=${encodeURIComponent(story.id || '')}&fqn=${encodeURIComponent(ep)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const guide = await res.json();
+
+    const comps = (guide.level2ArchitectureComponents || []).map(c => `
+      <div class="teachme-comp-chip">${esc(c)}</div>
+    `).join('') || '<span style="color:var(--text-muted); font-size:12px;">No components identified</span>';
+
+    const flowSteps = (guide.level3ExecutionFlow || []).map((stepStr, idx) => `
+      <div class="teachme-flow-item">
+        <span class="teachme-flow-num">${idx + 1}.</span>
+        <span>${esc(stepStr)}</span>
+      </div>
+    `).join('') || '<span style="color:var(--text-muted); font-size:12px;">No sequence flow items</span>';
+
+    const codeSteps = (guide.level4CodeDetails || []).map(st => {
+      const src = st.sourceFile || '';
+      const shortFile = src.includes('/') ? src.substring(src.lastIndexOf('/') + 1) : (src || 'source');
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; margin-bottom:6px;">
+          <div>
+            <strong style="font-size:12px; color:var(--text-primary);">${st.stepIndex}. ${esc(st.classSimpleName)}.${esc(st.simpleName)}</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${esc(st.narrativeAction)}</div>
+          </div>
+          <button class="storyline-cite-btn" data-file="${esc(st.sourceFile)}" data-line="${st.startLine}">
+            <span>${esc(shortFile)}:${st.startLine}</span>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    const evidenceList = (guide.level5Evidence || []).map(c => {
+      const src = c.file || '';
+      const shortFile = src.includes('/') ? src.substring(src.lastIndexOf('/') + 1) : (src || 'source');
+      return `
+        <button class="storyline-evidence-chip" data-file="${esc(c.file)}" data-line="${c.startLine}">
+          <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span>${esc(shortFile)}:${c.startLine}–${c.endLine}</span>
+        </button>
+      `;
+    }).join('');
+
+    stack.innerHTML = `
+      <!-- Level 1: Executive Overview -->
+      <div class="teachme-level-card teachme-level-1">
+        <div class="teachme-level-header">
+          <span class="teachme-level-tag">Level 1: Executive Overview</span>
+          <span class="teachme-level-title">10,000-ft Conceptual Summary</span>
+        </div>
+        <p style="font-size:14px; line-height:1.6; color:var(--text-primary); margin:0;">
+          ${esc(guide.level1ExecutiveOverview || story.executiveSummary || 'No executive summary available.')}
+        </p>
+      </div>
+
+      <!-- Level 2: Architecture Components -->
+      <div class="teachme-level-card teachme-level-2">
+        <div class="teachme-level-header">
+          <span class="teachme-level-tag">Level 2: Architecture Components</span>
+          <span class="teachme-level-title">Participating Structural Units</span>
+        </div>
+        <div class="teachme-components-grid">
+          ${comps}
+        </div>
+      </div>
+
+      <!-- Level 3: Execution Sequence Flow -->
+      <div class="teachme-level-card teachme-level-3">
+        <div class="teachme-level-header">
+          <span class="teachme-level-tag">Level 3: Execution Sequence Flow</span>
+          <span class="teachme-level-title">Logical Progression</span>
+        </div>
+        <div class="teachme-flow-list">
+          ${flowSteps}
+        </div>
+      </div>
+
+      <!-- Level 4: Code & Complexity Details -->
+      <div class="teachme-level-card teachme-level-4">
+        <div class="teachme-level-header">
+          <span class="teachme-level-tag">Level 4: Code & Complexity</span>
+          <span class="teachme-level-title">Method Invocation Chain &amp; Code Citations</span>
+        </div>
+        <div>
+          ${codeSteps}
+        </div>
+      </div>
+
+      <!-- Level 5: Source Evidence Citations -->
+      <div class="teachme-level-card teachme-level-5">
+        <div class="teachme-level-header">
+          <span class="teachme-level-tag">Level 5: Source Evidence</span>
+          <span class="teachme-level-title">AST-Grounded Source Spans</span>
+        </div>
+        <div class="teachme-components-grid">
+          ${evidenceList}
+        </div>
+      </div>
+    `;
+
+    stack.querySelectorAll('.storyline-cite-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const file = btn.getAttribute('data-file');
+        const line = parseInt(btn.getAttribute('data-line'), 10);
+        if (file) openSourceFile(file, line);
+      });
+    });
+
+    stack.querySelectorAll('.storyline-evidence-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const file = btn.getAttribute('data-file');
+        const line = parseInt(btn.getAttribute('data-line'), 10);
+        if (file) openSourceFile(file, line);
+      });
+    });
+
+  } catch (err) {
+    console.error('Failed to load teach-me guide:', err);
+    stack.innerHTML = `<div style="padding:16px; color:var(--rose); font-size:12px;">Failed to synthesize teach-me breakdown: ${esc(err.message)}</div>`;
+  }
+}
+
+let currentWhatIfTargetFqn = null;
+
+async function openWhatIfModal(fqn) {
+  if (!fqn) return;
+  currentWhatIfTargetFqn = fqn;
+  window._currentWhatIfFqn = fqn;
+
+  const modal = qs('#storyline-whatif-modal');
+  if (!modal) return;
+
+  const targetFqnEl = qs('#whatif-target-fqn');
+  const workflowsCountEl = qs('#whatif-workflows-count');
+  const blastCountEl = qs('#whatif-blast-count');
+  const testsCountEl = qs('#whatif-tests-count');
+  const narrativeEl = qs('#whatif-narrative-text');
+  const affectedCountEl = qs('#whatif-affected-count');
+  const storylinesWrap = qs('#whatif-storylines-wrap');
+  const callersCountEl = qs('#whatif-callers-count');
+  const callersList = qs('#whatif-callers-list');
+  const calleesCountEl = qs('#whatif-callees-count');
+  const calleesList = qs('#whatif-callees-list');
+  const testsBadgeCount = qs('#whatif-tests-badge-count');
+  const testsWrap = qs('#whatif-tests-wrap');
+
+  if (targetFqnEl) targetFqnEl.textContent = fqn;
+  if (workflowsCountEl) workflowsCountEl.textContent = '...';
+  if (blastCountEl) blastCountEl.textContent = '...';
+  if (testsCountEl) testsCountEl.textContent = '...';
+  if (narrativeEl) narrativeEl.textContent = 'Analyzing call graph dependencies, affected workflows, and covering automated test suites...';
+  if (storylinesWrap) storylinesWrap.innerHTML = '<span style="color:var(--text-muted); font-size:12px;">Analyzing affected workflows...</span>';
+  if (callersList) callersList.innerHTML = '';
+  if (calleesList) calleesList.innerHTML = '';
+  if (testsWrap) testsWrap.innerHTML = '';
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+
+  try {
+    const res = await fetch(`/api/storyline/what-if?fqn=${encodeURIComponent(fqn)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (workflowsCountEl) workflowsCountEl.textContent = data.totalAffectedWorkflows || 0;
+    if (blastCountEl) blastCountEl.textContent = data.blastRadiusCount || 0;
+    const testCount = (data.coveringTests || []).length;
+    if (testsCountEl) testsCountEl.textContent = testCount;
+    if (narrativeEl) narrativeEl.textContent = data.impactNarrative || 'No impact narrative generated.';
+
+    const affected = data.affectedStorylines || [];
+    if (affectedCountEl) affectedCountEl.textContent = affected.length;
+    if (storylinesWrap) {
+      if (affected.length === 0) {
+        storylinesWrap.innerHTML = '<span style="color:var(--text-muted); font-size:12px;">No high-level storylines directly traverse this method.</span>';
+      } else {
+        storylinesWrap.innerHTML = affected.map(title => `
+          <span class="whatif-storyline-chip">${esc(title)}</span>
+        `).join('');
+      }
+    }
+
+    const callers = data.upstreamCallers || [];
+    if (callersCountEl) callersCountEl.textContent = callers.length;
+    if (callersList) {
+      if (callers.length === 0) {
+        callersList.innerHTML = '<div style="color:var(--text-muted); font-size:11px; padding:4px;">No upstream callers found in call graph.</div>';
+      } else {
+        callersList.innerHTML = callers.map(callerFqn => `
+          <div class="whatif-method-item">
+            <span title="${esc(callerFqn)}">${esc(callerFqn)}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    const callees = data.downstreamCallees || [];
+    if (calleesCountEl) calleesCountEl.textContent = callees.length;
+    if (calleesList) {
+      if (callees.length === 0) {
+        calleesList.innerHTML = '<div style="color:var(--text-muted); font-size:11px; padding:4px;">No downstream callees (terminal sink method).</div>';
+      } else {
+        calleesList.innerHTML = callees.map(calleeFqn => `
+          <div class="whatif-method-item">
+            <span title="${esc(calleeFqn)}">${esc(calleeFqn)}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    const tests = data.coveringTests || [];
+    if (testsBadgeCount) testsBadgeCount.textContent = tests.length;
+    if (testsWrap) {
+      if (tests.length === 0) {
+        testsWrap.innerHTML = '<div style="color:var(--amber); font-size:12px; display:flex; align-items:center; gap:6px;">⚠️ Notice: No automated test suites currently cover this method in the call graph. Extra care is recommended.</div>';
+      } else {
+        testsWrap.innerHTML = tests.map(t => `
+          <span class="whatif-test-chip">✓ ${esc(t)}</span>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load what-if analysis:', err);
+    if (narrativeEl) narrativeEl.textContent = `Error calculating what-if impact: ${err.message}`;
+  }
+}
+
+function closeWhatIfModal() {
+  const modal = qs('#storyline-whatif-modal');
+  if (modal) {
+    if (typeof dismissModalAnimated === 'function') {
+      dismissModalAnimated(modal);
+    } else {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
   }
 }
 
@@ -20515,6 +20926,9 @@ async function openStorylineForFqn(fqn) {
 window.loadStorylines = loadStorylines;
 window.selectStoryline = selectStoryline;
 window.openStorylineForFqn = openStorylineForFqn;
+window.switchStorylineMode = switchStorylineMode;
+window.openWhatIfModal = openWhatIfModal;
+window.closeWhatIfModal = closeWhatIfModal;
 
 
 

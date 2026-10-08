@@ -45,6 +45,7 @@ public class StoryEngine {
     public static class StorylineStep {
         public int stepIndex;
         public String entityFqn;
+        public String methodFqn;
         public String simpleName;
         public String classFqn;
         public String classSimpleName;
@@ -101,6 +102,28 @@ public class StoryEngine {
         public int stepCount;
         public int totalComplexity;
         public List<String> roleSequence = new ArrayList<>();
+    }
+
+    public static class ChangeImpactStory {
+        public String targetMethod;
+        public String targetClass;
+        public String impactNarrative;
+        public List<String> affectedStorylines = new ArrayList<>();
+        public List<String> upstreamCallers = new ArrayList<>();
+        public List<String> downstreamCallees = new ArrayList<>();
+        public List<String> coveringTests = new ArrayList<>();
+        public int totalAffectedWorkflows;
+        public int blastRadiusCount;
+    }
+
+    public static class TeachMeGuide {
+        public String storylineTitle;
+        public String category;
+        public String level1ExecutiveOverview;
+        public List<String> level2ArchitectureComponents = new ArrayList<>();
+        public List<String> level3ExecutionFlow = new ArrayList<>();
+        public List<StorylineStep> level4CodeDetails = new ArrayList<>();
+        public List<StorylineEvidence> level5Evidence = new ArrayList<>();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -365,6 +388,7 @@ public class StoryEngine {
             StorylineStep step = new StorylineStep();
             step.stepIndex = i + 1;
             step.entityFqn = v;
+            step.methodFqn = v;
             step.simpleName = m != null && m.getSimpleName() != null ? m.getSimpleName() : extractSimpleName(v);
             step.classFqn = declTypeFqn;
             step.classSimpleName = t != null && t.getSimpleName() != null ? t.getSimpleName() : extractClassSimple(declTypeFqn);
@@ -542,5 +566,93 @@ public class StoryEngine {
         if (classFqn == null) return "";
         int dot = classFqn.lastIndexOf('.');
         return (dot >= 0) ? classFqn.substring(dot + 1) : classFqn;
+    }
+
+    public ChangeImpactStory analyzeChangeImpact(String methodFqn,
+                                                List<CodeType> types,
+                                                List<CodeMethod> methods,
+                                                Graph<String, DefaultEdge> graph) {
+        ChangeImpactStory story = new ChangeImpactStory();
+        story.targetMethod = methodFqn;
+        story.targetClass = extractClassFqn(methodFqn);
+
+        if (graph == null || !graph.containsVertex(methodFqn)) {
+            story.impactNarrative = "Target method has no recorded call graph dependencies.";
+            return story;
+        }
+
+        Set<DefaultEdge> inEdges = graph.incomingEdgesOf(methodFqn);
+        Set<DefaultEdge> outEdges = graph.outgoingEdgesOf(methodFqn);
+
+        for (DefaultEdge e : inEdges) {
+            String src = graph.getEdgeSource(e);
+            if (isTestFqn(src)) {
+                story.coveringTests.add(src);
+            } else {
+                story.upstreamCallers.add(src);
+            }
+        }
+        for (DefaultEdge e : outEdges) {
+            story.downstreamCallees.add(graph.getEdgeTarget(e));
+        }
+
+        List<StorylineSummary> allStorylines = discoverStorylines(types, methods, graph);
+        for (StorylineSummary s : allStorylines) {
+            Storyline detail = getStorylineByFqn(s.entryPoint, types, methods, graph);
+            if (detail != null) {
+                boolean affects = detail.steps.stream().anyMatch(st -> st.entityFqn.equals(methodFqn));
+                if (affects) {
+                    story.affectedStorylines.add(s.title);
+                }
+            }
+        }
+
+        story.totalAffectedWorkflows = story.affectedStorylines.size();
+        story.blastRadiusCount = story.upstreamCallers.size() + story.downstreamCallees.size();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Modifying %s.%s directly impacts %d discovered architectural workflows.",
+            extractClassSimple(story.targetClass), extractSimpleName(methodFqn), story.totalAffectedWorkflows));
+        if (!story.coveringTests.isEmpty()) {
+            sb.append(String.format(" %d automated test suites cover this behavior.", story.coveringTests.size()));
+        } else {
+            sb.append(" Notice: No direct automated tests were found invoking this method in the call graph.");
+        }
+        if (!story.downstreamCallees.isEmpty()) {
+            sb.append(String.format(" Changes propagate downstream to %d called components.", story.downstreamCallees.size()));
+        }
+        story.impactNarrative = sb.toString();
+
+        return story;
+    }
+
+    public TeachMeGuide generateTeachMeGuide(Storyline storyline) {
+        TeachMeGuide guide = new TeachMeGuide();
+        if (storyline == null) return guide;
+
+        guide.storylineTitle = storyline.title;
+        guide.category = storyline.category;
+        guide.level1ExecutiveOverview = storyline.executiveSummary;
+
+        LinkedHashSet<String> components = new LinkedHashSet<>();
+        List<String> flowSteps = new ArrayList<>();
+
+        for (StorylineStep step : storyline.steps) {
+            components.add(String.format("%s [%s]", step.classSimpleName, step.roleLabel));
+            flowSteps.add(String.format("Step %d: %s (%s.%s)", step.stepIndex, step.narrativeAction, step.classSimpleName, step.simpleName));
+        }
+
+        guide.level2ArchitectureComponents = new ArrayList<>(components);
+        guide.level3ExecutionFlow = flowSteps;
+        guide.level4CodeDetails = storyline.steps;
+        guide.level5Evidence = storyline.evidence;
+
+        return guide;
+    }
+
+    private boolean isTestFqn(String fqn) {
+        if (fqn == null) return false;
+        String lower = fqn.toLowerCase(Locale.ROOT);
+        return lower.contains("test") || lower.contains("mock") || lower.contains("spec");
     }
 }

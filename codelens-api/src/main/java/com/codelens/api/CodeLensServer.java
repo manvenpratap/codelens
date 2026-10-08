@@ -1369,6 +1369,8 @@ public class CodeLensServer {
         app.get("/api/analysis/blast-radius",       this::getBlastRadius);
         app.get("/api/storylines",                  this::listStorylines);
         app.get("/api/storyline",                   this::getStoryline);
+        app.get("/api/storyline/what-if",           this::getStorylineWhatIf);
+        app.get("/api/storyline/teach-me",          this::getStorylineTeachMe);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -4050,6 +4052,50 @@ public class CodeLensServer {
             return;
         }
         ctx.json(story);
+    }
+
+    private void getStorylineWhatIf(Context ctx) throws Exception {
+        String fqn = ctx.queryParam("fqn");
+        if (fqn == null || fqn.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Query parameter 'fqn' is required"));
+            return;
+        }
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+
+        StoryEngine.ChangeImpactStory impact = storyEngine.analyzeChangeImpact(fqn, types, methods, graph);
+        ctx.json(impact);
+    }
+
+    private void getStorylineTeachMe(Context ctx) throws Exception {
+        String id = ctx.queryParam("id");
+        String entry = ctx.queryParam("entry");
+        String fqn = (entry != null && !entry.isBlank()) ? entry : ctx.queryParam("fqn");
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+
+        StoryEngine.Storyline story = null;
+        if (fqn != null && !fqn.isBlank()) {
+            story = storyEngine.getStorylineByFqn(fqn, types, methods, graph);
+        } else if (id != null && !id.isBlank()) {
+            List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+            Optional<StoryEngine.StorylineSummary> matched = summaries.stream().filter(s -> s.id.equals(id)).findFirst();
+            if (matched.isPresent()) {
+                story = storyEngine.getStorylineByFqn(matched.get().entryPoint, types, methods, graph);
+            }
+        }
+
+        if (story == null) {
+            ctx.status(404).json(Map.of("error", "Storyline not found"));
+            return;
+        }
+
+        StoryEngine.TeachMeGuide guide = storyEngine.generateTeachMeGuide(story);
+        ctx.json(guide);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
