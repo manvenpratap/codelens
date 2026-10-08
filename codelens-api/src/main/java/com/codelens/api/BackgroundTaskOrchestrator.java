@@ -351,42 +351,79 @@ public class BackgroundTaskOrchestrator {
         registerTask(new TaskDefinition("db-maintenance", "Database Compaction & Maintenance", LoadTier.HEAVY, 10,
                 MutexGroup.DATABASE_EXCLUSIVE, Priority.URGENT, Collections.emptySet(), null));
 
-        // 5. Call Graph & Topology: Medium, waits for scanner bulk load
-        registerTask(new TaskDefinition("call-graph", "Call Graph & Topology Engine", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
-
-        // 6. Layout Precomputation: Medium, depends on call-graph
-        registerTask(new TaskDefinition("layout-engine", "Sunflower Layout Precomputer", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null));
-
-        // 7. Module Analyzer: Medium, depends on scanner
-        registerTask(new TaskDefinition("module-analyzer", "Module Dependency Engine", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
-
-        // 8. Lucene Indexer: Medium, depends on scanner
+        // 5. Lucene Indexer: Medium, depends on scanner
         registerTask(new TaskDefinition("lucene-indexer", "Lucene Full-Text Search Indexer", LoadTier.MEDIUM, 4,
                 MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
 
-        // 9. Git Analyzer: Medium, depends on scanner
+        // 6. Inconsistency Detector: Medium, depends on scanner
+        registerTask(new TaskDefinition("inconsistency-detector", "Structural Inconsistency & Anomaly Detector", LoadTier.MEDIUM, 3,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
+
+        // 7. Call Graph & Topology: Medium, waits for scanner bulk load
+        registerTask(new TaskDefinition("call-graph", "Call Graph & Topology Engine", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
+
+        // 8. Layout Precomputation: Medium, depends on call-graph
+        registerTask(new TaskDefinition("layout-engine", "Sunflower Layout Precomputer", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null));
+
+        // 9. Module Analyzer: Medium, depends on scanner
+        registerTask(new TaskDefinition("module-analyzer", "Module Dependency Engine", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
+
+        // 10. Critical Path Analyzer: Medium, depends on call-graph
+        registerTask(new TaskDefinition("critical-path-analyzer", "Critical Execution Path Analyzer", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null));
+
+        // 11. Git Analyzer: Medium, depends on scanner
         registerTask(new TaskDefinition("git-analyzer", "Git Churn & Hotspot Analyzer", LoadTier.MEDIUM, 4,
                 MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
 
-        // 10. Reports Generator: Heavy, analysis exclusive, depends on graph, modules, and search
+        // 12. CodeStory Storylines Generator: Medium, depends on call-graph and scanner
+        registerTask(new TaskDefinition("storylines-generator", "CodeStory Narrative Flows & Storylines", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph", "scanner"), null));
+
+        // 13. Change Story Analyzer: Medium, depends on storylines-generator and git-analyzer
+        registerTask(new TaskDefinition("change-story-analyzer", "Git PR Change Story & Blast Radius Engine", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "git-analyzer"), null));
+
+        // 14. AI Grounding Engine: Light, depends on storylines-generator and call-graph
+        registerTask(new TaskDefinition("ai-grounding-engine", "Architectural Q&A & Semantic Grounding Engine", LoadTier.LIGHT, 2,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "call-graph"), null));
+
+        // 15. Reports Generator: Heavy, analysis exclusive, depends on graph, modules, and search
         registerTask(new TaskDefinition("reports-generator", "Intelligence Reports Generator", LoadTier.HEAVY, 7,
                 MutexGroup.ANALYSIS_EXCLUSIVE, Priority.NORMAL,
                 Set.of("call-graph", "module-analyzer", "lucene-indexer"), null));
 
-        // 11. Database Connection Watchdog: Light
+        // 16. Database Connection Watchdog: Light
         registerTask(new TaskDefinition("db-watchdog", "Database Connection Watchdog", LoadTier.LIGHT, 1,
                 MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
 
-        // 12. Heap Watchdog: Sentinel
+        // 17. Heap Watchdog: Sentinel
         registerTask(new TaskDefinition("heap-watchdog", "Heap Auto-Recovery Watchdog", LoadTier.SENTINEL, 0,
                 MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
 
-        // 13. SSE Live Telemetry Broadcaster: Light
+        // 18. SSE Live Telemetry Broadcaster: Light
         registerTask(new TaskDefinition("sse-broadcaster", "SSE Live Telemetry Broadcaster", LoadTier.LIGHT, 1,
                 MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
+    }
+
+    /**
+     * Invalidate downstream analysis states when a new scan is enqueued.
+     */
+    public void invalidateDownstreamOnRescan() {
+        Set<String> downstream = Set.of(
+            "call-graph", "layout-engine", "module-analyzer", "lucene-indexer",
+            "inconsistency-detector", "critical-path-analyzer", "storylines-generator",
+            "change-story-analyzer", "ai-grounding-engine", "reports-generator"
+        );
+        for (String id : downstream) {
+            TaskState s = taskStates.get(id);
+            if (s != null && s.lastStatus == TaskStatus.COMPLETE) {
+                s.lastStatus = TaskStatus.WAITING_DEPENDENCY;
+            }
+        }
     }
 
     /**
@@ -433,6 +470,9 @@ public class BackgroundTaskOrchestrator {
             }
 
             task.status = TaskStatus.QUEUED;
+            if ("scanner".equals(task.taskId) || "delta-scanner".equals(task.taskId)) {
+                invalidateDownstreamOnRescan();
+            }
             queue.add(task);
             TaskState state = taskStates.computeIfAbsent(task.taskId, TaskState::new);
             state.lastStatus = TaskStatus.QUEUED;
@@ -597,36 +637,62 @@ public class BackgroundTaskOrchestrator {
     }
 
     /**
+     * Check if a task accesses the database (either exclusive or reading/writing).
+     */
+    private boolean isDatabaseAccessingTask(String taskId) {
+        return !"heap-watchdog".equals(taskId) && !"sse-broadcaster".equals(taskId);
+    }
+
+    /**
      * Verify whether all prerequisites and DB-exclusive conditions are satisfied.
      * Returns the set of blocking task IDs (empty if all satisfied).
      */
     private Set<String> checkDependencies(QueuedTask task) {
         Set<String> blocking = new LinkedHashSet<>();
 
-        // If a task reads the database, it must not run while a DATABASE_EXCLUSIVE task is active
-        boolean readsDatabase = !"scanner".equals(task.taskId) &&
-                !"delta-scanner".equals(task.taskId) &&
-                !"stress-test".equals(task.taskId) &&
-                !"db-maintenance".equals(task.taskId);
+        boolean isDbExclusive = task.mutexGroup == MutexGroup.DATABASE_EXCLUSIVE;
+        boolean accessesDatabase = isDatabaseAccessingTask(task.taskId);
 
-        if (readsDatabase) {
+        // 1. Two-way Database Exclusivity:
+        // A DATABASE_EXCLUSIVE task (scanner, delta-scanner, stress-test, db-maintenance)
+        // must not run while ANY other task accessing the database is currently running.
+        if (isDbExclusive) {
+            for (String activeId : activeRunningTasks.keySet()) {
+                if (!activeId.equals(task.taskId) && isDatabaseAccessingTask(activeId)) {
+                    blocking.add(activeId);
+                }
+            }
+        }
+
+        // 2. Database Readers / Regular DB tasks:
+        // Must not run while:
+        // A) A DATABASE_EXCLUSIVE task is currently active
+        // B) A DATABASE_EXCLUSIVE task is queued ahead of it in the queue
+        if (accessesDatabase && !isDbExclusive) {
             for (String activeId : activeRunningTasks.keySet()) {
                 TaskDefinition def = registry.get(activeId);
                 if (def != null && def.mutexGroup == MutexGroup.DATABASE_EXCLUSIVE) {
                     blocking.add(activeId);
                 }
             }
+            for (QueuedTask q : queue) {
+                if (q == task) break;
+                if (q.mutexGroup == MutexGroup.DATABASE_EXCLUSIVE) {
+                    blocking.add(q.taskId);
+                    break;
+                }
+            }
         }
 
-        // Check explicitly declared dependencies
+        // 3. Check explicitly declared dependencies
         for (String depId : task.dependencies) {
-            // 1. Is dependency currently executing?
+            // A. Is dependency currently executing?
             if (activeRunningTasks.containsKey(depId)) {
                 blocking.add(depId);
                 continue;
             }
 
-            // 2. Is dependency queued ahead of this task?
+            // B. Is dependency queued ahead of this task?
             boolean queuedAhead = false;
             for (QueuedTask q : queue) {
                 if (q == task) break;
@@ -640,7 +706,7 @@ public class BackgroundTaskOrchestrator {
                 continue;
             }
 
-            // 3. Has dependency ever completed or is it ready?
+            // C. Has dependency ever completed or is it ready?
             TaskDefinition def = registry.get(depId);
             if (def != null && def.isReadySupplier != null) {
                 try {
@@ -652,8 +718,14 @@ public class BackgroundTaskOrchestrator {
                 }
             } else {
                 TaskState depState = taskStates.get(depId);
-                if (depState == null || (depState.lastStatus != TaskStatus.COMPLETE && depState.lastStatus != TaskStatus.IDLE)) {
-                    // Dep has not completed successfully yet
+                boolean satisfied = depState != null && (depState.lastStatus == TaskStatus.COMPLETE || depState.lastStatus == TaskStatus.IDLE);
+                if ("scanner".equals(depId)) {
+                    TaskState deltaState = taskStates.get("delta-scanner");
+                    if (deltaState != null && deltaState.lastStatus == TaskStatus.COMPLETE) {
+                        satisfied = true;
+                    }
+                }
+                if (!satisfied) {
                     blocking.add(depId);
                 }
             }

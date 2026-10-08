@@ -1161,6 +1161,16 @@ function getProcessIconSvg(id, type) {
     return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`;
   } else if (id === 'sse-broadcaster') {
     return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.93 4.93a10 10 0 0 1 14.14 0"/><path d="M7.76 7.76a6 6 0 0 1 8.48 0"/><circle cx="12" cy="12" r="2"/></svg>`;
+  } else if (id === 'inconsistency-detector') {
+    return `<svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+  } else if (id === 'critical-path-analyzer') {
+    return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+  } else if (id === 'storylines-generator') {
+    return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+  } else if (id === 'change-story-analyzer') {
+    return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M18 6a9 9 0 0 1-9 9"/></svg>`;
+  } else if (id === 'ai-grounding-engine') {
+    return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`;
   }
   return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 }
@@ -2513,6 +2523,11 @@ function renderTasksPanel(procs) {
       else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
       else if (p.id === 'db-maintenance') rawDetail = 'H2 MVStore compaction & index optimizer';
       else if (p.id === 'sse-broadcaster') rawDetail = 'Real-time telemetry event bus';
+      else if (p.id === 'inconsistency-detector') rawDetail = 'Cross-entity integrity & class-awareness auditor';
+      else if (p.id === 'critical-path-analyzer') rawDetail = 'Entrypoint-to-sink persistence flow bottlenecks';
+      else if (p.id === 'storylines-generator') rawDetail = 'Execution flow discovery & transaction narratives';
+      else if (p.id === 'change-story-analyzer') rawDetail = 'PR diff & narrative impact synthesizer';
+      else if (p.id === 'ai-grounding-engine') rawDetail = 'Fact-verified context & citation synthesizer';
       else if (isQueued) {
         if (p.waitingFor && p.waitingFor.length > 0) {
           rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;

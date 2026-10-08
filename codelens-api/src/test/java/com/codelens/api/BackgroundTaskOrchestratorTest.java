@@ -367,4 +367,202 @@ public class BackgroundTaskOrchestratorTest {
             orchestrator.shutdown();
         }
     }
+
+    /**
+     * Test 9: Two-way Database Exclusivity - Exclusive Task Waits For Active DB Readers
+     * If call-graph is currently reading DB, scanner or db-maintenance must wait in queue.
+     */
+    public void testDatabaseExclusiveWaitsForActiveDatabaseReaders() throws Exception {
+        BackgroundTaskOrchestrator orchestrator = new BackgroundTaskOrchestrator();
+        try {
+            CountDownLatch readerStarted = new CountDownLatch(1);
+            CountDownLatch readerBlocker = new CountDownLatch(1);
+            CountDownLatch scannerFinished = new CountDownLatch(1);
+
+            // 1. Launch a database reader (call-graph)
+            orchestrator.submit("call-graph", () -> {
+                readerStarted.countDown();
+                try { readerBlocker.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+            });
+
+            assertTrue(readerStarted.await(3, TimeUnit.SECONDS), "Reader task should start");
+
+            // 2. Submit a DATABASE_EXCLUSIVE task (db-maintenance)
+            orchestrator.submit("db-maintenance", BackgroundTaskOrchestrator.Priority.HIGH, scannerFinished::countDown);
+
+            Thread.sleep(100);
+            BackgroundTaskOrchestrator.TaskSnapshot snap = orchestrator.getTaskSnapshot("db-maintenance");
+            assertTrue(snap.status == BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY ||
+                       snap.status == BackgroundTaskOrchestrator.TaskStatus.QUEUED,
+                       "Database-exclusive task must wait while DB reader is running: " + snap.status);
+            assertTrue(snap.waitingFor.contains("call-graph"), "db-maintenance should be waiting for active call-graph");
+
+            // 3. Unblock reader
+            readerBlocker.countDown();
+
+            // 4. Exclusive task should now execute and finish
+            assertTrue(scannerFinished.await(3, TimeUnit.SECONDS), "db-maintenance should finish after reader completes");
+        } finally {
+            orchestrator.shutdown();
+        }
+    }
+
+    /**
+     * Test 10: Two-way Database Exclusivity - DB Reader Waits For Queued Exclusive Task
+     * If scanner is queued, a newly enqueued DB reader must wait behind scanner.
+     */
+    public void testDatabaseReaderWaitsForQueuedDatabaseExclusiveTask() throws Exception {
+        BackgroundTaskOrchestrator orchestrator = new BackgroundTaskOrchestrator();
+        try {
+            CountDownLatch heavy1Started = new CountDownLatch(1);
+            CountDownLatch heavy1Blocker = new CountDownLatch(1);
+            CountDownLatch scannerFinished = new CountDownLatch(1);
+            CountDownLatch readerFinished = new CountDownLatch(1);
+            List<String> order = Collections.synchronizedList(new ArrayList<>());
+
+            // Task 1: occupy heavy slot with stress-test
+            orchestrator.submit("stress-test", () -> {
+                heavy1Started.countDown();
+                try { heavy1Blocker.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+            });
+
+            assertTrue(heavy1Started.await(3, TimeUnit.SECONDS), "Stress test should start");
+
+            // Task 2: Queue scanner (DB exclusive)
+            orchestrator.submit("scanner", BackgroundTaskOrchestrator.Priority.HIGH, () -> {
+                order.add("scanner");
+                scannerFinished.countDown();
+            });
+
+            // Task 3: Queue call-graph (DB reader)
+            orchestrator.submit("call-graph", BackgroundTaskOrchestrator.Priority.NORMAL, () -> {
+                order.add("call-graph");
+                readerFinished.countDown();
+            });
+
+            Thread.sleep(100);
+            BackgroundTaskOrchestrator.TaskSnapshot snap = orchestrator.getTaskSnapshot("call-graph");
+            assertTrue(snap.status == BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY,
+                       "Reader must wait for queued scanner");
+            assertTrue(snap.waitingFor.contains("scanner"), "Reader should wait for queued scanner");
+
+            heavy1Blocker.countDown();
+
+            assertTrue(scannerFinished.await(3, TimeUnit.SECONDS), "Scanner should finish first");
+            assertTrue(readerFinished.await(3, TimeUnit.SECONDS), "Call graph should finish after scanner");
+            assertEquals(List.of("scanner", "call-graph"), order, "Scanner must run before call-graph");
+        } finally {
+            orchestrator.shutdown();
+        }
+    }
+
+    /**
+     * Test 11: CodeStory Pipeline Dependency Chain
+     * scanner -> call-graph -> storylines-generator -> change-story-analyzer -> ai-grounding-engine
+     */
+    public void testCodeStoryPipelinesDependencyChain() throws Exception {
+        BackgroundTaskOrchestrator orchestrator = new BackgroundTaskOrchestrator();
+        try {
+            CountDownLatch scannerBlocker = new CountDownLatch(1);
+            CountDownLatch cgBlocker = new CountDownLatch(1);
+            CountDownLatch storylinesFinished = new CountDownLatch(1);
+            CountDownLatch changeStoryFinished = new CountDownLatch(1);
+            CountDownLatch aiGroundingFinished = new CountDownLatch(1);
+            List<String> timeline = Collections.synchronizedList(new ArrayList<>());
+
+            orchestrator.submit("scanner", () -> {
+                timeline.add("scanner-start");
+                try { scannerBlocker.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+                timeline.add("scanner-end");
+            });
+
+            orchestrator.submit("call-graph", () -> {
+                timeline.add("call-graph-start");
+                try { cgBlocker.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+                timeline.add("call-graph-end");
+            });
+
+            orchestrator.submit("git-analyzer", () -> {
+                timeline.add("git-analyzer-done");
+            });
+
+            orchestrator.submit("storylines-generator", () -> {
+                timeline.add("storylines-done");
+                storylinesFinished.countDown();
+            });
+
+            orchestrator.submit("change-story-analyzer", () -> {
+                timeline.add("change-story-done");
+                changeStoryFinished.countDown();
+            });
+
+            orchestrator.submit("ai-grounding-engine", () -> {
+                timeline.add("ai-grounding-done");
+                aiGroundingFinished.countDown();
+            });
+
+            Thread.sleep(100);
+            // Verify storylines is waiting on call-graph and scanner
+            BackgroundTaskOrchestrator.TaskSnapshot storySnap = orchestrator.getTaskSnapshot("storylines-generator");
+            assertEquals(BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY, storySnap.status,
+                    "Storylines should wait for call-graph");
+
+            // Release scanner
+            scannerBlocker.countDown();
+            Thread.sleep(100);
+
+            // Release call graph
+            cgBlocker.countDown();
+
+            assertTrue(storylinesFinished.await(3, TimeUnit.SECONDS), "Storylines should finish");
+            assertTrue(changeStoryFinished.await(3, TimeUnit.SECONDS), "Change story should finish");
+            assertTrue(aiGroundingFinished.await(3, TimeUnit.SECONDS), "AI grounding should finish");
+
+            // Assert execution ordering
+            int idxScanner = timeline.indexOf("scanner-end");
+            int idxCg = timeline.indexOf("call-graph-end");
+            int idxStories = timeline.indexOf("storylines-done");
+            int idxChange = timeline.indexOf("change-story-done");
+            int idxAi = timeline.indexOf("ai-grounding-done");
+
+            assertTrue(idxScanner < idxCg, "Scanner must end before Call Graph ends");
+            assertTrue(idxCg < idxStories, "Call Graph must end before Storylines");
+            assertTrue(idxStories < idxChange, "Storylines must finish before Change Story");
+            assertTrue(idxStories < idxAi, "Storylines must finish before AI Grounding");
+        } finally {
+            orchestrator.shutdown();
+        }
+    }
+
+    /**
+     * Test 12: Invalidation on Rescan
+     * Enqueuing scanner resets downstream completed tasks so stale prerequisites don't leak.
+     */
+    public void testRescanInvalidatesDownstream() throws Exception {
+        BackgroundTaskOrchestrator orchestrator = new BackgroundTaskOrchestrator();
+        try {
+            CountDownLatch taskDone = new CountDownLatch(1);
+            orchestrator.submit("call-graph", taskDone::countDown);
+            assertTrue(taskDone.await(3, TimeUnit.SECONDS), "Call graph should finish initially");
+
+            assertEquals(BackgroundTaskOrchestrator.TaskStatus.COMPLETE,
+                    orchestrator.getTaskSnapshot("call-graph").status,
+                    "Call graph should be COMPLETE");
+
+            // Now enqueue scanner
+            CountDownLatch scanBlocker = new CountDownLatch(1);
+            orchestrator.submit("scanner", () -> {
+                try { scanBlocker.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+            });
+
+            // Verify call-graph was invalidated
+            assertEquals(BackgroundTaskOrchestrator.TaskStatus.WAITING_DEPENDENCY,
+                    orchestrator.getTaskSnapshot("call-graph").status,
+                    "Call graph state should be invalidated upon scanner submission");
+
+            scanBlocker.countDown();
+        } finally {
+            orchestrator.shutdown();
+        }
+    }
 }
