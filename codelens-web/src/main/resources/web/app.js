@@ -554,6 +554,8 @@ async function startScan(targetPath) {
   const excludePatterns = settings.excludePatterns || 'target, build, .mvn, .git, .gradle, node_modules, bin, out';
 
   App.scanModalDismissed = false;
+  App.userSelectedScanPhase = false;
+  App.selectedScanPhase = null;
   App.lastScanProgress = { status: 'SCANNING', activeStage: 'PREPARE', currentPhase: 'Preparing Storage', message: 'Initializing analysis…', percentage: 1, sourcePath: path };
   setScanUI('scanning');
   const modalCard = qs('.scan-modal-card');
@@ -964,27 +966,27 @@ function renderPhaseBottomMetrics(stageKey, s) {
   const valEls = [qs('#scan-live-types'), qs('#scan-live-methods'), qs('#scan-live-fields'), qs('#scan-live-rels')];
   const lblEls = [qs('#scan-live-types-lbl'), qs('#scan-live-methods-lbl'), qs('#scan-live-fields-lbl'), qs('#scan-live-rels-lbl')];
   const iconWraps = [qs('#scan-metric-icon-1'), qs('#scan-metric-icon-2'), qs('#scan-metric-icon-3'), qs('#scan-metric-icon-4')];
-  const tiles = [qs('#scan-metric-tile-1'), qs('#scan-metric-tile-2'), qs('#scan-metric-tile-3'), qs('#scan-metric-tile-4')];
 
   data.cards.forEach((card, idx) => {
     const valEl = valEls[idx];
     const lblEl = lblEls[idx];
     const iconWrap = iconWraps[idx];
-    const tile = tiles[idx];
 
-    if (valEl) {
+    if (valEl && valEl.textContent !== String(card.val)) {
       valEl.textContent = card.val;
-      if (card.valColor) valEl.style.color = card.valColor;
+      if (card.valColor && valEl.style.color !== card.valColor) {
+        valEl.style.color = card.valColor;
+      }
     }
-    if (lblEl) lblEl.textContent = card.lbl;
+    if (lblEl && lblEl.textContent !== card.lbl) {
+      lblEl.textContent = card.lbl;
+    }
     if (iconWrap && card.iconSvg) {
-      iconWrap.className = 'scan-metric-icon-wrap ' + card.colorClass;
-      iconWrap.innerHTML = `<svg class="svg-icon icon-xs ${card.iconColor}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${card.iconSvg}</svg>`;
-    }
-    if (tile) {
-      tile.classList.remove('metric-updating');
-      void tile.offsetWidth;
-      tile.classList.add('metric-updating');
+      const targetClass = 'scan-metric-icon-wrap ' + card.colorClass;
+      if (iconWrap.className !== targetClass) {
+        iconWrap.className = targetClass;
+        iconWrap.innerHTML = `<svg class="svg-icon icon-xs ${card.iconColor}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${card.iconSvg}</svg>`;
+      }
     }
   });
 }
@@ -1020,6 +1022,7 @@ function inspectScanStep(stepName, toggleIfSame = false) {
   }
   App.inspectedScanStep = stepName;
   App.selectedScanPhase = stepName;
+  App.userSelectedScanPhase = true;
 
   qsa('.scan-pipeline-step').forEach(s => {
     if (s.dataset.step === stepName) {
@@ -3321,7 +3324,7 @@ function updateScanProgress(s) {
   // Selected phase resolution:
   // If scan is actively running and user hasn't explicitly clicked a step, track the activeStage
   if (s.status !== 'COMPLETE') {
-    if (!App.selectedScanPhase || App.selectedScanPhase === 'PREPARE') {
+    if (!App.userSelectedScanPhase) {
       App.selectedScanPhase = stage === 'PREPARE' ? 'PARSE' : stage;
     }
   } else {
