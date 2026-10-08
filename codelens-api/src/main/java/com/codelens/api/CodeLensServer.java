@@ -4602,11 +4602,46 @@ public class CodeLensServer {
             }
         }
 
-        // 6. Build Sankey nodes and links (Stage 0: Target -> Stage 1: Modules -> Stage 2: Classes -> Stage 3: Methods)
+        // 6. Build Sankey models (Compact Top-K summary and Full stretched graph)
+        Map<String, Object> targetMeta = new LinkedHashMap<>();
+        targetMeta.put("fqn", fqn);
+        targetMeta.put("simpleName", simpleName);
+        targetMeta.put("kind", resolvedKind);
+        targetMeta.put("declaringClass", declaringClass != null ? declaringClass : "");
+        targetMeta.put("module", moduleName);
+        targetMeta.put("package", packageFqn);
+        targetMeta.put("sourceFile", sourceFile != null ? sourceFile : "");
+        targetMeta.put("startLine", startLine);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalTouchPoints", touchPoints.size());
+        summary.put("moduleCount", moduleList.size());
+        summary.put("classCount", distinctClasses.size());
+        summary.put("methodCount", distinctMethods.size());
+        summary.put("byKind", byKind);
+
+        boolean reqExpandAll = "true".equalsIgnoreCase(ctx.queryParam("expandAll"))
+                            || "true".equalsIgnoreCase(ctx.queryParam("all"));
+
+        Map<String, Object> sankeyCompact = buildSankeyData(simpleName, fqn, touchPoints.size(), moduleList, false);
+        Map<String, Object> sankeyAll = buildSankeyData(simpleName, fqn, touchPoints.size(), moduleList, true);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("target", targetMeta);
+        response.put("summary", summary);
+        response.put("sankey", reqExpandAll ? sankeyAll : sankeyCompact);
+        response.put("sankeyCompact", sankeyCompact);
+        response.put("sankeyAll", sankeyAll);
+        response.put("touchPoints", touchPoints);
+        response.put("modules", moduleList);
+
+        ctx.json(response);
+    }
+
+    private Map<String, Object> buildSankeyData(String simpleName, String fqn, int totalPts, List<Map<String, Object>> moduleList, boolean expandAll) {
         List<Map<String, Object>> sankeyNodes = new ArrayList<>();
         List<Map<String, Object>> sankeyLinks = new ArrayList<>();
 
-        int totalPts = touchPoints.size();
         Map<String, Object> targetNode = new LinkedHashMap<>();
         targetNode.put("id", "target");
         targetNode.put("name", simpleName);
@@ -4616,9 +4651,9 @@ public class CodeLensServer {
         targetNode.put("value", totalPts);
         sankeyNodes.add(targetNode);
 
-        final int MAX_MODULES = 7;
-        final int MAX_CLASSES_PER_MOD = 6;
-        final int MAX_METHODS_PER_CLS = 4;
+        final int MAX_MODULES = expandAll ? Integer.MAX_VALUE : 7;
+        final int MAX_CLASSES_PER_MOD = expandAll ? Integer.MAX_VALUE : 6;
+        final int MAX_METHODS_PER_CLS = expandAll ? Integer.MAX_VALUE : 4;
 
         int modIndex = 0;
         int otherModPts = 0;
@@ -4785,35 +4820,10 @@ public class CodeLensServer {
             sankeyLinks.add(tToOtherM);
         }
 
-        Map<String, Object> targetMeta = new LinkedHashMap<>();
-        targetMeta.put("fqn", fqn);
-        targetMeta.put("simpleName", simpleName);
-        targetMeta.put("kind", resolvedKind);
-        targetMeta.put("declaringClass", declaringClass != null ? declaringClass : "");
-        targetMeta.put("module", moduleName);
-        targetMeta.put("package", packageFqn);
-        targetMeta.put("sourceFile", sourceFile != null ? sourceFile : "");
-        targetMeta.put("startLine", startLine);
-
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("totalTouchPoints", totalPts);
-        summary.put("moduleCount", moduleList.size());
-        summary.put("classCount", distinctClasses.size());
-        summary.put("methodCount", distinctMethods.size());
-        summary.put("byKind", byKind);
-
         Map<String, Object> sankey = new LinkedHashMap<>();
         sankey.put("nodes", sankeyNodes);
         sankey.put("links", sankeyLinks);
-
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("target", targetMeta);
-        response.put("summary", summary);
-        response.put("sankey", sankey);
-        response.put("touchPoints", touchPoints);
-        response.put("modules", moduleList);
-
-        ctx.json(response);
+        return sankey;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

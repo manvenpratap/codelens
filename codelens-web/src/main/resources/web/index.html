@@ -408,12 +408,12 @@
         <!-- Knowledge base tab -->
         <button class="tab level-pill" role="tab" id="tab-knowledge" data-tab="knowledge" draggable="true" aria-selected="false" aria-controls="knowledge-view" title="Structured Knowledge Base: types, methods, fields (2)">
           <span class="tab-icon"><svg class="svg-icon icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
-          <span class="tab-label">Knowledge Base</span>
+          <span class="tab-label">Knowledge</span>
         </button>
         <!-- Code Review tab -->
         <button class="tab level-pill" role="tab" id="tab-review" data-tab="review" draggable="true" aria-selected="false" aria-controls="review-view" title="On-demand AST Code Review &amp; Logic Auditor (3)">
           <span class="tab-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-          <span class="tab-label">Code Review</span>
+          <span class="tab-label">Review</span>
           <span class="tab-badge" aria-label="finding count">0</span>
         </button>
         <!-- Git tab -->
@@ -458,6 +458,9 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
           <span class="action-btn-text">⌘K</span>
         </button>
+
+        <span class="header-action-divider" aria-hidden="true"></span>
+
         <button id="btn-process-hub" class="header-action-btn process-hub-btn" aria-label="Open Background Process Hub" title="Background Processes &amp; Task Manager">
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
           <span class="action-btn-text">Tasks</span>
@@ -475,6 +478,9 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
           <span class="action-btn-text">Tour</span>
         </button>
+
+        <span class="header-action-divider" aria-hidden="true"></span>
+
         <div class="theme-dropdown-wrap" id="theme-dropdown-wrap">
           <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Current theme: Dark. Click to choose theme." title="Theme: Dark · Click to change" aria-haspopup="true" aria-expanded="false">
             <span id="theme-toggle-icon" class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></span>
@@ -1836,6 +1842,10 @@
                   <button type="button" class="sankey-depth-btn" data-depth="2" title="Show Target, Modules and Classes (Hide individual methods)">Modules &amp; Classes</button>
                   <button type="button" class="sankey-depth-btn" data-depth="1" title="Show Target and Modules only">Modules Only</button>
                 </div>
+                <div class="sankey-view-controls" id="sankey-view-controls" role="group" aria-label="Sankey View Mode">
+                  <button type="button" class="sankey-view-btn active" id="sankey-btn-compact" data-mode="compact" title="Compact view with caller rollups">Compact</button>
+                  <button type="button" class="sankey-view-btn" id="sankey-btn-full" data-mode="full" title="Stretch diagram and scroll to show all modules, classes, and methods">Show All (Scroll)</button>
+                </div>
                 <button class="impact-btn-reset-filter" id="impact-btn-reset-filter" style="display:none;">
                   <svg class="svg-icon icon-muted icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   <span>Reset Filter</span>
@@ -2455,21 +2465,15 @@
     <span id="footer-status-text">Analyzer Idle</span>
   </div>
   <div class="footer-segment footer-info">
-    <span class="footer-meta-pill" title="Embedded H2 Database + Apache Lucene Index">DB: H2 (Embedded)</span>
+    <span class="footer-meta-pill" title="Embedded H2 Database + Apache Lucene Index">DB: H2</span>
     <span class="footer-meta-pill" id="footer-git-branch" title="Current git branch">Branch: -</span>
   </div>
   <div class="footer-segment footer-shortcuts">
-    <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg> Explorer</button>
-    <button id="footer-toggle-right" class="footer-panel-toggle" title="Toggle Inspector panel (])"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg> Inspector</button>
-    <span class="shortcut-tip"><kbd class="search-shortcut-key">Ctrl+K</kbd> Search</span>
-    <span id="footer-tab-shortcuts" class="footer-tab-shortcuts">
-      <span class="shortcut-tip"><kbd>1</kbd> Graph</span>
-      <span class="shortcut-tip"><kbd>2</kbd> KB</span>
-      <span class="shortcut-tip"><kbd>3</kbd> Review</span>
-      <span class="shortcut-tip"><kbd>4</kbd> Git</span>
-      <span class="shortcut-tip"><kbd>5</kbd> Source</span>
-    </span>
-    <span class="shortcut-tip"><kbd>H</kbd> Heat</span>
+    <button id="footer-toggle-left" class="footer-panel-toggle" title="Toggle Explorer panel ([)"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg> <span>Explorer</span></button>
+    <button id="footer-toggle-right" class="footer-panel-toggle" title="Toggle Inspector panel (])"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg> <span>Inspector</span></button>
+    <span class="footer-divider-subtle" aria-hidden="true"></span>
+    <span id="footer-tab-shortcuts" class="footer-tab-shortcuts"></span>
+    <span class="shortcut-tip"><kbd class="search-shortcut-key">⌘K</kbd> Search</span>
   </div>
 </footer>
 

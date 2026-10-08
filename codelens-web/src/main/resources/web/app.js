@@ -4454,7 +4454,9 @@ function updateTabTooltipsAndShortcuts() {
     'review': 'Review',
     'git': 'Git',
     'source': 'Source',
-    'codebase': 'Viz'
+    'codebase': '3D',
+    'impact': 'Blast',
+    'storylines': 'Story'
   };
 
   let footerHtml = '';
@@ -4470,7 +4472,9 @@ function updateTabTooltipsAndShortcuts() {
     t.setAttribute('title', `${base} (Shortcut: ${num})`);
 
     const tabKey = t.dataset.tab;
-    const shortLabel = tabShortLabels[tabKey] || base || tabKey;
+    const labelEl = t.querySelector('.tab-label');
+    const tabText = labelEl ? labelEl.textContent.trim() : '';
+    const shortLabel = tabShortLabels[tabKey] || (tabText.length <= 8 ? tabText : tabKey);
     footerHtml += `<span class="shortcut-tip"><kbd>${num}</kbd> ${shortLabel}</span>`;
   });
 
@@ -19043,8 +19047,24 @@ let activeBlastRadiusNodeFilter = null;
 let activeBlastRadiusKindFilter = 'ALL';
 let blastRadiusSearchQuery = '';
 let blastRadiusDepth = 3; // 1: Modules Only, 2: Modules & Classes, 3: All Stages
+let blastRadiusShowAll = false; // false: Compact Top-K view, true: Stretched view showing all nodes with scroll
 let blastRadiusVisibleCount = 50;
 const BLAST_RADIUS_PAGE_STEP = 50;
+
+function setBlastRadiusShowAll(showAll) {
+  blastRadiusShowAll = !!showAll;
+  const btnCompact = qs('#sankey-btn-compact');
+  const btnFull = qs('#sankey-btn-full');
+  if (btnCompact) btnCompact.classList.toggle('active', !blastRadiusShowAll);
+  if (btnFull) btnFull.classList.toggle('active', blastRadiusShowAll);
+
+  if (currentBlastRadiusData) {
+    const sankeyData = blastRadiusShowAll
+      ? (currentBlastRadiusData.sankeyAll || currentBlastRadiusData.sankey)
+      : (currentBlastRadiusData.sankeyCompact || currentBlastRadiusData.sankey);
+    renderSankeyDiagram(sankeyData);
+  }
+}
 
 async function openBlastRadiusExplorer(fqn, kind = 'AUTO') {
   if (!fqn) return;
@@ -19155,7 +19175,15 @@ function renderBlastRadiusView(data) {
   const pillExtends = qs('#pill-count-extends'); if (pillExtends) pillExtends.textContent = countExtends;
 
   // 5. Render Sankey Flow Diagram
-  renderSankeyDiagram(sankey);
+  const btnCompact = qs('#sankey-btn-compact');
+  const btnFull = qs('#sankey-btn-full');
+  if (btnCompact) btnCompact.classList.toggle('active', !blastRadiusShowAll);
+  if (btnFull) btnFull.classList.toggle('active', blastRadiusShowAll);
+
+  const sankeyData = blastRadiusShowAll
+    ? (data.sankeyAll || data.sankey)
+    : (data.sankeyCompact || data.sankey);
+  renderSankeyDiagram(sankeyData);
 
   // 6. Render Touch Points Table
   renderTouchPointsTable();
@@ -19168,6 +19196,7 @@ function renderSankeyDiagram(sankey) {
   const resetBtn = qs('#impact-btn-reset-filter');
   if (!container || !svg) return;
 
+  container.classList.toggle('is-stretched', blastRadiusShowAll);
   svg.innerHTML = '';
 
   // Update Column Header Guides based on active depth
@@ -19220,53 +19249,63 @@ function renderSankeyDiagram(sankey) {
     stages[s].push(n);
   });
 
-  // Client-side Top-K aggregation per stage to prevent any vertical overlap
+  // Client-side Top-K aggregation per stage to prevent any vertical overlap (Compact mode only)
   const MAX_DISPLAY_NODES_PER_STAGE = 7;
   const finalNodes = [];
   const nodeMap = new Map();
   const replacedIdMap = new Map();
 
-  stages.forEach((nodesInStage, sIdx) => {
-    if (sIdx === 0 || nodesInStage.length <= MAX_DISPLAY_NODES_PER_STAGE + 1) {
+  if (blastRadiusShowAll) {
+    // Show All (Stretched Scroll View): include all nodes directly
+    stages.forEach(nodesInStage => {
       nodesInStage.forEach(n => {
         finalNodes.push(n);
         nodeMap.set(n.id, n);
       });
-      return;
-    }
-
-    nodesInStage.sort((a, b) => (b.value || 0) - (a.value || 0));
-    const kept = nodesInStage.slice(0, MAX_DISPLAY_NODES_PER_STAGE);
-    const overflow = nodesInStage.slice(MAX_DISPLAY_NODES_PER_STAGE);
-
-    kept.forEach(n => {
-      finalNodes.push(n);
-      nodeMap.set(n.id, n);
     });
+  } else {
+    stages.forEach((nodesInStage, sIdx) => {
+      if (sIdx === 0 || nodesInStage.length <= MAX_DISPLAY_NODES_PER_STAGE + 1) {
+        nodesInStage.forEach(n => {
+          finalNodes.push(n);
+          nodeMap.set(n.id, n);
+        });
+        return;
+      }
 
-    const overflowVal = overflow.reduce((sum, n) => sum + (n.value || 1), 0);
-    const rollupId = `client_rollup:s${sIdx}`;
-    const stageNoun = sIdx === 1 ? 'modules' : (sIdx === 2 ? 'classes' : 'methods');
-    const rollupNode = {
-      id: rollupId,
-      name: `+ ${overflow.length} other ${stageNoun}`,
-      stage: sIdx,
-      value: overflowVal,
-      isAggregated: true
-    };
+      nodesInStage.sort((a, b) => (b.value || 0) - (a.value || 0));
+      const kept = nodesInStage.slice(0, MAX_DISPLAY_NODES_PER_STAGE);
+      const overflow = nodesInStage.slice(MAX_DISPLAY_NODES_PER_STAGE);
 
-    const overflowIds = new Set();
-    overflow.forEach(n => {
-      replacedIdMap.set(n.id, rollupId);
-      overflowIds.add(n.id);
-      if (n.fqn) overflowIds.add(n.fqn);
-      if (n.name) overflowIds.add(n.name);
+      kept.forEach(n => {
+        finalNodes.push(n);
+        nodeMap.set(n.id, n);
+      });
+
+      const overflowVal = overflow.reduce((sum, n) => sum + (n.value || 1), 0);
+      const rollupId = `client_rollup:s${sIdx}`;
+      const stageNoun = sIdx === 1 ? 'modules' : (sIdx === 2 ? 'classes' : 'methods');
+      const rollupNode = {
+        id: rollupId,
+        name: `+ ${overflow.length} other ${stageNoun}`,
+        stage: sIdx,
+        value: overflowVal,
+        isAggregated: true
+      };
+
+      const overflowIds = new Set();
+      overflow.forEach(n => {
+        replacedIdMap.set(n.id, rollupId);
+        overflowIds.add(n.id);
+        if (n.fqn) overflowIds.add(n.fqn);
+        if (n.name) overflowIds.add(n.name);
+      });
+      rollupNode.memberSet = overflowIds;
+
+      finalNodes.push(rollupNode);
+      nodeMap.set(rollupId, rollupNode);
     });
-    rollupNode.memberSet = overflowIds;
-
-    finalNodes.push(rollupNode);
-    nodeMap.set(rollupId, rollupNode);
-  });
+  }
 
   // Consolidate links after node aggregation
   const consolidatedLinks = [];
@@ -19303,10 +19342,22 @@ function renderSankeyDiagram(sankey) {
   const containerWidth = Math.max(900, container.clientWidth - 40);
   const W = containerWidth;
   const maxStageCount = Math.max(...layoutStages.map(s => s.length), 1);
-  const nodeGap = 12;
-  const minNodeHeight = 28;
-  const maxNodeHeight = 110;
-  const H = Math.max(320, Math.min(680, maxStageCount * (minNodeHeight + nodeGap) + 60));
+  let nodeGap;
+  let minNodeHeight;
+  let maxNodeHeight;
+  let H;
+
+  if (blastRadiusShowAll) {
+    nodeGap = maxStageCount > 40 ? 6 : (maxStageCount > 20 ? 8 : 10);
+    minNodeHeight = 22;
+    maxNodeHeight = 56;
+    H = Math.max(400, maxStageCount * (minNodeHeight + nodeGap) + 80);
+  } else {
+    nodeGap = 12;
+    minNodeHeight = 28;
+    maxNodeHeight = 110;
+    H = Math.max(320, Math.min(680, maxStageCount * (minNodeHeight + nodeGap) + 60));
+  }
 
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('width', `${W}`);
@@ -19333,26 +19384,55 @@ function renderSankeyDiagram(sankey) {
     const stageX = stageXs[sIdx];
     const totalStageVal = nodesInStage.reduce((acc, n) => acc + (n.value || 1), 0);
 
-    const availHeight = H - 60;
-    const totalGaps = (nodesInStage.length - 1) * nodeGap;
-    const availForBars = Math.max(30, availHeight - totalGaps);
+    if (blastRadiusShowAll) {
+      const stageGap = nodesInStage.length > 40 ? 6 : (nodesInStage.length > 20 ? 8 : 10);
+      nodesInStage.forEach(n => {
+        const proportion = (n.value || 1) / Math.max(1, totalStageVal);
+        n.h = Math.max(minNodeHeight, Math.min(maxNodeHeight, Math.round(minNodeHeight + proportion * 70)));
+        n.w = nodeWidth;
+        n.x = stageX;
+      });
 
-    nodesInStage.forEach(n => {
-      const proportion = (n.value || 1) / Math.max(1, totalStageVal);
-      n.h = Math.max(minNodeHeight, Math.min(maxNodeHeight, Math.round(availForBars * proportion)));
-      n.w = nodeWidth;
-      n.x = stageX;
-    });
+      const stageContentH = nodesInStage.reduce((acc, n) => acc + n.h, 0);
+      const totalStageHeightWithDefaultGap = stageContentH + (nodesInStage.length - 1) * stageGap;
 
-    const totalCalculatedHeight = nodesInStage.reduce((acc, n) => acc + n.h, 0) + totalGaps;
-    let currentY = Math.max(25, Math.round((H - totalCalculatedHeight) / 2));
+      let currentY = 35;
+      let effectiveGap = stageGap;
 
-    nodesInStage.forEach(n => {
-      n.y = currentY;
-      n.outY = currentY;
-      n.inY = currentY;
-      currentY += n.h + nodeGap;
-    });
+      if (sIdx === 0 && nodesInStage.length === 1) {
+        currentY = Math.min(180, Math.max(45, Math.round(Math.min(H, 500) * 0.2)));
+      } else if (nodesInStage.length > 1 && totalStageHeightWithDefaultGap < H * 0.75) {
+        effectiveGap = Math.max(stageGap, Math.min(36, Math.round((Math.min(H * 0.85, 1200) - 70 - stageContentH) / (nodesInStage.length - 1))));
+      }
+
+      nodesInStage.forEach(n => {
+        n.y = currentY;
+        n.outY = currentY;
+        n.inY = currentY;
+        currentY += n.h + effectiveGap;
+      });
+    } else {
+      const availHeight = H - 60;
+      const totalGaps = (nodesInStage.length - 1) * nodeGap;
+      const availForBars = Math.max(30, availHeight - totalGaps);
+
+      nodesInStage.forEach(n => {
+        const proportion = (n.value || 1) / Math.max(1, totalStageVal);
+        n.h = Math.max(minNodeHeight, Math.min(maxNodeHeight, Math.round(availForBars * proportion)));
+        n.w = nodeWidth;
+        n.x = stageX;
+      });
+
+      const totalCalculatedHeight = nodesInStage.reduce((acc, n) => acc + n.h, 0) + totalGaps;
+      let currentY = Math.max(25, Math.round((H - totalCalculatedHeight) / 2));
+
+      nodesInStage.forEach(n => {
+        n.y = currentY;
+        n.outY = currentY;
+        n.inY = currentY;
+        currentY += n.h + nodeGap;
+      });
+    }
   });
 
   // Calculate Ribbon Paths
@@ -19371,8 +19451,8 @@ function renderSankeyDiagram(sankey) {
     const targetVal = Math.max(1, targetNode.value || 1);
     const linkVal = link.value || 1;
 
-    const sThickness = Math.max(3, (linkVal / sourceVal) * sourceNode.h);
-    const tThickness = Math.max(3, (linkVal / targetVal) * targetNode.h);
+    const sThickness = Math.max(2, (linkVal / sourceVal) * sourceNode.h);
+    const tThickness = Math.max(2, (linkVal / targetVal) * targetNode.h);
 
     const x0 = sourceNode.x + sourceNode.w;
     const y0Top = sourceNode.outY;
@@ -19482,8 +19562,11 @@ function renderSankeyDiagram(sankey) {
       if (tooltip) {
         tooltip.style.display = 'block';
         const stageName = ['Target Entity', 'Module', 'Class', 'Method'][n.stage] || 'Node';
-        const rollInfo = isAggregated ? `<br/><span style="color:var(--amber);font-size:11px;">Aggregated rollup of low-volume callers</span>` : '';
-        tooltip.innerHTML = `<strong>${esc(n.name || n.id)}</strong><br/><span style="color:var(--text-muted);font-size:11px;">Stage: ${stageName}</span>${rollInfo}<br/><span style="color:var(--cyan-bright);font-family:var(--font-mono);font-weight:700;">${n.value || 0} touch points</span><br/><span style="color:var(--amber);font-size:10.5px;">Click to filter table</span>`;
+        const rollInfo = isAggregated ? `<br/><span style="color:var(--amber);font-size:11px;">Aggregated rollup of callers</span>` : '';
+        const actionHint = isAggregated
+          ? `<br/><span style="color:var(--cyan-bright);font-size:10.5px;font-weight:600;">Click to expand all callers (stretched scroll view)</span>`
+          : `<br/><span style="color:var(--amber);font-size:10.5px;">Click to filter table</span>`;
+        tooltip.innerHTML = `<strong>${esc(n.name || n.id)}</strong><br/><span style="color:var(--text-muted);font-size:11px;">Stage: ${stageName}</span>${rollInfo}<br/><span style="color:var(--cyan-bright);font-family:var(--font-mono);font-weight:700;">${n.value || 0} touch points</span>${actionHint}`;
         moveTooltip(e);
       }
     });
@@ -19494,6 +19577,13 @@ function renderSankeyDiagram(sankey) {
     });
 
     g.addEventListener('click', () => {
+      if (isAggregated) {
+        setBlastRadiusShowAll(true);
+        if (typeof toast !== 'undefined') {
+          toast.info(`Expanded full caller hierarchy (${n.name})`);
+        }
+        return;
+      }
       if (activeBlastRadiusNodeFilter && activeBlastRadiusNodeFilter.id === n.id) {
         activeBlastRadiusNodeFilter = null;
       } else {
@@ -19510,8 +19600,8 @@ function renderSankeyDiagram(sankey) {
   function moveTooltip(e) {
     if (!tooltip) return;
     const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left + 14;
-    const y = e.clientY - rect.top + 14;
+    const x = e.clientX - rect.left + container.scrollLeft + 14;
+    const y = e.clientY - rect.top + container.scrollTop + 14;
     tooltip.style.left = `${Math.min(W - 220, x)}px`;
     tooltip.style.top = `${Math.max(10, Math.min(H - 80, y))}px`;
   }
@@ -19701,14 +19791,25 @@ function initBlastRadiusExplorer() {
     renderTouchPointsTable();
   });
 
+  // View mode controls (Compact vs Show All Scroll)
+  qs('#sankey-btn-compact')?.addEventListener('click', () => {
+    setBlastRadiusShowAll(false);
+  });
+  qs('#sankey-btn-full')?.addEventListener('click', () => {
+    setBlastRadiusShowAll(true);
+  });
+
   // Granularity / Depth controls
   qsa('.sankey-depth-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       qsa('.sankey-depth-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       blastRadiusDepth = parseInt(btn.dataset.depth, 10) || 3;
-      if (currentBlastRadiusData && currentBlastRadiusData.sankey) {
-        renderSankeyDiagram(currentBlastRadiusData.sankey);
+      if (currentBlastRadiusData) {
+        const sankeyData = blastRadiusShowAll
+          ? (currentBlastRadiusData.sankeyAll || currentBlastRadiusData.sankey)
+          : (currentBlastRadiusData.sankeyCompact || currentBlastRadiusData.sankey);
+        renderSankeyDiagram(sankeyData);
       }
     });
   });
