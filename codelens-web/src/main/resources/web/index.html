@@ -431,6 +431,11 @@
           <span class="tab-icon"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
           <span class="tab-label">Blast Radius</span>
         </button>
+        <!-- CodeStory / Storylines tab -->
+        <button class="tab level-pill" role="tab" id="tab-storylines" data-tab="storylines" draggable="true" aria-selected="false" aria-controls="storylines-view" title="CodeStory: Interactive execution storylines &amp; architectural narratives (7)">
+          <span class="tab-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h7"/></svg></span>
+          <span class="tab-label">Storylines</span>
+        </button>
       </div>
     </div>
 
@@ -1833,6 +1838,139 @@
         </div>
       </div>
     </section><!-- /#impact-view -->
+
+    <!-- ── Tab panel: CodeStory Storylines ─────────────────────────────────── -->
+    <section
+      class="tab-content"
+      id="storylines-view"
+      role="tabpanel"
+      aria-labelledby="tab-storylines"
+      tabindex="0"
+    >
+      <div class="storylines-shell">
+        <!-- Top Storyline Toolbar -->
+        <header class="storylines-toolbar" role="toolbar" aria-label="Storylines Toolbar">
+          <div class="storylines-toolbar-left">
+            <div class="storylines-title-group">
+              <span class="storylines-brand-badge">
+                <svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h7"/></svg>
+                <span>CodeStory</span>
+              </span>
+              <div class="storylines-search-wrapper">
+                <svg class="svg-icon icon-muted icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  type="text"
+                  id="storylines-search-input"
+                  class="storylines-search-input"
+                  placeholder="Search workflows, entry points, or transactions... (e.g. Loan, Order, Audit)"
+                  aria-label="Filter storylines"
+                />
+                <button id="storylines-search-clear" class="btn-icon btn-sm" title="Clear filter" style="display:none;">✕</button>
+              </div>
+            </div>
+            <div class="storylines-category-filters" role="group" aria-label="Filter by workflow category">
+              <button class="storylines-cat-chip active" data-cat="ALL">All</button>
+              <button class="storylines-cat-chip" data-cat="TRANSACTION">Transactions</button>
+              <button class="storylines-cat-chip" data-cat="AUDIT_FLOW">Audit Flows</button>
+              <button class="storylines-cat-chip" data-cat="BATCH_LIFECYCLE">Batch / Lifecycle</button>
+              <button class="storylines-cat-chip" data-cat="DOMAIN_WORKFLOW">Business Logic</button>
+            </div>
+          </div>
+          <div class="storylines-toolbar-right">
+            <span class="storylines-stats-badge" id="storylines-catalog-stats">Loading workflows...</span>
+            <button id="storylines-refresh-btn" class="btn btn-sm btn-secondary" title="Re-scan and rediscover storylines">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Main Workspace: Master / Detail split -->
+        <div class="storylines-layout">
+          <!-- Left Column: Storylines Catalog -->
+          <aside class="storylines-catalog-pane" aria-label="Workflows Catalog">
+            <div class="storylines-catalog-header">
+              <span class="storylines-catalog-title">Discovered Workflows</span>
+              <span class="storylines-count-pill" id="storylines-count-pill">0</span>
+            </div>
+            <div class="storylines-catalog-list" id="storylines-catalog-list" role="list">
+              <!-- Dynamically populated storyline summary cards -->
+            </div>
+          </aside>
+
+          <!-- Right Column: Interactive Storyline Timeline & Evidence Panel -->
+          <main class="storylines-detail-pane" id="storylines-detail-pane" aria-label="Storyline Detail">
+            <div class="storylines-empty-state" id="storylines-detail-empty">
+              <div class="storylines-empty-icon">
+                <svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h7"/></svg>
+              </div>
+              <h3 class="storylines-empty-title">Select a Workflow to Trace its Storyline</h3>
+              <p class="storylines-empty-desc">
+                CodeStory reconstructs end-to-end execution sequences, architectural roles, and source citations from deterministic call graphs.
+              </p>
+            </div>
+
+            <div class="storylines-detail-content" id="storylines-detail-content" style="display: none;">
+              <!-- Detail Header -->
+              <div class="storyline-detail-header">
+                <div class="storyline-detail-title-wrap">
+                  <div class="storyline-badges-row">
+                    <span class="storyline-category-badge" id="storyline-hero-category">Category</span>
+                    <span class="storyline-complexity-badge" id="storyline-hero-complexity">Complexity</span>
+                    <span class="storyline-steps-badge" id="storyline-hero-steps">0 steps</span>
+                  </div>
+                  <h2 class="storyline-detail-title" id="storyline-hero-title">Workflow Title</h2>
+                  <div class="storyline-entrypoint-sub" id="storyline-hero-entry">Entry Point: <code>...</code></div>
+                </div>
+                <div class="storyline-actions-row">
+                  <button id="storyline-btn-trace-impact" class="btn btn-sm btn-secondary" title="Analyze impact in Blast Radius Explorer">
+                    <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    <span>Blast Radius</span>
+                  </button>
+                  <button id="storyline-btn-export-story" class="btn btn-sm btn-secondary" title="Copy workflow narrative &amp; citations to clipboard">
+                    <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span>Copy Narrative</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Executive Narrative Card -->
+              <section class="storyline-narrative-card" aria-label="Executive Summary">
+                <div class="storyline-narrative-header">
+                  <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                  <span>Executive Workflow Narrative</span>
+                </div>
+                <p class="storyline-narrative-text" id="storyline-narrative-text">
+                  Narrative description synthesized from AST and Call Graph evidence...
+                </p>
+              </section>
+
+              <!-- Step Sequence Header -->
+              <div class="storyline-steps-section-header">
+                <span class="storyline-steps-heading">Execution Sequence</span>
+                <span class="storyline-steps-sub">Reconstructed Call Chain with Verified Code Citations</span>
+              </div>
+
+              <!-- Vertical Timeline of Step Cards -->
+              <div class="storyline-timeline" id="storyline-timeline" role="list">
+                <!-- Dynamically populated step cards -->
+              </div>
+
+              <!-- Evidence Ledger -->
+              <section class="storyline-evidence-section" aria-label="Evidence Citations">
+                <div class="storyline-evidence-header">
+                  <span class="storyline-evidence-title">Verified Source Citations (<span id="storyline-evidence-count">0</span>)</span>
+                  <span class="storyline-evidence-badge">AST Grounded</span>
+                </div>
+                <div class="storyline-evidence-grid" id="storyline-evidence-grid">
+                  <!-- Dynamically populated evidence chips -->
+                </div>
+              </section>
+            </div>
+          </main>
+        </div>
+      </div>
+    </section><!-- /#storylines-view -->
 
     <!-- ── Tab panel 7: Reports & Export Hub ────────────────────────────────── -->
     <section

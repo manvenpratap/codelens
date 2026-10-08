@@ -90,6 +90,7 @@ public class CodeLensServer {
     private final InconsistencyDetector inconsistencyDetector;
     private final ReportService      reportService;
     private final CriticalPathAnalyzer criticalPathAnalyzer;
+    private final StoryEngine        storyEngine = new StoryEngine();
     private final GitBlameService    gitBlameService;
     private final StressTestService  stressTestService = new StressTestService();
     private final JvmManagerService  jvmManager = new JvmManagerService();
@@ -1366,6 +1367,8 @@ public class CodeLensServer {
         app.get("/api/analysis/persistent-classes", this::getPersistentClasses);
         app.get("/api/analysis/critical-path",       this::getCriticalPath);
         app.get("/api/analysis/blast-radius",       this::getBlastRadius);
+        app.get("/api/storylines",                  this::listStorylines);
+        app.get("/api/storyline",                   this::getStoryline);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -3981,6 +3984,72 @@ public class CodeLensServer {
         }
 
         ctx.json(report);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Storylines & Narrative Flow Engine
+    // ─────────────────────────────────────────────────────────────────────────
+    private void listStorylines(Context ctx) throws Exception {
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+        List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+
+        String q = ctx.queryParam("q");
+        if (q != null && !q.isBlank()) {
+            String qLower = q.toLowerCase(Locale.ROOT);
+            summaries = summaries.stream().filter(s ->
+                (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(qLower)) ||
+                (s.category != null && s.category.toLowerCase(Locale.ROOT).contains(qLower)) ||
+                (s.entryPoint != null && s.entryPoint.toLowerCase(Locale.ROOT).contains(qLower)) ||
+                (s.executiveSummary != null && s.executiveSummary.toLowerCase(Locale.ROOT).contains(qLower))
+            ).toList();
+        }
+
+        String cat = ctx.queryParam("category");
+        if (cat != null && !cat.isBlank() && !"ALL".equalsIgnoreCase(cat)) {
+            summaries = summaries.stream().filter(s -> cat.equalsIgnoreCase(s.category)).toList();
+        }
+
+        ctx.json(Map.of("storylines", summaries, "count", summaries.size()));
+    }
+
+    private void getStoryline(Context ctx) throws Exception {
+        String id = ctx.queryParam("id");
+        String entry = ctx.queryParam("entry");
+        String fqn = (entry != null && !entry.isBlank()) ? entry : ctx.queryParam("fqn");
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+
+        StoryEngine.Storyline story = null;
+        if (fqn != null && !fqn.isBlank()) {
+            story = storyEngine.getStorylineByFqn(fqn, types, methods, graph);
+        } else if (id != null && !id.isBlank()) {
+            List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+            Optional<StoryEngine.StorylineSummary> matched = summaries.stream().filter(s -> s.id.equals(id)).findFirst();
+            if (matched.isPresent()) {
+                story = storyEngine.getStorylineByFqn(matched.get().entryPoint, types, methods, graph);
+                if (story != null) {
+                    story.id = matched.get().id;
+                }
+            }
+        } else {
+            List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+            if (!summaries.isEmpty()) {
+                story = storyEngine.getStorylineByFqn(summaries.get(0).entryPoint, types, methods, graph);
+                if (story != null) {
+                    story.id = summaries.get(0).id;
+                }
+            }
+        }
+
+        if (story == null) {
+            ctx.status(404).json(Map.of("error", "Storyline not found"));
+            return;
+        }
+        ctx.json(story);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

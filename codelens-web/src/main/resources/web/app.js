@@ -4259,16 +4259,16 @@ function switchTab(tabName) {
     document.body.classList.remove('macro-studio-mode');
   }
 
-  if (tabName === 'reports') {
-    document.body.classList.add('reports-mode');
-    if (previousTab !== 'reports') {
+  if (tabName === 'reports' || tabName === 'storylines') {
+    document.body.classList.add(tabName + '-mode');
+    if (previousTab !== tabName) {
       const leftPanel = qs('#left-panel');
       const rightPanel = qs('#right-panel');
       const leftWasCollapsed = !leftPanel || leftPanel.classList.contains('collapsed');
       const rightWasCollapsed = !rightPanel || rightPanel.classList.contains('collapsed');
 
       // Preserve previous workspace panel states so they can be restored upon return
-      App._preReportsPanelState = {
+      App._preWideTabPanelState = {
         leftCollapsed: leftWasCollapsed,
         rightCollapsed: rightWasCollapsed
       };
@@ -4282,21 +4282,19 @@ function switchTab(tabName) {
       }
     }
   } else {
-    document.body.classList.remove('reports-mode');
-    if (previousTab === 'reports' && App._preReportsPanelState) {
-      const { leftCollapsed, rightCollapsed } = App._preReportsPanelState;
+    document.body.classList.remove('reports-mode', 'storylines-mode');
+    if ((previousTab === 'reports' || previousTab === 'storylines') && App._preWideTabPanelState) {
+      const { leftCollapsed, rightCollapsed } = App._preWideTabPanelState;
       const leftPanel = qs('#left-panel');
       const rightPanel = qs('#right-panel');
 
-      // Auto-restore Explorer if it was open prior to entering reports and is currently collapsed
       if (!leftCollapsed && leftPanel && leftPanel.classList.contains('collapsed')) {
         collapseLeftPanel(false, false);
       }
-      // Auto-restore Inspector if it was open prior to entering reports and is currently collapsed
       if (!rightCollapsed && rightPanel && rightPanel.classList.contains('collapsed')) {
         collapseRightPanel(false, false);
       }
-      App._preReportsPanelState = null;
+      App._preWideTabPanelState = null;
     }
   }
   requestAnimationFrame(() => triggerRelayout());
@@ -4385,6 +4383,9 @@ function switchTab(tabName) {
     if (window.ReportsHub && typeof window.ReportsHub.activate === 'function') {
       window.ReportsHub.activate();
     }
+  }
+  if (tabName === 'storylines') {
+    loadStorylines();
   }
 }
 
@@ -10394,7 +10395,7 @@ function bindKeyboard() {
     }
     // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
-      if (['1','2','3','4','5','6'].includes(e.key)) {
+      if (['1','2','3','4','5','6','7'].includes(e.key)) {
         const tabs = [...(qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar'))?.querySelectorAll('.tab') || []];
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx] && tabs[idx].dataset.tab) {
@@ -12511,6 +12512,13 @@ function initScopeManagement() {
     if (typeof initBlastRadiusExplorer === 'function') initBlastRadiusExplorer();
   } catch (err) {
     console.warn('initBlastRadiusExplorer failed:', err);
+  }
+
+  // Initialize CodeStory Storylines View
+  try {
+    if (typeof initStorylinesView === 'function') initStorylinesView();
+  } catch (err) {
+    console.warn('initStorylinesView failed:', err);
   }
 }
 
@@ -19857,10 +19865,18 @@ function initCommandPalette() {
       id: 'nav-impact',
       title: 'Open Blast Radius & Touch Points Explorer',
       subtitle: 'Analyze upstream impact flows and touchpoint lines across modules',
-      group: 'Navigation',
       shortcut: '6',
       icon: '<svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
       action: () => switchTab('impact')
+    },
+    {
+      id: 'nav-storylines',
+      title: 'Open CodeStory Storylines',
+      subtitle: 'Explore interactive execution workflows and architectural narratives',
+      group: 'Navigation',
+      shortcut: '7',
+      icon: '<svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h7"/></svg>',
+      action: () => switchTab('storylines')
     },
     {
       id: 'nav-studio',
@@ -20167,6 +20183,339 @@ function initCommandPalette() {
   window.openCommandPalette = openPalette;
   window.closeCommandPalette = closePalette;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CodeStory: Storylines & Narrative Flow Engine UI Controller
+   ───────────────────────────────────────────────────────────────────────────── */
+
+let storylinesCache = [];
+let currentStorylineDetail = null;
+
+function initStorylinesView() {
+  const searchInput = qs('#storylines-search-input');
+  const clearBtn = qs('#storylines-search-clear');
+  const refreshBtn = qs('#storylines-refresh-btn');
+  const copyBtn = qs('#storyline-btn-export-story');
+  const blastBtn = qs('#storyline-btn-trace-impact');
+
+  if (searchInput) {
+    let debounceTimer = null;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const val = e.target.value.trim();
+        if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none';
+        filterAndRenderStorylinesCatalog();
+      }, 180);
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (searchInput) {
+        searchInput.value = '';
+        clearBtn.style.display = 'none';
+        filterAndRenderStorylinesCatalog();
+      }
+    });
+  }
+
+  qsa('.storylines-cat-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      qsa('.storylines-cat-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      filterAndRenderStorylinesCatalog();
+    });
+  });
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      loadStorylines(true);
+    });
+  }
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      exportStorylineToClipboard();
+    });
+  }
+
+  if (blastBtn) {
+    blastBtn.addEventListener('click', () => {
+      const ep = currentStorylineDetail ? (currentStorylineDetail.entryPointFqn || currentStorylineDetail.entryPoint) : null;
+      if (ep) {
+        openBlastRadiusExplorer(ep);
+      }
+    });
+  }
+}
+
+async function loadStorylines(force = false) {
+  const statsEl = qs('#storylines-catalog-stats');
+  const countPill = qs('#storylines-count-pill');
+  const listEl = qs('#storylines-catalog-list');
+  if (!listEl) return;
+
+  if (storylinesCache.length > 0 && !force) {
+    filterAndRenderStorylinesCatalog();
+    return;
+  }
+
+  if (statsEl) statsEl.textContent = 'Discovering workflows...';
+
+  try {
+    const res = await fetch('/api/storylines');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    storylinesCache = data.storylines || [];
+
+    if (statsEl) {
+      statsEl.textContent = `${storylinesCache.length} workflows discovered`;
+    }
+    if (countPill) {
+      countPill.textContent = storylinesCache.length;
+    }
+
+    filterAndRenderStorylinesCatalog();
+
+    if (storylinesCache.length > 0 && !currentStorylineDetail) {
+      selectStoryline(storylinesCache[0].id);
+    }
+  } catch (err) {
+    console.error('Failed to load storylines:', err);
+    if (statsEl) statsEl.textContent = 'Failed to load';
+    listEl.innerHTML = `<div style="padding: 16px; color: var(--rose); font-size: 12px;">Unable to load storylines: ${esc(err.message)}</div>`;
+  }
+}
+
+function filterAndRenderStorylinesCatalog() {
+  const listEl = qs('#storylines-catalog-list');
+  const countPill = qs('#storylines-count-pill');
+  if (!listEl) return;
+
+  const searchInput = qs('#storylines-search-input');
+  const query = (searchInput?.value || '').trim().toLowerCase();
+  const activeChip = qs('.storylines-cat-chip.active');
+  const activeCat = activeChip?.getAttribute('data-cat') || 'ALL';
+
+  let filtered = storylinesCache;
+  if (activeCat !== 'ALL') {
+    const fCat = activeCat.toLowerCase().replace(/[^a-z]/g, '');
+    filtered = filtered.filter(s => {
+      const sCat = (s.category || '').toLowerCase().replace(/[^a-z]/g, '');
+      return sCat === fCat || sCat.includes(fCat) || fCat.includes(sCat);
+    });
+  }
+  if (query) {
+    filtered = filtered.filter(s =>
+      (s.title || '').toLowerCase().includes(query) ||
+      (s.executiveSummary || '').toLowerCase().includes(query) ||
+      (s.entryPoint || '').toLowerCase().includes(query) ||
+      (s.category || '').toLowerCase().includes(query)
+    );
+  }
+
+  if (countPill) countPill.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
+        No workflows match the selected filter.
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(s => {
+    const isActive = currentStorylineDetail && currentStorylineDetail.id === s.id;
+    return `
+      <div class="storyline-card ${isActive ? 'active' : ''}" data-story-id="${esc(s.id)}" role="button" tabindex="0">
+        <div class="storyline-card-header">
+          <span class="storyline-card-title" title="${esc(s.title)}">${esc(s.title)}</span>
+          <span class="storyline-card-cat-badge">${esc(s.category)}</span>
+        </div>
+        <div class="storyline-card-meta">
+          <span class="storyline-card-entry" title="${esc(s.entryPoint)}">${esc(s.entryClass || s.entryPoint)}</span>
+          <span>•</span>
+          <span>${s.stepCount} steps</span>
+        </div>
+        <div class="storyline-card-snippet" title="${esc(s.executiveSummary || '')}">
+          ${esc(s.executiveSummary || '')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.querySelectorAll('.storyline-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.getAttribute('data-story-id');
+      if (id) selectStoryline(id);
+    });
+  });
+}
+
+async function selectStoryline(id, fqn = null) {
+  const emptyState = qs('#storylines-detail-empty');
+  const contentState = qs('#storylines-detail-content');
+
+  qsa('.storyline-card').forEach(card => {
+    card.classList.toggle('active', card.getAttribute('data-story-id') === id);
+  });
+
+  try {
+    const url = fqn
+      ? `/api/storyline?fqn=${encodeURIComponent(fqn)}`
+      : `/api/storyline?id=${encodeURIComponent(id)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const story = await res.json();
+    currentStorylineDetail = story;
+
+    renderStorylineDetail(story);
+
+    if (emptyState) emptyState.style.display = 'none';
+    if (contentState) contentState.style.display = 'flex';
+  } catch (err) {
+    console.error('Failed to load storyline detail:', err);
+    if (typeof showToast === 'function') {
+      showToast(`Failed to load storyline: ${err.message}`, 'error');
+    }
+  }
+}
+
+function renderStorylineDetail(story) {
+  if (!story) return;
+
+  const heroCategory = qs('#storyline-hero-category');
+  const heroComplexity = qs('#storyline-hero-complexity');
+  const heroSteps = qs('#storyline-hero-steps');
+  const heroTitle = qs('#storyline-hero-title');
+  const heroEntry = qs('#storyline-hero-entry');
+  const narrativeText = qs('#storyline-narrative-text');
+  const timelineEl = qs('#storyline-timeline');
+  const evidenceCount = qs('#storyline-evidence-count');
+  const evidenceGrid = qs('#storyline-evidence-grid');
+
+  if (heroCategory) heroCategory.textContent = story.category || 'Workflow';
+  if (heroComplexity) heroComplexity.textContent = `Complexity: ${story.complexity || 'Moderate'}`;
+  if (heroSteps) heroSteps.textContent = `${(story.steps || []).length} steps`;
+  if (heroTitle) heroTitle.textContent = story.title;
+  const epDisplay = story.entryPointFqn || story.entryPoint || '';
+  if (heroEntry) heroEntry.innerHTML = `Entry Point: <code>${esc(epDisplay)}</code>`;
+  if (narrativeText) narrativeText.textContent = story.executiveSummary || 'Execution workflow traced from call graph.';
+
+  // Render Steps
+  if (timelineEl) {
+    const steps = story.steps || [];
+    timelineEl.innerHTML = steps.map(step => {
+      const roleClass = 'role-' + (step.role || 'processing').toLowerCase().replace(/_/g, '-');
+      const src = step.sourceFile || '';
+      const shortFile = src.includes('/')
+        ? src.substring(src.lastIndexOf('/') + 1)
+        : (src || 'source');
+
+      return `
+        <div class="storyline-step-item" role="listitem">
+          <div class="storyline-step-node-badge">${step.stepIndex}</div>
+          <div class="storyline-step-card">
+            <div class="storyline-step-card-top">
+              <span class="storyline-role-pill ${roleClass}">${esc(step.roleLabel || step.role)}</span>
+              <span class="storyline-step-signature">${esc(step.classSimpleName)}.${esc(step.simpleName)}</span>
+            </div>
+            <div class="storyline-step-action">${esc(step.narrativeAction)}</div>
+            <div class="storyline-step-footer">
+              <button class="storyline-cite-btn" data-file="${esc(step.sourceFile)}" data-line="${step.startLine}" title="Jump to source in Monaco Editor">
+                <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                <span>${esc(shortFile)}:${step.startLine}</span>
+              </button>
+              <button class="storyline-impact-trigger" data-fqn="${esc(step.methodFqn)}" title="Trace Blast Radius for this method">
+                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <span>Blast Radius</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    timelineEl.querySelectorAll('.storyline-cite-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const file = btn.getAttribute('data-file');
+        const line = parseInt(btn.getAttribute('data-line'), 10);
+        if (file) openSourceFile(file, line);
+      });
+    });
+
+    timelineEl.querySelectorAll('.storyline-impact-trigger').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fqn = btn.getAttribute('data-fqn');
+        if (fqn) openBlastRadiusExplorer(fqn);
+      });
+    });
+  }
+
+  // Render Evidence Citations
+  const citations = story.evidence || [];
+  if (evidenceCount) evidenceCount.textContent = citations.length;
+  if (evidenceGrid) {
+    evidenceGrid.innerHTML = citations.map(c => {
+      const src = c.file || '';
+      const shortFile = src.includes('/')
+        ? src.substring(src.lastIndexOf('/') + 1)
+        : (src || 'source');
+      return `
+        <button class="storyline-evidence-chip" data-file="${esc(c.file)}" data-line="${c.startLine}" title="${esc(c.file)} (Lines ${c.startLine}–${c.endLine})">
+          <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span>${esc(shortFile)}:${c.startLine}–${c.endLine}</span>
+        </button>
+      `;
+    }).join('');
+
+    evidenceGrid.querySelectorAll('.storyline-evidence-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const file = chip.getAttribute('data-file');
+        const line = parseInt(chip.getAttribute('data-line'), 10);
+        if (file) openSourceFile(file, line);
+      });
+    });
+  }
+}
+
+function exportStorylineToClipboard() {
+  if (!currentStorylineDetail) return;
+  const s = currentStorylineDetail;
+  let md = `# Storyline: ${s.title}\n\n`;
+  md += `**Category:** ${s.category} | **Complexity:** ${s.complexity} | **Entry Point:** \`${s.entryPoint}\`\n\n`;
+  md += `## Executive Narrative\n${s.executiveSummary}\n\n`;
+  md += `## Execution Sequence\n`;
+  (s.steps || []).forEach(step => {
+    md += `${step.stepIndex}. **[${step.roleLabel}]** \`${step.classSimpleName}.${step.simpleName}\` (${step.sourceFile}:${step.startLine})\n`;
+    md += `   - Action: ${step.narrativeAction}\n`;
+  });
+  md += `\n## Verified Citations\n`;
+  (s.evidence || []).forEach(c => {
+    md += `- \`${c.file}:${c.startLine}-${c.endLine}\` (${c.symbol})\n`;
+  });
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(md).then(() => {
+      if (typeof showToast === 'function') {
+        showToast('Storyline narrative copied to clipboard');
+      }
+    });
+  }
+}
+
+async function openStorylineForFqn(fqn) {
+  if (!fqn) return;
+  switchTab('storylines');
+  await selectStoryline(null, fqn);
+}
+
+window.loadStorylines = loadStorylines;
+window.selectStoryline = selectStoryline;
+window.openStorylineForFqn = openStorylineForFqn;
+
 
 
 
