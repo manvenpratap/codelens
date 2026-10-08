@@ -20,6 +20,16 @@ public class CodeRelationship {
     private String kind;            // CALLS | READS_FIELD | WRITES_FIELD | EXTENDS | IMPLEMENTS
     private int sourceLine;         // line number in the source file
 
+    public CodeRelationship() {}
+
+    public CodeRelationship(String id, String fromEntityFqn, String toEntityFqn, String kind, int sourceLine) {
+        this.id = id;
+        this.fromEntityFqn = fromEntityFqn;
+        this.toEntityFqn = toEntityFqn;
+        this.kind = kind;
+        this.sourceLine = sourceLine;
+    }
+
     // ── Getters & Setters ────────────────────────────────────────────────────
     public String getId()                       { return id; }
     public void setId(String id)               { this.id = id; }

@@ -132,6 +132,7 @@ public class CodeLensServer {
     });
 
     // ── Precomputed Reports Cache & Disk Persistence ────────────────────────
+    public static final int TOTAL_INTELLIGENCE_REPORTS = 14;
     private final Map<String, Object> cachedReportsJson = new ConcurrentHashMap<>();
     private final Set<String> cachedReportArtifacts = ConcurrentHashMap.newKeySet();
     private final Object reportsPrecomputeLock = new Object();
@@ -683,7 +684,7 @@ public class CodeLensServer {
     }
 
     public void precomputeAllReports(ScanProgress progress, boolean force) {
-        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 14) {
+        if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= TOTAL_INTELLIGENCE_REPORTS) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -694,7 +695,7 @@ public class CodeLensServer {
         }
 
         // 1. Try disk cache first if not forced
-        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= 14) {
+        if (!force && loadReportsFromDiskCache() && cachedReportsJson.size() >= TOTAL_INTELLIGENCE_REPORTS) {
             if (progress != null) {
                 progress.setActiveStage("REPORTS");
                 progress.setReportsFound(cachedReportsJson.size());
@@ -705,7 +706,7 @@ public class CodeLensServer {
         }
 
         synchronized (reportsPrecomputeLock) {
-            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= 14) {
+            if (!force && !cachedReportsJson.isEmpty() && cachedReportsJson.size() >= TOTAL_INTELLIGENCE_REPORTS) {
                 if (progress != null) {
                     progress.setActiveStage("REPORTS");
                     progress.setReportsFound(cachedReportsJson.size());
@@ -725,18 +726,18 @@ public class CodeLensServer {
             reportsPrecomputePhase.set("Reading entities snapshot from database");
             long startTotal = System.currentTimeMillis();
             logProcessBanner("REPORTS_PRECOMPUTE_STARTED", "Codebase Intelligence Reports Generator", resolveCurrentSourcePath(),
-                "Starting sequential precomputation of all 14 architecture, risk, persistence, coupling and concurrency reports");
+                String.format("Starting sequential precomputation of all %d architecture, risk, persistence, coupling and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
 
             try {
                 if (progress != null) {
                     progress.setActiveStage("REPORTS");
-                    progress.setCurrentPhase("Generating Reports [0/14]");
+                    progress.setCurrentPhase("Generating Reports [0/" + TOTAL_INTELLIGENCE_REPORTS + "]");
                     progress.setMessage("Reading entities snapshot from database for reports generator…");
                     progress.setCurrentDetail("Reading database entities for reports generator…");
                     progress.setPercentage(93);
-                    progress.setSubProgress(0, 14, "Reading entities snapshot");
+                    progress.setSubProgress(0, TOTAL_INTELLIGENCE_REPORTS, "Reading entities snapshot");
                     progress.setDynamicMetrics(
-                        "Reports Ready", "0 / 14",
+                        "Reports Ready", "0 / " + TOTAL_INTELLIGENCE_REPORTS,
                         "Active Report", "Initializing…",
                         "Artifacts", "0",
                         "Snapshot", "Pending"
@@ -794,7 +795,7 @@ public class CodeLensServer {
 
                 final List<CodeType> types = resolvedTypes;
 
-                final int TOTAL_REPORTS = 14;
+                final int TOTAL_REPORTS = TOTAL_INTELLIGENCE_REPORTS;
 
                 // ── Helper runner for individual sequential report execution ─────────
                 class ReportTaskRunner {
@@ -907,7 +908,8 @@ public class CodeLensServer {
 
                 // 5. Archetype Governance & Compliance
                 runner.run(5, "archetype-governance", "Enterprise Archetype Governance", () -> {
-                    ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                    String archRules = activeConfig != null ? activeConfig.getArchetypeRulesJson() : null;
+                    ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels, archRules);
                     refGov.set(data);
                     cacheReport("archetype-governance", data,
                         reportService.renderArchetypeGovernanceHtml(data),
@@ -1055,7 +1057,7 @@ public class CodeLensServer {
                     progress.setCurrentDetail(String.format("Precomputed all %d codebase intelligence reports & artifacts", TOTAL_REPORTS));
                     progress.setSubProgress(TOTAL_REPORTS, TOTAL_REPORTS, "All reports precomputed");
                     progress.setDynamicMetrics(
-                        "Reports Ready", "14 / 14",
+                        "Reports Ready", TOTAL_REPORTS + " / " + TOTAL_REPORTS,
                         "Active Report", "All Reports Complete",
                         "Artifacts", String.valueOf(cachedReportArtifacts.size()),
                         "Snapshot", "Ready"
@@ -1363,6 +1365,7 @@ public class CodeLensServer {
         // ── Critical Path & Persistent Entities ──────────────────────────────
         app.get("/api/analysis/persistent-classes", this::getPersistentClasses);
         app.get("/api/analysis/critical-path",       this::getCriticalPath);
+        app.get("/api/analysis/blast-radius",       this::getBlastRadius);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -1924,24 +1927,69 @@ public class CodeLensServer {
         boolean isReportsRunning = reportsPrecomputeRunning.get() || isScanReportsActive;
         reportsProc.put("status", isReportsRunning ? "RUNNING" : (cachedReportsJson.size() > 0 ? "COMPLETE" : "IDLE"));
         reportsProc.put("activeStage", isReportsRunning ? "PRECOMPUTING" : (cachedReportsJson.size() > 0 ? "CACHED" : "IDLE"));
-        reportsProc.put("currentPhase", isScanReportsActive ? sp.getCurrentPhase() : reportsPrecomputePhase.get());
+        reportsProc.put("totalReports", TOTAL_INTELLIGENCE_REPORTS);
+        reportsProc.put("cachedCount", cachedReportsJson.size());
+        String currentRepPhase = isScanReportsActive ? sp.getCurrentPhase() : reportsPrecomputePhase.get();
+        reportsProc.put("currentPhase", currentRepPhase);
         long lastGen = reportsLastGeneratedTimestamp.get();
-        String genDetail = isScanReportsActive
-            ? sp.getCurrentDetail()
-            : (lastGen > 0
-                ? String.format("%d reports cached · Last precomputed in %d ms (%s)",
-                    cachedReportsJson.size(),
-                    reportsLastGenerationDurationMs.get(),
-                    new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)))
-                : (isReportsRunning ? "Precomputing all 13 reports in background..." : "Not generated yet"));
+        int repPct = isScanReportsActive ? sp.getPercentage() : reportsPrecomputePercentage.get();
+        String genDetail;
+        if (isScanReportsActive) {
+            genDetail = sp.getCurrentDetail();
+        } else if (isReportsRunning) {
+            genDetail = (currentRepPhase != null && !currentRepPhase.isBlank())
+                ? String.format("%s (%d%% · %d/%d cached)", currentRepPhase, repPct, cachedReportsJson.size(), TOTAL_INTELLIGENCE_REPORTS)
+                : String.format("Precomputing %d intelligence reports in background (%d%%)", TOTAL_INTELLIGENCE_REPORTS, repPct);
+        } else if (lastGen > 0) {
+            genDetail = String.format("%d reports cached · Last precomputed in %d ms (%s)",
+                cachedReportsJson.size(),
+                reportsLastGenerationDurationMs.get(),
+                new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(lastGen)));
+        } else {
+            genDetail = "Not generated yet";
+        }
         reportsProc.put("currentDetail", genDetail);
-        reportsProc.put("percentage", isScanReportsActive ? sp.getPercentage() : reportsPrecomputePercentage.get());
+        reportsProc.put("percentage", repPct);
         reportsProc.put("durationMs", reportsLastGenerationDurationMs.get());
         reportsProc.put("startTime", isReportsRunning ? (isScanReportsActive ? sp.getStartTime() : reportsLastGeneratedTimestamp.get()) : 0);
         reportsProc.put("thread", isScanReportsActive ? "codelens-scanner" : (isReportsRunning ? "codelens-reports-worker" : "-"));
         reportsProc.put("canKill", isScanReportsActive);
         reportsProc.put("canRestart", true);
         processes.add(reportsProc);
+
+        // 12. Database Compaction & Maintenance
+        Map<String, Object> dbMaintProc = new LinkedHashMap<>();
+        dbMaintProc.put("id", "db-maintenance");
+        dbMaintProc.put("name", "Database Compaction & Maintenance");
+        dbMaintProc.put("type", "H2 MVStore Compaction & Index Optimizer");
+        boolean isDbMaintActive = orchestrator.isRunning("db-maintenance");
+        dbMaintProc.put("status", isDbMaintActive ? "RUNNING" : "IDLE");
+        dbMaintProc.put("activeStage", isDbMaintActive ? "COMPACTING" : "IDLE");
+        dbMaintProc.put("currentPhase", isDbMaintActive ? "Compacting H2 Store & Optimizing Indexes" : "Idle");
+        Map<String, Object> dbDiag = db.getDiagnostics();
+        String dbSizeStr = dbDiag != null && dbDiag.containsKey("fileSizeFormatted") ? String.valueOf(dbDiag.get("fileSizeFormatted")) : "H2 Database";
+        dbMaintProc.put("currentDetail", String.format("H2 MVStore (%s) · SHUTDOWN COMPACT ready", dbSizeStr));
+        dbMaintProc.put("percentage", isDbMaintActive ? 50 : 100);
+        dbMaintProc.put("thread", isDbMaintActive ? "codelens-db-maintenance" : "-");
+        dbMaintProc.put("canKill", false);
+        dbMaintProc.put("canRestart", true);
+        processes.add(dbMaintProc);
+
+        // 13. SSE Live Telemetry Broadcaster
+        Map<String, Object> sseProc = new LinkedHashMap<>();
+        sseProc.put("id", "sse-broadcaster");
+        sseProc.put("name", "SSE Live Telemetry Broadcaster");
+        sseProc.put("type", "Real-Time Telemetry & Event Streaming Bus");
+        int clientCount = sseClients.size();
+        sseProc.put("status", "ACTIVE");
+        sseProc.put("activeStage", "STREAMING");
+        sseProc.put("currentPhase", "Streaming Telemetry (500ms heartbeat)");
+        sseProc.put("currentDetail", String.format("%d active SSE web client%s subscribed", clientCount, clientCount == 1 ? "" : "s"));
+        sseProc.put("percentage", 100);
+        sseProc.put("thread", "codelens-sse-broadcaster");
+        sseProc.put("canKill", false);
+        sseProc.put("canRestart", true);
+        processes.add(sseProc);
 
         // Enrich process entries with orchestrator queue, load weight, and dependency status
         for (Map<String, Object> proc : processes) {
@@ -2256,6 +2304,22 @@ public class CodeLensServer {
         } else if ("reports-generator".equalsIgnoreCase(id)) {
             orchestrator.submit("reports-generator", BackgroundTaskOrchestrator.Priority.HIGH, () -> triggerReportsPrecomputeAsync(null, true));
             ctx.json(Map.of("status", "restarted", "processId", id, "message", "Reports regeneration queued in orchestrator"));
+            return;
+        } else if ("db-maintenance".equalsIgnoreCase(id)) {
+            orchestrator.submit("db-maintenance", BackgroundTaskOrchestrator.Priority.URGENT, () -> {
+                logProcessBanner("DB_MAINTENANCE_STARTED", "Database Compaction & Maintenance", "codelens_db", "Starting manual H2 compaction and secondary index optimization");
+                try {
+                    db.compactDatabase();
+                    logProcessBanner("DB_MAINTENANCE_COMPLETED", "Database Compaction & Maintenance", "codelens_db", "Database compaction and index rebuild successful");
+                } catch (Exception e) {
+                    log.error("Database maintenance failed", e);
+                    logProcessBanner("DB_MAINTENANCE_FAILED", "Database Compaction & Maintenance", "codelens_db", "Compaction failed: " + e.getMessage());
+                }
+            });
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "Database compaction queued in background orchestrator"));
+            return;
+        } else if ("sse-broadcaster".equalsIgnoreCase(id)) {
+            ctx.json(Map.of("status", "restarted", "processId", id, "message", "SSE broadcaster active (" + sseClients.size() + " subscribers)"));
             return;
         }
         ctx.status(400).json(Map.of("error", "Unknown process id: " + id));
@@ -3000,14 +3064,14 @@ public class CodeLensServer {
 
             // Phase 7: Codebase Intelligence Reports Precomputation
             progress.setActiveStage("REPORTS");
-            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", "Generating all 13 architecture, risk, quality, and concurrency reports");
+            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", String.format("Generating all %d architecture, risk, quality, and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
             progress.setCurrentPhase("Generating Reports");
             progress.setMessage("Generating codebase intelligence reports…");
             progress.setPercentage(93);
             progress.setCurrentDetail("Initializing sequential report generation pipeline…");
-            progress.setSubProgress(0, 13, "Reports Generation");
+            progress.setSubProgress(0, TOTAL_INTELLIGENCE_REPORTS, "Reports Generation");
             progress.setDynamicMetrics(
-                "Reports Ready", "0 / 13",
+                "Reports Ready", "0 / " + TOTAL_INTELLIGENCE_REPORTS,
                 "Active Report", "Starting…",
                 "Artifacts", "0",
                 "Snapshot", "Pending"
@@ -3015,12 +3079,12 @@ public class CodeLensServer {
 
             precomputeAllReports(progress, true);
 
-            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13;
+            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : TOTAL_INTELLIGENCE_REPORTS;
             progress.setReportsFound(reportsCount);
             progress.setPercentage(99);
 
             Map<String, String> reportMetrics = new LinkedHashMap<>();
-            reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
+            reportMetrics.put("Reports Ready", String.format("%d / %d", reportsCount, TOTAL_INTELLIGENCE_REPORTS));
             reportMetrics.put("Artifacts", String.valueOf(cachedReportArtifacts.size()));
             reportMetrics.put("Snapshot", "Ready");
             reportMetrics.put("Status", "Complete");
@@ -3412,14 +3476,14 @@ public class CodeLensServer {
 
             // Phase 7: Codebase Intelligence Reports Precomputation
             progress.setActiveStage("REPORTS");
-            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", "Generating all 13 architecture, risk, quality, and concurrency reports");
+            progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", String.format("Generating all %d architecture, risk, quality, and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
             progress.setCurrentPhase("Generating Reports");
             progress.setMessage("Generating codebase intelligence reports…");
             progress.setPercentage(93);
             progress.setCurrentDetail("Initializing sequential report generation pipeline…");
-            progress.setSubProgress(0, 13, "Reports Generation");
+            progress.setSubProgress(0, TOTAL_INTELLIGENCE_REPORTS, "Reports Generation");
             progress.setDynamicMetrics(
-                "Reports Ready", "0 / 13",
+                "Reports Ready", "0 / " + TOTAL_INTELLIGENCE_REPORTS,
                 "Active Report", "Starting…",
                 "Artifacts", "0",
                 "Snapshot", "Pending"
@@ -3427,12 +3491,12 @@ public class CodeLensServer {
 
             precomputeAllReports(progress, true);
 
-            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13;
+            int reportsCount = cachedReportsJson.size() > 0 ? cachedReportsJson.size() : TOTAL_INTELLIGENCE_REPORTS;
             progress.setReportsFound(reportsCount);
             progress.setPercentage(99);
 
             Map<String, String> reportMetrics = new LinkedHashMap<>();
-            reportMetrics.put("Reports Ready", String.format("%d / 13", reportsCount));
+            reportMetrics.put("Reports Ready", String.format("%d / %d", reportsCount, TOTAL_INTELLIGENCE_REPORTS));
             reportMetrics.put("Artifacts", String.valueOf(cachedReportArtifacts.size()));
             reportMetrics.put("Snapshot", "Ready");
             reportMetrics.put("Status", "Complete");
@@ -3533,7 +3597,7 @@ public class CodeLensServer {
         }
         stats.put("modules", modCount);
         stats.put("packages", totalPackages);
-        stats.put("reports", cachedReportsJson.size() > 0 ? cachedReportsJson.size() : 13);
+        stats.put("reports", cachedReportsJson.size() > 0 ? cachedReportsJson.size() : TOTAL_INTELLIGENCE_REPORTS);
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());
         stats.put("persistentClasses", dao.findPersistentClassFqns());
@@ -3940,6 +4004,532 @@ public class CodeLensServer {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 1);
         ctx.json(fieldImpact.analyse(id, depth, callGraph));
+    }
+
+    private void getBlastRadius(Context ctx) throws Exception {
+        String fqn = ctx.queryParam("fqn");
+        if (fqn == null || fqn.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Query parameter 'fqn' is required"));
+            return;
+        }
+        fqn = fqn.trim();
+        String kind = ctx.queryParam("kind");
+
+        // 1. Resolve / auto-detect kind & metadata
+        String resolvedKind = kind != null && !kind.isBlank() ? kind.trim().toUpperCase(Locale.ROOT) : "AUTO";
+        String simpleName = fqn;
+        String declaringClass = null;
+        String sourceFile = null;
+        int startLine = 1;
+        String packageFqn = null;
+        String moduleName = null;
+
+        if ("AUTO".equals(resolvedKind)) {
+            Optional<CodeField> optF = dao.findFieldById(fqn);
+            if (optF.isPresent()) {
+                resolvedKind = "FIELD";
+            } else {
+                Optional<CodeMethod> optM = dao.findMethodById(fqn);
+                if (optM.isPresent()) {
+                    resolvedKind = "METHOD";
+                } else {
+                    Optional<CodeType> optT = dao.findTypeById(fqn);
+                    if (optT.isPresent()) {
+                        resolvedKind = "CLASS";
+                    } else if (fqn.contains("(")) {
+                        resolvedKind = "METHOD";
+                    } else {
+                        int lastDot = fqn.lastIndexOf('.');
+                        if (lastDot > 0 && Character.isUpperCase(fqn.charAt(lastDot + 1))) {
+                            resolvedKind = "CLASS";
+                        } else {
+                            resolvedKind = "PACKAGE";
+                        }
+                    }
+                }
+            }
+        }
+
+        if ("FIELD".equals(resolvedKind)) {
+            Optional<CodeField> optF = dao.findFieldById(fqn);
+            if (optF.isPresent()) {
+                CodeField f = optF.get();
+                simpleName = f.getSimpleName();
+                declaringClass = f.getDeclaringTypeFqn();
+                startLine = f.getStartLine();
+                Optional<CodeType> optT = dao.findTypeById(declaringClass);
+                if (optT.isPresent()) {
+                    sourceFile = optT.get().getSourceFile();
+                    packageFqn = optT.get().getPackageFqn();
+                    moduleName = CallGraphAnalyzer.extractModuleName(optT.get().getFqn());
+                }
+            } else {
+                int dot = fqn.lastIndexOf('.');
+                simpleName = dot >= 0 ? fqn.substring(dot + 1) : fqn;
+                declaringClass = dot >= 0 ? fqn.substring(0, dot) : fqn;
+            }
+        } else if ("METHOD".equals(resolvedKind)) {
+            Optional<CodeMethod> optM = dao.findMethodById(fqn);
+            if (optM.isPresent()) {
+                CodeMethod m = optM.get();
+                simpleName = m.getSimpleName();
+                declaringClass = m.getDeclaringTypeFqn();
+                startLine = m.getStartLine();
+                Optional<CodeType> optT = dao.findTypeById(declaringClass);
+                if (optT.isPresent()) {
+                    sourceFile = optT.get().getSourceFile();
+                    packageFqn = optT.get().getPackageFqn();
+                    moduleName = CallGraphAnalyzer.extractModuleName(optT.get().getFqn());
+                }
+            } else {
+                int paren = fqn.indexOf('(');
+                String base = paren > 0 ? fqn.substring(0, paren) : fqn;
+                int dot = base.lastIndexOf('.');
+                simpleName = dot >= 0 ? base.substring(dot + 1) : base;
+                declaringClass = dot >= 0 ? base.substring(0, dot) : base;
+            }
+        } else if ("CLASS".equals(resolvedKind) || "INTERFACE".equals(resolvedKind) || "RECORD".equals(resolvedKind) || "ENUM".equals(resolvedKind)) {
+            Optional<CodeType> optT = dao.findTypeById(fqn);
+            if (optT.isPresent()) {
+                CodeType t = optT.get();
+                simpleName = t.getSimpleName();
+                declaringClass = t.getFqn();
+                sourceFile = t.getSourceFile();
+                startLine = t.getStartLine();
+                packageFqn = t.getPackageFqn();
+                moduleName = CallGraphAnalyzer.extractModuleName(t.getFqn());
+            } else {
+                int dot = fqn.lastIndexOf('.');
+                simpleName = dot >= 0 ? fqn.substring(dot + 1) : fqn;
+                declaringClass = fqn;
+            }
+        } else {
+            resolvedKind = "PACKAGE";
+            int dot = fqn.lastIndexOf('.');
+            simpleName = dot >= 0 ? fqn.substring(dot + 1) : fqn;
+            packageFqn = fqn;
+            moduleName = CallGraphAnalyzer.extractModuleName(fqn);
+        }
+
+        if (moduleName == null || moduleName.isBlank()) {
+            moduleName = CallGraphAnalyzer.extractModuleName(fqn);
+        }
+        if (packageFqn == null || packageFqn.isBlank()) {
+            packageFqn = CallGraphAnalyzer.extractPackageFqn(fqn);
+        }
+
+        // 2. Query incoming relationships from DB
+        List<CodeRelationship> rels = new ArrayList<>(dao.findIncomingRelationshipsForEntity(fqn, resolvedKind));
+
+        // 3. Merge in-memory analyzer data if any
+        Set<String> seenPair = new HashSet<>();
+        for (CodeRelationship r : rels) {
+            seenPair.add(r.getFromEntityFqn() + "->" + r.getToEntityFqn() + ":" + r.getKind());
+        }
+
+        if ("FIELD".equals(resolvedKind) && fieldImpact != null) {
+            try {
+                FieldImpactAnalyzer.ImpactView iv = fieldImpact.analyse(fqn, 1, callGraph);
+                if (iv != null) {
+                    if (iv.readers != null) {
+                        for (String rdr : iv.readers) {
+                            if (seenPair.add(rdr + "->" + fqn + ":READS_FIELD")) {
+                                rels.add(new CodeRelationship(UUID.randomUUID().toString(), rdr, fqn, "READS_FIELD", 0));
+                            }
+                        }
+                    }
+                    if (iv.writers != null) {
+                        for (String wrt : iv.writers) {
+                            if (seenPair.add(wrt + "->" + fqn + ":WRITES_FIELD")) {
+                                rels.add(new CodeRelationship(UUID.randomUUID().toString(), wrt, fqn, "WRITES_FIELD", 0));
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        } else if ("METHOD".equals(resolvedKind) && callGraph != null) {
+            try {
+                List<CallGraphAnalyzer.GraphNode> callers = callGraph.callers(fqn, 1);
+                if (callers != null) {
+                    for (CallGraphAnalyzer.GraphNode c : callers) {
+                        if (c.id != null && !c.id.equals(fqn) && seenPair.add(c.id + "->" + fqn + ":CALLS")) {
+                            rels.add(new CodeRelationship(UUID.randomUUID().toString(), c.id, fqn, "CALLS", 0));
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4. Enrich & structure touchpoints into Modules -> Classes -> Methods -> Lines
+        Map<String, CodeType> typeCache = new HashMap<>();
+        Map<String, CodeMethod> methodCache = new HashMap<>();
+
+        Map<String, Integer> byKind = new LinkedHashMap<>();
+        List<Map<String, Object>> touchPoints = new ArrayList<>();
+
+        Map<String, Map<String, Map<String, List<Map<String, Object>>>>> hierarchy = new LinkedHashMap<>();
+
+        for (CodeRelationship r : rels) {
+            String fromFqn = r.getFromEntityFqn();
+            if (fromFqn == null || fromFqn.isBlank()) continue;
+
+            String kindStr = r.getKind() != null ? r.getKind() : "CALLS";
+            byKind.merge(kindStr, 1, Integer::sum);
+
+            String srcClassFqn = CallGraphAnalyzer.extractClassFqn(fromFqn);
+            if (srcClassFqn == null || srcClassFqn.isBlank()) srcClassFqn = fromFqn;
+
+            String srcMod = CallGraphAnalyzer.extractModuleName(fromFqn);
+            String srcPkg = CallGraphAnalyzer.extractPackageFqn(fromFqn);
+
+            CodeType srcType = typeCache.computeIfAbsent(srcClassFqn, k -> {
+                try { return dao.findTypeById(k).orElse(null); } catch (Exception e) { return null; }
+            });
+            String srcFilePath = srcType != null && srcType.getSourceFile() != null ? srcType.getSourceFile() : "";
+
+            int line = r.getSourceLine();
+            if (line <= 0 && !fromFqn.equals(srcClassFqn)) {
+                CodeMethod srcMethod = methodCache.computeIfAbsent(fromFqn, k -> {
+                    try { return dao.findMethodById(k).orElse(null); } catch (Exception e) { return null; }
+                });
+                if (srcMethod != null && srcMethod.getStartLine() > 0) {
+                    line = srcMethod.getStartLine();
+                } else if (srcType != null && srcType.getStartLine() > 0) {
+                    line = srcType.getStartLine();
+                } else {
+                    line = 1;
+                }
+            } else if (line <= 0 && srcType != null && srcType.getStartLine() > 0) {
+                line = srcType.getStartLine();
+            } else if (line <= 0) {
+                line = 1;
+            }
+
+            int dotCls = srcClassFqn.lastIndexOf('.');
+            String srcClassSimple = dotCls >= 0 ? srcClassFqn.substring(dotCls + 1) : srcClassFqn;
+
+            String srcMethodSimple;
+            if (fromFqn.equals(srcClassFqn)) {
+                srcMethodSimple = "(type reference)";
+            } else {
+                int paren = fromFqn.indexOf('(');
+                String methodBase = paren > 0 ? fromFqn.substring(0, paren) : fromFqn;
+                int dotM = methodBase.lastIndexOf('.');
+                String mName = dotM >= 0 ? methodBase.substring(dotM + 1) : methodBase;
+                srcMethodSimple = paren > 0 ? mName + fromFqn.substring(paren) : mName + "()";
+            }
+
+            Map<String, Object> tp = new LinkedHashMap<>();
+            tp.put("sourceModule", srcMod);
+            tp.put("sourcePackage", srcPkg);
+            tp.put("sourceClass", srcClassSimple);
+            tp.put("sourceClassFqn", srcClassFqn);
+            tp.put("sourceMethod", srcMethodSimple);
+            tp.put("sourceMethodFqn", fromFqn);
+            tp.put("targetEntityFqn", r.getToEntityFqn() != null ? r.getToEntityFqn() : fqn);
+            tp.put("kind", kindStr);
+            tp.put("sourceLine", line);
+            tp.put("sourceFile", srcFilePath);
+            touchPoints.add(tp);
+
+            hierarchy
+                .computeIfAbsent(srcMod, k -> new LinkedHashMap<>())
+                .computeIfAbsent(srcClassFqn, k -> new LinkedHashMap<>())
+                .computeIfAbsent(fromFqn, k -> new ArrayList<>())
+                .add(tp);
+        }
+
+        // Sort touchpoints by module, class, line
+        touchPoints.sort((a, b) -> {
+            int c = ((String) a.get("sourceModule")).compareToIgnoreCase((String) b.get("sourceModule"));
+            if (c != 0) return c;
+            c = ((String) a.get("sourceClass")).compareToIgnoreCase((String) b.get("sourceClass"));
+            if (c != 0) return c;
+            return Integer.compare((Integer) a.get("sourceLine"), (Integer) b.get("sourceLine"));
+        });
+
+        // 5. Build structured modules hierarchy for tree/drilldown views
+        List<Map<String, Object>> moduleList = new ArrayList<>();
+        Set<String> distinctClasses = new HashSet<>();
+        Set<String> distinctMethods = new HashSet<>();
+
+        for (Map.Entry<String, Map<String, Map<String, List<Map<String, Object>>>>> modEntry : hierarchy.entrySet()) {
+            String modName = modEntry.getKey();
+            List<Map<String, Object>> classList = new ArrayList<>();
+            int modPts = 0;
+
+            for (Map.Entry<String, Map<String, List<Map<String, Object>>>> clsEntry : modEntry.getValue().entrySet()) {
+                String cFqn = clsEntry.getKey();
+                distinctClasses.add(cFqn);
+                int dot = cFqn.lastIndexOf('.');
+                String cSimple = dot >= 0 ? cFqn.substring(dot + 1) : cFqn;
+                CodeType ct = typeCache.get(cFqn);
+
+                List<Map<String, Object>> methodList = new ArrayList<>();
+                int classPts = 0;
+
+                for (Map.Entry<String, List<Map<String, Object>>> mthEntry : clsEntry.getValue().entrySet()) {
+                    String mFqn = mthEntry.getKey();
+                    distinctMethods.add(mFqn);
+                    List<Map<String, Object>> pts = mthEntry.getValue();
+                    int mPts = pts.size();
+                    classPts += mPts;
+
+                    int paren = mFqn.indexOf('(');
+                    String mBase = paren > 0 ? mFqn.substring(0, paren) : mFqn;
+                    int dotM = mBase.lastIndexOf('.');
+                    String mSimple = dotM >= 0 ? mBase.substring(dotM + 1) : mBase;
+                    if (paren > 0) mSimple += mFqn.substring(paren);
+
+                    List<Integer> lines = pts.stream().map(p -> (Integer) p.get("sourceLine")).distinct().sorted().toList();
+
+                    Map<String, Object> mObj = new LinkedHashMap<>();
+                    mObj.put("name", mSimple);
+                    mObj.put("fqn", mFqn);
+                    mObj.put("touchPointsCount", mPts);
+                    mObj.put("lines", lines);
+                    methodList.add(mObj);
+                }
+
+                modPts += classPts;
+                Map<String, Object> cObj = new LinkedHashMap<>();
+                cObj.put("name", cSimple);
+                cObj.put("fqn", cFqn);
+                cObj.put("sourceFile", ct != null && ct.getSourceFile() != null ? ct.getSourceFile() : "");
+                cObj.put("touchPointsCount", classPts);
+                cObj.put("methods", methodList);
+                classList.add(cObj);
+            }
+
+            Map<String, Object> modObj = new LinkedHashMap<>();
+            modObj.put("name", modName);
+            modObj.put("touchPointsCount", modPts);
+            modObj.put("classes", classList);
+            moduleList.add(modObj);
+        }
+
+        // Sort modules & classes by touchpoint volume descending
+        moduleList.sort((a, b) -> Integer.compare((Integer) b.get("touchPointsCount"), (Integer) a.get("touchPointsCount")));
+        for (Map<String, Object> m : moduleList) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> cls = (List<Map<String, Object>>) m.get("classes");
+            if (cls != null) {
+                cls.sort((a, b) -> Integer.compare((Integer) b.get("touchPointsCount"), (Integer) a.get("touchPointsCount")));
+            }
+        }
+
+        // 6. Build Sankey nodes and links (Stage 0: Target -> Stage 1: Modules -> Stage 2: Classes -> Stage 3: Methods)
+        List<Map<String, Object>> sankeyNodes = new ArrayList<>();
+        List<Map<String, Object>> sankeyLinks = new ArrayList<>();
+
+        int totalPts = touchPoints.size();
+        Map<String, Object> targetNode = new LinkedHashMap<>();
+        targetNode.put("id", "target");
+        targetNode.put("name", simpleName);
+        targetNode.put("fqn", fqn);
+        targetNode.put("stage", 0);
+        targetNode.put("kind", "TARGET");
+        targetNode.put("value", totalPts);
+        sankeyNodes.add(targetNode);
+
+        final int MAX_MODULES = 7;
+        final int MAX_CLASSES_PER_MOD = 6;
+        final int MAX_METHODS_PER_CLS = 4;
+
+        int modIndex = 0;
+        int otherModPts = 0;
+        int otherModCount = 0;
+
+        for (Map<String, Object> mod : moduleList) {
+            modIndex++;
+            String modName = (String) mod.get("name");
+            int modVal = (Integer) mod.get("touchPointsCount");
+
+            if (modIndex > MAX_MODULES && moduleList.size() > MAX_MODULES + 1) {
+                otherModPts += modVal;
+                otherModCount++;
+                continue;
+            }
+
+            String modId = "mod:" + modName;
+            Map<String, Object> mNode = new LinkedHashMap<>();
+            mNode.put("id", modId);
+            mNode.put("name", modName);
+            mNode.put("stage", 1);
+            mNode.put("kind", "MODULE");
+            mNode.put("value", modVal);
+            sankeyNodes.add(mNode);
+
+            Map<String, Object> tToM = new LinkedHashMap<>();
+            tToM.put("source", "target");
+            tToM.put("target", modId);
+            tToM.put("value", modVal);
+            sankeyLinks.add(tToM);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> classes = (List<Map<String, Object>>) mod.get("classes");
+            if (classes != null) {
+                int clsIndex = 0;
+                int otherClsPts = 0;
+                int otherClsCount = 0;
+
+                for (Map<String, Object> cls : classes) {
+                    clsIndex++;
+                    String cFqn = (String) cls.get("fqn");
+                    String cName = (String) cls.get("name");
+                    int cVal = (Integer) cls.get("touchPointsCount");
+
+                    if (clsIndex > MAX_CLASSES_PER_MOD && classes.size() > MAX_CLASSES_PER_MOD + 1) {
+                        otherClsPts += cVal;
+                        otherClsCount++;
+                        continue;
+                    }
+
+                    String clsId = "cls:" + cFqn;
+                    Map<String, Object> cNode = new LinkedHashMap<>();
+                    cNode.put("id", clsId);
+                    cNode.put("name", cName);
+                    cNode.put("fqn", cFqn);
+                    cNode.put("stage", 2);
+                    cNode.put("kind", "CLASS");
+                    cNode.put("value", cVal);
+                    cNode.put("module", modName);
+                    sankeyNodes.add(cNode);
+
+                    Map<String, Object> mToC = new LinkedHashMap<>();
+                    mToC.put("source", modId);
+                    mToC.put("target", clsId);
+                    mToC.put("value", cVal);
+                    sankeyLinks.add(mToC);
+
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> methods = (List<Map<String, Object>>) cls.get("methods");
+                    if (methods != null) {
+                        int mthIndex = 0;
+                        int otherMthPts = 0;
+                        int otherMthCount = 0;
+
+                        for (Map<String, Object> mth : methods) {
+                            mthIndex++;
+                            String mFqn = (String) mth.get("fqn");
+                            String mName = (String) mth.get("name");
+                            int mVal = (Integer) mth.get("touchPointsCount");
+
+                            if (mthIndex > MAX_METHODS_PER_CLS && methods.size() > MAX_METHODS_PER_CLS + 1) {
+                                otherMthPts += mVal;
+                                otherMthCount++;
+                                continue;
+                            }
+
+                            String mthId = "mth:" + mFqn;
+                            Map<String, Object> mthNode = new LinkedHashMap<>();
+                            mthNode.put("id", mthId);
+                            mthNode.put("name", mName);
+                            mthNode.put("fqn", mFqn);
+                            mthNode.put("stage", 3);
+                            mthNode.put("kind", "METHOD");
+                            mthNode.put("value", mVal);
+                            mthNode.put("classFqn", cFqn);
+                            sankeyNodes.add(mthNode);
+
+                            Map<String, Object> cToM = new LinkedHashMap<>();
+                            cToM.put("source", clsId);
+                            cToM.put("target", mthId);
+                            cToM.put("value", mVal);
+                            sankeyLinks.add(cToM);
+                        }
+
+                        if (otherMthCount > 0) {
+                            String otherMthId = "mth_other:" + cFqn;
+                            Map<String, Object> otherMthNode = new LinkedHashMap<>();
+                            otherMthNode.put("id", otherMthId);
+                            otherMthNode.put("name", "+ " + otherMthCount + " others");
+                            otherMthNode.put("fqn", otherMthId);
+                            otherMthNode.put("stage", 3);
+                            otherMthNode.put("kind", "METHOD");
+                            otherMthNode.put("value", otherMthPts);
+                            otherMthNode.put("classFqn", cFqn);
+                            otherMthNode.put("isAggregated", true);
+                            sankeyNodes.add(otherMthNode);
+
+                            Map<String, Object> cToOtherM = new LinkedHashMap<>();
+                            cToOtherM.put("source", clsId);
+                            cToOtherM.put("target", otherMthId);
+                            cToOtherM.put("value", otherMthPts);
+                            sankeyLinks.add(cToOtherM);
+                        }
+                    }
+                }
+
+                if (otherClsCount > 0) {
+                    String otherClsId = "cls_other:" + modName;
+                    Map<String, Object> otherClsNode = new LinkedHashMap<>();
+                    otherClsNode.put("id", otherClsId);
+                    otherClsNode.put("name", "+ " + otherClsCount + " other classes");
+                    otherClsNode.put("fqn", otherClsId);
+                    otherClsNode.put("stage", 2);
+                    otherClsNode.put("kind", "CLASS");
+                    otherClsNode.put("value", otherClsPts);
+                    otherClsNode.put("module", modName);
+                    otherClsNode.put("isAggregated", true);
+                    sankeyNodes.add(otherClsNode);
+
+                    Map<String, Object> mToOtherC = new LinkedHashMap<>();
+                    mToOtherC.put("source", modId);
+                    mToOtherC.put("target", otherClsId);
+                    mToOtherC.put("value", otherClsPts);
+                    sankeyLinks.add(mToOtherC);
+                }
+            }
+        }
+
+        if (otherModCount > 0) {
+            String otherModId = "mod_other:remaining";
+            Map<String, Object> otherModNode = new LinkedHashMap<>();
+            otherModNode.put("id", otherModId);
+            otherModNode.put("name", "+ " + otherModCount + " other modules");
+            otherModNode.put("stage", 1);
+            otherModNode.put("kind", "MODULE");
+            otherModNode.put("value", otherModPts);
+            otherModNode.put("isAggregated", true);
+            sankeyNodes.add(otherModNode);
+
+            Map<String, Object> tToOtherM = new LinkedHashMap<>();
+            tToOtherM.put("source", "target");
+            tToOtherM.put("target", otherModId);
+            tToOtherM.put("value", otherModPts);
+            sankeyLinks.add(tToOtherM);
+        }
+
+        Map<String, Object> targetMeta = new LinkedHashMap<>();
+        targetMeta.put("fqn", fqn);
+        targetMeta.put("simpleName", simpleName);
+        targetMeta.put("kind", resolvedKind);
+        targetMeta.put("declaringClass", declaringClass != null ? declaringClass : "");
+        targetMeta.put("module", moduleName);
+        targetMeta.put("package", packageFqn);
+        targetMeta.put("sourceFile", sourceFile != null ? sourceFile : "");
+        targetMeta.put("startLine", startLine);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalTouchPoints", totalPts);
+        summary.put("moduleCount", moduleList.size());
+        summary.put("classCount", distinctClasses.size());
+        summary.put("methodCount", distinctMethods.size());
+        summary.put("byKind", byKind);
+
+        Map<String, Object> sankey = new LinkedHashMap<>();
+        sankey.put("nodes", sankeyNodes);
+        sankey.put("links", sankeyLinks);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("target", targetMeta);
+        response.put("summary", summary);
+        response.put("sankey", sankey);
+        response.put("touchPoints", touchPoints);
+        response.put("modules", moduleList);
+
+        ctx.json(response);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -4757,7 +5347,8 @@ public class CodeLensServer {
                 break;
             }
             case "archetype-governance": {
-                ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                String archRules = activeConfig != null ? activeConfig.getArchetypeRulesJson() : null;
+                ReportService.ArchetypeGovernanceReportData data = reportService.buildArchetypeGovernanceData(types, methods, fields, rels, archRules);
                 cacheReport("archetype-governance", data,
                     reportService.renderArchetypeGovernanceHtml(data),
                     reportService.renderArchetypeGovernanceMarkdown(data),
@@ -4777,7 +5368,8 @@ public class CodeLensServer {
                 ReportService.ChangeRiskReportData risk = reportService.buildChangeRiskData(types, methods, fields, rels, gitMetas);
                 ReportService.DeadCodeReportData dead = reportService.buildDeadCodeData(types, methods, fields, rels);
                 ReportService.CircularDependencyReportData cycles = reportService.buildCircularDependencyData(types, methods, rels);
-                ReportService.ArchetypeGovernanceReportData gov = reportService.buildArchetypeGovernanceData(types, methods, fields, rels);
+                String archRules = activeConfig != null ? activeConfig.getArchetypeRulesJson() : null;
+                ReportService.ArchetypeGovernanceReportData gov = reportService.buildArchetypeGovernanceData(types, methods, fields, rels, archRules);
                 ReportService.TechnicalDebtReportData debt = reportService.buildTechnicalDebtData(types, methods, fields, rels);
 
                 ReportService.ExecutiveSummaryReportData data = reportService.buildExecutiveSummaryData(
@@ -4927,6 +5519,7 @@ public class CodeLensServer {
         status.put("phase", reportsPrecomputePhase.get());
         status.put("percentage", reportsPrecomputePercentage.get());
         status.put("cachedCount", cachedReportsJson.size());
+        status.put("totalReports", TOTAL_INTELLIGENCE_REPORTS);
         status.put("cachedKeys", cachedReportsJson.keySet());
         status.put("lastGeneratedTimestamp", lastGen);
         status.put("lastGenerationDurationMs", reportsLastGenerationDurationMs.get());
@@ -4993,6 +5586,7 @@ public class CodeLensServer {
             if (updated != null) {
                 CallGraphAnalyzer.setCustomPojoPatterns(updated.getPojoCustomPatterns());
                 invalidateGraphCache();
+                triggerReportsPrecomputeAsync(null, true);
             }
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);

@@ -1730,6 +1730,7 @@ public class CallGraphAnalyzer {
     // ── Value objects ─────────────────────────────────────────────────────────
 
     /** A node in the rendered graph. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public static class GraphNode {
         public String id;
         public String label;
@@ -1756,6 +1757,7 @@ public class CallGraphAnalyzer {
     }
 
     /** A directed edge in the rendered graph. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public static class GraphEdge {
         public String source;
         public String target;

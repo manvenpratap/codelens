@@ -426,6 +426,11 @@
           <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
           <span class="tab-label">Source</span>
         </button>
+        <!-- Blast Radius tab -->
+        <button class="tab level-pill" role="tab" id="tab-impact" data-tab="impact" draggable="true" aria-selected="false" aria-controls="impact-view" title="Blast Radius &amp; Touch Points Explorer: Module ➔ Class ➔ Method ➔ Line flow (6)">
+          <span class="tab-icon"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          <span class="tab-label">Blast Radius</span>
+        </button>
       </div>
     </div>
 
@@ -1633,7 +1638,203 @@
       </div>
     </section><!-- /#source-view -->
 
-    <!-- ── Tab panel 6: Reports & Export Hub ────────────────────────────────── -->
+    <!-- ── Tab panel 6: Blast Radius & Touch Points Explorer ──────────────── -->
+    <section
+      class="tab-content"
+      id="impact-view"
+      role="tabpanel"
+      aria-labelledby="tab-impact"
+      tabindex="0"
+    >
+      <div class="impact-workspace-shell">
+        <!-- Impact Header Toolbar -->
+        <div class="impact-toolbar">
+          <div class="impact-toolbar-left">
+            <div class="impact-title-group">
+              <span class="impact-header-badge">🎯 BLAST RADIUS &amp; TOUCH POINTS</span>
+              <div class="impact-target-chip" id="impact-target-chip" title="Active target entity">
+                <span class="impact-target-kind-pill kind-class" id="impact-target-kind">CLASS</span>
+                <span class="impact-target-name" id="impact-target-name">Select an entity to explore</span>
+                <span class="impact-target-meta" id="impact-target-meta"></span>
+              </div>
+            </div>
+          </div>
+          <div class="impact-toolbar-right">
+            <div class="impact-search-wrapper">
+              <svg class="svg-icon icon-muted icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="impact-quick-search" class="impact-search-input" placeholder="Switch entity (Field, Class, Method, Module)..." autocomplete="off" />
+              <div class="impact-search-results dropdown-menu" id="impact-search-results" style="display:none;"></div>
+            </div>
+            <button class="impact-action-btn" id="impact-refresh-btn" title="Refresh Blast Radius Analysis">
+              <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Impact KPI Summary Bar -->
+        <div class="impact-kpi-bar" id="impact-kpi-bar">
+          <div class="impact-kpi-card" id="kpi-card-touchpoints">
+            <div class="impact-kpi-label">TOTAL TOUCH POINTS</div>
+            <div class="impact-kpi-val text-cyan" id="impact-kpi-total">0</div>
+            <div class="impact-kpi-sub">Direct &amp; transitive calls/accesses</div>
+          </div>
+          <div class="impact-kpi-card" id="kpi-card-modules">
+            <div class="impact-kpi-label">INBOUND MODULES</div>
+            <div class="impact-kpi-val text-purple" id="impact-kpi-modules">0</div>
+            <div class="impact-kpi-sub">Cross-module blast radius</div>
+          </div>
+          <div class="impact-kpi-card" id="kpi-card-classes">
+            <div class="impact-kpi-label">CALLING CLASSES</div>
+            <div class="impact-kpi-val text-amber" id="impact-kpi-classes">0</div>
+            <div class="impact-kpi-sub">Classes consuming target</div>
+          </div>
+          <div class="impact-kpi-card" id="kpi-card-methods">
+            <div class="impact-kpi-label">CALLING METHODS</div>
+            <div class="impact-kpi-val text-emerald" id="impact-kpi-methods">0</div>
+            <div class="impact-kpi-sub">Execution call sites</div>
+          </div>
+          <div class="impact-kpi-card impact-kpi-kinds-card">
+            <div class="impact-kpi-label">INTERACTION BREAKDOWN</div>
+            <div class="impact-kpi-kinds-list" id="impact-kpi-kinds-list">
+              <span class="impact-kind-tag">No touch points</span>
+            </div>
+            <div class="impact-kpi-sub">By relationship kind</div>
+          </div>
+        </div>
+
+        <!-- Scrollable Flow & Breakdown Body -->
+        <div class="impact-scroll-body" id="impact-scroll-body">
+          <!-- Flow Diagram Card -->
+          <div class="impact-card impact-sankey-card">
+            <div class="impact-card-header">
+              <div class="impact-card-title-group">
+                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <span class="impact-card-title">Hierarchical Flow &amp; Blast Radius (Sankey Diagram)</span>
+                <span class="impact-card-hint">Ribbon thickness reflects touch point volume. Click any node to filter touch points below.</span>
+              </div>
+              <div class="impact-card-actions">
+                <span class="impact-fanin-badge" id="impact-fanin-badge" style="display:none;" title="Common utility / high fan-in function">
+                  <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <span id="impact-fanin-text">High Fan-In</span>
+                </span>
+                <div class="sankey-depth-controls" id="sankey-depth-controls" role="group" aria-label="Sankey Granularity">
+                  <button type="button" class="sankey-depth-btn active" data-depth="3" title="Show Target, Modules, Classes and Methods">All Stages</button>
+                  <button type="button" class="sankey-depth-btn" data-depth="2" title="Show Target, Modules and Classes (Hide individual methods)">Modules &amp; Classes</button>
+                  <button type="button" class="sankey-depth-btn" data-depth="1" title="Show Target and Modules only">Modules Only</button>
+                </div>
+                <button class="impact-btn-reset-filter" id="impact-btn-reset-filter" style="display:none;">
+                  <svg class="svg-icon icon-muted icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <span>Reset Filter</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Flow Stages Column Header Guide -->
+            <div class="sankey-columns-guide" id="sankey-columns-guide">
+              <div class="sankey-col-header col-target" id="sankey-col-target">
+                <span class="sankey-col-dot dot-cyan"></span>
+                <span>TARGET ENTITY</span>
+              </div>
+              <div class="sankey-col-arrow" id="sankey-arr-modules">➔</div>
+              <div class="sankey-col-header col-modules" id="sankey-col-modules">
+                <span class="sankey-col-dot dot-purple"></span>
+                <span>INBOUND MODULES</span>
+              </div>
+              <div class="sankey-col-arrow" id="sankey-arr-classes">➔</div>
+              <div class="sankey-col-header col-classes" id="sankey-col-classes">
+                <span class="sankey-col-dot dot-amber"></span>
+                <span>CALLING CLASSES</span>
+              </div>
+              <div class="sankey-col-arrow" id="sankey-arr-methods">➔</div>
+              <div class="sankey-col-header col-methods" id="sankey-col-methods">
+                <span class="sankey-col-dot dot-emerald"></span>
+                <span>CALLING METHODS</span>
+              </div>
+            </div>
+
+            <!-- Sankey Visualization Container -->
+            <div class="impact-sankey-container" id="impact-sankey-container">
+              <svg id="impact-sankey-svg" class="impact-sankey-svg" width="100%" height="340" aria-label="Sankey flow diagram"></svg>
+              <div id="impact-sankey-tooltip" class="sankey-tooltip" style="display:none;"></div>
+            </div>
+          </div>
+
+          <!-- Touch Points Drill-Down Table Card -->
+          <div class="impact-card impact-table-card">
+            <div class="impact-card-header">
+              <div class="impact-card-title-group">
+                <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span class="impact-card-title">Touch Points &amp; Code Jump Directory</span>
+                <span class="impact-filter-chip" id="impact-active-filter-chip" style="display:none;">
+                  <span id="impact-active-filter-text">All Touch Points</span>
+                  <button id="impact-active-filter-clear" title="Clear filter">✕</button>
+                </span>
+              </div>
+              <div class="impact-table-controls">
+                <div class="impact-filter-pills" id="impact-kind-filter-pills">
+                  <button class="impact-pill-btn active" data-kind="ALL">All (<span id="pill-count-all">0</span>)</button>
+                  <button class="impact-pill-btn" data-kind="CALLS">Calls (<span id="pill-count-calls">0</span>)</button>
+                  <button class="impact-pill-btn" data-kind="READS_FIELD">Field Reads (<span id="pill-count-reads">0</span>)</button>
+                  <button class="impact-pill-btn" data-kind="WRITES_FIELD">Field Writes (<span id="pill-count-writes">0</span>)</button>
+                  <button class="impact-pill-btn" data-kind="EXTENDS">Inheritance (<span id="pill-count-extends">0</span>)</button>
+                </div>
+                <input type="text" id="impact-table-filter" class="impact-table-search" placeholder="Filter touch points..." />
+              </div>
+            </div>
+
+            <div class="impact-table-container">
+              <table class="impact-table" id="impact-touchpoints-table">
+                <thead>
+                  <tr>
+                    <th style="width:100px;">SOURCE MODULE</th>
+                    <th style="width:140px;">SOURCE CLASS</th>
+                    <th>SOURCE METHOD / SITE</th>
+                    <th style="width:115px;">INTERACTION</th>
+                    <th style="width:160px;">TARGET ENTITY</th>
+                    <th style="width:105px; text-align:center;">LINE OF CODE</th>
+                  </tr>
+                </thead>
+                <tbody id="impact-touchpoints-tbody">
+                  <!-- Rows dynamically populated -->
+                </tbody>
+              </table>
+              <div class="impact-table-empty" id="impact-table-empty" style="display:none;">
+                <span>No touch points match the current filter.</span>
+              </div>
+              <div class="impact-table-footer" id="impact-table-footer" style="display:none;">
+                <span class="impact-table-footer-text" id="impact-table-footer-text">Showing 1–50 of 696 touch points</span>
+                <div class="impact-table-footer-actions">
+                  <button type="button" class="btn-ghost btn-sm" id="btn-impact-show-more">Show 50 More</button>
+                  <button type="button" class="btn-ghost btn-sm" id="btn-impact-show-all">Show All</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Initial / Empty State -->
+        <div class="impact-empty-state" id="impact-empty-state">
+          <div class="impact-empty-icon">
+            <svg class="svg-icon icon-rose icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          </div>
+          <div class="impact-empty-title">Blast Radius &amp; Touch Points Explorer</div>
+          <div class="impact-empty-desc">
+            Visualize the full cascade of dependencies from any Field, Method, Class, or Module down to the exact line of code:
+            <br/>
+            <strong>Target Entity ➔ Inbound Modules ➔ Calling Classes ➔ Calling Methods ➔ Exact Source Line</strong>
+          </div>
+          <div class="impact-empty-actions">
+            <span class="impact-empty-hint">Click "🎯 Blast Radius Flow" on any Inspector panel, or pick a sample entity:</span>
+            <div class="impact-sample-chips" id="impact-sample-chips">
+              <!-- Dynamically populated sample chips from scanned codebase -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section><!-- /#impact-view -->
+
+    <!-- ── Tab panel 7: Reports & Export Hub ────────────────────────────────── -->
     <section
       class="tab-content"
       id="reports-view"
@@ -2055,7 +2256,7 @@
             <button class="guide-chip" data-jump-tab="rules" title="Switch to Code Review Auditor (Key 3)"><svg class="svg-icon icon-purple icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Logic Auditor <kbd>3</kbd></button>
             <button class="guide-chip" data-jump-tab="git" title="Switch to Git Analytics &amp; Churn (Key 4)"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg> Git Churn <kbd>4</kbd></button>
             <button class="guide-chip" data-jump-tab="editor" title="Switch to Monaco Code Editor (Key 5)"><svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Monaco Editor <kbd>5</kbd></button>
-            <button class="guide-chip" data-jump-tab="reports" title="Open Reports Hub (Key R)"><svg class="svg-icon icon-mint icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Reports Hub (13 Reports) <kbd>R</kbd></button>
+            <button class="guide-chip" data-jump-tab="reports" title="Open Reports Hub (Key R)"><svg class="svg-icon icon-mint icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Reports Hub (14 Reports) <kbd>R</kbd></button>
             <button class="guide-chip" data-jump-action="studio" title="Open 3D Macro Studio (Key M)"><svg class="svg-icon icon-pink icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/></svg> 3D Macro Studio <kbd>M</kbd></button>
             <button class="guide-chip" data-jump-action="tasks" title="Open Background Process Manager"><svg class="svg-icon icon-slate icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Process Manager</button>
           </div>
@@ -2129,7 +2330,7 @@
                 <h4>Reports Hub (<kbd>R</kbd>) &amp; 3D Studio (<kbd>M</kbd>)</h4>
                 <span class="help-card-badge">Hubs &amp; Engines</span>
               </div>
-              <p>13 Intelligence Reports with 57 pre-rendered artifacts, WebGL 3D Software City &amp; Force Galaxy, and Background Process Manager monitoring 11 subsystem engines with live telemetry.</p>
+              <p>14 Intelligence Reports with pre-rendered artifacts, WebGL 3D Software City &amp; Force Galaxy, and Background Process Manager monitoring 13 subsystem engines with live telemetry.</p>
               <div class="guide-btn-group">
                 <button class="guide-jump-btn" data-jump-tab="reports">Reports Hub &rarr;</button>
                 <button class="guide-jump-btn" data-jump-action="studio">3D Studio &rarr;</button>
@@ -2466,7 +2667,7 @@
             <div class="sc-row" data-shortcut-key="3"><kbd>3</kbd> <span>Switch to <strong>Code Review &amp; Logic Auditor</strong></span></div>
             <div class="sc-row" data-shortcut-key="4"><kbd>4</kbd> <span>Switch to <strong>Git Analytics &amp; Churn</strong></span></div>
             <div class="sc-row" data-shortcut-key="5"><kbd>5</kbd> <span>Switch to <strong>Integrated Monaco Code Editor</strong></span></div>
-            <div class="sc-row" data-shortcut-key="r"><kbd>R</kbd> <span>Toggle <strong>Reports Hub</strong> (13 categories &amp; 57 exports)</span></div>
+            <div class="sc-row" data-shortcut-key="r"><kbd>R</kbd> <span>Toggle <strong>Reports Hub</strong> (14 categories &amp; live exports)</span></div>
             <div class="sc-row" data-shortcut-key="m"><kbd>M</kbd> <span>Toggle <strong>3D Macro Studio</strong> (Software City &amp; Galaxy)</span></div>
             <div class="sc-row" data-shortcut-key="?"><kbd>?</kbd> <span>Open / Close Feature &amp; User Guide modal</span></div>
           </div>
@@ -2518,18 +2719,18 @@
             <div class="help-card">
               <h4 style="display:flex; align-items:center; gap:6px;">
                 <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                11 Background Subsystem Engines
+                13 Background Subsystem Engines
               </h4>
-              <p>Dedicated Process Manager with live telemetry monitoring AST Ingestion, Delta Change Watcher, JGraphT Topology, Sunflower Layout, Lucene Indexer, Git Churn, DB Pool Sentinel, Heap Watchdog, and Report Precomputer.</p>
+              <p>Dedicated Process Manager with live telemetry monitoring AST Ingestion, Delta Change Watcher, JGraphT Topology, Sunflower Layout, Lucene Indexer, Git Churn, DB Pool Sentinel, Heap Watchdog, DB Compaction, SSE Telemetry, and Report Precomputer.</p>
               <button class="guide-jump-btn" data-jump-action="tasks">Open Process Manager &rarr;</button>
             </div>
 
             <div class="help-card">
               <h4 style="display:flex; align-items:center; gap:6px;">
                 <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                13 Intelligence Reports (57 Artifacts)
+                14 Intelligence Reports (All Artifacts)
               </h4>
-              <p>Sequential precomputation pipeline covering Architecture &amp; Coupling, Change Risk, Dead Code, Circular Dependencies, Archetype Governance, SQALE Tech Debt, Executive Scorecard, Code Review, Metrics, API Surface, Database Flow, Concurrency, and HTML Snapshots.</p>
+              <p>Sequential precomputation pipeline covering Architecture &amp; Coupling, Change Risk, Dead Code, Circular Dependencies, Archetype Governance, SQALE Tech Debt, Executive Scorecard, Code Review, Metrics, API Surface, Database Flow, Concurrency, Module Coupling, and HTML Snapshots.</p>
               <button class="guide-jump-btn" data-jump-tab="reports">Open Reports Hub &rarr;</button>
             </div>
 
@@ -2869,7 +3070,11 @@
               Classify methods &amp; classes by pattern tokens (supports <code>{MODULE}</code> dynamic token e.g. <code>{MODULE}ET</code> for <code>AMET</code> in <code>com.tcs.bancs.AM</code>, <code>*Controller</code>, <code>*Repository</code>).
             </p>
           </div>
-          <div class="archetype-header-actions">
+          <div class="archetype-header-actions" style="display:flex; align-items:center; gap:8px;">
+            <button id="btn-sync-archetypes-reports" class="btn-ghost" style="font-size:11px; padding:5px 12px;" title="Apply archetype and POJO changes across Knowledge Base and regenerate reports in background">
+              <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Sync KB &amp; Reports
+            </button>
             <button id="btn-add-archetype-rule" class="btn-primary" style="font-size:11px; padding:5px 12px;" title="Add a custom pattern classification rule">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add Archetype

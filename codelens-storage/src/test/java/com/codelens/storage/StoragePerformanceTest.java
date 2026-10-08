@@ -593,4 +593,76 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testFindIncomingRelationshipsForEntity() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-blast-test-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            // Seed a package, type, method, and field
+            List<CodePackage> pkgs = List.of(new CodePackage("com.example.service"));
+            dao.batchInsertPackagesFast(pkgs);
+
+            CodeType type = new CodeType();
+            type.setId("com.example.service.OrderService");
+            type.setFqn("com.example.service.OrderService");
+            type.setSimpleName("OrderService");
+            type.setPackageFqn("com.example.service");
+            type.setKind("CLASS");
+            type.setSourceFile("/src/OrderService.java");
+            type.setStartLine(10);
+            dao.batchInsertTypesFast(List.of(type));
+
+            CodeMethod method = new CodeMethod();
+            method.setId("com.example.service.OrderService.processOrder()");
+            method.setFqn("com.example.service.OrderService.processOrder()");
+            method.setSimpleName("processOrder");
+            method.setDeclaringTypeFqn("com.example.service.OrderService");
+            method.setStartLine(25);
+            dao.batchInsertMethodsFast(List.of(method));
+
+            CodeField field = new CodeField();
+            field.setId("com.example.service.OrderService.orderCount");
+            field.setFqn("com.example.service.OrderService.orderCount");
+            field.setSimpleName("orderCount");
+            field.setDeclaringTypeFqn("com.example.service.OrderService");
+            field.setStartLine(15);
+            dao.batchInsertFieldsFast(List.of(field));
+
+            // Seed incoming relationships
+            List<CodeRelationship> rels = new ArrayList<>();
+            // Caller to method
+            rels.add(new CodeRelationship("r1", "com.example.controller.OrderController.submit()", "com.example.service.OrderService.processOrder()", "CALLS", 42));
+            // Reader to field
+            rels.add(new CodeRelationship("r2", "com.example.service.OrderService.getStatus()", "com.example.service.OrderService.orderCount", "READS_FIELD", 88));
+            // Direct reference to class
+            rels.add(new CodeRelationship("r3", "com.example.controller.OrderController", "com.example.service.OrderService", "REFERENCES", 12));
+            dao.batchInsertRelationshipsFast(rels);
+
+            // 1. Method incoming query
+            List<CodeRelationship> methodRels = dao.findIncomingRelationshipsForEntity("com.example.service.OrderService.processOrder()", "METHOD");
+            assertEquals(1, methodRels.size(), "Incoming to method");
+            assertEquals("com.example.controller.OrderController.submit()", methodRels.get(0).getFromEntityFqn(), "Caller FQN");
+            assertEquals(42, methodRels.get(0).getSourceLine(), "Source line");
+
+            // 2. Field incoming query
+            List<CodeRelationship> fieldRels = dao.findIncomingRelationshipsForEntity("com.example.service.OrderService.orderCount", "FIELD");
+            assertEquals(1, fieldRels.size(), "Incoming to field");
+            assertEquals("READS_FIELD", fieldRels.get(0).getKind(), "Relationship kind");
+            assertEquals(88, fieldRels.get(0).getSourceLine(), "Source line");
+
+            // 3. Class incoming query (should find all 3: class reference, method call, field read)
+            List<CodeRelationship> classRels = dao.findIncomingRelationshipsForEntity("com.example.service.OrderService", "CLASS");
+            assertEquals(3, classRels.size(), "Incoming to class includes class, method, and field touch points");
+
+            // 4. Package incoming query
+            List<CodeRelationship> pkgRels = dao.findIncomingRelationshipsForEntity("com.example.service", "PACKAGE");
+            assertEquals(3, pkgRels.size(), "Incoming to package");
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

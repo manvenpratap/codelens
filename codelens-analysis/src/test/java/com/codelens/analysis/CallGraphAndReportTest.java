@@ -484,6 +484,26 @@ public class CallGraphAndReportTest {
         assertTrue(!html.contains("ClassWith</script>Tag"), "Raw unescaped </script> must not appear in JSON payload");
     }
 
+    public void testInteractiveHtmlSnapshotCompactGraphView() throws Exception {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+        CallGraphAnalyzer.GraphNode n1 = new CallGraphAnalyzer.GraphNode("com.example.A.foo()", "foo", "root", "METHOD", 10.0, 20.0);
+        n1.packageFqn = "com.example";
+        CallGraphAnalyzer.GraphNode n2 = new CallGraphAnalyzer.GraphNode("com.example.B.bar()", "bar", "callee", "METHOD", 30.0, 40.0);
+        n2.packageFqn = "com.example";
+        CallGraphAnalyzer.GraphEdge e1 = new CallGraphAnalyzer.GraphEdge("com.example.A.foo()", "com.example.B.bar()", "CALLS");
+        CallGraphAnalyzer.GraphView gv = new CallGraphAnalyzer.GraphView("GLOBAL", java.util.List.of(n1, n2), java.util.List.of(e1));
+
+        java.io.StringWriter sw = new java.io.StringWriter();
+        reportService.writeInteractiveHtmlSnapshot(sw, "CompactProject", gv, gv, null);
+        String html = sw.toString();
+
+        assertTrue(html.contains("\"n\":["), "Should use compact node array representation");
+        assertTrue(html.contains("\"e\":[[0,1]]"), "Should use compact indexed edge representation");
+        assertTrue(!html.contains("\"className\":null"), "Should not contain null fields");
+        assertTrue(!html.contains("codelens-archdata"), "Unused archdata script should be omitted");
+        assertTrue(html.contains(".legend-item { display: flex; align-items: center; gap: 7px; margin: 2px 0; padding: 4px 8px; border-radius: 6px; cursor: pointer;"), "Legend items must have pointer cursor");
+    }
+
     public void testExecutiveSummaryPrecomputedDataReuse() {
         ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
 
@@ -717,5 +737,54 @@ public class CallGraphAndReportTest {
         String csv = reportService.renderModuleCouplingCsv(data);
         assertTrue(csv.contains("MODULE,com.example.service"), "CSV should contain module row");
         assertTrue(csv.contains("PAIR,com.example.service,com.example.model"), "CSV should contain pair row");
+    }
+
+    public void testCustomArchetypeRulesAndPojoPatternsReflectionInReports() {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+
+        // 1. Test POJO pattern dynamically reflected
+        CallGraphAnalyzer.setCustomPojoPatterns("customGetter*, *BufferPojo");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.example.Order.customGetterId()"), "Custom pattern customGetter* should be recognized as POJO");
+        assertTrue(CallGraphAnalyzer.isPojoOrAccessor("com.example.Order.dataBufferPojo()"), "Custom pattern *BufferPojo should be recognized as POJO");
+
+        // 2. Test Dead Code report ignores methods matching custom POJO pattern
+        CodeType type = new CodeType();
+        type.setFqn("com.example.Order");
+        type.setSimpleName("Order");
+        type.setLineCount(50);
+
+        CodeMethod pojoMethod = new CodeMethod();
+        pojoMethod.setFqn("com.example.Order.customGetterId()");
+        pojoMethod.setSimpleName("customGetterId");
+        pojoMethod.setDeclaringTypeFqn("com.example.Order");
+        pojoMethod.setStartLine(10);
+        pojoMethod.setEndLine(15);
+
+        ReportService.DeadCodeReportData deadData = reportService.buildDeadCodeData(
+            List.of(type), List.of(pojoMethod), Collections.emptyList(), Collections.emptyList()
+        );
+        assertEquals(0, deadData.orphanedMethodsCount, "Method matching custom POJO pattern should not be flagged as dead code");
+
+        // 3. Test Custom Archetype Rule in Archetype Governance Report
+        CodeMethod fetchMethod = new CodeMethod();
+        fetchMethod.setFqn("com.example.order.FetchOrderDetails()");
+        fetchMethod.setSimpleName("FetchOrderDetails");
+        fetchMethod.setDeclaringTypeFqn("com.example.order.OrderService");
+
+        String archetypeJson = "[{\"id\":\"rule-fetch\",\"target\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"Fetch*\",\"label\":\"Custom Query\",\"badge\":\"FETCH\",\"category\":\"READ_ONLY\",\"enabled\":true}]";
+
+        ReportService.ArchetypeGovernanceReportData govData = reportService.buildArchetypeGovernanceData(
+            List.of(type), List.of(fetchMethod), Collections.emptyList(), Collections.emptyList(), archetypeJson
+        );
+
+        assertNotNull(govData, "ArchetypeGovernanceReportData should not be null");
+        boolean foundCustomArchetype = govData.archetypeBreakdown.stream().anyMatch(a -> a.archetype.contains("Custom Query"));
+        assertTrue(foundCustomArchetype, "Archetype breakdown should include configured custom archetype 'Custom Query'");
+
+        String md = reportService.renderArchetypeGovernanceMarkdown(govData);
+        assertTrue(md.contains("Custom Query"), "Markdown report should display custom archetype");
+
+        // Clean up custom pattern
+        CallGraphAnalyzer.setCustomPojoPatterns("");
     }
 }

@@ -383,6 +383,10 @@ public class BackgroundTaskOrchestrator {
         // 12. Heap Watchdog: Sentinel
         registerTask(new TaskDefinition("heap-watchdog", "Heap Auto-Recovery Watchdog", LoadTier.SENTINEL, 0,
                 MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
+
+        // 13. SSE Live Telemetry Broadcaster: Light
+        registerTask(new TaskDefinition("sse-broadcaster", "SSE Live Telemetry Broadcaster", LoadTier.LIGHT, 1,
+                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
     }
 
     /**

@@ -126,6 +126,7 @@ public class ApiTracker {
         // ── Critical Path & Persistent Classes ────────────────────────────────
         addRoute("GET",  "/api/analysis/persistent-classes", "Critical Path", "Identify persistent entities mapped to database tables", true);
         addRoute("GET",  "/api/analysis/critical-path",       "Critical Path", "Trace critical execution paths leading to persistent entities", false);
+        addRoute("GET",  "/api/analysis/blast-radius",       "Blast Radius & Touch Points", "Unified blast radius & hierarchical touch points flow (Target ➔ Modules ➔ Classes ➔ Methods ➔ Lines)", false);
 
         // ── Fields & Field Impact ─────────────────────────────────────────────
         addRoute("GET",  "/api/fields/{id}",        "Fields & Impact", "Field details, type, visibility, and modifiers", false);

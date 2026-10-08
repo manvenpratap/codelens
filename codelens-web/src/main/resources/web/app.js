@@ -199,6 +199,7 @@ const api = {
     });
   },
   type:               (id)        => api.get(`/types/${enc(id)}`),
+  types:              (kind)      => api.get('/types' + (kind ? `?kind=${enc(kind)}` : '')),
   method:             (id)        => api.get(`/methods/${enc(id)}`),
   callers:            async (id, d=4) => {
     const key = `graph:callers:${id}:${d}`;
@@ -263,6 +264,7 @@ const api = {
   },
   field:              (id)        => api.get(`/fields/${enc(id)}`),
   fieldImpact:        (id, d=1)   => api.get(`/fields/${enc(id)}/impact?depth=${d}`),
+  blastRadius:        (fqn, kind) => api.get(`/analysis/blast-radius?fqn=${encodeURIComponent(fqn)}${kind ? '&kind=' + encodeURIComponent(kind) : ''}`),
   review:             (body)      => api.post('/review', body),
   search:             (q, n=30, options={}) => api.get(`/search?q=${encodeURIComponent(q)}&limit=${n}`, options),
   scanStatus:         ()          => api.get('/scan/status'),
@@ -902,17 +904,18 @@ function getPhaseMetricsData(stageKey, s) {
 
     case 'REPORTS':
     default:
-      const reportsCount = s.reportsFound || stats.reports || 13;
+      const totalReportsTarget = s.reportsTotal || (typeof REPORTS_METADATA !== 'undefined' ? Object.keys(REPORTS_METADATA).length : 14);
+      const reportsCount = s.reportsFound || stats.reports || totalReportsTarget;
       return {
         pill: 'Phase 6',
         name: 'Codebase Intelligence Reports',
-        summary: stepInfo.summary || 'Precomputing all 13 architecture, risk, quality, and concurrency reports',
-        detailText: stepInfo.detail || 'Generated all 14 intelligence reports with offline standalone HTML snapshot.',
+        summary: stepInfo.summary || `Precomputing all ${totalReportsTarget} architecture, risk, quality, and concurrency reports`,
+        detailText: stepInfo.detail || `Generated all ${totalReportsTarget} intelligence reports with offline standalone HTML snapshot.`,
         duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'REPORTS' ? 'RUNNING' : 'PENDING')),
         cards: [
           {
-            val: metrics['Reports Ready'] || `${reportsCount} / 14`,
+            val: metrics['Reports Ready'] || `${reportsCount} / ${totalReportsTarget}`,
             lbl: 'Reports Generated',
             colorClass: 'icon-emerald-bg',
             iconColor: 'icon-emerald',
@@ -920,7 +923,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'
           },
           {
-            val: metrics['Active Report'] || (s.status === 'COMPLETE' ? 'All 14 Ready' : 'In Progress'),
+            val: metrics['Active Report'] || (s.status === 'COMPLETE' ? `All ${totalReportsTarget} Ready` : 'In Progress'),
             lbl: 'Active Report',
             colorClass: 'icon-cyan-bg',
             iconColor: 'icon-cyan',
@@ -928,7 +931,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
           },
           {
-            val: metrics['Artifacts'] || '14 Reports',
+            val: metrics['Artifacts'] || `${totalReportsTarget} Reports`,
             lbl: 'Audit Artifacts',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -1124,9 +1127,7 @@ function openProcessHub() {
 }
 
 function closeProcessHub() {
-  const modal = qs('#process-hub-modal');
-  if (!modal) return;
-  hideAccessibleModal(modal);
+  dismissModalAnimated(qs('#process-hub-modal'));
   if (processHubPollInterval) {
     clearInterval(processHubPollInterval);
     processHubPollInterval = null;
@@ -1156,6 +1157,10 @@ function getProcessIconSvg(id, type) {
     return `<svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
   } else if (id === 'reports-generator') {
     return `<svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
+  } else if (id === 'db-maintenance') {
+    return `<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`;
+  } else if (id === 'sse-broadcaster') {
+    return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.93 4.93a10 10 0 0 1 14.14 0"/><path d="M7.76 7.76a6 6 0 0 1 8.48 0"/><circle cx="12" cy="12" r="2"/></svg>`;
   }
   return `<svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 }
@@ -2506,6 +2511,8 @@ function renderTasksPanel(procs) {
       else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
       else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
       else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
+      else if (p.id === 'db-maintenance') rawDetail = 'H2 MVStore compaction & index optimizer';
+      else if (p.id === 'sse-broadcaster') rawDetail = 'Real-time telemetry event bus';
       else if (isQueued) {
         if (p.waitingFor && p.waitingFor.length > 0) {
           rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
@@ -8545,6 +8552,7 @@ function renderTypeDetail(data) {
 
   // Action buttons
   body.appendChild(actionRow([
+    { label: '🎯 Blast Radius Flow', title: 'Trace complete blast radius & touch points flow across modules, classes, and methods', action: () => openBlastRadiusExplorer(type.fqn, 'CLASS') },
     { label: '🎯 Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
     { label: '🌐 Hub Explorer', title: 'Explore cross-package callers & callees for this class', action: () => { switchTab('graph'); if (window.hubExplorerInstance) window.hubExplorerInstance.load(type.fqn, 'callers'); } },
     { label: 'View All Methods', badge: methods.length, title: `View all ${methods.length} methods in Knowledge Base`, action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
@@ -8604,6 +8612,10 @@ function renderKnowledgeBaseForType(data) {
           <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
           Critical Path
         </button>
+        <button class="kb-action-btn" id="kb-btn-blast" title="Trace Blast Radius & Touch Points Flow">
+          <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          Blast Radius
+        </button>
       </div>
     </div>
     <div class="kb-hero-meta-row">
@@ -8638,6 +8650,9 @@ function renderKnowledgeBaseForType(data) {
   });
   hero.querySelector('#kb-btn-critical-path')?.addEventListener('click', () => {
     loadAndVisualizeCriticalPath(type.fqn);
+  });
+  hero.querySelector('#kb-btn-blast')?.addEventListener('click', () => {
+    openBlastRadiusExplorer(type.fqn, 'CLASS');
   });
 
   view.appendChild(hero);
@@ -8933,6 +8948,11 @@ function renderMethodDetail(data) {
 
   body.appendChild(actionRow([
     {
+      label: '🎯 Blast Radius Flow',
+      title: 'Trace complete blast radius & touch points flow across modules, classes, and callers',
+      action: () => openBlastRadiusExplorer(method.fqn, 'METHOD')
+    },
+    {
       id: 'btn-inspect-callers',
       label: '⬆ Callers',
       badge: callerCount,
@@ -9030,6 +9050,7 @@ function renderFieldDetail(data) {
 
 
   body.appendChild(actionRow([
+    { label: '🎯 Blast Radius Flow', title: 'Trace complete readers, writers, classes, and modules touching this field down to the line of code', action: () => openBlastRadiusExplorer(field.fqn, 'FIELD') },
     { label: 'Impact (Direct)', title: 'Show direct readers, writers, and immediate propagators of this field', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
     { label: 'Propagation Chain', title: 'Trace multi-hop upstream triggers and calling entrypoints that modify this field', action: () => { switchTab('graph'); loadFieldPropagationChain(field.id); } },
   ]));
@@ -9051,6 +9072,11 @@ function renderPackageDetail(pkg) {
   ]));
 
   body.appendChild(actionRow([
+    {
+      label: '🎯 Blast Radius Flow',
+      title: 'Trace complete blast radius & touch points flow for this module',
+      action: () => openBlastRadiusExplorer(pkg.fqn || pkg.name, 'PACKAGE')
+    },
     {
       label: 'Open in Knowledge Base',
       title: 'Open this package in Knowledge Base',
@@ -9891,7 +9917,8 @@ function updateScanSummaryUI(s) {
   setNum('scan-stat-fields', s.fieldsFound || App.stats?.fields || 0);
   const effectiveScanModules = Math.max(s.modulesFound || 0, App.stats?.modules || 0, App.stats?.packages || 0, (App.packages && App.packages.length) || 0);
   setNum('scan-stat-modules', effectiveScanModules);
-  setNum('scan-stat-reports', s.reportsFound || App.stats?.reports || (s.status === 'COMPLETE' ? 13 : 0));
+  const totalReportsDefault = s.reportsTotal || (typeof REPORTS_METADATA !== 'undefined' ? Object.keys(REPORTS_METADATA).length : 14);
+  setNum('scan-stat-reports', s.reportsFound || App.stats?.reports || (s.status === 'COMPLETE' ? totalReportsDefault : 0));
 
   // Format Duration
   const durEl = qs('#scan-stat-duration');
@@ -10320,9 +10347,7 @@ function openHelpModal(triggerEl = null) {
 }
 
 function closeHelpModal() {
-  const modal = qs('#help-modal');
-  if (!modal) return;
-  hideAccessibleModal(modal);
+  dismissModalAnimated(qs('#help-modal'));
 }
 
 function bindKeyboard() {
@@ -10352,6 +10377,11 @@ function bindKeyboard() {
         closeHelpModal();
         return;
       }
+      const scopeModal = qs('#scope-manager-modal');
+      if (scopeModal && scopeModal.classList.contains('open')) {
+        closeScopeManager();
+        return;
+      }
       qs('#search-input').value = '';
       showExplorer();
       qs('#search-input').blur();
@@ -10364,7 +10394,7 @@ function bindKeyboard() {
     }
     // Shortcuts when not typing in inputs
     if (!['INPUT','TEXTAREA'].includes(e.target.tagName)) {
-      if (['1','2','3','4','5'].includes(e.key)) {
+      if (['1','2','3','4','5','6'].includes(e.key)) {
         const tabs = [...(qs('.tab-nav-segment') || qs('.main-views-switcher') || qs('.tab-bar'))?.querySelectorAll('.tab') || []];
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx] && tabs[idx].dataset.tab) {
@@ -11010,6 +11040,9 @@ async function init() {
   bindKeyboard();
   initScopeManagement();
 
+  // Initialize adjustable panel resizers early
+  initPanelResizers();
+
   // Eagerly initialize graph canvas instance
   ensureGraph();
 
@@ -11061,11 +11094,6 @@ async function init() {
 
   await loadStats();
   await loadPackageTree();
-
-
-
-  // Initialize adjustable panel resizers
-  initPanelResizers();
 
   // Initialize settings & themes
   initSettings();
@@ -12259,6 +12287,10 @@ async function openScopeManagerModal() {
   await renderScopeManagerList();
 }
 
+function closeScopeManager() {
+  dismissModalAnimated(qs('#scope-manager-modal'));
+}
+
 async function renderScopeManagerList(filterText = '') {
   const tbody = qs('#scope-items-tbody');
   const countBadge = qs('#scope-manager-count');
@@ -12401,9 +12433,9 @@ function initScopeManagement() {
   qs('#btn-manage-scope')?.addEventListener('click', () => openScopeManagerModal());
 
   // Scope Manager Modal controls
-  qs('#btn-scope-manager-close')?.addEventListener('click', () => hideAccessibleModal(qs('#scope-manager-modal')));
+  qs('#btn-scope-manager-close')?.addEventListener('click', () => closeScopeManager());
   qs('#scope-manager-modal')?.addEventListener('click', (e) => {
-    if (e.target === qs('#scope-manager-modal')) hideAccessibleModal(qs('#scope-manager-modal'));
+    if (e.target === qs('#scope-manager-modal')) closeScopeManager();
   });
   qs('#scope-search-input')?.addEventListener('input', (e) => {
     renderScopeManagerList(e.target.value);
@@ -12473,6 +12505,13 @@ function initScopeManagement() {
 
   // Initialize SSE Live Telemetry Bus
   initLiveEventBus();
+
+  // Initialize Blast Radius & Touch Points Explorer
+  try {
+    if (typeof initBlastRadiusExplorer === 'function') initBlastRadiusExplorer();
+  } catch (err) {
+    console.warn('initBlastRadiusExplorer failed:', err);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -12974,6 +13013,16 @@ function showAccessibleModal(modal, triggerEl = null) {
   }
 }
 
+function dismissModalAnimated(modalEl, onClosed) {
+  if (!modalEl || !modalEl.classList.contains('open')) return;
+  modalEl.classList.add('modal-closing');
+  setTimeout(() => {
+    modalEl.classList.remove('open', 'modal-closing');
+    modalEl.setAttribute('aria-hidden', 'true');
+    if (typeof onClosed === 'function') onClosed();
+  }, 140);
+}
+
 /** Close a modal cleanly without a11y focus collisions. */
 function hideAccessibleModal(modal) {
   if (!modal) return;
@@ -13093,6 +13142,7 @@ function initPanelResizers() {
   if (resizerLeft) {
     let startX = 0;
     let startW = 0;
+    let activePointerId = null;
 
     const onPointerMove = moveEvent => {
       const delta = moveEvent.clientX - startX;
@@ -13105,6 +13155,10 @@ function initPanelResizers() {
     const onPointerUp = upEvent => {
       document.body.classList.remove('resizing');
       resizerLeft.classList.remove('active');
+      if (activePointerId !== null && resizerLeft.releasePointerCapture) {
+        try { resizerLeft.releasePointerCapture(activePointerId); } catch (_) {}
+        activePointerId = null;
+      }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
@@ -13120,12 +13174,19 @@ function initPanelResizers() {
     };
 
     const startDrag = e => {
-      if (e.button !== 0 && e.buttons !== 1) return;
+      if (e.button !== 0) return;
       e.preventDefault();
       startX = e.clientX;
       startW = getLeftPanelWidth();
       document.body.classList.add('resizing');
       resizerLeft.classList.add('active');
+
+      if (e.pointerId !== undefined && resizerLeft.setPointerCapture) {
+        try {
+          resizerLeft.setPointerCapture(e.pointerId);
+          activePointerId = e.pointerId;
+        } catch (_) {}
+      }
 
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
@@ -13134,8 +13195,8 @@ function initPanelResizers() {
       window.addEventListener('mouseup', onPointerUp);
     };
 
-    resizerLeft.addEventListener('pointerdown', startDrag);
-    resizerLeft.addEventListener('mousedown', startDrag);
+    const downEvt = window.PointerEvent ? 'pointerdown' : 'mousedown';
+    resizerLeft.addEventListener(downEvt, startDrag);
     resizerLeft.addEventListener('dblclick', () => {
       setLeftPanelWidth(DEFAULT_LEFT_WIDTH, true);
     });
@@ -13145,6 +13206,7 @@ function initPanelResizers() {
   if (resizerRight) {
     let startX = 0;
     let startW = 0;
+    let activePointerId = null;
 
     const onPointerMove = moveEvent => {
       const delta = startX - moveEvent.clientX;
@@ -13157,6 +13219,10 @@ function initPanelResizers() {
     const onPointerUp = upEvent => {
       document.body.classList.remove('resizing');
       resizerRight.classList.remove('active');
+      if (activePointerId !== null && resizerRight.releasePointerCapture) {
+        try { resizerRight.releasePointerCapture(activePointerId); } catch (_) {}
+        activePointerId = null;
+      }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
@@ -13172,12 +13238,19 @@ function initPanelResizers() {
     };
 
     const startDrag = e => {
-      if (e.button !== 0 && e.buttons !== 1) return;
+      if (e.button !== 0) return;
       e.preventDefault();
       startX = e.clientX;
       startW = getRightPanelWidth();
       document.body.classList.add('resizing');
       resizerRight.classList.add('active');
+
+      if (e.pointerId !== undefined && resizerRight.setPointerCapture) {
+        try {
+          resizerRight.setPointerCapture(e.pointerId);
+          activePointerId = e.pointerId;
+        } catch (_) {}
+      }
 
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
@@ -13186,8 +13259,8 @@ function initPanelResizers() {
       window.addEventListener('mouseup', onPointerUp);
     };
 
-    resizerRight.addEventListener('pointerdown', startDrag);
-    resizerRight.addEventListener('mousedown', startDrag);
+    const downEvt = window.PointerEvent ? 'pointerdown' : 'mousedown';
+    resizerRight.addEventListener(downEvt, startDrag);
     resizerRight.addEventListener('dblclick', () => {
       setRightPanelWidth(DEFAULT_RIGHT_WIDTH, true);
     });
@@ -14041,6 +14114,7 @@ function renderArchetypeRulesList() {
       const id = chk.dataset.id;
       window.CodeLensClassifier.updateRule(id, { enabled: chk.checked });
       renderArchetypeRulesList();
+      syncArchetypesAndPojosAcrossApp({ showNotice: false });
     };
   });
 
@@ -14112,6 +14186,7 @@ function renderArchetypeRulesList() {
       closeArchetypeForm();
       window.CodeLensClassifier.deleteRule(id);
       renderArchetypeRulesList();
+      syncArchetypesAndPojosAcrossApp({ showNotice: false });
       if (typeof toast !== 'undefined' && toast.info) {
         toast.info(`Deleted archetype "${label}"`);
       } else {
@@ -14308,9 +14383,7 @@ function openSettings(e) {
 }
 
 function closeSettings() {
-  const modal = qs('#settings-modal');
-  if (!modal) return;
-  hideAccessibleModal(modal);
+  dismissModalAnimated(qs('#settings-modal'));
 }
 
 function resetSettings() {
@@ -14470,6 +14543,7 @@ function initSettings() {
     pojoStdChk.addEventListener('change', () => {
       if (window.CodeLensClassifier) {
         window.CodeLensClassifier.setPojoConfig({ includeStandardAccessors: pojoStdChk.checked });
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
       }
     });
   }
@@ -14480,6 +14554,10 @@ function initSettings() {
       if (window.CodeLensClassifier) {
         const patterns = pojoPatternsArea.value.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
         window.CodeLensClassifier.setPojoConfig({ customPatterns: patterns, patterns: patterns.join(', ') });
+        clearTimeout(pojoPatternsArea._syncTimer);
+        pojoPatternsArea._syncTimer = setTimeout(() => {
+          syncArchetypesAndPojosAcrossApp({ showNotice: false });
+        }, 600);
       }
     });
   }
@@ -14498,6 +14576,7 @@ function initSettings() {
           const patterns = raw.map(s => s.trim()).filter(Boolean);
           pojoPatternsArea.value = patterns.join(', ');
         }
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         showBanner('POJO detection criteria reset to default');
       }
     });
@@ -14512,6 +14591,7 @@ function initSettings() {
         closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('bancs');
         renderArchetypeRulesList();
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         showBanner('Loaded Banking / BaNCS transaction archetypes');
       }
     });
@@ -14524,6 +14604,7 @@ function initSettings() {
         closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('spring');
         renderArchetypeRulesList();
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         showBanner('Loaded Spring REST / MVC archetypes');
       }
     });
@@ -14536,6 +14617,7 @@ function initSettings() {
         closeArchetypeForm();
         window.CodeLensClassifier.loadPreset('ddd');
         renderArchetypeRulesList();
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         showBanner('Loaded Domain-Driven Design / Clean Architecture archetypes');
       }
     });
@@ -14548,6 +14630,7 @@ function initSettings() {
         closeArchetypeForm();
         window.CodeLensClassifier.resetRules();
         renderArchetypeRulesList();
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         showBanner('Reset archetype rules to defaults');
       }
     });
@@ -14687,12 +14770,20 @@ function initSettings() {
           }
         }
 
+        syncArchetypesAndPojosAcrossApp({ showNotice: false });
         if (typeof toast !== 'undefined' && toast.success) {
           toast.success(`Saved archetype "${label}"`);
         } else {
           showBanner(`Saved archetype "${label}"`);
         }
       }
+    });
+  }
+
+  const btnSyncArchReports = qs('#btn-sync-archetypes-reports');
+  if (btnSyncArchReports) {
+    btnSyncArchReports.addEventListener('click', () => {
+      syncArchetypesAndPojosAcrossApp({ showNotice: true });
     });
   }
 
@@ -14716,6 +14807,57 @@ function initSettings() {
 
   // Sync settings with server on startup
   syncSettingsFromServer();
+}
+
+/**
+ * Seamlessly reflects archetype rule or POJO pattern changes across the Knowledge Base,
+ * visual studios, and triggers background reports regeneration in BackgroundTaskOrchestrator.
+ */
+async function syncArchetypesAndPojosAcrossApp(options = {}) {
+  const { showNotice = true } = options;
+
+  // 1. Instantly refresh the active Knowledge Base view in-memory (0ms)
+  try {
+    if (App.selected && App.selected.kind === 'package' && App.selected.id) {
+      loadKnowledgeBase(App.selected.id);
+    } else if (App.selected && App.selected.kind === 'type' && App.selected.data) {
+      renderKnowledgeBaseForType(App.selected.data);
+    } else if (App.activeTab === 'knowledge') {
+      const firstPkg = (App.packages && App.packages[0] && App.packages[0].fqn) || null;
+      if (firstPkg) loadKnowledgeBase(firstPkg);
+    }
+  } catch (e) {
+    console.debug('KB view refresh caught:', e);
+  }
+
+  // 2. Invalidate client-side report caches and reload active report if open
+  if (window.ReportsHub) {
+    if (window.ReportsHub.cache) {
+      window.ReportsHub.cache = {};
+    }
+    if ((App.activeTab === 'review' || App.activeTab === 'reports') && typeof window.ReportsHub.loadActiveReport === 'function') {
+      window.ReportsHub.loadActiveReport();
+    }
+  }
+
+  // 3. Re-apply 2D graph filters if graph is active
+  if (App.graph && typeof App.graph.reapplyFilters === 'function') {
+    App.graph.reapplyFilters();
+  }
+
+  // 4. Save deployment config to server (triggers background reports-generator task in BackgroundTaskOrchestrator)
+  try {
+    await saveDeploymentConfToServer();
+    if (showNotice) {
+      if (typeof toast !== 'undefined' && toast.success) {
+        toast.success('Archetypes & POJOs synchronized! Knowledge Base updated & reports regenerating in background.');
+      } else {
+        showBanner('Archetypes & POJOs synced to Knowledge Base & background reports generator.');
+      }
+    }
+  } catch (err) {
+    console.warn('Auto-sync to server config failed:', err);
+  }
 }
 
 // ── Deployment Configuration (.conf) Management ──────────────────────────────
@@ -18395,7 +18537,9 @@ window.ExportHub = {
     switchTab('reports');
     ReportsHub.activate(type, format);
   },
-  close() {}
+  close(modal = qs('#export-modal')) {
+    dismissModalAnimated(modal);
+  }
 };
 
 function initReportsHub() {
@@ -18866,7 +19010,792 @@ function initCriticalPathUI() {
   });
 }
 
+/* ═════════════════════════════════════════════════════════════════════════════
+   🎯 BLAST RADIUS & TOUCH POINTS EXPLORER CONTROLLER & SANKEY RENDERER
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+let currentBlastRadiusData = null;
+let activeBlastRadiusNodeFilter = null;
+let activeBlastRadiusKindFilter = 'ALL';
+let blastRadiusSearchQuery = '';
+let blastRadiusDepth = 3; // 1: Modules Only, 2: Modules & Classes, 3: All Stages
+let blastRadiusVisibleCount = 50;
+const BLAST_RADIUS_PAGE_STEP = 50;
+
+async function openBlastRadiusExplorer(fqn, kind = 'AUTO') {
+  if (!fqn) return;
+  switchTab('impact');
+
+  const emptyState = qs('#impact-empty-state');
+  const scrollBody = qs('#impact-scroll-body');
+  const targetName = qs('#impact-target-name');
+  const targetKind = qs('#impact-target-kind');
+  const targetMeta = qs('#impact-target-meta');
+
+  if (targetName) targetName.textContent = `Analyzing ${fqn}...`;
+  if (targetKind) {
+    targetKind.className = `impact-target-kind-pill kind-${(kind || 'class').toLowerCase()}`;
+    targetKind.textContent = (kind || 'ENTITY').toUpperCase();
+  }
+  if (targetMeta) targetMeta.textContent = '';
+
+  const refreshBtn = qs('#impact-refresh-btn');
+  if (refreshBtn) refreshBtn.classList.add('loading');
+  try {
+    const data = await api.blastRadius(fqn, kind);
+    currentBlastRadiusData = data;
+    activeBlastRadiusNodeFilter = null;
+    activeBlastRadiusKindFilter = 'ALL';
+    blastRadiusSearchQuery = '';
+    blastRadiusVisibleCount = 50;
+
+    renderBlastRadiusView(data);
+  } catch (err) {
+    console.error('Failed to load blast radius:', err);
+    if (typeof toast !== 'undefined') toast.error(`Failed to load blast radius: ${err.message}`);
+    else showBanner(`Failed to load blast radius: ${err.message}`);
+    if (targetName) targetName.textContent = `Error: ${err.message}`;
+  } finally {
+    if (refreshBtn) refreshBtn.classList.remove('loading');
+  }
+}
+
+function renderBlastRadiusView(data) {
+  const emptyState = qs('#impact-empty-state');
+  const scrollBody = qs('#impact-scroll-body');
+  if (emptyState) emptyState.style.display = 'none';
+  if (scrollBody) scrollBody.style.display = 'flex';
+
+  const { target, summary, sankey, touchPoints, modules } = data;
+
+  // 1. Update Target Chip
+  const targetName = qs('#impact-target-name');
+  const targetKind = qs('#impact-target-kind');
+  const targetMeta = qs('#impact-target-meta');
+  if (targetName) targetName.textContent = target.simpleName || target.fqn;
+  if (targetKind) {
+    const k = (target.kind || 'CLASS').toLowerCase();
+    targetKind.className = `impact-target-kind-pill kind-${k}`;
+    targetKind.textContent = (target.kind || 'CLASS').toUpperCase();
+  }
+  if (targetMeta) {
+    targetMeta.textContent = `${target.module ? target.module + ' • ' : ''}${target.sourceFile ? target.sourceFile.split('/').pop() + (target.startLine ? ':' + target.startLine : '') : target.package || ''}`;
+  }
+
+  // 2. Update KPI Stats Bar
+  const kpiTotal = qs('#impact-kpi-total');
+  const kpiModules = qs('#impact-kpi-modules');
+  const kpiClasses = qs('#impact-kpi-classes');
+  const kpiMethods = qs('#impact-kpi-methods');
+  const kpiKindsList = qs('#impact-kpi-kinds-list');
+
+  if (kpiTotal) kpiTotal.textContent = (summary.totalTouchPoints || 0).toLocaleString();
+  if (kpiModules) kpiModules.textContent = (summary.moduleCount || 0).toLocaleString();
+  if (kpiClasses) kpiClasses.textContent = (summary.classCount || 0).toLocaleString();
+  if (kpiMethods) kpiMethods.textContent = (summary.methodCount || 0).toLocaleString();
+
+  if (kpiKindsList) {
+    kpiKindsList.innerHTML = '';
+    if (summary.byKind && Object.keys(summary.byKind).length > 0) {
+      for (const [k, count] of Object.entries(summary.byKind)) {
+        const tag = createElement('span', { class: 'impact-kind-tag' });
+        tag.textContent = `${k}: ${count}`;
+        kpiKindsList.appendChild(tag);
+      }
+    } else {
+      kpiKindsList.innerHTML = '<span class="impact-kind-tag" style="opacity:0.6;">0 interactions</span>';
+    }
+  }
+
+  // 3. High Fan-In Badge detection
+  const fanInBadge = qs('#impact-fanin-badge');
+  const fanInText = qs('#impact-fanin-text');
+  const isHighFanIn = ((summary.totalTouchPoints || 0) > 50 || (summary.classCount || 0) > 15);
+  if (fanInBadge) {
+    fanInBadge.style.display = isHighFanIn ? 'inline-flex' : 'none';
+    if (fanInText) {
+      fanInText.textContent = `High Fan-In (${(summary.totalTouchPoints || 0).toLocaleString()} callers)`;
+    }
+  }
+
+  // 4. Update Table Filter Pill Counts
+  const countCalls = (touchPoints || []).filter(t => t.kind === 'CALLS').length;
+  const countReads = (touchPoints || []).filter(t => t.kind === 'READS_FIELD').length;
+  const countWrites = (touchPoints || []).filter(t => t.kind === 'WRITES_FIELD').length;
+  const countExtends = (touchPoints || []).filter(t => t.kind === 'EXTENDS' || t.kind === 'IMPLEMENTS').length;
+
+  const pillAll = qs('#pill-count-all'); if (pillAll) pillAll.textContent = (touchPoints || []).length;
+  const pillCalls = qs('#pill-count-calls'); if (pillCalls) pillCalls.textContent = countCalls;
+  const pillReads = qs('#pill-count-reads'); if (pillReads) pillReads.textContent = countReads;
+  const pillWrites = qs('#pill-count-writes'); if (pillWrites) pillWrites.textContent = countWrites;
+  const pillExtends = qs('#pill-count-extends'); if (pillExtends) pillExtends.textContent = countExtends;
+
+  // 5. Render Sankey Flow Diagram
+  renderSankeyDiagram(sankey);
+
+  // 6. Render Touch Points Table
+  renderTouchPointsTable();
+}
+
+function renderSankeyDiagram(sankey) {
+  const container = qs('#impact-sankey-container');
+  const svg = qs('#impact-sankey-svg');
+  const tooltip = qs('#impact-sankey-tooltip');
+  const resetBtn = qs('#impact-btn-reset-filter');
+  if (!container || !svg) return;
+
+  svg.innerHTML = '';
+
+  // Update Column Header Guides based on active depth
+  const colClasses = qs('#sankey-col-classes');
+  const arrClasses = qs('#sankey-arr-classes');
+  const colMethods = qs('#sankey-col-methods');
+  const arrMethods = qs('#sankey-arr-methods');
+
+  if (blastRadiusDepth === 1) {
+    if (arrClasses) arrClasses.style.display = 'none';
+    if (colClasses) colClasses.style.display = 'none';
+    if (arrMethods) arrMethods.style.display = 'none';
+    if (colMethods) colMethods.style.display = 'none';
+  } else if (blastRadiusDepth === 2) {
+    if (arrClasses) arrClasses.style.display = 'flex';
+    if (colClasses) colClasses.style.display = 'flex';
+    if (arrMethods) arrMethods.style.display = 'none';
+    if (colMethods) colMethods.style.display = 'none';
+  } else {
+    if (arrClasses) arrClasses.style.display = 'flex';
+    if (colClasses) colClasses.style.display = 'flex';
+    if (arrMethods) arrMethods.style.display = 'flex';
+    if (colMethods) colMethods.style.display = 'flex';
+  }
+
+  if (!sankey || !sankey.nodes || sankey.nodes.length === 0) {
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', '50%');
+    text.setAttribute('y', '50%');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', 'var(--text-muted)');
+    text.setAttribute('font-size', '13');
+    text.textContent = 'No incoming dependencies or touch points detected for this entity.';
+    svg.appendChild(text);
+    return;
+  }
+
+  // Filter nodes and links by active depth
+  const depthNodes = (sankey.nodes || []).filter(n => (n.stage || 0) <= blastRadiusDepth);
+  const depthNodeIds = new Set(depthNodes.map(n => n.id));
+  const depthLinks = (sankey.links || []).filter(l => depthNodeIds.has(l.source) && depthNodeIds.has(l.target));
+
+  // Partition nodes by stage (0: Target, 1: Modules, 2: Classes, 3: Methods)
+  const stages = [];
+  for (let s = 0; s <= blastRadiusDepth; s++) {
+    stages.push([]);
+  }
+  depthNodes.forEach(n => {
+    const s = Math.min(blastRadiusDepth, Math.max(0, n.stage || 0));
+    stages[s].push(n);
+  });
+
+  // Client-side Top-K aggregation per stage to prevent any vertical overlap
+  const MAX_DISPLAY_NODES_PER_STAGE = 7;
+  const finalNodes = [];
+  const nodeMap = new Map();
+  const replacedIdMap = new Map();
+
+  stages.forEach((nodesInStage, sIdx) => {
+    if (sIdx === 0 || nodesInStage.length <= MAX_DISPLAY_NODES_PER_STAGE + 1) {
+      nodesInStage.forEach(n => {
+        finalNodes.push(n);
+        nodeMap.set(n.id, n);
+      });
+      return;
+    }
+
+    nodesInStage.sort((a, b) => (b.value || 0) - (a.value || 0));
+    const kept = nodesInStage.slice(0, MAX_DISPLAY_NODES_PER_STAGE);
+    const overflow = nodesInStage.slice(MAX_DISPLAY_NODES_PER_STAGE);
+
+    kept.forEach(n => {
+      finalNodes.push(n);
+      nodeMap.set(n.id, n);
+    });
+
+    const overflowVal = overflow.reduce((sum, n) => sum + (n.value || 1), 0);
+    const rollupId = `client_rollup:s${sIdx}`;
+    const stageNoun = sIdx === 1 ? 'modules' : (sIdx === 2 ? 'classes' : 'methods');
+    const rollupNode = {
+      id: rollupId,
+      name: `+ ${overflow.length} other ${stageNoun}`,
+      stage: sIdx,
+      value: overflowVal,
+      isAggregated: true
+    };
+
+    const overflowIds = new Set();
+    overflow.forEach(n => {
+      replacedIdMap.set(n.id, rollupId);
+      overflowIds.add(n.id);
+      if (n.fqn) overflowIds.add(n.fqn);
+      if (n.name) overflowIds.add(n.name);
+    });
+    rollupNode.memberSet = overflowIds;
+
+    finalNodes.push(rollupNode);
+    nodeMap.set(rollupId, rollupNode);
+  });
+
+  // Consolidate links after node aggregation
+  const consolidatedLinks = [];
+  const linkKeyMap = new Map();
+
+  depthLinks.forEach(link => {
+    let src = replacedIdMap.get(link.source) || link.source;
+    let tgt = replacedIdMap.get(link.target) || link.target;
+    if (src === tgt || !nodeMap.has(src) || !nodeMap.has(tgt)) return;
+
+    const key = `${src}->${tgt}`;
+    if (linkKeyMap.has(key)) {
+      linkKeyMap.get(key).value += (link.value || 1);
+    } else {
+      const consolidatedLink = {
+        source: src,
+        target: tgt,
+        value: (link.value || 1)
+      };
+      linkKeyMap.set(key, consolidatedLink);
+      consolidatedLinks.push(consolidatedLink);
+    }
+  });
+
+  // Re-partition final nodes for coordinate calculation
+  const layoutStages = [];
+  for (let s = 0; s <= blastRadiusDepth; s++) {
+    layoutStages.push([]);
+  }
+  finalNodes.forEach(n => {
+    layoutStages[n.stage].push(n);
+  });
+
+  const containerWidth = Math.max(900, container.clientWidth - 40);
+  const W = containerWidth;
+  const maxStageCount = Math.max(...layoutStages.map(s => s.length), 1);
+  const nodeGap = 12;
+  const minNodeHeight = 28;
+  const maxNodeHeight = 110;
+  const H = Math.max(320, Math.min(680, maxStageCount * (minNodeHeight + nodeGap) + 60));
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', `${W}`);
+  svg.setAttribute('height', `${H}`);
+
+  let stageXs = [];
+  if (blastRadiusDepth === 1) {
+    stageXs = [60, W - 260];
+  } else if (blastRadiusDepth === 2) {
+    stageXs = [45, 45 + (W - 320) * 0.44, 45 + (W - 320) * 0.92];
+  } else {
+    stageXs = [
+      40,
+      40 + (W - 300) * 0.28,
+      40 + (W - 300) * 0.62,
+      40 + (W - 300) * 0.95
+    ];
+  }
+  const nodeWidth = 14;
+
+  // Calculate layout coordinates for each node
+  layoutStages.forEach((nodesInStage, sIdx) => {
+    if (nodesInStage.length === 0) return;
+    const stageX = stageXs[sIdx];
+    const totalStageVal = nodesInStage.reduce((acc, n) => acc + (n.value || 1), 0);
+
+    const availHeight = H - 60;
+    const totalGaps = (nodesInStage.length - 1) * nodeGap;
+    const availForBars = Math.max(30, availHeight - totalGaps);
+
+    nodesInStage.forEach(n => {
+      const proportion = (n.value || 1) / Math.max(1, totalStageVal);
+      n.h = Math.max(minNodeHeight, Math.min(maxNodeHeight, Math.round(availForBars * proportion)));
+      n.w = nodeWidth;
+      n.x = stageX;
+    });
+
+    const totalCalculatedHeight = nodesInStage.reduce((acc, n) => acc + n.h, 0) + totalGaps;
+    let currentY = Math.max(25, Math.round((H - totalCalculatedHeight) / 2));
+
+    nodesInStage.forEach(n => {
+      n.y = currentY;
+      n.outY = currentY;
+      n.inY = currentY;
+      currentY += n.h + nodeGap;
+    });
+  });
+
+  // Calculate Ribbon Paths
+  const ribbonsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  ribbonsGroup.setAttribute('class', 'sankey-ribbons');
+  svg.appendChild(ribbonsGroup);
+
+  const ribbonElements = [];
+
+  consolidatedLinks.forEach(link => {
+    const sourceNode = nodeMap.get(link.source);
+    const targetNode = nodeMap.get(link.target);
+    if (!sourceNode || !targetNode) return;
+
+    const sourceVal = Math.max(1, sourceNode.value || 1);
+    const targetVal = Math.max(1, targetNode.value || 1);
+    const linkVal = link.value || 1;
+
+    const sThickness = Math.max(3, (linkVal / sourceVal) * sourceNode.h);
+    const tThickness = Math.max(3, (linkVal / targetVal) * targetNode.h);
+
+    const x0 = sourceNode.x + sourceNode.w;
+    const y0Top = sourceNode.outY;
+    const y0Bot = y0Top + sThickness;
+    sourceNode.outY = Math.min(sourceNode.y + sourceNode.h, sourceNode.outY + sThickness);
+
+    const x1 = targetNode.x;
+    const y1Top = targetNode.inY;
+    const y1Bot = y1Top + tThickness;
+    targetNode.inY = Math.min(targetNode.y + targetNode.h, targetNode.inY + tThickness);
+
+    const dx = (x1 - x0) * 0.5;
+    const d = `M ${x0} ${y0Top} C ${x0 + dx} ${y0Top}, ${x1 - dx} ${y1Top}, ${x1} ${y1Top} L ${x1} ${y1Bot} C ${x1 - dx} ${y1Bot}, ${x0 + dx} ${y0Bot}, ${x0} ${y0Bot} Z`;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', 'sankey-ribbon');
+
+    let fillColor = 'rgba(56, 139, 253, 0.35)'; // Cyan default
+    if (sourceNode.stage === 1) fillColor = 'rgba(192, 132, 252, 0.35)'; // Purple
+    else if (sourceNode.stage === 2) fillColor = 'rgba(251, 191, 36, 0.35)'; // Amber
+    path.setAttribute('fill', fillColor);
+
+    path.dataset.sourceId = sourceNode.id;
+    path.dataset.targetId = targetNode.id;
+
+    path.addEventListener('mouseenter', (e) => {
+      highlightFlow([sourceNode.id, targetNode.id]);
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<strong>${esc(sourceNode.name)} ➔ ${esc(targetNode.name)}</strong><br/><span style="color:var(--cyan-bright);font-family:var(--font-mono);font-weight:700;">${linkVal} touch points</span>`;
+        moveTooltip(e);
+      }
+    });
+    path.addEventListener('mousemove', moveTooltip);
+    path.addEventListener('mouseleave', () => {
+      resetHighlightFlow();
+      if (tooltip) tooltip.style.display = 'none';
+    });
+
+    ribbonsGroup.appendChild(path);
+    ribbonElements.push({ el: path, source: sourceNode.id, target: targetNode.id });
+  });
+
+  // Render Nodes
+  const nodesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  nodesGroup.setAttribute('class', 'sankey-nodes');
+  svg.appendChild(nodesGroup);
+
+  const stageColors = ['#388bfd', '#c084fc', '#fbbf24', '#34d399'];
+
+  finalNodes.forEach(n => {
+    if (n.x === undefined || n.y === undefined) return;
+    const isAggregated = !!n.isAggregated;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', `sankey-node stage-${n.stage}${isAggregated ? ' is-aggregated' : ''}${activeBlastRadiusNodeFilter && activeBlastRadiusNodeFilter.id === n.id ? ' selected' : ''}`);
+    g.dataset.nodeId = n.id;
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', n.x);
+    rect.setAttribute('y', n.y);
+    rect.setAttribute('width', n.w);
+    rect.setAttribute('height', n.h);
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('ry', '4');
+    rect.setAttribute('fill', isAggregated ? 'var(--bg-card, #131d2e)' : (stageColors[n.stage] || '#388bfd'));
+    rect.setAttribute('stroke', isAggregated ? 'var(--amber, #f59e0b)' : 'rgba(255, 255, 255, 0.2)');
+    rect.setAttribute('stroke-width', isAggregated ? '1.5' : '1');
+    if (isAggregated) {
+      rect.setAttribute('stroke-dasharray', '3 3');
+    }
+    rect.setAttribute('class', 'sankey-node-rect');
+    g.appendChild(rect);
+
+    // Label Placement - Uniformly right-aligned to eliminate head-on collisions
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    const labelX = n.x + n.w + 8;
+    const textAnchor = 'start';
+
+    text.setAttribute('x', labelX);
+    text.setAttribute('y', n.y + Math.min(13, n.h / 2));
+    text.setAttribute('text-anchor', textAnchor);
+    text.setAttribute('font-family', 'var(--font-sans)');
+    text.setAttribute('font-size', '11');
+    text.setAttribute('font-weight', isAggregated ? '700' : '600');
+    text.setAttribute('fill', isAggregated ? 'var(--amber, #f59e0b)' : 'var(--text-primary)');
+
+    let displayName = n.name || n.id;
+    const maxCharLen = blastRadiusDepth === 1 ? 32 : (blastRadiusDepth === 2 ? 24 : 18);
+    if (displayName.length > maxCharLen) displayName = displayName.substring(0, maxCharLen - 1) + '…';
+    text.textContent = displayName;
+    g.appendChild(text);
+
+    // Value subtext
+    const subText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    subText.setAttribute('x', labelX);
+    subText.setAttribute('y', n.y + Math.min(13, n.h / 2) + 12);
+    subText.setAttribute('text-anchor', textAnchor);
+    subText.setAttribute('font-family', 'var(--font-mono)');
+    subText.setAttribute('font-size', '9.5');
+    subText.setAttribute('fill', 'var(--text-muted)');
+    subText.textContent = `${(n.value || 0)} pts`;
+    g.appendChild(subText);
+
+    g.addEventListener('mouseenter', (e) => {
+      highlightNodeConnected(n.id);
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        const stageName = ['Target Entity', 'Module', 'Class', 'Method'][n.stage] || 'Node';
+        const rollInfo = isAggregated ? `<br/><span style="color:var(--amber);font-size:11px;">Aggregated rollup of low-volume callers</span>` : '';
+        tooltip.innerHTML = `<strong>${esc(n.name || n.id)}</strong><br/><span style="color:var(--text-muted);font-size:11px;">Stage: ${stageName}</span>${rollInfo}<br/><span style="color:var(--cyan-bright);font-family:var(--font-mono);font-weight:700;">${n.value || 0} touch points</span><br/><span style="color:var(--amber);font-size:10.5px;">Click to filter table</span>`;
+        moveTooltip(e);
+      }
+    });
+    g.addEventListener('mousemove', moveTooltip);
+    g.addEventListener('mouseleave', () => {
+      resetHighlightFlow();
+      if (tooltip) tooltip.style.display = 'none';
+    });
+
+    g.addEventListener('click', () => {
+      if (activeBlastRadiusNodeFilter && activeBlastRadiusNodeFilter.id === n.id) {
+        activeBlastRadiusNodeFilter = null;
+      } else {
+        activeBlastRadiusNodeFilter = n;
+      }
+      qsa('.sankey-node').forEach(el => el.classList.toggle('selected', activeBlastRadiusNodeFilter && el.dataset.nodeId === activeBlastRadiusNodeFilter.id));
+      if (resetBtn) resetBtn.style.display = activeBlastRadiusNodeFilter ? 'inline-flex' : 'none';
+      renderTouchPointsTable();
+    });
+
+    nodesGroup.appendChild(g);
+  });
+
+  function moveTooltip(e) {
+    if (!tooltip) return;
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left + 14;
+    const y = e.clientY - rect.top + 14;
+    tooltip.style.left = `${Math.min(W - 220, x)}px`;
+    tooltip.style.top = `${Math.max(10, Math.min(H - 80, y))}px`;
+  }
+
+  function highlightFlow(nodeIds) {
+    ribbonElements.forEach(r => {
+      const match = nodeIds.includes(r.source) && nodeIds.includes(r.target);
+      r.el.classList.toggle('highlighted', match);
+      r.el.classList.toggle('dimmed', !match);
+    });
+  }
+
+  function highlightNodeConnected(nodeId) {
+    ribbonElements.forEach(r => {
+      const match = r.source === nodeId || r.target === nodeId;
+      r.el.classList.toggle('highlighted', match);
+      r.el.classList.toggle('dimmed', !match);
+    });
+  }
+
+  function resetHighlightFlow() {
+    ribbonElements.forEach(r => {
+      r.el.classList.remove('highlighted', 'dimmed');
+    });
+  }
+}
+
+function renderTouchPointsTable() {
+  if (!currentBlastRadiusData) return;
+  const tbody = qs('#impact-touchpoints-tbody');
+  const emptyEl = qs('#impact-table-empty');
+  const footerEl = qs('#impact-table-footer');
+  const footerText = qs('#impact-table-footer-text');
+  const showMoreBtn = qs('#btn-impact-show-more');
+  const showAllBtn = qs('#btn-impact-show-all');
+  const filterChip = qs('#impact-active-filter-chip');
+  const filterText = qs('#impact-active-filter-text');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  let list = currentBlastRadiusData.touchPoints || [];
+
+  // 1. Filter by Node selection from Sankey
+  if (activeBlastRadiusNodeFilter) {
+    const fn = activeBlastRadiusNodeFilter;
+    if (fn.memberSet && fn.memberSet.size > 0) {
+      if (fn.stage === 1) {
+        list = list.filter(t => fn.memberSet.has(t.sourceModule) || fn.memberSet.has(`mod:${t.sourceModule}`));
+      } else if (fn.stage === 2) {
+        list = list.filter(t => fn.memberSet.has(t.sourceClassFqn) || fn.memberSet.has(t.sourceClass) || fn.memberSet.has(`cls:${t.sourceClassFqn}`));
+      } else if (fn.stage === 3) {
+        list = list.filter(t => fn.memberSet.has(t.sourceMethodFqn) || fn.memberSet.has(t.sourceMethod) || fn.memberSet.has(`mth:${t.sourceMethodFqn}`));
+      }
+    } else if (fn.isAggregated && fn.id) {
+      if (fn.stage === 1) {
+        const knownMods = new Set((currentBlastRadiusData.modules || []).map(m => m.name));
+        list = list.filter(t => !knownMods.has(t.sourceModule));
+      } else if (fn.stage === 2 && fn.module) {
+        list = list.filter(t => t.sourceModule === fn.module);
+      } else if (fn.stage === 3 && fn.classFqn) {
+        list = list.filter(t => t.sourceClassFqn === fn.classFqn);
+      }
+    } else if (fn.stage === 1) { // Module
+      list = list.filter(t => t.sourceModule === fn.name || (t.sourcePackage && t.sourcePackage.startsWith(fn.name)));
+    } else if (fn.stage === 2) { // Class
+      list = list.filter(t => t.sourceClassFqn === fn.fqn || t.sourceClass === fn.name);
+    } else if (fn.stage === 3) { // Method
+      list = list.filter(t => t.sourceMethodFqn === fn.fqn || t.sourceMethod === fn.name);
+    }
+
+    if (filterChip && filterText) {
+      filterChip.style.display = 'inline-flex';
+      filterText.textContent = `Filtered by ${['Target', 'Module', 'Class', 'Method'][fn.stage] || 'Node'}: ${fn.name} (${list.length})`;
+    }
+  } else {
+    if (filterChip) filterChip.style.display = 'none';
+  }
+
+  // 2. Filter by Kind Pill
+  if (activeBlastRadiusKindFilter && activeBlastRadiusKindFilter !== 'ALL') {
+    if (activeBlastRadiusKindFilter === 'EXTENDS') {
+      list = list.filter(t => t.kind === 'EXTENDS' || t.kind === 'IMPLEMENTS');
+    } else {
+      list = list.filter(t => t.kind === activeBlastRadiusKindFilter);
+    }
+  }
+
+  // 3. Filter by Search Query
+  if (blastRadiusSearchQuery) {
+    const q = blastRadiusSearchQuery.toLowerCase();
+    list = list.filter(t =>
+      (t.sourceModule && t.sourceModule.toLowerCase().includes(q)) ||
+      (t.sourceClass && t.sourceClass.toLowerCase().includes(q)) ||
+      (t.sourceMethod && t.sourceMethod.toLowerCase().includes(q)) ||
+      (t.targetEntityFqn && t.targetEntityFqn.toLowerCase().includes(q)) ||
+      (t.kind && t.kind.toLowerCase().includes(q)) ||
+      String(t.sourceLine).includes(q)
+    );
+  }
+
+  const totalCount = list.length;
+
+  if (totalCount === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (footerEl) footerEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Pagination slice
+  const visibleList = list.slice(0, blastRadiusVisibleCount);
+
+  if (totalCount > BLAST_RADIUS_PAGE_STEP) {
+    if (footerEl) footerEl.style.display = 'flex';
+    if (footerText) {
+      footerText.textContent = `Showing ${Math.min(blastRadiusVisibleCount, totalCount).toLocaleString()} of ${totalCount.toLocaleString()} touch points`;
+    }
+    const hasMore = blastRadiusVisibleCount < totalCount;
+    if (showMoreBtn) showMoreBtn.style.display = hasMore ? 'inline-flex' : 'none';
+    if (showAllBtn) showAllBtn.style.display = hasMore ? 'inline-flex' : 'none';
+  } else {
+    if (footerEl) footerEl.style.display = 'none';
+  }
+
+  visibleList.forEach(item => {
+    const tr = document.createElement('tr');
+    const kLower = (item.kind || 'calls').toLowerCase();
+
+    tr.innerHTML = `
+      <td><span class="impact-module-badge">${esc(item.sourceModule || 'default')}</span></td>
+      <td>
+        <a class="impact-class-link" title="Inspect ${esc(item.sourceClassFqn)}">${esc(item.sourceClass)}</a>
+      </td>
+      <td>
+        <span class="impact-method-name">${esc(item.sourceMethod)}</span>
+      </td>
+      <td>
+        <span class="impact-kind-pill ${kLower}">${esc(item.kind)}</span>
+      </td>
+      <td style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis;" title="${esc(item.targetEntityFqn)}">
+        ${esc(shortFqn(item.targetEntityFqn))}
+      </td>
+      <td style="text-align:center;">
+        <button class="impact-line-badge" title="Open ${esc(item.sourceFile || '')} at line ${item.sourceLine}">
+          <span>⚡ Line ${item.sourceLine}</span>
+        </button>
+      </td>
+    `;
+
+    tr.querySelector('.impact-class-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (item.sourceClassFqn) {
+        api.type(item.sourceClassFqn).then(renderTypeDetail).catch(() => {});
+      }
+    });
+
+    tr.querySelector('.impact-line-badge')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (item.sourceFile) {
+        openSourceFile(item.sourceFile, item.sourceLine);
+      } else {
+        showBanner(`Source file location not indexed for ${item.sourceClass}`, 'info');
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function initBlastRadiusExplorer() {
+  // Reset Node Filter button
+  qs('#impact-btn-reset-filter')?.addEventListener('click', () => {
+    activeBlastRadiusNodeFilter = null;
+    qsa('.sankey-node').forEach(el => el.classList.remove('selected'));
+    const btn = qs('#impact-btn-reset-filter');
+    if (btn) btn.style.display = 'none';
+    renderTouchPointsTable();
+  });
+
+  // Clear filter chip button
+  qs('#impact-active-filter-clear')?.addEventListener('click', () => {
+    activeBlastRadiusNodeFilter = null;
+    qsa('.sankey-node').forEach(el => el.classList.remove('selected'));
+    const btn = qs('#impact-btn-reset-filter');
+    if (btn) btn.style.display = 'none';
+    renderTouchPointsTable();
+  });
+
+  // Granularity / Depth controls
+  qsa('.sankey-depth-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('.sankey-depth-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      blastRadiusDepth = parseInt(btn.dataset.depth, 10) || 3;
+      if (currentBlastRadiusData && currentBlastRadiusData.sankey) {
+        renderSankeyDiagram(currentBlastRadiusData.sankey);
+      }
+    });
+  });
+
+  // Pagination buttons
+  qs('#btn-impact-show-more')?.addEventListener('click', () => {
+    blastRadiusVisibleCount += BLAST_RADIUS_PAGE_STEP;
+    renderTouchPointsTable();
+  });
+
+  qs('#btn-impact-show-all')?.addEventListener('click', () => {
+    blastRadiusVisibleCount = 999999;
+    renderTouchPointsTable();
+  });
+
+  // Kind filter pills
+  qsa('#impact-kind-filter-pills .impact-pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('#impact-kind-filter-pills .impact-pill-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeBlastRadiusKindFilter = btn.dataset.kind || 'ALL';
+      renderTouchPointsTable();
+    });
+  });
+
+  // Table search input
+  qs('#impact-table-filter')?.addEventListener('input', (e) => {
+    blastRadiusSearchQuery = e.target.value.trim();
+    renderTouchPointsTable();
+  });
+
+  // Refresh button
+  qs('#impact-refresh-btn')?.addEventListener('click', () => {
+    if (currentBlastRadiusData && currentBlastRadiusData.target) {
+      openBlastRadiusExplorer(currentBlastRadiusData.target.fqn, currentBlastRadiusData.target.kind);
+    }
+  });
+
+  // Quick search input in header
+  const quickSearchInput = qs('#impact-quick-search');
+  const searchResults = qs('#impact-search-results');
+  if (quickSearchInput && searchResults) {
+    let debounceTimer = null;
+    quickSearchInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      const val = e.target.value.trim();
+      if (!val || val.length < 2) {
+        searchResults.style.display = 'none';
+        return;
+      }
+      debounceTimer = setTimeout(async () => {
+        try {
+          const res = await api.search(val, 12);
+          const results = res.results || res;
+          if (!results || results.length === 0) {
+            searchResults.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:12px;">No matching entities</div>';
+            searchResults.style.display = 'block';
+            return;
+          }
+          searchResults.innerHTML = '';
+          results.forEach(item => {
+            const row = createElement('div', { class: 'impact-search-item' });
+            const kind = (item.kind || item.type || 'CLASS').toUpperCase();
+            const kindCls = kind.toLowerCase();
+            row.innerHTML = `
+              <div class="impact-search-item-left">
+                <span class="impact-target-kind-pill kind-${kindCls}">${kind}</span>
+                <span style="font-weight:600;color:var(--text-primary);">${esc(item.simpleName || item.name || item.fqn)}</span>
+              </div>
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">${esc(item.packageFqn || item.module || '')}</span>
+            `;
+            row.addEventListener('click', () => {
+              searchResults.style.display = 'none';
+              quickSearchInput.value = '';
+              openBlastRadiusExplorer(item.fqn || item.id, kind);
+            });
+            searchResults.appendChild(row);
+          });
+          searchResults.style.display = 'block';
+        } catch (err) {
+          console.warn('Quick search failed:', err);
+        }
+      }, 200);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!quickSearchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.style.display = 'none';
+      }
+    });
+  }
+
+  // Populate sample chips in empty state
+  if (typeof api.types === 'function') {
+    api.types().then(types => {
+      const chipsContainer = qs('#impact-sample-chips');
+      if (!chipsContainer) return;
+      chipsContainer.innerHTML = '';
+      const sampleTypes = (Array.isArray(types) ? types : []).slice(0, 6);
+      sampleTypes.forEach(t => {
+        const chip = createElement('div', { class: 'impact-sample-chip' });
+        chip.innerHTML = `<span class="impact-target-kind-pill kind-class">CLASS</span> <span>${esc(t.simpleName)}</span>`;
+        chip.addEventListener('click', () => openBlastRadiusExplorer(t.fqn, 'CLASS'));
+        chipsContainer.appendChild(chip);
+      });
+    }).catch(() => {});
+  }
+}
+
 // Global window helpers for debugging & integration
+window.openBlastRadiusExplorer = openBlastRadiusExplorer;
 window.loadAndVisualizeCriticalPath = loadAndVisualizeCriticalPath;
 window.openCriticalPathPicker = openCriticalPathPicker;
 window.closeCriticalPathDock = closeCriticalPathDock;
@@ -18923,6 +19852,15 @@ function initCommandPalette() {
       shortcut: '3',
       icon: '<svg class="svg-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
       action: () => switchTab('review')
+    },
+    {
+      id: 'nav-impact',
+      title: 'Open Blast Radius & Touch Points Explorer',
+      subtitle: 'Analyze upstream impact flows and touchpoint lines across modules',
+      group: 'Navigation',
+      shortcut: '6',
+      icon: '<svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+      action: () => switchTab('impact')
     },
     {
       id: 'nav-studio',
@@ -19072,7 +20010,7 @@ function initCommandPalette() {
     {
       id: 'help-wiki',
       title: 'Open GitHub Wiki Documentation',
-      subtitle: 'Browse official architecture blueprints, ADRs, 13 reports, and REST API guide',
+      subtitle: 'Browse official architecture blueprints, ADRs, intelligence reports, and REST API guide',
       group: 'Help & Documentation',
       icon: '<svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
       action: () => {

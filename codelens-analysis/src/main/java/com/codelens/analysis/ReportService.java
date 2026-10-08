@@ -31,6 +31,9 @@ public class ReportService {
     private static final ObjectMapper jsonMapper = new ObjectMapper()
         .enable(SerializationFeature.INDENT_OUTPUT)
         .disable(com.fasterxml.jackson.core.JsonGenerator.Feature.AUTO_CLOSE_TARGET);
+    private static final ObjectMapper COMPACT_JSON_MAPPER = new ObjectMapper()
+        .setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        .disable(com.fasterxml.jackson.core.JsonGenerator.Feature.AUTO_CLOSE_TARGET);
 
     private final CallGraphAnalyzer callGraph;
     private final FieldImpactAnalyzer fieldImpact;
@@ -1468,7 +1471,7 @@ public class ReportService {
             }
             if (inCalls == 0) {
                 String name = m.getSimpleName();
-                if (isPotentialEntryPoint(name, m.getDeclaringTypeFqn())) continue;
+                if (CallGraphAnalyzer.isPojoOrAccessor(m.getFqn()) || isPotentialEntryPoint(name, m.getDeclaringTypeFqn())) continue;
 
                 OrphanedMethodItem item = new OrphanedMethodItem();
                 item.methodFqn = m.getFqn();
@@ -1977,6 +1980,14 @@ public class ReportService {
                                                                       List<CodeMethod> methods,
                                                                       List<CodeField> fields,
                                                                       List<CodeRelationship> relationships) {
+        return buildArchetypeGovernanceData(types, methods, fields, relationships, null);
+    }
+
+    public ArchetypeGovernanceReportData buildArchetypeGovernanceData(List<CodeType> types,
+                                                                      List<CodeMethod> methods,
+                                                                      List<CodeField> fields,
+                                                                      List<CodeRelationship> relationships,
+                                                                      String archetypeRulesJson) {
         ArchetypeGovernanceReportData data = new ArchetypeGovernanceReportData();
         data.generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
@@ -2090,7 +2101,6 @@ public class ReportService {
         }
 
         data.totalArchetypesFound = data.messageObjectsCount + data.dataGrabbersCount + data.businessTransactionsCount + data.domainEntitiesCount;
-        data.totalViolations = data.violations.size();
 
         ArchetypeSummary moSum = new ArchetypeSummary();
         moSum.archetype = "Message Objects (MO_*)";
@@ -2123,6 +2133,76 @@ public class ReportService {
         entSum.complianceRate = data.domainEntitiesCount > 0 ? Math.round(((data.domainEntitiesCount - entViolations) / (double) data.domainEntitiesCount) * 1000.0) / 10.0 : 100.0;
         entSum.description = "Core business state models encapsulating domain rules";
         data.archetypeBreakdown.add(entSum);
+
+        // Incorporate custom configured archetype rules if provided
+        if (archetypeRulesJson != null && !archetypeRulesJson.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode root = jsonMapper.readTree(archetypeRulesJson);
+                if (root.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode ruleNode : root) {
+                        boolean enabled = ruleNode.path("enabled").asBoolean(true);
+                        if (!enabled) continue;
+                        String label = ruleNode.path("label").asText("");
+                        String badge = ruleNode.path("badge").asText(label);
+                        String pattern = ruleNode.path("pattern").asText("");
+                        String matchType = ruleNode.path("matchType").asText("PREFIX").toUpperCase();
+                        String target = ruleNode.path("target").asText("METHOD").toUpperCase();
+                        String desc = ruleNode.path("description").asText("");
+                        if (pattern.isBlank()) continue;
+
+                        int matchCount = 0;
+                        int ruleViolations = 0;
+
+                        if ("CLASS".equals(target) || "TYPE".equals(target)) {
+                            for (CodeType t : types) {
+                                if (matchesArchetypePattern(t.getSimpleName(), t.getFqn(), pattern, matchType)) {
+                                    matchCount++;
+                                }
+                            }
+                        } else {
+                            for (CodeMethod m : methods) {
+                                if (matchesArchetypePattern(m.getSimpleName(), m.getFqn(), pattern, matchType)) {
+                                    matchCount++;
+                                    if ("FETCH".equalsIgnoreCase(badge) || "READ_ONLY".equalsIgnoreCase(ruleNode.path("category").asText())) {
+                                        Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                                        for (String callee : callees) {
+                                            String cm = extractSimpleMethodName(callee);
+                                            if ("Create".equals(cm) || "Modify".equals(cm) || "Delete".equals(cm) || cm.startsWith("insert") || cm.startsWith("update") || cm.startsWith("delete")) {
+                                                ruleViolations++;
+                                                GovernanceViolation v = new GovernanceViolation();
+                                                v.ruleName = badge + "-01: Read-Only Contract";
+                                                v.severity = "WARNING";
+                                                v.entityFqn = m.getFqn();
+                                                v.archetypeName = (label.isBlank() ? badge : label);
+                                                v.violationDetails = "Read-only archetype method calls mutating endpoint: " + callee;
+                                                v.architecturalRemediation = "Extract state mutations out of read-only " + badge + " routine.";
+                                                data.violations.add(v);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (matchCount > 0) {
+                            ArchetypeSummary customSum = new ArchetypeSummary();
+                            customSum.archetype = (label.isBlank() ? badge : label) + " [" + badge + "]";
+                            customSum.count = matchCount;
+                            customSum.violationCount = ruleViolations;
+                            customSum.complianceRate = Math.round(((matchCount - ruleViolations) / (double) matchCount) * 1000.0) / 10.0;
+                            customSum.description = desc.isBlank() ? ("Custom archetype rule: " + pattern) : desc;
+                            data.archetypeBreakdown.add(customSum);
+                            data.totalArchetypesFound += matchCount;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse custom archetype rules JSON: {}", e.getMessage());
+            }
+        }
+
+        data.totalViolations = data.violations.size();
 
         int criticals = (int) data.violations.stream().filter(v -> "CRITICAL".equals(v.severity)).count();
         int warnings = (int) data.violations.stream().filter(v -> "WARNING".equals(v.severity)).count();
@@ -2321,9 +2401,87 @@ public class ReportService {
         return false;
     }
 
+    private static boolean matchesArchetypePattern(String simpleName, String fqn, String pattern, String matchType) {
+        if (simpleName == null || pattern == null || pattern.isBlank()) return false;
+        String p = pattern.trim();
+        if (p.contains("{MODULE}") || p.contains("{MOD}")) {
+            String pkg = extractPackageFromFqn(fqn);
+            String mod = extractModuleToken(pkg);
+            p = p.replace("{MODULE}", mod).replace("{MOD}", mod);
+        }
+        String s = simpleName;
+        if ("REGEX".equalsIgnoreCase(matchType)) {
+            try { return s.matches(p) || (fqn != null && fqn.matches(p)); } catch (Exception e) { return false; }
+        }
+        if (p.contains("*") || "GLOB".equalsIgnoreCase(matchType)) {
+            String regex = "^" + java.util.regex.Pattern.quote(p).replace("*", "\\E.*\\Q") + "$";
+            return s.toLowerCase(Locale.ROOT).matches("(?i)" + regex);
+        }
+        String sLow = s.toLowerCase(Locale.ROOT);
+        String pLow = p.toLowerCase(Locale.ROOT);
+        switch (matchType != null ? matchType.toUpperCase() : "PREFIX") {
+            case "PREFIX": return sLow.startsWith(pLow);
+            case "SUFFIX": return sLow.endsWith(pLow);
+            case "CONTAINS": return sLow.contains(pLow);
+            case "EXACT": return sLow.equalsIgnoreCase(pLow);
+            default: return sLow.startsWith(pLow);
+        }
+    }
+
+    private static String extractModuleToken(String pkg) {
+        if (pkg == null || pkg.isBlank() || "(default)".equals(pkg)) return "";
+        String[] parts = pkg.split("\\.");
+        for (int i = parts.length - 1; i >= 0; i--) {
+            String part = parts[i];
+            if (!part.isEmpty() && part.length() <= 4 && !part.equals("service") && !part.equals("model") && !part.equals("impl")) {
+                return part.toUpperCase(Locale.ROOT);
+            }
+        }
+        return parts[parts.length - 1].toUpperCase(Locale.ROOT);
+    }
+
     // =========================================================================
     // 8. STANDALONE INTERACTIVE HTML GRAPH SNAPSHOT
     // =========================================================================
+
+    private static void writeCompactGraphJson(Writer out, Object graphData) throws IOException {
+        EscapingScriptWriter esc = new EscapingScriptWriter(out);
+        if (graphData instanceof CallGraphAnalyzer.GraphView gv && gv.nodes != null) {
+            Map<String, Integer> indexMap = new HashMap<>(gv.nodes.size());
+            List<Object[]> compactNodes = new ArrayList<>(gv.nodes.size());
+            int idx = 0;
+            for (CallGraphAnalyzer.GraphNode gn : gv.nodes) {
+                if (gn == null || gn.id == null) continue;
+                double x = gn.x != null ? Math.round(gn.x * 10.0) / 10.0 : 0.0;
+                double y = gn.y != null ? Math.round(gn.y * 10.0) / 10.0 : 0.0;
+                compactNodes.add(new Object[] {
+                    gn.id,
+                    gn.label != null ? gn.label : "",
+                    x,
+                    y,
+                    gn.packageFqn != null ? gn.packageFqn : ""
+                });
+                indexMap.put(gn.id, idx++);
+            }
+            List<int[]> compactEdges = new ArrayList<>();
+            if (gv.edges != null) {
+                for (CallGraphAnalyzer.GraphEdge ge : gv.edges) {
+                    if (ge == null) continue;
+                    Integer s = indexMap.get(ge.source);
+                    Integer t = indexMap.get(ge.target);
+                    if (s != null && t != null) {
+                        compactEdges.add(new int[] { s, t });
+                    }
+                }
+            }
+            COMPACT_JSON_MAPPER.writeValue(esc, Map.of("n", compactNodes, "e", compactEdges));
+        } else if (graphData != null) {
+            COMPACT_JSON_MAPPER.writeValue(esc, graphData);
+        } else {
+            out.write("{}");
+        }
+        esc.flush();
+    }
 
     public void writeInteractiveHtmlSnapshot(Writer out, String projectName, Object fullGraphData, Object archGraphData, ArchitectureReportData archData) throws IOException {
         Writer sb = out;
@@ -2403,7 +2561,10 @@ public class ReportService {
         sb.append(".legend-body { overflow-y: auto; padding: 8px 10px; max-height: 300px; }\n");
         sb.append(".legend-body::-webkit-scrollbar { width: 3px; } .legend-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }\n");
         sb.append(".legend-panel.collapsed .legend-body { display: none; }\n");
-        sb.append(".legend-item { display: flex; align-items: center; gap: 7px; margin: 3px 0; padding: 2px 0; }\n");
+        sb.append(".legend-item { display: flex; align-items: center; gap: 7px; margin: 2px 0; padding: 4px 8px; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; user-select: none; }\n");
+        sb.append(".legend-item:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }\n");
+        sb.append(".legend-item:hover .legend-name { color: #f8fafc; }\n");
+        sb.append(".legend-item:active { background: rgba(16, 185, 129, 0.15); }\n");
         sb.append(".legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }\n");
         sb.append(".legend-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1; }\n");
         sb.append(".floating-tooltip { position: fixed; pointer-events: none; background: rgba(15,23,42,0.97); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; z-index: 1000; display: none; box-shadow: 0 4px 24px rgba(0,0,0,0.6); max-width: 280px; }\n");
@@ -2495,40 +2656,36 @@ public class ReportService {
         sb.append("</div>\n");
 
         sb.append("<script id=\"codelens-fullgraph\" type=\"application/json\">\n");
-        if (fullGraphData != null) {
-            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
-            jsonMapper.writeValue(esc, fullGraphData);
-            esc.flush();
-        } else {
-            sb.append("{}");
-        }
+        writeCompactGraphJson(sb, fullGraphData);
         sb.append("\n</script>\n");
 
         sb.append("<script id=\"codelens-archgraph\" type=\"application/json\">\n");
-        if (archGraphData != null) {
-            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
-            jsonMapper.writeValue(esc, archGraphData);
-            esc.flush();
-        } else {
-            sb.append("{}");
-        }
-        sb.append("\n</script>\n");
-
-        sb.append("<script id=\"codelens-archdata\" type=\"application/json\">\n");
-        if (archData != null) {
-            EscapingScriptWriter esc = new EscapingScriptWriter(sb);
-            jsonMapper.writeValue(esc, archData);
-            esc.flush();
-        } else {
-            sb.append("{}");
-        }
+        writeCompactGraphJson(sb, archGraphData);
         sb.append("\n</script>\n");
 
         // Embedded interactive HTML5 canvas force graph viewer script
         sb.append("<script>\n");
         sb.append("(function() {\n");
-        sb.append("  const fullGraph = JSON.parse(document.getElementById('codelens-fullgraph').textContent || '{}');\n");
-        sb.append("  const archGraph = JSON.parse(document.getElementById('codelens-archgraph').textContent || '{}');\n");
+        sb.append("  function normalizeGraph(raw) {\n");
+        sb.append("    if (!raw) return { nodes: [], edges: [] };\n");
+        sb.append("    if (raw.n && raw.e) {\n");
+        sb.append("      const nodes = raw.n.map(t => ({\n");
+        sb.append("        id: t[0],\n");
+        sb.append("        label: t[1] || (t[0] ? t[0].split('.').pop() : ''),\n");
+        sb.append("        x: t[2],\n");
+        sb.append("        y: t[3],\n");
+        sb.append("        packageFqn: t[4] || ''\n");
+        sb.append("      }));\n");
+        sb.append("      const edges = raw.e.map(e => ({\n");
+        sb.append("        source: typeof e[0] === 'number' ? (nodes[e[0]] ? nodes[e[0]].id : e[0]) : e[0],\n");
+        sb.append("        target: typeof e[1] === 'number' ? (nodes[e[1]] ? nodes[e[1]].id : e[1]) : e[1]\n");
+        sb.append("      }));\n");
+        sb.append("      return { nodes, edges };\n");
+        sb.append("    }\n");
+        sb.append("    return { nodes: raw.nodes || [], edges: raw.edges || [] };\n");
+        sb.append("  }\n");
+        sb.append("  const fullGraph = normalizeGraph(JSON.parse(document.getElementById('codelens-fullgraph').textContent || '{}'));\n");
+        sb.append("  const archGraph = normalizeGraph(JSON.parse(document.getElementById('codelens-archgraph').textContent || '{}'));\n");
         sb.append("  let currentScope = 'arch';\n");
         sb.append("  let hidePojos = false;\n");
         sb.append("  let physicsRunning = true;\n");
@@ -2897,19 +3054,19 @@ public class ReportService {
         sb.append("      const isSamePkg = e.source.pkg === e.target.pkg;\n");
         sb.append("      if (isHighlighted) {\n");
         sb.append("        ctx.strokeStyle = 'rgba(56,189,248,0.95)';\n");
-        sb.append("        ctx.lineWidth = 2.2;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.2, 2.0 / zoom);\n");
         sb.append("      } else if (bothMatch) {\n");
         sb.append("        ctx.strokeStyle = 'rgba(56,189,248,0.85)';\n");
-        sb.append("        ctx.lineWidth = 1.8;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.0, 1.6 / zoom);\n");
         sb.append("      } else if (anyMatch) {\n");
         sb.append("        ctx.strokeStyle = 'rgba(148,163,184,0.35)';\n");
-        sb.append("        ctx.lineWidth = 1.2;\n");
+        sb.append("        ctx.lineWidth = Math.max(0.7, 1.1 / zoom);\n");
         sb.append("      } else if (isSamePkg) {\n");
         sb.append("        ctx.strokeStyle = 'rgba(148,163,184,0.32)';\n");
-        sb.append("        ctx.lineWidth = 1.2;\n");
+        sb.append("        ctx.lineWidth = Math.max(0.6, 0.9 / zoom);\n");
         sb.append("      } else {\n");
         sb.append("        ctx.strokeStyle = 'rgba(100,116,139,0.22)';\n");
-        sb.append("        ctx.lineWidth = 1.0;\n");
+        sb.append("        ctx.lineWidth = Math.max(0.4, 0.7 / zoom);\n");
         sb.append("      }\n");
         sb.append("      ctx.beginPath();\n");
         sb.append("      ctx.moveTo(e.source.x, e.source.y);\n");
@@ -2925,7 +3082,8 @@ public class ReportService {
         sb.append("      const isSel = (n === activeNode);\n");
         sb.append("      const isHov = (n === hoveredNode);\n");
         sb.append("      const faded = hasSearch && !isMatch && !isSel;\n");
-        sb.append("      const r = n.radius + (isSel ? 5 : isHov ? 3 : 0);\n");
+        sb.append("      const baseR = n.radius + (isSel ? 5 : isHov ? 3 : 0);\n");
+        sb.append("      const r = Math.max((isSel ? 6.5 : isHov ? 5.0 : 3.0) / zoom, baseR);\n");
         sb.append("      ctx.save();\n");
         sb.append("      if (isSel) {\n");
         sb.append("        ctx.shadowColor = '#38bdf8';\n");
@@ -2940,9 +3098,9 @@ public class ReportService {
         sb.append("      // Draw outer search match halo ring\n");
         sb.append("      if (hasSearch && isMatch && !isSel) {\n");
         sb.append("        ctx.beginPath();\n");
-        sb.append("        ctx.arc(n.x, n.y, r + 4, 0, Math.PI * 2);\n");
+        sb.append("        ctx.arc(n.x, n.y, r + 3 / zoom, 0, Math.PI * 2);\n");
         sb.append("        ctx.strokeStyle = '#38bdf8';\n");
-        sb.append("        ctx.lineWidth = 2.0;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.0, 1.8 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      }\n");
         sb.append("      // Main node body\n");
@@ -2954,23 +3112,23 @@ public class ReportService {
         sb.append("      // Node outline / border\n");
         sb.append("      if (isSel) {\n");
         sb.append("        ctx.strokeStyle = '#ffffff';\n");
-        sb.append("        ctx.lineWidth = 3.0;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.5, 2.5 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      } else if (hasSearch && isMatch) {\n");
         sb.append("        ctx.strokeStyle = '#e0f2fe';\n");
-        sb.append("        ctx.lineWidth = 2.0;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.2, 1.8 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      } else if (faded) {\n");
         sb.append("        ctx.strokeStyle = 'rgba(71,85,105,0.4)';\n");
-        sb.append("        ctx.lineWidth = 1.0;\n");
+        sb.append("        ctx.lineWidth = Math.max(0.6, 0.8 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      } else if (n.arch && n.arch.cls !== 'badge-pojo') {\n");
         sb.append("        ctx.strokeStyle = n.arch.color;\n");
-        sb.append("        ctx.lineWidth = 2.2;\n");
+        sb.append("        ctx.lineWidth = Math.max(1.2, 1.8 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      } else {\n");
         sb.append("        ctx.strokeStyle = 'rgba(255,255,255,0.25)';\n");
-        sb.append("        ctx.lineWidth = 1.2;\n");
+        sb.append("        ctx.lineWidth = Math.max(0.8, 1.0 / zoom);\n");
         sb.append("        ctx.stroke();\n");
         sb.append("      }\n");
         sb.append("      // Label rendering with readable background badge\n");
@@ -3013,14 +3171,27 @@ public class ReportService {
         sb.append("    canvas.height = H * dpr;\n");
         sb.append("  }\n");
         sb.append("  function getNodeAt(x, y) {\n");
-        sb.append("    const wx = (x - panX) / zoom, wy = (y - panY) / zoom;\n");
+        sb.append("    let best = null, bestDist = Infinity;\n");
         sb.append("    for (let i = nodes.length - 1; i >= 0; i--) {\n");
         sb.append("      const n = nodes[i];\n");
         sb.append("      if (hidePojos && n.isPojo) continue;\n");
-        sb.append("      const dx = n.x - wx, dy = n.y - wy;\n");
-        sb.append("      if (dx * dx + dy * dy <= (n.radius + 6) * (n.radius + 6)) return n;\n");
+        sb.append("      const sx = panX + n.x * zoom, sy = panY + n.y * zoom;\n");
+        sb.append("      const dx = sx - x, dy = sy - y;\n");
+        sb.append("      const distSq = dx * dx + dy * dy;\n");
+        sb.append("      const hitRadius = Math.max(14, n.radius * zoom + 6);\n");
+        sb.append("      if (distSq <= hitRadius * hitRadius && distSq < bestDist) {\n");
+        sb.append("        best = n;\n");
+        sb.append("        bestDist = distSq;\n");
+        sb.append("      }\n");
         sb.append("    }\n");
-        sb.append("    return null;\n");
+        sb.append("    return best;\n");
+        sb.append("  }\n");
+        sb.append("  function centerOnNode(n) {\n");
+        sb.append("    if (!n) return;\n");
+        sb.append("    const dpr = window.devicePixelRatio || 1;\n");
+        sb.append("    const W = canvas.width / dpr, H = canvas.height / dpr;\n");
+        sb.append("    panX = W / 2 - n.x * zoom;\n");
+        sb.append("    panY = H / 2 - n.y * zoom;\n");
         sb.append("  }\n");
         sb.append("  function resetInspector() {\n");
         sb.append("    const hint = document.getElementById('no-selection-hint');\n");
@@ -3055,7 +3226,7 @@ public class ReportService {
         sb.append("      const arrow = nb.kind === 'calls' ? '→' : '←';\n");
         sb.append("      const color = nb.kind === 'calls' ? '#34d399' : '#f472b6';\n");
         sb.append("      li.innerHTML = `<span class=\"conn-label\"><span style=\"color:${color};font-weight:700;\">${arrow}</span> ${nb.node.label}</span><span class=\"conn-pkg\" title=\"${nb.node.pkg}\">${nb.node.pkg.split('.').pop()}</span>`;\n");
-        sb.append("      li.onclick = () => selectNode(nb.node);\n");
+        sb.append("      li.onclick = () => { selectNode(nb.node); centerOnNode(nb.node); };\n");
         sb.append("      connList.appendChild(li);\n");
         sb.append("    });\n");
         sb.append("    // Auto-open sidebar if collapsed\n");
@@ -3069,9 +3240,11 @@ public class ReportService {
         sb.append("    if (btn) btn.classList.toggle('visible', searchQuery.length > 0);\n");
         sb.append("  }\n");
         sb.append("  // --- Event Listeners ---\n");
+        sb.append("  let downX = 0, downY = 0;\n");
         sb.append("  canvas.addEventListener('mousedown', e => {\n");
         sb.append("    const r = canvas.getBoundingClientRect();\n");
         sb.append("    const x = e.clientX - r.left, y = e.clientY - r.top;\n");
+        sb.append("    downX = x; downY = y;\n");
         sb.append("    const hit = getNodeAt(x, y);\n");
         sb.append("    if (hit) { draggedNode = hit; selectNode(hit); }\n");
         sb.append("    else { isDragging = true; dragStartX = e.clientX - panX; dragStartY = e.clientY - panY; }\n");
@@ -3102,7 +3275,14 @@ public class ReportService {
         sb.append("      }\n");
         sb.append("    }\n");
         sb.append("  });\n");
-        sb.append("  window.addEventListener('mouseup', () => { isDragging = false; draggedNode = null; canvas.style.cursor = 'grab'; });\n");
+        sb.append("  window.addEventListener('mouseup', e => {\n");
+        sb.append("    if (isDragging) {\n");
+        sb.append("      const r = canvas.getBoundingClientRect();\n");
+        sb.append("      const x = e.clientX - r.left, y = e.clientY - r.top;\n");
+        sb.append("      if (Math.hypot(x - downX, y - downY) < 5) resetInspector();\n");
+        sb.append("    }\n");
+        sb.append("    isDragging = false; draggedNode = null; canvas.style.cursor = 'grab';\n");
+        sb.append("  });\n");
         sb.append("  canvas.addEventListener('wheel', e => {\n");
         sb.append("    e.preventDefault();\n");
         sb.append("    const r = canvas.getBoundingClientRect();\n");

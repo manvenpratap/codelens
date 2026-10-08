@@ -1095,6 +1095,59 @@ public class EntityDao {
     }
 
     /**
+     * Efficiently finds all incoming relationships targeting a specific entity (field, method, class, or package).
+     * For a class, this includes relationships targeting the class itself, any of its methods, or any of its fields.
+     */
+    public List<CodeRelationship> findIncomingRelationshipsForEntity(String fqn, String kind) throws SQLException {
+        if (fqn == null || fqn.isBlank()) return Collections.emptyList();
+        List<CodeRelationship> list = new ArrayList<>();
+        boolean isClass = "CLASS".equalsIgnoreCase(kind) || "INTERFACE".equalsIgnoreCase(kind) || "RECORD".equalsIgnoreCase(kind) || "ENUM".equalsIgnoreCase(kind);
+        boolean isPackage = "PACKAGE".equalsIgnoreCase(kind) || "MODULE".equalsIgnoreCase(kind);
+        boolean isMethodWithParams = fqn.contains("(");
+
+        String sql;
+        if (isClass) {
+            sql = "SELECT * FROM relationships WHERE to_entity_fqn = ? " +
+                  "OR to_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn = ?) " +
+                  "OR to_entity_fqn IN (SELECT fqn FROM fields WHERE declaring_type_fqn = ?)";
+        } else if (isPackage) {
+            sql = "SELECT * FROM relationships WHERE to_entity_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?) " +
+                  "OR to_entity_fqn IN (SELECT fqn FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?)) " +
+                  "OR to_entity_fqn IN (SELECT fqn FROM fields WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn = ? OR package_fqn LIKE ?))";
+        } else if ("METHOD".equalsIgnoreCase(kind) && !isMethodWithParams) {
+            sql = "SELECT * FROM relationships WHERE to_entity_fqn = ? OR to_entity_fqn LIKE ?";
+        } else {
+            sql = "SELECT * FROM relationships WHERE to_entity_fqn = ?";
+        }
+
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            if (isClass) {
+                ps.setString(1, fqn);
+                ps.setString(2, fqn);
+                ps.setString(3, fqn);
+            } else if (isPackage) {
+                String like = fqn + ".%";
+                for (int i = 1; i <= 6; i += 2) {
+                    ps.setString(i, fqn);
+                    ps.setString(i + 1, like);
+                }
+            } else if ("METHOD".equalsIgnoreCase(kind) && !isMethodWithParams) {
+                ps.setString(1, fqn);
+                ps.setString(2, fqn + "(%");
+            } else {
+                ps.setString(1, fqn);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(relFromRs(rs));
+            }
+        }
+        return list;
+    }
+
+    /**
      * Efficiently fetches all CALLS relationships as raw (from, to) String pairs
      * using keyset-paginated chunking with immediate connection release.
      */
