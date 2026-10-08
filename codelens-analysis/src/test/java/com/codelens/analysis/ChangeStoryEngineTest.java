@@ -95,6 +95,15 @@ public class ChangeStoryEngineTest {
         assertNotNull(story.narrativeChangeSummary, "Change summary");
         assertNotNull(story.narrativeImpact, "Impact narrative");
         assertTrue(story.reviewChecklist.size() >= 2, "Checklist should have items");
+
+        // Test Markdown generation for PR comments & CI
+        String md = engine.toMarkdown(story);
+        assertNotNull(md, "Markdown should not be null");
+        assertTrue(md.contains("## 📖 CodeStory PR Change Story: `main` ➔ `feature/orders`"), "Markdown should have title with refs");
+        assertTrue(md.contains("TRD_ORDERS"), "Markdown should mention table TRD_ORDERS");
+        assertTrue(md.contains("OrderApiControllerTest"), "Markdown should list recommended test");
+        assertTrue(md.contains("Risk Level:"), "Markdown should include risk level");
+        assertTrue(md.contains("<details><summary>"), "Markdown should contain collapsible details for methods");
     }
 
     private CodeType createType(String fqn, String simple, String file, int line) {

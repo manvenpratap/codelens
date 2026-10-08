@@ -310,13 +310,30 @@ public class Application {
             return;
         }
 
-        // ── CLI PR Change Story: java -jar codelens-app.jar pr-story [base] [head] ────
+        // ── CLI PR Change Story: java -jar codelens-app.jar pr-story [base] [head] [--markdown] [--json] [--output=FILE] [--fail-on=RISK] ────
         if (args.length > 0 && ("pr-story".equalsIgnoreCase(args[0]) || "prstory".equalsIgnoreCase(args[0]) || "changestory".equalsIgnoreCase(args[0]))) {
             if (tryExecuteCliViaHttp(port, args)) {
                 return;
             }
-            String baseRef = args.length > 1 ? args[1] : null;
-            String headRef = args.length > 2 ? args[2] : null;
+            String baseRef = null;
+            String headRef = null;
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if (a.startsWith("-")) {
+                    if ("-o".equalsIgnoreCase(a)) i++;
+                    continue;
+                }
+                if (baseRef == null) {
+                    baseRef = a;
+                } else if (headRef == null) {
+                    headRef = a;
+                }
+            }
+
+            boolean isMarkdown = hasCliFlag(args, "--markdown") || hasCliFlag(args, "--md");
+            boolean isJson = hasCliFlag(args, "--json");
+            String outputFile = getCliOption(args, "--output=", "-o");
+            String failOn = getCliOption(args, "--fail-on=", null);
 
             DatabaseManager db = new DatabaseManager(dataDir);
             db.initialize();
@@ -360,8 +377,47 @@ public class Application {
 
             com.codelens.analysis.ChangeStoryEngine.ChangeStory story = changeStoryEngine.synthesizeStory(
                 fileLineRanges, types, methods, relationships, callGraph.getCallGraph(), storyEngine, diffReport.baseRef, diffReport.headRef);
-            printPrStoryCli(story);
+
+            String formattedContent = null;
+            if (isJson) {
+                try {
+                    formattedContent = new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(story);
+                    System.out.println(formattedContent);
+                } catch (Exception e) {
+                    printPrStoryCli(story);
+                }
+            } else if (isMarkdown) {
+                formattedContent = changeStoryEngine.toMarkdown(story);
+                System.out.println(formattedContent);
+            } else {
+                printPrStoryCli(story);
+            }
+
+            if (outputFile != null) {
+                String toWrite = formattedContent != null ? formattedContent : changeStoryEngine.toMarkdown(story);
+                try {
+                    java.nio.file.Files.writeString(java.nio.file.Path.of(outputFile), toWrite, java.nio.charset.StandardCharsets.UTF_8);
+                    System.err.printf("[CodeStory] Wrote PR change story to %s%n", outputFile);
+                } catch (Exception e) {
+                    System.err.printf("[CodeStory] Failed to write PR change story to %s: %s%n", outputFile, e.getMessage());
+                }
+            }
+
+            String summaryEnv = System.getenv("GITHUB_STEP_SUMMARY");
+            if (summaryEnv != null && !summaryEnv.isBlank()) {
+                try {
+                    String md = (formattedContent != null && isMarkdown) ? formattedContent : changeStoryEngine.toMarkdown(story);
+                    java.nio.file.Files.writeString(java.nio.file.Path.of(summaryEnv), md + "\n\n",
+                        java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                } catch (Exception ignored) {}
+            }
+
             db.close();
+
+            if (shouldFailOnRisk(story.riskLevel, failOn)) {
+                System.err.printf("%n[CI GATE FAILURE] PR Change Story risk level '%s' meets or exceeds fail threshold '%s'%n", story.riskLevel, failOn);
+                System.exit(1);
+            }
             return;
         }
 
@@ -491,8 +547,17 @@ public class Application {
             } else if ("teach-me".equals(mode) || "teachme".equals(mode) || "tour".equals(mode)) {
                 url = "http://127.0.0.1:" + port + "/api/storyline/system-tour";
             } else if ("pr-story".equals(mode) || "prstory".equals(mode) || "changestory".equals(mode)) {
-                String base = args.length > 1 ? args[1] : "";
-                String head = args.length > 2 ? args[2] : "";
+                String base = "";
+                String head = "";
+                for (int i = 1; i < args.length; i++) {
+                    String a = args[i];
+                    if (a.startsWith("-")) {
+                        if ("-o".equalsIgnoreCase(a)) i++;
+                        continue;
+                    }
+                    if (base.isEmpty()) base = a;
+                    else if (head.isEmpty()) head = a;
+                }
                 StringBuilder sb = new StringBuilder("http://127.0.0.1:").append(port).append("/api/git/pr-story");
                 boolean first = true;
                 if (!base.isBlank()) {
@@ -523,7 +588,7 @@ public class Application {
                 if (root.has("architectureGrade") || (root.has("executiveSummary") && root.has("complexityHotspots"))) {
                     printSystemTourJsonCli(root);
                 } else if (root.has("riskLevel") || root.has("narrativeChangeSummary")) {
-                    printPrStoryJsonCli(root);
+                    handlePrStoryOutputJson(root, args);
                 } else if (root.has("answerText")) {
                     printAiAskJsonCli(root);
                 } else if (root.has("detailedNarrative") || root.has("targetFqn")) {
@@ -1076,5 +1141,192 @@ public class Application {
         }
         System.out.println("================================================================================");
         System.out.println();
+    }
+
+    private static boolean hasCliFlag(String[] args, String flag) {
+        if (args == null) return false;
+        for (String a : args) {
+            if (flag.equalsIgnoreCase(a)) return true;
+        }
+        return false;
+    }
+
+    private static String getCliOption(String[] args, String prefix, String shortFlag) {
+        if (args == null) return null;
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if (prefix != null && a.toLowerCase(java.util.Locale.ROOT).startsWith(prefix.toLowerCase(java.util.Locale.ROOT))) {
+                return a.substring(prefix.length());
+            }
+            if (shortFlag != null && shortFlag.equalsIgnoreCase(a) && i + 1 < args.length) {
+                return args[i + 1];
+            }
+        }
+        return null;
+    }
+
+    public static boolean shouldFailOnRisk(String riskLevel, String failOnThreshold) {
+        if (failOnThreshold == null || failOnThreshold.isBlank() || riskLevel == null) return false;
+        return riskRank(riskLevel) >= riskRank(failOnThreshold);
+    }
+
+    private static int riskRank(String risk) {
+        return switch (risk.toUpperCase(java.util.Locale.ROOT)) {
+            case "CRITICAL" -> 4;
+            case "HIGH" -> 3;
+            case "MEDIUM" -> 2;
+            default -> 1;
+        };
+    }
+
+    private static void handlePrStoryOutputJson(com.fasterxml.jackson.databind.JsonNode root, String[] args) {
+        boolean isMarkdown = hasCliFlag(args, "--markdown") || hasCliFlag(args, "--md");
+        boolean isJson = hasCliFlag(args, "--json");
+        String outputFile = getCliOption(args, "--output=", "-o");
+        String failOn = getCliOption(args, "--fail-on=", null);
+
+        String formattedText = null;
+        if (isJson) {
+            formattedText = root.toPrettyString();
+            System.out.println(formattedText);
+        } else if (isMarkdown) {
+            formattedText = formatPrStoryJsonToMarkdown(root);
+            System.out.println(formattedText);
+        } else {
+            printPrStoryJsonCli(root);
+        }
+
+        if (outputFile != null) {
+            String toWrite = formattedText != null ? formattedText : formatPrStoryJsonToMarkdown(root);
+            try {
+                java.nio.file.Files.writeString(java.nio.file.Path.of(outputFile), toWrite, java.nio.charset.StandardCharsets.UTF_8);
+                System.err.printf("[CodeStory] Wrote PR change story to %s%n", outputFile);
+            } catch (Exception e) {
+                System.err.printf("[CodeStory] Failed to write PR change story to %s: %s%n", outputFile, e.getMessage());
+            }
+        }
+
+        String summaryEnv = System.getenv("GITHUB_STEP_SUMMARY");
+        if (summaryEnv != null && !summaryEnv.isBlank()) {
+            try {
+                String md = (formattedText != null && isMarkdown) ? formattedText : formatPrStoryJsonToMarkdown(root);
+                java.nio.file.Files.writeString(java.nio.file.Path.of(summaryEnv), md + "\n\n",
+                    java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            } catch (Exception ignored) {}
+        }
+
+        String risk = root.path("riskLevel").asText("LOW");
+        if (shouldFailOnRisk(risk, failOn)) {
+            System.err.printf("%n[CI GATE FAILURE] PR Change Story risk level '%s' meets or exceeds fail threshold '%s'%n", risk, failOn);
+            System.exit(1);
+        }
+    }
+
+    private static String formatPrStoryJsonToMarkdown(com.fasterxml.jackson.databind.JsonNode root) {
+        StringBuilder sb = new StringBuilder();
+        String risk = root.path("riskLevel").asText("LOW");
+        String badge = switch (risk.toUpperCase(java.util.Locale.ROOT)) {
+            case "CRITICAL" -> "🚨 CRITICAL";
+            case "HIGH" -> "🔴 HIGH";
+            case "MEDIUM" -> "🟡 MEDIUM";
+            default -> "🟢 LOW";
+        };
+
+        sb.append(String.format("## 📖 CodeStory PR Change Story: `%s` ➔ `%s`%n%n",
+            root.path("baseRef").asText("HEAD~1"), root.path("headRef").asText("HEAD")));
+
+        sb.append(String.format("> **Risk Level:** %s &nbsp;|&nbsp; **Changed Methods:** %d &nbsp;|&nbsp; **Classes:** %d &nbsp;|&nbsp; **Blast Radius Touchpoints:** %d%n%n",
+            badge, root.path("changedMethodsCount").asInt(), root.path("changedClassesCount").asInt(), root.path("totalTouchPoints").asInt()));
+
+        sb.append("### 📝 Change Summary\n");
+        sb.append(root.path("narrativeChangeSummary").asText("No changed methods detected in analyzed interval.")).append("\n\n");
+
+        String before = root.path("narrativeBeforeChange").asText("");
+        if (!before.isBlank()) {
+            sb.append("### 🏛️ Architectural Context (Before Change)\n").append(before).append("\n\n");
+        }
+
+        String impact = root.path("narrativeImpact").asText("");
+        if (!impact.isBlank()) {
+            sb.append("### 💥 Blast Radius & System Impact\n").append(impact).append("\n\n");
+        }
+
+        var methods = root.path("changedMethods");
+        if (methods.isArray() && methods.size() > 0) {
+            sb.append(String.format("<details><summary><b>🔍 Changed Methods & Upstream Callers (%d)</b></summary>%n%n", methods.size()));
+            sb.append("| Method | Class | File:Line | Upstream Callers | Touchpoints |\n");
+            sb.append("| :--- | :--- | :--- | :--- | :---: |\n");
+            for (int i = 0; i < methods.size(); i++) {
+                var m = methods.get(i);
+                var callers = m.path("callingServices");
+                String callerStr = "*(None)*";
+                if (callers.isArray() && callers.size() > 0) {
+                    List<String> list = new ArrayList<>();
+                    for (int j = 0; j < callers.size(); j++) list.add(callers.get(j).asText());
+                    callerStr = String.join(", ", list);
+                }
+                sb.append(String.format("| `%s` | `%s` | `%s:%d` | %s | %d |%n",
+                    m.path("simpleName").asText(), m.path("classSimpleName").asText(),
+                    m.path("sourceFile").asText(), m.path("startLine").asInt(),
+                    callerStr, m.path("touchPointsCount").asInt()));
+            }
+            sb.append("\n</details>\n\n");
+        }
+
+        var stories = root.path("affectedStorylines");
+        if (stories.isArray() && stories.size() > 0) {
+            sb.append(String.format("### ⚡ Directly Affected Storylines (%d)%n", stories.size()));
+            for (int i = 0; i < stories.size(); i++) {
+                var a = stories.get(i);
+                sb.append(String.format("- ⚡ **%s** (`%s`) — Step %d/%d: `%s`%n",
+                    a.path("title").asText(), a.path("category").asText(),
+                    a.path("stepIndex").asInt(), a.path("totalSteps").asInt(), a.path("affectedStepName").asText()));
+            }
+            sb.append("\n");
+        }
+
+        var eps = root.path("affectedEndpoints");
+        var tabs = root.path("affectedTables");
+        var evts = root.path("affectedEvents");
+        if (eps.size() > 0 || tabs.size() > 0 || evts.size() > 0) {
+            sb.append("### 🌐 Impacted Semantic Entities\n");
+            if (eps.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < eps.size(); i++) list.add("`" + eps.get(i).asText() + "`");
+                sb.append("- **Endpoints:** ").append(String.join(", ", list)).append("\n");
+            }
+            if (tabs.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < tabs.size(); i++) list.add("`" + tabs.get(i).asText() + "`");
+                sb.append("- **Tables:** ").append(String.join(", ", list)).append("\n");
+            }
+            if (evts.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < evts.size(); i++) list.add("`" + evts.get(i).asText() + "`");
+                sb.append("- **Events:** ").append(String.join(", ", list)).append("\n");
+            }
+            sb.append("\n");
+        }
+
+        var tests = root.path("recommendedTests");
+        if (tests.isArray() && tests.size() > 0) {
+            sb.append(String.format("### ✅ Recommended Automated Test Suites (%d)%n", tests.size()));
+            for (int i = 0; i < tests.size(); i++) {
+                sb.append(String.format("- [ ] `%s`%n", tests.get(i).asText()));
+            }
+            sb.append("\n");
+        }
+
+        var checklist = root.path("reviewChecklist");
+        if (checklist.isArray() && checklist.size() > 0) {
+            sb.append("### 📋 Architectural Review Checklist\n");
+            for (int i = 0; i < checklist.size(); i++) {
+                sb.append(String.format("- [ ] %s%n", checklist.get(i).asText()));
+            }
+            sb.append("\n");
+        }
+
+        sb.append("---\n*Generated by [CodeStory](https://github.com/codelens/codelens) — Architectural Intelligence & Impact Story Engine*\n");
+        return sb.toString();
     }
 }
