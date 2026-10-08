@@ -12527,6 +12527,14 @@ function initScopeManagement() {
   } catch (err) {
     console.warn('initCodestoryAsk failed:', err);
   }
+
+  // Initialize Teach Me System Tour & Git PR Change Story
+  try {
+    if (typeof initSystemTour === 'function') initSystemTour();
+    if (typeof initGitPrStory === 'function') initGitPrStory();
+  } catch (err) {
+    console.warn('initSystemTour/initGitPrStory failed:', err);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -21407,6 +21415,497 @@ window.submitCodestoryQuestion = submitCodestoryQuestion;
 window.openCodestoryExplain = openCodestoryExplain;
 window.loadAiConfigToSettings = loadAiConfigToSettings;
 window.saveAiConfigFromSettings = saveAiConfigFromSettings;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CODESTORY: SYSTEM ONBOARDING TOUR (WORKFLOW 5)
+   ═══════════════════════════════════════════════════════════════════════════ */
+let systemTourDataCache = null;
+let currentTourLayer = 1;
+
+function initSystemTour() {
+  const headerBtn = qs('#btn-codestory-teachme');
+  const modal = qs('#system-tour-modal');
+  const closeBtn = qs('#btn-close-system-tour');
+  const prevBtn = qs('#tour-btn-prev');
+  const nextBtn = qs('#tour-btn-next');
+  const tabBtns = qsa('.tour-tab-btn');
+
+  if (headerBtn) {
+    headerBtn.addEventListener('click', () => openSystemTourModal());
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeSystemTourModal);
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeSystemTourModal();
+    });
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      if (currentTourLayer > 1) switchTourLayer(currentTourLayer - 1);
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      if (currentTourLayer < 5) {
+        switchTourLayer(currentTourLayer + 1);
+      } else {
+        closeSystemTourModal();
+      }
+    });
+  }
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const layer = parseInt(btn.getAttribute('data-layer'), 10);
+      if (layer >= 1 && layer <= 5) switchTourLayer(layer);
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 't' || e.key === 'T') {
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      if (modal && modal.classList.contains('open')) return;
+      if (!qs('.modal-backdrop.open')) {
+        e.preventDefault();
+        openSystemTourModal();
+      }
+    }
+  });
+}
+
+async function openSystemTourModal() {
+  const modal = qs('#system-tour-modal');
+  if (!modal) return;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  switchTourLayer(1);
+  await loadSystemTourData();
+}
+
+function closeSystemTourModal() {
+  const modal = qs('#system-tour-modal');
+  if (!modal) return;
+  if (typeof dismissModalAnimated === 'function') {
+    dismissModalAnimated(modal);
+  } else {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function switchTourLayer(layerNum) {
+  currentTourLayer = layerNum;
+
+  qsa('.tour-tab-btn').forEach(btn => {
+    const l = parseInt(btn.getAttribute('data-layer'), 10);
+    const active = l === layerNum;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  for (let i = 1; i <= 5; i++) {
+    const v = qs(`#tour-layer-${i}`);
+    if (v) v.style.display = i === layerNum ? 'flex' : 'none';
+  }
+
+  const ind = qs('#tour-step-indicator');
+  if (ind) ind.textContent = `Layer ${layerNum} of 5`;
+
+  const prevBtn = qs('#tour-btn-prev');
+  if (prevBtn) prevBtn.disabled = layerNum === 1;
+
+  const nextBtn = qs('#tour-btn-next');
+  if (nextBtn) {
+    nextBtn.textContent = layerNum === 5 ? 'Finish Tour ✓' : 'Next Layer →';
+  }
+}
+
+async function loadSystemTourData(force = false) {
+  if (systemTourDataCache && !force) {
+    renderSystemTour(systemTourDataCache);
+    return;
+  }
+
+  const loading = qs('#system-tour-loading');
+  if (loading) loading.style.display = 'flex';
+
+  try {
+    const res = await fetch('/api/storyline/system-tour');
+    if (!res.ok) throw new Error('Failed to load system tour');
+    const data = await res.json();
+    systemTourDataCache = data;
+    renderSystemTour(data);
+  } catch (err) {
+    console.error('System tour error:', err);
+    const n = qs('#tour-l1-narrative');
+    if (n) n.textContent = 'Error loading tour data: ' + err.message;
+  } finally {
+    if (loading) loading.style.display = 'none';
+  }
+}
+
+function renderSystemTour(data) {
+  if (!data) return;
+
+  const gradePill = qs('#tour-grade-pill');
+  if (gradePill) {
+    gradePill.textContent = `Grade ${data.architectureGrade || 'A'}`;
+  }
+
+  const projEl = qs('#tour-l1-project-name');
+  if (projEl) projEl.textContent = data.projectName || 'Repository';
+
+  const narrEl = qs('#tour-l1-narrative');
+  if (narrEl) narrEl.textContent = data.executiveSummary || 'No summary available.';
+
+  const statsGrid = qs('#tour-l1-stats-grid');
+  if (statsGrid) {
+    statsGrid.innerHTML = `
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.totalTypes || 0}</span>
+        <span class="tour-stat-lbl">Types / Classes</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.totalMethods || 0}</span>
+        <span class="tour-stat-lbl">Methods</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.totalRelationships || 0}</span>
+        <span class="tour-stat-lbl">Relationships</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.controllerCount || 0}</span>
+        <span class="tour-stat-lbl">API Controllers</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.serviceCount || 0}</span>
+        <span class="tour-stat-lbl">Domain Services</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.repositoryCount || 0}</span>
+        <span class="tour-stat-lbl">Repositories</span>
+      </div>
+      <div class="tour-stat-tile">
+        <span class="tour-stat-num">${data.entityCount || 0}</span>
+        <span class="tour-stat-lbl">Data Entities</span>
+      </div>
+    `;
+  }
+
+  const boundsEl = qs('#tour-l2-boundaries');
+  if (boundsEl) {
+    boundsEl.innerHTML = (data.modularBoundaries || []).map(b => `
+      <div class="tour-boundary-item">
+        <span style="color: var(--mint);">✓</span>
+        <span>${esc(b)}</span>
+      </div>
+    `).join('');
+  }
+
+  const subsEl = qs('#tour-l2-subsystems');
+  if (subsEl) {
+    subsEl.innerHTML = (data.subsystems || []).map(s => `
+      <div class="tour-subsystem-card">
+        <div class="tour-subsystem-pkg">${esc(s.package)}</div>
+        <div class="tour-subsystem-meta">
+          <span class="tour-role-badge">${esc(s.role || 'Subsystem')}</span>
+          <span style="color: var(--text-muted);">${s.typeCount || 0} types</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const wfEl = qs('#tour-l3-workflows');
+  if (wfEl) {
+    const list = data.goldenWorkflows || [];
+    if (list.length === 0) {
+      wfEl.innerHTML = `<div style="color: var(--text-muted); font-size: 12px;">No golden workflows discovered yet.</div>`;
+    } else {
+      wfEl.innerHTML = list.map(w => `
+        <div class="tour-workflow-card" data-story-id="${esc(w.id)}" data-entry="${esc(w.entryPoint)}">
+          <div class="tour-workflow-top">
+            <span class="tour-workflow-title">${esc(w.title)}</span>
+            <span class="storyline-category-badge cat-${(w.category || 'domain').toLowerCase()}">${esc(w.category || 'WORKFLOW')}</span>
+          </div>
+          <div class="tour-workflow-desc">${esc(w.executiveSummary)}</div>
+          <div style="font-size: 11px; color: var(--text-muted); display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+            <span>Entry: <code>${esc(w.entryClass || w.entryPoint)}</code></span>
+            <span style="color: var(--mint); font-weight: 600;">Trace Storyline ↗</span>
+          </div>
+        </div>
+      `).join('');
+
+      wfEl.querySelectorAll('.tour-workflow-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const sid = card.getAttribute('data-story-id');
+          closeSystemTourModal();
+          switchTab('storylines');
+          if (typeof selectStoryline === 'function') {
+            selectStoryline(sid);
+          }
+        });
+      });
+    }
+  }
+
+  const hotEl = qs('#tour-l4-hotspots');
+  if (hotEl) {
+    const hots = data.complexityHotspots || [];
+    hotEl.innerHTML = hots.map(h => `
+      <div class="tour-hotspot-item" data-fqn="${esc(h.fqn)}" title="Click to inspect in Graph">
+        <div class="tour-hotspot-method">
+          <span style="color: var(--cyan);">${esc(h.class || '')}</span>.<span style="font-weight:600;">${esc(h.method)}</span>
+        </div>
+        <span class="tour-hotspot-cc">CC: ${h.complexity}</span>
+      </div>
+    `).join('');
+
+    hotEl.querySelectorAll('.tour-hotspot-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const fqn = item.getAttribute('data-fqn');
+        closeSystemTourModal();
+        if (typeof jumpToGraphHeat === 'function') {
+          jumpToGraphHeat(fqn);
+        }
+      });
+    });
+  }
+
+  const watchEl = qs('#tour-l4-watchpoints');
+  if (watchEl) {
+    watchEl.innerHTML = (data.concurrencyWatchpoints || []).map(cw => `
+      <div class="tour-watchpoint-item">
+        <span style="color: var(--amber);">⚠️</span>
+        <span>${esc(cw)}</span>
+      </div>
+    `).join('');
+  }
+
+  const eps = data.exposedEndpoints || [];
+  const epCountEl = qs('#tour-l5-endpoints-count');
+  if (epCountEl) epCountEl.textContent = eps.length;
+  const epListEl = qs('#tour-l5-endpoints');
+  if (epListEl) {
+    epListEl.innerHTML = eps.length > 0
+      ? eps.map(e => `<span class="tour-semantic-pill"><span style="color:var(--blue); font-weight:700;">API</span> ${esc(e)}</span>`).join('')
+      : `<span style="color:var(--text-muted); font-size:11px;">No exposed endpoints detected</span>`;
+  }
+
+  const tabs = data.databaseTables || [];
+  const tabCountEl = qs('#tour-l5-tables-count');
+  if (tabCountEl) tabCountEl.textContent = tabs.length;
+  const tabListEl = qs('#tour-l5-tables');
+  if (tabListEl) {
+    tabListEl.innerHTML = tabs.length > 0
+      ? tabs.map(t => `<span class="tour-semantic-pill"><span style="color:var(--emerald); font-weight:700;">TABLE</span> ${esc(t)}</span>`).join('')
+      : `<span style="color:var(--text-muted); font-size:11px;">No database tables detected</span>`;
+  }
+
+  const evts = data.domainEvents || [];
+  const evtCountEl = qs('#tour-l5-events-count');
+  if (evtCountEl) evtCountEl.textContent = evts.length;
+  const evtListEl = qs('#tour-l5-events');
+  if (evtListEl) {
+    evtListEl.innerHTML = evts.length > 0
+      ? evts.map(e => `<span class="tour-semantic-pill"><span style="color:var(--amber); font-weight:700;">EVENT</span> ${esc(e)}</span>`).join('')
+      : `<span style="color:var(--text-muted); font-size:11px;">No domain events detected</span>`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CODESTORY: GIT PR CHANGE STORY (WORKFLOW 6)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function initGitPrStory() {
+  const genBtn = qs('#git-pr-generate-btn');
+  if (genBtn) {
+    genBtn.addEventListener('click', generateGitPrStory);
+  }
+}
+
+async function generateGitPrStory() {
+  const baseInput = qs('#git-pr-base-input');
+  const headInput = qs('#git-pr-head-input');
+  const genBtn = qs('#git-pr-generate-btn');
+
+  const base = baseInput ? baseInput.value.trim() : 'HEAD~1';
+  const head = headInput ? headInput.value.trim() : 'HEAD';
+
+  if (genBtn) {
+    genBtn.disabled = true;
+    genBtn.innerHTML = `<span class="spinner-sm"></span><span>Synthesizing Story…</span>`;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    if (base) params.set('base', base);
+    if (head) params.set('head', head);
+
+    const res = await fetch(`/api/git/pr-story?${params.toString()}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderGitPrStory(data);
+  } catch (err) {
+    console.error('Failed to generate PR story:', err);
+    if (typeof showToast === 'function') {
+      showToast('Error synthesizing PR Story: ' + err.message, 'error');
+    }
+  } finally {
+    if (genBtn) {
+      genBtn.disabled = false;
+      genBtn.innerHTML = `
+        <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span>Synthesize Change Story</span>
+      `;
+    }
+  }
+}
+
+function renderGitPrStory(story) {
+  const resultsBox = qs('#git-pr-results-box');
+  if (!resultsBox || !story) return;
+
+  resultsBox.style.display = 'flex';
+
+  const basePill = qs('#git-pr-res-base');
+  if (basePill) basePill.textContent = story.baseRef || 'HEAD~1';
+
+  const headPill = qs('#git-pr-res-head');
+  if (headPill) headPill.textContent = story.headRef || 'HEAD';
+
+  const riskBadge = qs('#git-pr-res-risk');
+  if (riskBadge) {
+    const lvl = story.riskLevel || 'LOW';
+    riskBadge.textContent = `${lvl} RISK`;
+    riskBadge.className = `git-pr-risk-badge risk-${lvl.toLowerCase()}`;
+  }
+
+  const statMeth = qs('#git-pr-stat-methods');
+  if (statMeth) statMeth.textContent = story.changedMethodsCount || 0;
+
+  const statCls = qs('#git-pr-stat-classes');
+  if (statCls) statCls.textContent = story.changedClassesCount || 0;
+
+  const statTouch = qs('#git-pr-stat-touchpoints');
+  if (statTouch) statTouch.textContent = story.totalTouchPoints || 0;
+
+  const statStory = qs('#git-pr-stat-storylines');
+  if (statStory) statStory.textContent = (story.affectedStorylines || []).length;
+
+  const sumEl = qs('#git-pr-res-summary');
+  if (sumEl) sumEl.textContent = story.narrativeChangeSummary || 'No change narrative generated.';
+
+  const impEl = qs('#git-pr-res-impact');
+  if (impEl) impEl.textContent = story.narrativeImpact || 'No impact narrative generated.';
+
+  const methodsList = qs('#git-pr-methods-list');
+  if (methodsList) {
+    const methods = story.changedMethods || [];
+    if (methods.length === 0) {
+      methodsList.innerHTML = `<div style="font-size:12px; color:var(--text-muted);">No AST methods directly modified in this range.</div>`;
+    } else {
+      methodsList.innerHTML = methods.map(m => `
+        <div class="git-pr-method-row">
+          <div class="git-pr-method-name">
+            <span style="color:var(--cyan);">${esc(m.classSimpleName || '')}</span>.<span style="font-weight:600;">${esc(m.simpleName || '')}</span>
+            <span style="color:var(--text-muted); font-size:11px; margin-left:6px;">(${esc(m.sourceFile ? m.sourceFile.split('/').pop() : '')}:${m.startLine})</span>
+          </div>
+          <div class="git-pr-method-touchpoints">
+            ${m.touchPointsCount > 0 ? `<strong>${m.touchPointsCount}</strong> upstream callers` : 'Isolated / leaf method'}
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  const storiesCard = qs('#git-pr-storylines-card');
+  const storiesList = qs('#git-pr-storylines-list');
+  const affStories = story.affectedStorylines || [];
+  if (storiesCard && storiesList) {
+    if (affStories.length > 0) {
+      storiesCard.style.display = 'flex';
+      storiesList.innerHTML = affStories.map(a => `
+        <div class="git-pr-storyline-row">
+          <span style="color:var(--purple); font-weight:700;">⚡</span>
+          <div style="flex:1;">
+            <span style="font-weight:600;">${esc(a.title)}</span>
+            <span style="font-size:11px; color:var(--text-muted); margin-left:6px;">[Step ${a.stepIndex}/${a.totalSteps}: ${esc(a.affectedStepName)}]</span>
+          </div>
+          <span class="storyline-category-badge cat-${(a.category || 'domain').toLowerCase()}">${esc(a.category || 'STORYLINE')}</span>
+        </div>
+      `).join('');
+    } else {
+      storiesCard.style.display = 'none';
+    }
+  }
+
+  const semCard = qs('#git-pr-semantic-card');
+  const semGrid = qs('#git-pr-semantic-grid');
+  const eps = story.affectedEndpoints || [];
+  const tabs = story.affectedTables || [];
+  const evts = story.affectedEvents || [];
+  if (semCard && semGrid) {
+    if (eps.length > 0 || tabs.length > 0 || evts.length > 0) {
+      semCard.style.display = 'flex';
+      let html = '';
+      if (eps.length > 0) {
+        html += `<div style="margin-bottom:6px;"><span style="font-size:11px; font-weight:700; color:var(--blue);">Endpoints:</span> ${eps.map(e => `<span class="tour-semantic-pill">${esc(e)}</span>`).join(' ')}</div>`;
+      }
+      if (tabs.length > 0) {
+        html += `<div style="margin-bottom:6px;"><span style="font-size:11px; font-weight:700; color:var(--emerald);">Tables:</span> ${tabs.map(t => `<span class="tour-semantic-pill">${esc(t)}</span>`).join(' ')}</div>`;
+      }
+      if (evts.length > 0) {
+        html += `<div><span style="font-size:11px; font-weight:700; color:var(--amber);">Events:</span> ${evts.map(ev => `<span class="tour-semantic-pill">${esc(ev)}</span>`).join(' ')}</div>`;
+      }
+      semGrid.innerHTML = html;
+    } else {
+      semCard.style.display = 'none';
+    }
+  }
+
+  const testsCard = qs('#git-pr-tests-card');
+  const testsList = qs('#git-pr-tests-list');
+  const tests = story.recommendedTests || [];
+  if (testsCard && testsList) {
+    if (tests.length > 0) {
+      testsCard.style.display = 'flex';
+      testsList.innerHTML = tests.map(t => `
+        <span class="git-pr-test-pill">
+          <span>✓</span>
+          <span>${esc(t)}</span>
+        </span>
+      `).join('');
+    } else {
+      testsCard.style.display = 'none';
+    }
+  }
+
+  const checkList = qs('#git-pr-checklist-list');
+  if (checkList) {
+    const items = story.reviewChecklist || [];
+    checkList.innerHTML = items.map(item => `
+      <div class="git-pr-checklist-item">
+        <span style="color:var(--mint);">◻</span>
+        <span>${esc(item)}</span>
+      </div>
+    `).join('');
+  }
+}
+
+window.openSystemTourModal = openSystemTourModal;
+window.closeSystemTourModal = closeSystemTourModal;
+window.switchTourLayer = switchTourLayer;
+window.generateGitPrStory = generateGitPrStory;
+
 
 
 

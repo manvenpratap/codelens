@@ -1,6 +1,7 @@
 package com.codelens.analysis;
 
 import com.codelens.core.model.CodeMethod;
+import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
@@ -127,6 +128,36 @@ public class StoryEngine {
         public List<String> level3ExecutionFlow = new ArrayList<>();
         public List<StorylineStep> level4CodeDetails = new ArrayList<>();
         public List<StorylineEvidence> level5Evidence = new ArrayList<>();
+    }
+
+    public static class SystemTourGuide {
+        // Layer 1: Executive Mission & Health Grade
+        public String projectName;
+        public String architectureGrade;
+        public int totalTypes;
+        public int totalMethods;
+        public int totalRelationships;
+        public int controllerCount;
+        public int serviceCount;
+        public int repositoryCount;
+        public int entityCount;
+        public String executiveSummary;
+
+        // Layer 2: Core Subsystems & Boundaries
+        public List<Map<String, Object>> subsystems = new ArrayList<>();
+        public List<String> modularBoundaries = new ArrayList<>();
+
+        // Layer 3: Top Golden Workflows (Storylines)
+        public List<StorylineSummary> goldenWorkflows = new ArrayList<>();
+
+        // Layer 4: High-Risk Hotspots & Watchpoints
+        public List<Map<String, Object>> complexityHotspots = new ArrayList<>();
+        public List<String> concurrencyWatchpoints = new ArrayList<>();
+
+        // Layer 5: Semantic Database, APIs & Events Catalog
+        public List<String> exposedEndpoints = new ArrayList<>();
+        public List<String> databaseTables = new ArrayList<>();
+        public List<String> domainEvents = new ArrayList<>();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -669,6 +700,102 @@ public class StoryEngine {
         guide.level5Evidence = storyline.evidence;
 
         return guide;
+    }
+
+    public SystemTourGuide generateSystemTour(List<CodeType> types,
+                                              List<CodeMethod> methods,
+                                              List<CodeRelationship> relationships,
+                                              Graph<String, DefaultEdge> callGraph,
+                                              String projectName) {
+        SystemTourGuide tour = new SystemTourGuide();
+        tour.projectName = projectName != null && !projectName.isBlank() ? projectName : "Scanned Repository";
+        tour.totalTypes = types.size();
+        tour.totalMethods = methods.size();
+        tour.totalRelationships = relationships != null ? relationships.size() : 0;
+
+        int ctrl = 0, srv = 0, repo = 0, ent = 0;
+        Map<String, Integer> pkgCounts = new TreeMap<>();
+        Map<String, CodeType> typeMap = new HashMap<>();
+
+        for (CodeType t : types) {
+            typeMap.put(t.getFqn(), t);
+            String nameLower = (t.getSimpleName() != null ? t.getSimpleName() : "").toLowerCase(Locale.ROOT);
+            if (nameLower.contains("controller") || nameLower.contains("endpoint") || nameLower.contains("resource")) ctrl++;
+            else if (nameLower.contains("service") || nameLower.contains("manager") || nameLower.contains("coordinator")) srv++;
+            else if (nameLower.contains("repository") || nameLower.contains("dao")) repo++;
+            else if (nameLower.contains("entity") || nameLower.contains("model") || nameLower.contains("dto") || "RECORD".equalsIgnoreCase(t.getKind())) ent++;
+
+            if ("ENDPOINT".equalsIgnoreCase(t.getKind())) tour.exposedEndpoints.add(t.getSimpleName());
+            else if ("TABLE".equalsIgnoreCase(t.getKind())) tour.databaseTables.add(t.getSimpleName());
+            else if ("EVENT".equalsIgnoreCase(t.getKind())) tour.domainEvents.add(t.getSimpleName());
+
+            String pkg = t.getPackageFqn();
+            if (pkg != null && !pkg.isBlank()) {
+                String topPkg = pkg;
+                int dot = pkg.indexOf('.', pkg.indexOf('.') + 1);
+                if (dot > 0) topPkg = pkg.substring(0, dot);
+                pkgCounts.merge(topPkg, 1, Integer::sum);
+            }
+        }
+
+        tour.controllerCount = ctrl;
+        tour.serviceCount = srv;
+        tour.repositoryCount = repo;
+        tour.entityCount = ent;
+
+        // Layer 1: Architecture Grade
+        tour.architectureGrade = (tour.totalTypes > 0 && repo > 0 && srv > 0) ? "A" : "B";
+        tour.executiveSummary = String.format(
+            "%s is structured into %d types and %d methods. The architectural topology features %d API controllers/entrypoints, %d business domain services, %d persistence repositories, and %d domain data carriers.",
+            tour.projectName, tour.totalTypes, tour.totalMethods, ctrl, srv, repo, ent
+        );
+
+        // Layer 2: Subsystems
+        for (Map.Entry<String, Integer> e : pkgCounts.entrySet()) {
+            Map<String, Object> sub = new LinkedHashMap<>();
+            sub.put("package", e.getKey());
+            sub.put("typeCount", e.getValue());
+            sub.put("role", e.getKey().contains("api") ? "API Interface" : (e.getKey().contains("service") ? "Domain Core" : "Subsystem"));
+            tour.subsystems.add(sub);
+        }
+        tour.modularBoundaries.add("Clean separation between controller entrypoints and domain services.");
+        tour.modularBoundaries.add("Repositories isolate database table access from business orchestration.");
+
+        // Layer 3: Top Golden Workflows (Storylines)
+        if (callGraph != null) {
+            List<StorylineSummary> discovered = discoverStorylines(types, methods, callGraph);
+            tour.goldenWorkflows = discovered.stream().limit(5).toList();
+        }
+
+        // Layer 4: High-Risk Hotspots & Concurrency Watchpoints
+        List<CodeMethod> sortedComplexity = new ArrayList<>(methods);
+        sortedComplexity.sort((a, b) -> Integer.compare(b.getCyclomaticComplexity(), a.getCyclomaticComplexity()));
+        for (CodeMethod m : sortedComplexity.stream().limit(5).toList()) {
+            Map<String, Object> hot = new LinkedHashMap<>();
+            hot.put("method", m.getSimpleName());
+            hot.put("fqn", m.getFqn());
+            hot.put("class", m.getDeclaringTypeFqn() != null ? extractClassSimple(m.getDeclaringTypeFqn()) : "");
+            hot.put("complexity", m.getCyclomaticComplexity());
+            hot.put("startLine", m.getStartLine());
+            CodeType dt = typeMap.get(m.getDeclaringTypeFqn());
+            hot.put("sourceFile", dt != null && dt.getSourceFile() != null ? dt.getSourceFile() : "");
+            tour.complexityHotspots.add(hot);
+        }
+        tour.concurrencyWatchpoints.add("Inspect shared mutable fields across singleton service beans.");
+        tour.concurrencyWatchpoints.add("Verify batch loops and asynchronous publisher queues for thread safety.");
+
+        // Layer 5: Fallback semantic entities from relationships if types didn't list them
+        if (relationships != null) {
+            for (CodeRelationship r : relationships) {
+                String to = r.getToEntityFqn();
+                if (to == null) continue;
+                if (to.startsWith("endpoint:") && !tour.exposedEndpoints.contains(to.substring(9))) tour.exposedEndpoints.add(to.substring(9));
+                else if (to.startsWith("table:") && !tour.databaseTables.contains(to.substring(6))) tour.databaseTables.add(to.substring(6));
+                else if (to.startsWith("event:") && !tour.domainEvents.contains(to.substring(6))) tour.domainEvents.add(to.substring(6));
+            }
+        }
+
+        return tour;
     }
 
     private boolean isTestFqn(String fqn) {

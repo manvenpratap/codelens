@@ -276,6 +276,95 @@ public class Application {
             return;
         }
 
+        // ── CLI Teach-Me System Tour: java -jar codelens-app.jar teach-me ────
+        if (args.length > 0 && ("teach-me".equalsIgnoreCase(args[0]) || "teachme".equalsIgnoreCase(args[0]) || "tour".equalsIgnoreCase(args[0]))) {
+            if (tryExecuteCliViaHttp(port, args)) {
+                return;
+            }
+            DatabaseManager db = new DatabaseManager(dataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+            List<com.codelens.core.model.CodeRelationship> relationships = dao.findAllRelationships();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
+            String projName = "Scanned Repository";
+            try {
+                com.codelens.core.model.ScanProgress sm = dao.getLatestScanMeta();
+                if (sm != null && sm.getSourcePath() != null && !sm.getSourcePath().isBlank()) {
+                    projName = new File(sm.getSourcePath()).getName();
+                }
+            } catch (Exception ignored) {}
+            if ("Scanned Repository".equals(projName) && config.getDefaultScanPath() != null && !config.getDefaultScanPath().isBlank()) {
+                projName = new File(config.getDefaultScanPath()).getName();
+            }
+
+            com.codelens.analysis.StoryEngine.SystemTourGuide tour = storyEngine.generateSystemTour(types, methods, relationships, callGraph.getCallGraph(), projName);
+            printSystemTourCli(tour);
+            db.close();
+            return;
+        }
+
+        // ── CLI PR Change Story: java -jar codelens-app.jar pr-story [base] [head] ────
+        if (args.length > 0 && ("pr-story".equalsIgnoreCase(args[0]) || "prstory".equalsIgnoreCase(args[0]) || "changestory".equalsIgnoreCase(args[0]))) {
+            if (tryExecuteCliViaHttp(port, args)) {
+                return;
+            }
+            String baseRef = args.length > 1 ? args[1] : null;
+            String headRef = args.length > 2 ? args[2] : null;
+
+            DatabaseManager db = new DatabaseManager(dataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+            List<com.codelens.core.model.CodeRelationship> relationships = dao.findAllRelationships();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
+            com.codelens.git.GitDiffService gitDiffService = new com.codelens.git.GitDiffService();
+            com.codelens.analysis.ChangeStoryEngine changeStoryEngine = new com.codelens.analysis.ChangeStoryEngine();
+
+            String repoPath = ".";
+            try {
+                com.codelens.core.model.ScanProgress sm = dao.getLatestScanMeta();
+                if (sm != null && sm.getSourcePath() != null && !sm.getSourcePath().isBlank()) {
+                    repoPath = sm.getSourcePath();
+                }
+            } catch (Exception ignored) {}
+
+            File repoDir = new File(repoPath);
+            com.codelens.git.GitDiffService.GitDiffReport diffReport;
+            try {
+                diffReport = gitDiffService.computeDiff(repoDir, baseRef, headRef);
+            } catch (Exception e) {
+                diffReport = new com.codelens.git.GitDiffService.GitDiffReport();
+                diffReport.baseRef = baseRef != null ? baseRef : "HEAD~1";
+                diffReport.headRef = headRef != null ? headRef : "HEAD";
+            }
+
+            java.util.Map<String, List<int[]>> fileLineRanges = new java.util.HashMap<>();
+            for (com.codelens.git.GitDiffService.FileDiffRange fd : diffReport.changedFiles) {
+                if (fd.lineRanges != null && !fd.lineRanges.isEmpty()) {
+                    fileLineRanges.put(fd.relativePath, fd.lineRanges);
+                }
+            }
+
+            com.codelens.analysis.ChangeStoryEngine.ChangeStory story = changeStoryEngine.synthesizeStory(
+                fileLineRanges, types, methods, relationships, callGraph.getCallGraph(), storyEngine, diffReport.baseRef, diffReport.headRef);
+            printPrStoryCli(story);
+            db.close();
+            return;
+        }
+
         printBanner(port);
 
         long maxMem = Runtime.getRuntime().maxMemory();
@@ -399,6 +488,21 @@ public class Application {
             } else if ("explain".equals(mode)) {
                 if (query == null || query.isBlank()) return false;
                 url = "http://127.0.0.1:" + port + "/api/ai/explain?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+            } else if ("teach-me".equals(mode) || "teachme".equals(mode) || "tour".equals(mode)) {
+                url = "http://127.0.0.1:" + port + "/api/storyline/system-tour";
+            } else if ("pr-story".equals(mode) || "prstory".equals(mode) || "changestory".equals(mode)) {
+                String base = args.length > 1 ? args[1] : "";
+                String head = args.length > 2 ? args[2] : "";
+                StringBuilder sb = new StringBuilder("http://127.0.0.1:").append(port).append("/api/git/pr-story");
+                boolean first = true;
+                if (!base.isBlank()) {
+                    sb.append("?base=").append(java.net.URLEncoder.encode(base, java.nio.charset.StandardCharsets.UTF_8));
+                    first = false;
+                }
+                if (!head.isBlank()) {
+                    sb.append(first ? "?head=" : "&head=").append(java.net.URLEncoder.encode(head, java.nio.charset.StandardCharsets.UTF_8));
+                }
+                url = sb.toString();
             } else {
                 if (query != null && (query.contains(".") || query.contains("("))) {
                     url = "http://127.0.0.1:" + port + "/api/storyline?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
@@ -416,7 +520,11 @@ public class Application {
             java.net.http.HttpResponse<String> resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 200) {
                 com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-                if (root.has("answerText")) {
+                if (root.has("architectureGrade") || (root.has("executiveSummary") && root.has("complexityHotspots"))) {
+                    printSystemTourJsonCli(root);
+                } else if (root.has("riskLevel") || root.has("narrativeChangeSummary")) {
+                    printPrStoryJsonCli(root);
+                } else if (root.has("answerText")) {
                     printAiAskJsonCli(root);
                 } else if (root.has("detailedNarrative") || root.has("targetFqn")) {
                     printAiExplainJsonCli(root);
@@ -649,6 +757,324 @@ public class Application {
                 System.out.printf("  • %s:%d [%s]%n", c.path("file").asText(), c.path("line").asInt(), c.path("symbol").asText());
             }
         }
+        System.out.println();
+    }
+
+    private static void printSystemTourCli(com.codelens.analysis.StoryEngine.SystemTourGuide t) {
+        System.out.println();
+        System.out.println("================================================================================");
+        System.out.printf(" CodeStory System Onboarding Tour: %s%n", t.projectName);
+        System.out.println("================================================================================");
+        System.out.println();
+        System.out.printf("[Layer 1: Executive Mission & Architecture Grade: %s]%n", t.architectureGrade);
+        System.out.printf("  Narrative: %s%n", t.executiveSummary);
+        System.out.printf("  Scale:     %d Types, %d Methods, %d Relationships%n", t.totalTypes, t.totalMethods, t.totalRelationships);
+        System.out.printf("  Topology:  %d Controllers/APIs, %d Domain Services, %d Repositories, %d Entities%n",
+            t.controllerCount, t.serviceCount, t.repositoryCount, t.entityCount);
+        System.out.println();
+
+        System.out.println("[Layer 2: Subsystem Boundaries & Architecture Roles]");
+        if (t.modularBoundaries != null && !t.modularBoundaries.isEmpty()) {
+            for (String b : t.modularBoundaries) {
+                System.out.printf("  • %s%n", b);
+            }
+        }
+        if (t.subsystems != null && !t.subsystems.isEmpty()) {
+            System.out.println("  Subsystems:");
+            for (var sub : t.subsystems) {
+                System.out.printf("    - %-32s | %-16s | %d types%n",
+                    sub.get("package"), sub.get("role"), sub.get("typeCount"));
+            }
+        }
+        System.out.println();
+
+        System.out.println("[Layer 3: Top Golden Workflows (Core Storylines)]");
+        if (t.goldenWorkflows != null && !t.goldenWorkflows.isEmpty()) {
+            for (int i = 0; i < t.goldenWorkflows.size(); i++) {
+                var w = t.goldenWorkflows.get(i);
+                System.out.printf("  %d. [%-16s] %s (%d steps)%n", i + 1, w.category, w.title, w.stepCount);
+                System.out.printf("     Entry: %s%n", w.entryPoint);
+                System.out.printf("     -> %s%n", w.executiveSummary);
+            }
+        } else {
+            System.out.println("  No golden workflows discovered.");
+        }
+        System.out.println();
+
+        System.out.println("[Layer 4: Hotspots & Concurrency Watchpoints]");
+        System.out.println("  High-Risk Complexity Hotspots:");
+        if (t.complexityHotspots != null && !t.complexityHotspots.isEmpty()) {
+            for (var hot : t.complexityHotspots) {
+                System.out.printf("    ⚡ %s.%s (Cyclomatic: %s) -> %s:%s%n",
+                    hot.get("class"), hot.get("method"), hot.get("complexity"), hot.get("sourceFile"), hot.get("startLine"));
+            }
+        }
+        System.out.println("  Concurrency Watchpoints:");
+        if (t.concurrencyWatchpoints != null) {
+            for (String cw : t.concurrencyWatchpoints) {
+                System.out.printf("    ⚠️  %s%n", cw);
+            }
+        }
+        System.out.println();
+
+        System.out.println("[Layer 5: Semantic Catalog (APIs, Tables, Events)]");
+        System.out.printf("  Exposed Endpoints (%d): %s%n",
+            t.exposedEndpoints.size(),
+            t.exposedEndpoints.isEmpty() ? "None detected" : String.join(", ", t.exposedEndpoints.stream().limit(8).toList()) + (t.exposedEndpoints.size() > 8 ? "..." : ""));
+        System.out.printf("  Database Tables   (%d): %s%n",
+            t.databaseTables.size(),
+            t.databaseTables.isEmpty() ? "None detected" : String.join(", ", t.databaseTables.stream().limit(8).toList()) + (t.databaseTables.size() > 8 ? "..." : ""));
+        System.out.printf("  Domain Events     (%d): %s%n",
+            t.domainEvents.size(),
+            t.domainEvents.isEmpty() ? "None detected" : String.join(", ", t.domainEvents.stream().limit(8).toList()) + (t.domainEvents.size() > 8 ? "..." : ""));
+        System.out.println("================================================================================");
+        System.out.println();
+    }
+
+    private static void printSystemTourJsonCli(com.fasterxml.jackson.databind.JsonNode r) {
+        System.out.println();
+        System.out.println("================================================================================");
+        System.out.printf(" CodeStory System Onboarding Tour: %s%n", r.path("projectName").asText("Scanned Repository"));
+        System.out.println("================================================================================");
+        System.out.println();
+        System.out.printf("[Layer 1: Executive Mission & Architecture Grade: %s]%n", r.path("architectureGrade").asText("A"));
+        System.out.printf("  Narrative: %s%n", r.path("executiveSummary").asText());
+        System.out.printf("  Scale:     %d Types, %d Methods, %d Relationships%n",
+            r.path("totalTypes").asInt(), r.path("totalMethods").asInt(), r.path("totalRelationships").asInt());
+        System.out.printf("  Topology:  %d Controllers/APIs, %d Domain Services, %d Repositories, %d Entities%n",
+            r.path("controllerCount").asInt(), r.path("serviceCount").asInt(), r.path("repositoryCount").asInt(), r.path("entityCount").asInt());
+        System.out.println();
+
+        System.out.println("[Layer 2: Subsystem Boundaries & Architecture Roles]");
+        var b = r.path("modularBoundaries");
+        if (b.isArray() && b.size() > 0) {
+            for (int i = 0; i < b.size(); i++) {
+                System.out.printf("  • %s%n", b.get(i).asText());
+            }
+        }
+        var sub = r.path("subsystems");
+        if (sub.isArray() && sub.size() > 0) {
+            System.out.println("  Subsystems:");
+            for (int i = 0; i < sub.size(); i++) {
+                var s = sub.get(i);
+                System.out.printf("    - %-32s | %-16s | %d types%n",
+                    s.path("package").asText(), s.path("role").asText(), s.path("typeCount").asInt());
+            }
+        }
+        System.out.println();
+
+        System.out.println("[Layer 3: Top Golden Workflows (Core Storylines)]");
+        var gw = r.path("goldenWorkflows");
+        if (gw.isArray() && gw.size() > 0) {
+            for (int i = 0; i < gw.size(); i++) {
+                var w = gw.get(i);
+                System.out.printf("  %d. [%-16s] %s (%d steps)%n", i + 1, w.path("category").asText(), w.path("title").asText(), w.path("stepCount").asInt());
+                System.out.printf("     Entry: %s%n", w.path("entryPoint").asText());
+                System.out.printf("     -> %s%n", w.path("executiveSummary").asText());
+            }
+        } else {
+            System.out.println("  No golden workflows discovered.");
+        }
+        System.out.println();
+
+        System.out.println("[Layer 4: Hotspots & Concurrency Watchpoints]");
+        System.out.println("  High-Risk Complexity Hotspots:");
+        var hots = r.path("complexityHotspots");
+        if (hots.isArray() && hots.size() > 0) {
+            for (int i = 0; i < hots.size(); i++) {
+                var h = hots.get(i);
+                System.out.printf("    ⚡ %s.%s (Cyclomatic: %s) -> %s:%s%n",
+                    h.path("class").asText(), h.path("method").asText(), h.path("complexity").asText(), h.path("sourceFile").asText(), h.path("startLine").asText());
+            }
+        }
+        System.out.println("  Concurrency Watchpoints:");
+        var cws = r.path("concurrencyWatchpoints");
+        if (cws.isArray() && cws.size() > 0) {
+            for (int i = 0; i < cws.size(); i++) {
+                System.out.printf("    ⚠️  %s%n", cws.get(i).asText());
+            }
+        }
+        System.out.println();
+
+        System.out.println("[Layer 5: Semantic Catalog (APIs, Tables, Events)]");
+        var eps = r.path("exposedEndpoints");
+        var tabs = r.path("databaseTables");
+        var evts = r.path("domainEvents");
+        System.out.printf("  Exposed Endpoints (%d)%n", eps.size());
+        System.out.printf("  Database Tables   (%d)%n", tabs.size());
+        System.out.printf("  Domain Events     (%d)%n", evts.size());
+        System.out.println("================================================================================");
+        System.out.println();
+    }
+
+    private static void printPrStoryCli(com.codelens.analysis.ChangeStoryEngine.ChangeStory s) {
+        System.out.println();
+        System.out.println("================================================================================");
+        System.out.printf(" Git PR Change Story: %s ➔ %s%n", s.baseRef, s.headRef);
+        System.out.println("================================================================================");
+        System.out.printf(" Risk Level: [%s] | Changed Methods: %d | Classes: %d | Touchpoints: %d%n%n",
+            s.riskLevel, s.changedMethodsCount, s.changedClassesCount, s.totalTouchPoints);
+
+        System.out.println("[Change Summary]");
+        System.out.println(s.narrativeChangeSummary != null ? s.narrativeChangeSummary : "No changed methods detected in analyzed interval.");
+        System.out.println();
+
+        if (s.narrativeBeforeChange != null && !s.narrativeBeforeChange.isBlank()) {
+            System.out.println("[Architectural Context (Before Change)]");
+            System.out.println(s.narrativeBeforeChange);
+            System.out.println();
+        }
+
+        if (s.narrativeImpact != null && !s.narrativeImpact.isBlank()) {
+            System.out.println("[Blast Radius & System Impact]");
+            System.out.println(s.narrativeImpact);
+            System.out.println();
+        }
+
+        if (s.changedMethods != null && !s.changedMethods.isEmpty()) {
+            System.out.printf("[Changed Methods & Upstream Callers (%d)]%n", s.changedMethods.size());
+            for (var m : s.changedMethods) {
+                System.out.printf("  • %s.%s (%s:%d)%n", m.classSimpleName, m.simpleName, m.sourceFile, m.startLine);
+                if (m.callingServices != null && !m.callingServices.isEmpty()) {
+                    System.out.printf("    ↑ Upstream callers (%d): %s%n", m.touchPointsCount, String.join(", ", m.callingServices));
+                }
+            }
+            System.out.println();
+        }
+
+        if (s.affectedStorylines != null && !s.affectedStorylines.isEmpty()) {
+            System.out.printf("[Directly Affected Storylines (%d)]%n", s.affectedStorylines.size());
+            for (var a : s.affectedStorylines) {
+                System.out.printf("  ⚡ %s [%s] (Step %d/%d: %s)%n", a.title, a.category, a.stepIndex, a.totalSteps, a.affectedStepName);
+            }
+            System.out.println();
+        }
+
+        if (!s.affectedEndpoints.isEmpty() || !s.affectedTables.isEmpty() || !s.affectedEvents.isEmpty()) {
+            System.out.println("[Impacted Semantic Entities]");
+            if (!s.affectedEndpoints.isEmpty()) System.out.printf("  Endpoints: %s%n", String.join(", ", s.affectedEndpoints));
+            if (!s.affectedTables.isEmpty()) System.out.printf("  Tables:    %s%n", String.join(", ", s.affectedTables));
+            if (!s.affectedEvents.isEmpty()) System.out.printf("  Events:    %s%n", String.join(", ", s.affectedEvents));
+            System.out.println();
+        }
+
+        if (s.recommendedTests != null && !s.recommendedTests.isEmpty()) {
+            System.out.printf("[Recommended Automated Test Suites (%d)]%n", s.recommendedTests.size());
+            for (String t : s.recommendedTests) {
+                System.out.printf("  ✓ %s%n", t);
+            }
+            System.out.println();
+        }
+
+        if (s.reviewChecklist != null && !s.reviewChecklist.isEmpty()) {
+            System.out.println("[Architectural Review Checklist]");
+            for (String ch : s.reviewChecklist) {
+                System.out.printf("  %s%n", ch);
+            }
+            System.out.println();
+        }
+        System.out.println("================================================================================");
+        System.out.println();
+    }
+
+    private static void printPrStoryJsonCli(com.fasterxml.jackson.databind.JsonNode root) {
+        System.out.println();
+        System.out.println("================================================================================");
+        System.out.printf(" Git PR Change Story: %s ➔ %s%n", root.path("baseRef").asText("HEAD~1"), root.path("headRef").asText("HEAD"));
+        System.out.println("================================================================================");
+        System.out.printf(" Risk Level: [%s] | Changed Methods: %d | Classes: %d | Touchpoints: %d%n%n",
+            root.path("riskLevel").asText("LOW"), root.path("changedMethodsCount").asInt(),
+            root.path("changedClassesCount").asInt(), root.path("totalTouchPoints").asInt());
+
+        System.out.println("[Change Summary]");
+        System.out.println(root.path("narrativeChangeSummary").asText("No changed methods detected in analyzed interval."));
+        System.out.println();
+
+        String before = root.path("narrativeBeforeChange").asText("");
+        if (!before.isBlank()) {
+            System.out.println("[Architectural Context (Before Change)]");
+            System.out.println(before);
+            System.out.println();
+        }
+
+        String impact = root.path("narrativeImpact").asText("");
+        if (!impact.isBlank()) {
+            System.out.println("[Blast Radius & System Impact]");
+            System.out.println(impact);
+            System.out.println();
+        }
+
+        var methods = root.path("changedMethods");
+        if (methods.isArray() && methods.size() > 0) {
+            System.out.printf("[Changed Methods & Upstream Callers (%d)]%n", methods.size());
+            for (int i = 0; i < methods.size(); i++) {
+                var m = methods.get(i);
+                System.out.printf("  • %s.%s (%s:%d)%n",
+                    m.path("classSimpleName").asText(), m.path("simpleName").asText(),
+                    m.path("sourceFile").asText(), m.path("startLine").asInt());
+                var callers = m.path("callingServices");
+                if (callers.isArray() && callers.size() > 0) {
+                    List<String> list = new ArrayList<>();
+                    for (int j = 0; j < callers.size(); j++) list.add(callers.get(j).asText());
+                    System.out.printf("    ↑ Upstream callers (%d): %s%n", m.path("touchPointsCount").asInt(), String.join(", ", list));
+                }
+            }
+            System.out.println();
+        }
+
+        var stories = root.path("affectedStorylines");
+        if (stories.isArray() && stories.size() > 0) {
+            System.out.printf("[Directly Affected Storylines (%d)]%n", stories.size());
+            for (int i = 0; i < stories.size(); i++) {
+                var a = stories.get(i);
+                System.out.printf("  ⚡ %s [%s] (Step %d/%d: %s)%n",
+                    a.path("title").asText(), a.path("category").asText(),
+                    a.path("stepIndex").asInt(), a.path("totalSteps").asInt(), a.path("affectedStepName").asText());
+            }
+            System.out.println();
+        }
+
+        var eps = root.path("affectedEndpoints");
+        var tabs = root.path("affectedTables");
+        var evts = root.path("affectedEvents");
+        if (eps.size() > 0 || tabs.size() > 0 || evts.size() > 0) {
+            System.out.println("[Impacted Semantic Entities]");
+            if (eps.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < eps.size(); i++) list.add(eps.get(i).asText());
+                System.out.printf("  Endpoints: %s%n", String.join(", ", list));
+            }
+            if (tabs.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < tabs.size(); i++) list.add(tabs.get(i).asText());
+                System.out.printf("  Tables:    %s%n", String.join(", ", list));
+            }
+            if (evts.size() > 0) {
+                List<String> list = new ArrayList<>();
+                for (int i = 0; i < evts.size(); i++) list.add(evts.get(i).asText());
+                System.out.printf("  Events:    %s%n", String.join(", ", list));
+            }
+            System.out.println();
+        }
+
+        var tests = root.path("recommendedTests");
+        if (tests.isArray() && tests.size() > 0) {
+            System.out.printf("[Recommended Automated Test Suites (%d)]%n", tests.size());
+            for (int i = 0; i < tests.size(); i++) {
+                System.out.printf("  ✓ %s%n", tests.get(i).asText());
+            }
+            System.out.println();
+        }
+
+        var checklist = root.path("reviewChecklist");
+        if (checklist.isArray() && checklist.size() > 0) {
+            System.out.println("[Architectural Review Checklist]");
+            for (int i = 0; i < checklist.size(); i++) {
+                System.out.printf("  %s%n", checklist.get(i).asText());
+            }
+            System.out.println();
+        }
+        System.out.println("================================================================================");
         System.out.println();
     }
 }

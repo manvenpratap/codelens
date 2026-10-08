@@ -471,6 +471,10 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg></span>
           <span class="action-btn-text">Ask</span>
         </button>
+        <button id="btn-codestory-teachme" class="header-action-btn codestory-teachme-btn" aria-label="Teach Me: System Onboarding Tour" title="Teach Me: 5-Layer System Onboarding Tour (Shortcut: T)">
+          <span class="action-btn-icon"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+          <span class="action-btn-text">Tour</span>
+        </button>
         <div class="theme-dropdown-wrap" id="theme-dropdown-wrap">
           <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Current theme: Dark. Click to choose theme." title="Theme: Dark · Click to change" aria-haspopup="true" aria-expanded="false">
             <span id="theme-toggle-icon" class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></span>
@@ -1583,6 +1587,106 @@
             </div>
             <div class="git-progress-track">
               <div id="git-progress-fill" class="git-progress-fill" style="width:0%"></div>
+            </div>
+          </div>
+        <!-- Git PR Change Story Generator Section -->
+        <div class="git-section git-pr-story-section" id="git-pr-story-section">
+          <div class="git-section-title">
+            <div class="git-section-title-left">
+              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9a9 9 0 0 1 9 9"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+              <span>Git PR Change Story Generator</span>
+            </div>
+            <span class="git-section-badge" id="git-pr-story-badge">Workflow 6</span>
+          </div>
+
+          <div class="git-pr-story-card">
+            <div class="git-pr-form-row">
+              <div class="git-pr-input-wrap">
+                <label for="git-pr-base-input" class="git-pr-label">Base Ref</label>
+                <input type="text" id="git-pr-base-input" class="git-pr-input" placeholder="e.g. HEAD~1, main, commit-sha" value="HEAD~1" spellcheck="false" />
+              </div>
+              <div class="git-pr-arrow-icon">➔</div>
+              <div class="git-pr-input-wrap">
+                <label for="git-pr-head-input" class="git-pr-label">Head Ref</label>
+                <input type="text" id="git-pr-head-input" class="git-pr-input" placeholder="e.g. HEAD, working copy" value="HEAD" spellcheck="false" />
+              </div>
+              <button id="git-pr-generate-btn" class="btn btn-primary git-pr-btn">
+                <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Synthesize Change Story</span>
+              </button>
+            </div>
+
+            <!-- PR Story Results Box (Dynamic) -->
+            <div id="git-pr-results-box" class="git-pr-results-box" style="display:none;">
+              <div class="git-pr-summary-header">
+                <div class="git-pr-refs-display">
+                  <span class="git-pr-ref-pill" id="git-pr-res-base">HEAD~1</span>
+                  <span class="git-pr-arrow">➔</span>
+                  <span class="git-pr-ref-pill" id="git-pr-res-head">HEAD</span>
+                </div>
+                <div class="git-pr-risk-badge" id="git-pr-res-risk">LOW RISK</div>
+              </div>
+
+              <!-- Stats Tiles -->
+              <div class="git-pr-stats-row">
+                <div class="git-pr-stat-tile">
+                  <span class="git-pr-stat-num" id="git-pr-stat-methods">0</span>
+                  <span class="git-pr-stat-lbl">Changed Methods</span>
+                </div>
+                <div class="git-pr-stat-tile">
+                  <span class="git-pr-stat-num" id="git-pr-stat-classes">0</span>
+                  <span class="git-pr-stat-lbl">Changed Classes</span>
+                </div>
+                <div class="git-pr-stat-tile">
+                  <span class="git-pr-stat-num" id="git-pr-stat-touchpoints">0</span>
+                  <span class="git-pr-stat-lbl">Upstream Callers</span>
+                </div>
+                <div class="git-pr-stat-tile">
+                  <span class="git-pr-stat-num" id="git-pr-stat-storylines">0</span>
+                  <span class="git-pr-stat-lbl">Affected Storylines</span>
+                </div>
+              </div>
+
+              <!-- Narrative Cards -->
+              <div class="git-pr-narrative-card">
+                <span class="git-pr-narrative-title">Summary of Changes</span>
+                <p class="git-pr-narrative-text" id="git-pr-res-summary">-</p>
+              </div>
+
+              <div class="git-pr-narrative-card">
+                <span class="git-pr-narrative-title">Architectural Impact &amp; Blast Radius</span>
+                <p class="git-pr-narrative-text" id="git-pr-res-impact">-</p>
+              </div>
+
+              <!-- Changed Methods List -->
+              <div class="git-pr-subcard" id="git-pr-methods-card">
+                <span class="git-pr-subcard-title">Changed AST Methods</span>
+                <div class="git-pr-methods-list" id="git-pr-methods-list"></div>
+              </div>
+
+              <!-- Affected Storylines List -->
+              <div class="git-pr-subcard" id="git-pr-storylines-card" style="display:none;">
+                <span class="git-pr-subcard-title">Directly Affected Architectural Storylines</span>
+                <div class="git-pr-storylines-list" id="git-pr-storylines-list"></div>
+              </div>
+
+              <!-- Semantic Entities impacted -->
+              <div class="git-pr-subcard" id="git-pr-semantic-card" style="display:none;">
+                <span class="git-pr-subcard-title">Impacted Semantic Entities</span>
+                <div class="git-pr-semantic-grid" id="git-pr-semantic-grid"></div>
+              </div>
+
+              <!-- Recommended Tests -->
+              <div class="git-pr-subcard" id="git-pr-tests-card" style="display:none;">
+                <span class="git-pr-subcard-title">Recommended Automated Tests</span>
+                <div class="git-pr-tests-list" id="git-pr-tests-list"></div>
+              </div>
+
+              <!-- Review Checklist -->
+              <div class="git-pr-subcard" id="git-pr-checklist-card">
+                <span class="git-pr-subcard-title">Architectural Review Checklist</span>
+                <div class="git-pr-checklist-list" id="git-pr-checklist-list"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -4894,6 +4998,147 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CODESTORY: 5-LAYER SYSTEM ONBOARDING TOUR MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="system-tour-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="system-tour-title">
+  <div class="modal-dialog system-tour-dialog">
+    <div class="modal-header system-tour-header">
+      <div class="modal-title-wrap">
+        <div class="modal-title-row">
+          <span class="system-tour-badge">
+            <svg class="svg-icon icon-mint icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>Teach Me</span>
+          </span>
+          <h2 class="modal-title" id="system-tour-title">System Onboarding Tour</h2>
+          <span class="system-tour-grade-pill" id="tour-grade-pill">Grade A</span>
+        </div>
+        <p class="modal-subtitle" id="system-tour-subtitle">5 Progressive Layers: From Executive Mission to Semantic Catalogs</p>
+      </div>
+      <button class="modal-close-btn" id="btn-close-system-tour" aria-label="Close Tour">✕</button>
+    </div>
+
+    <!-- Tour Layer Pills Navigation -->
+    <div class="system-tour-tabs" role="tablist" aria-label="Tour Layers">
+      <button class="tour-tab-btn active" data-layer="1" role="tab" aria-selected="true">
+        <span class="tour-tab-num">L1</span>
+        <span class="tour-tab-text">Executive Mission</span>
+      </button>
+      <button class="tour-tab-btn" data-layer="2" role="tab" aria-selected="false">
+        <span class="tour-tab-num">L2</span>
+        <span class="tour-tab-text">Subsystems</span>
+      </button>
+      <button class="tour-tab-btn" data-layer="3" role="tab" aria-selected="false">
+        <span class="tour-tab-num">L3</span>
+        <span class="tour-tab-text">Golden Workflows</span>
+      </button>
+      <button class="tour-tab-btn" data-layer="4" role="tab" aria-selected="false">
+        <span class="tour-tab-num">L4</span>
+        <span class="tour-tab-text">Hotspots</span>
+      </button>
+      <button class="tour-tab-btn" data-layer="5" role="tab" aria-selected="false">
+        <span class="tour-tab-num">L5</span>
+        <span class="tour-tab-text">Semantic Catalog</span>
+      </button>
+    </div>
+
+    <div class="modal-body system-tour-body">
+      <!-- Loading & Error -->
+      <div id="system-tour-loading" class="system-tour-state" style="display:none;">
+        <span class="spinner-sm"></span>
+        <span>Synthesizing 5-layer architectural tour…</span>
+      </div>
+
+      <!-- Layer 1: Executive Mission & Architecture Grade -->
+      <div class="tour-layer-view active" id="tour-layer-1">
+        <div class="tour-narrative-card">
+          <div class="tour-card-header">
+            <span class="tour-card-title">Executive Mission &amp; Architectural Scale</span>
+            <span class="tour-project-name" id="tour-l1-project-name">Project</span>
+          </div>
+          <p class="tour-narrative-text" id="tour-l1-narrative">Loading executive summary…</p>
+        </div>
+        <div class="tour-stats-grid" id="tour-l1-stats-grid">
+          <!-- Dynamically populated stat tiles -->
+        </div>
+      </div>
+
+      <!-- Layer 2: Subsystem Boundaries -->
+      <div class="tour-layer-view" id="tour-layer-2" style="display:none;">
+        <div class="tour-modular-card">
+          <div class="tour-card-header">
+            <span class="tour-card-title">Architectural Boundaries &amp; Modular Design</span>
+          </div>
+          <div class="tour-boundaries-list" id="tour-l2-boundaries"></div>
+        </div>
+        <div class="tour-subsystems-list" id="tour-l2-subsystems">
+          <!-- Dynamically populated package cards -->
+        </div>
+      </div>
+
+      <!-- Layer 3: Golden Workflows -->
+      <div class="tour-layer-view" id="tour-layer-3" style="display:none;">
+        <div class="tour-workflows-header">
+          <span class="tour-card-title">Primary Business Execution Workflows</span>
+          <span class="tour-sub">Click any workflow to trace its interactive storyline</span>
+        </div>
+        <div class="tour-workflows-grid" id="tour-l3-workflows">
+          <!-- Dynamically populated storyline cards -->
+        </div>
+      </div>
+
+      <!-- Layer 4: Hotspots & Concurrency Watchpoints -->
+      <div class="tour-layer-view" id="tour-layer-4" style="display:none;">
+        <div class="tour-hotspots-card">
+          <div class="tour-card-header">
+            <span class="tour-card-title">Cyclomatic Complexity Hotspots</span>
+            <span class="tour-sub">Top high-risk methods requiring test vigilance</span>
+          </div>
+          <div class="tour-hotspots-list" id="tour-l4-hotspots"></div>
+        </div>
+        <div class="tour-watchpoints-card">
+          <div class="tour-card-header">
+            <span class="tour-card-title">Concurrency &amp; Lifecycle Watchpoints</span>
+          </div>
+          <div class="tour-watchpoints-list" id="tour-l4-watchpoints"></div>
+        </div>
+      </div>
+
+      <!-- Layer 5: Semantic Catalog -->
+      <div class="tour-layer-view" id="tour-layer-5" style="display:none;">
+        <div class="tour-semantic-section">
+          <div class="tour-semantic-header">
+            <span class="tour-semantic-badge endpoint-badge">APIs</span>
+            <span class="tour-card-title">Exposed Endpoints (<span id="tour-l5-endpoints-count">0</span>)</span>
+          </div>
+          <div class="tour-semantic-pills" id="tour-l5-endpoints"></div>
+        </div>
+        <div class="tour-semantic-section">
+          <div class="tour-semantic-header">
+            <span class="tour-semantic-badge table-badge">Database</span>
+            <span class="tour-card-title">Database Tables (<span id="tour-l5-tables-count">0</span>)</span>
+          </div>
+          <div class="tour-semantic-pills" id="tour-l5-tables"></div>
+        </div>
+        <div class="tour-semantic-section">
+          <div class="tour-semantic-header">
+            <span class="tour-semantic-badge event-badge">Events</span>
+            <span class="tour-card-title">Domain Events (<span id="tour-l5-events-count">0</span>)</span>
+          </div>
+          <div class="tour-semantic-pills" id="tour-l5-events"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Footer Navigation -->
+    <div class="modal-footer system-tour-footer">
+      <button class="btn btn-secondary" id="tour-btn-prev" disabled>← Previous Layer</button>
+      <div class="tour-step-indicator" id="tour-step-indicator">Layer 1 of 5</div>
+      <button class="btn btn-primary" id="tour-btn-next">Next Layer →</button>
     </div>
   </div>
 </div>

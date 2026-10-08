@@ -4,6 +4,7 @@ import com.codelens.analysis.*;
 import com.codelens.core.ExcludedScope;
 import com.codelens.core.model.*;
 import com.codelens.git.GitBlameService;
+import com.codelens.git.GitDiffService;
 import com.codelens.git.GitRepoLocator;
 import com.codelens.parser.AstVisitor;
 import com.codelens.parser.JavaSourceScanner;
@@ -91,8 +92,10 @@ public class CodeLensServer {
     private final ReportService      reportService;
     private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final StoryEngine        storyEngine = new StoryEngine();
+    private final ChangeStoryEngine  changeStoryEngine = new ChangeStoryEngine();
     private final AiGroundingService aiGroundingService = new AiGroundingService();
     private final GitBlameService    gitBlameService;
+    private final GitDiffService     gitDiffService = new GitDiffService();
     private final StressTestService  stressTestService = new StressTestService();
     private final JvmManagerService  jvmManager = new JvmManagerService();
     private final HeapAutoRecoveryManager heapWatchdog = new HeapAutoRecoveryManager();
@@ -1372,6 +1375,7 @@ public class CodeLensServer {
         app.get("/api/storyline",                   this::getStoryline);
         app.get("/api/storyline/what-if",           this::getStorylineWhatIf);
         app.get("/api/storyline/teach-me",          this::getStorylineTeachMe);
+        app.get("/api/storyline/system-tour",       this::getSystemTour);
 
         // ── Grounded Architectural AI Q&A ──────────────────────────────────────
         app.get("/api/ai/ask",                      this::aiAsk);
@@ -1407,6 +1411,7 @@ public class CodeLensServer {
         app.post("/api/git/validate",        this::validateGitRepo);
         app.post("/api/git/analyze",         this::analyzeGit);
         app.get("/api/git/status",           this::getGitStatus);
+        app.get("/api/git/pr-story",         this::getGitPrStory);
 
         // ── Reports & Exports ─────────────────────────────────────────────────
         app.get("/api/reports/all",                   this::getAllReports);
@@ -4107,6 +4112,20 @@ public class CodeLensServer {
         ctx.json(guide);
     }
 
+    private void getSystemTour(Context ctx) throws Exception {
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        List<CodeRelationship> relationships = dao.findAllRelationships();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+        String sourcePath = resolveCurrentSourcePath();
+        String projectName = "Scanned Repository";
+        if (sourcePath != null && !sourcePath.isBlank()) {
+            projectName = new File(sourcePath).getName();
+        }
+        StoryEngine.SystemTourGuide tour = storyEngine.generateSystemTour(types, methods, relationships, graph, projectName);
+        ctx.json(tour);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Grounded Architectural AI Q&A
     // ─────────────────────────────────────────────────────────────────────────
@@ -5117,6 +5136,50 @@ public class CodeLensServer {
      */
     private void getGitStatus(Context ctx) {
         ctx.json(gitProgress.get());
+    }
+
+    /**
+     * GET /api/git/pr-story
+     * Synthesizes Git PR Change Story across commits or working tree.
+     */
+    private void getGitPrStory(Context ctx) throws Exception {
+        String baseRef = ctx.queryParam("base");
+        String headRef = ctx.queryParam("head");
+        String repoPath = ctx.queryParam("repoPath");
+        if (repoPath == null || repoPath.isBlank()) {
+            repoPath = resolveCurrentSourcePath();
+        }
+        if (repoPath == null || repoPath.isBlank()) {
+            ctx.status(400).json(Map.of("error", "No active repository path found"));
+            return;
+        }
+
+        File repoRoot = new File(repoPath);
+        GitDiffService.GitDiffReport diffReport = gitDiffService.computeDiff(repoRoot, baseRef, headRef);
+
+        Map<String, List<int[]>> fileLineRanges = new HashMap<>();
+        for (GitDiffService.FileDiffRange fd : diffReport.changedFiles) {
+            if (fd.lineRanges != null && !fd.lineRanges.isEmpty()) {
+                fileLineRanges.put(fd.relativePath, fd.lineRanges);
+            }
+        }
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        List<CodeRelationship> relationships = dao.findAllRelationships();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+
+        ChangeStoryEngine.ChangeStory story = changeStoryEngine.synthesizeStory(
+            fileLineRanges,
+            types,
+            methods,
+            relationships,
+            graph,
+            storyEngine,
+            diffReport.baseRef,
+            diffReport.headRef
+        );
+        ctx.json(story);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

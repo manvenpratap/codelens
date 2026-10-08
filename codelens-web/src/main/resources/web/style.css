@@ -24713,6 +24713,616 @@ body.theme-light .cmdk-dialog {
   color: var(--text-muted);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CODESTORY: SYSTEM ONBOARDING TOUR MODAL STYLES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.codestory-teachme-btn {
+  color: var(--mint, #10b981);
+}
+.codestory-teachme-btn:hover {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.system-tour-dialog {
+  max-width: 920px;
+  width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-tour-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--mint, #10b981);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.system-tour-grade-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--blue, #3b82f6);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.system-tour-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow-x: auto;
+}
+
+.tour-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-fast, 140ms) var(--ease-out);
+  white-space: nowrap;
+}
+
+.tour-tab-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tour-tab-btn.active {
+  background: var(--bg-elevated);
+  border-color: var(--mint, #10b981);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.tour-tab-num {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.tour-tab-btn.active .tour-tab-num {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--mint, #10b981);
+}
+
+.system-tour-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tour-layer-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeInDown var(--dur-std, 200ms) var(--ease-out);
+}
+
+.tour-narrative-card,
+.tour-modular-card,
+.tour-hotspots-card,
+.tour-watchpoints-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tour-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tour-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tour-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tour-project-name {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--cyan, #06b6d4);
+}
+
+.tour-narrative-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.tour-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.tour-stat-tile {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.tour-stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.tour-stat-lbl {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tour-boundaries-list,
+.tour-watchpoints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tour-boundary-item,
+.tour-watchpoint-item {
+  font-size: 12px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.tour-subsystems-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.tour-subsystem-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tour-subsystem-pkg {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.tour-subsystem-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.tour-role-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--purple, #a855f7);
+}
+
+.tour-workflows-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tour-workflow-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: all var(--dur-fast, 140ms) var(--ease-out);
+}
+
+.tour-workflow-card:hover {
+  border-color: var(--mint, #10b981);
+  background: rgba(16, 185, 129, 0.05);
+  transform: translateX(2px);
+}
+
+.tour-workflow-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tour-workflow-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tour-workflow-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.tour-hotspots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tour-hotspot-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--dur-fast, 140ms) var(--ease-out);
+}
+
+.tour-hotspot-item:hover {
+  border-color: var(--amber, #f59e0b);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.tour-hotspot-method {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.tour-hotspot-cc {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--rose, #ef4444);
+}
+
+.tour-semantic-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.tour-semantic-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tour-semantic-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.tour-semantic-badge.endpoint-badge { background: rgba(59, 130, 246, 0.15); color: var(--blue, #3b82f6); }
+.tour-semantic-badge.table-badge { background: rgba(16, 185, 129, 0.15); color: var(--emerald, #10b981); }
+.tour-semantic-badge.event-badge { background: rgba(245, 158, 11, 0.15); color: var(--amber, #f59e0b); }
+
+.tour-semantic-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tour-semantic-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.system-tour-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.tour-step-indicator {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CODESTORY: GIT PR CHANGE STORY STYLES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.git-pr-story-section {
+  margin-top: 18px;
+}
+
+.git-pr-story-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.git-pr-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.git-pr-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 160px;
+}
+
+.git-pr-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.git-pr-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+.git-pr-input:focus {
+  outline: none;
+  border-color: var(--purple, #a855f7);
+}
+
+.git-pr-arrow-icon {
+  font-size: 18px;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+}
+
+.git-pr-results-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeInDown var(--dur-std, 200ms) var(--ease-out);
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.git-pr-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-pr-refs-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-pr-ref-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--cyan, #06b6d4);
+}
+
+.git-pr-risk-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+}
+.git-pr-risk-badge.risk-low { background: rgba(16, 185, 129, 0.15); color: var(--emerald, #10b981); border: 1px solid rgba(16, 185, 129, 0.3); }
+.git-pr-risk-badge.risk-medium { background: rgba(245, 158, 11, 0.15); color: var(--amber, #f59e0b); border: 1px solid rgba(245, 158, 11, 0.3); }
+.git-pr-risk-badge.risk-high { background: rgba(239, 68, 68, 0.15); color: var(--rose, #ef4444); border: 1px solid rgba(239, 68, 68, 0.3); }
+.git-pr-risk-badge.risk-critical { background: rgba(239, 68, 68, 0.25); color: #ff4d4f; border: 1px solid #ff4d4f; }
+
+.git-pr-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.git-pr-stat-tile {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+
+.git-pr-stat-num {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.git-pr-stat-lbl {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.git-pr-narrative-card,
+.git-pr-subcard {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-pr-narrative-title,
+.git-pr-subcard-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.git-pr-narrative-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.git-pr-methods-list,
+.git-pr-storylines-list,
+.git-pr-tests-list,
+.git-pr-checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-pr-method-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.git-pr-method-name {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.git-pr-method-touchpoints {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.git-pr-storyline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.git-pr-test-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--emerald, #10b981);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-pr-checklist-item {
+  font-size: 12px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
 
 
 
