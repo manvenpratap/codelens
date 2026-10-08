@@ -12520,6 +12520,13 @@ function initScopeManagement() {
   } catch (err) {
     console.warn('initStorylinesView failed:', err);
   }
+
+  // Initialize Grounded Architectural AI Q&A
+  try {
+    if (typeof initCodestoryAsk === 'function') initCodestoryAsk();
+  } catch (err) {
+    console.warn('initCodestoryAsk failed:', err);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -14387,6 +14394,7 @@ function openSettings(e) {
   const modal = qs('#settings-modal');
   if (!modal) return;
   syncSettingsUI(loadSettings());
+  if (typeof loadAiConfigToSettings === 'function') loadAiConfigToSettings();
   showAccessibleModal(modal, e?.currentTarget || qs('#settings-btn'));
 }
 
@@ -19879,6 +19887,15 @@ function initCommandPalette() {
       action: () => switchTab('storylines')
     },
     {
+      id: 'codestory-ask',
+      title: 'Ask CodeStory: Grounded Architectural Q&A',
+      subtitle: 'Ask questions grounded strictly in AST, call graph, and storyline facts',
+      group: 'CodeStory & AI',
+      shortcut: '?',
+      icon: '<svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg>',
+      action: () => openCodestoryAskModal()
+    },
+    {
       id: 'nav-studio',
       title: 'Launch 3D Macro Visualizer Studio',
       subtitle: '3D software city and galaxy cluster view',
@@ -20256,6 +20273,14 @@ function initStorylinesView() {
       if (ep) {
         openWhatIfModal(ep);
       }
+    });
+  }
+
+  const askAiBtn = qs('#storyline-btn-ask-ai');
+  if (askAiBtn) {
+    askAiBtn.addEventListener('click', () => {
+      const title = currentStorylineDetail ? (currentStorylineDetail.title || currentStorylineDetail.entryPoint) : '';
+      openCodestoryAskModal(title ? `How does ${title} flow work?` : '');
     });
   }
 
@@ -20929,6 +20954,459 @@ window.openStorylineForFqn = openStorylineForFqn;
 window.switchStorylineMode = switchStorylineMode;
 window.openWhatIfModal = openWhatIfModal;
 window.closeWhatIfModal = closeWhatIfModal;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Ask CodeStory: Grounded Architectural Q&A Controller
+   ═══════════════════════════════════════════════════════════════════════════ */
+let codestoryAiConfigCache = null;
+
+function initCodestoryAsk() {
+  const headerBtn = qs('#btn-codestory-ask');
+  const modal = qs('#codestory-ask-modal');
+  const closeBtn = qs('#codestory-ask-modal-close');
+  const submitBtn = qs('#codestory-ask-submit-btn');
+  const input = qs('#codestory-ask-input');
+  const copyBtn = qs('#codestory-ask-copy-btn');
+  const saveAiBtn = qs('#btn-save-ai-conf');
+
+  if (headerBtn) {
+    headerBtn.addEventListener('click', () => openCodestoryAskModal());
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeCodestoryAskModal);
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeCodestoryAskModal();
+    });
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', () => submitCodestoryQuestion());
+  }
+
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitCodestoryQuestion();
+      }
+    });
+  }
+
+  qsa('.ask-prompt-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const prompt = chip.getAttribute('data-prompt');
+      if (prompt) {
+        if (input) input.value = prompt;
+        submitCodestoryQuestion(prompt);
+      }
+    });
+  });
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const md = qs('#codestory-ask-markdown');
+      if (md && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(md.innerText).then(() => {
+          if (typeof showToast === 'function') showToast('Answer copied to clipboard');
+        });
+      }
+    });
+  }
+
+  if (saveAiBtn) {
+    saveAiBtn.addEventListener('click', saveAiConfigFromSettings);
+  }
+
+  // Keyboard shortcut: Shift + ? or ? (when not inside input / textarea)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (tag !== 'input' && tag !== 'textarea') {
+        e.preventDefault();
+        openCodestoryAskModal();
+      }
+    }
+  });
+}
+
+async function fetchAiConfig() {
+  try {
+    const res = await fetch('/api/ai/config');
+    if (res.ok) {
+      codestoryAiConfigCache = await res.json();
+      updateAiProviderBadge(codestoryAiConfigCache);
+      return codestoryAiConfigCache;
+    }
+  } catch (ignored) {}
+  return null;
+}
+
+function updateAiProviderBadge(cfg) {
+  const badgeLabel = qs('#codestory-ask-provider-label');
+  if (!badgeLabel || !cfg) return;
+  const p = (cfg.provider || 'local').toLowerCase();
+  if (p === 'ollama') {
+    badgeLabel.textContent = `Ollama (${cfg.model || 'llama3'})`;
+  } else if (p === 'openai') {
+    badgeLabel.textContent = `OpenAI (${cfg.model || 'gpt-4o-mini'})`;
+  } else {
+    badgeLabel.textContent = 'Local Synthesizer';
+  }
+}
+
+async function openCodestoryAskModal(initialQuery = '') {
+  const modal = qs('#codestory-ask-modal');
+  const input = qs('#codestory-ask-input');
+  if (!modal) return;
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+
+  await fetchAiConfig();
+
+  if (initialQuery) {
+    if (input) input.value = initialQuery;
+    submitCodestoryQuestion(initialQuery);
+  } else {
+    if (input) {
+      setTimeout(() => input.focus(), 80);
+    }
+  }
+}
+
+function closeCodestoryAskModal() {
+  const modal = qs('#codestory-ask-modal');
+  if (!modal) return;
+  if (typeof dismissModalAnimated === 'function') {
+    dismissModalAnimated(modal);
+  } else {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function renderSimpleMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  let listType = 'ul';
+
+  function formatInline(str) {
+    return esc(str)
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="ask-md-link">$1</a>');
+  }
+
+  for (let line of lines) {
+    let trimmed = line.trim();
+    if (trimmed.startsWith('#### ')) {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<h5>${formatInline(trimmed.substring(5))}</h5>`;
+    } else if (trimmed.startsWith('### ')) {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<h4>${formatInline(trimmed.substring(4))}</h4>`;
+    } else if (trimmed.startsWith('## ')) {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<h3>${formatInline(trimmed.substring(3))}</h3>`;
+    } else if (trimmed.startsWith('# ')) {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<h3>${formatInline(trimmed.substring(2))}</h3>`;
+    } else if (trimmed.startsWith('> ')) {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<blockquote>${formatInline(trimmed.substring(2))}</blockquote>`;
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+      if (!inList || listType !== 'ul') {
+        if (inList) html += `</${listType}>`;
+        html += '<ul>';
+        inList = true;
+        listType = 'ul';
+      }
+      html += `<li>${formatInline(trimmed.substring(2))}</li>`;
+    } else if (/^\d+\.\s+/.test(trimmed)) {
+      if (!inList || listType !== 'ol') {
+        if (inList) html += `</${listType}>`;
+        html += '<ol>';
+        inList = true;
+        listType = 'ol';
+      }
+      const content = trimmed.replace(/^\d+\.\s+/, '');
+      html += `<li>${formatInline(content)}</li>`;
+    } else if (trimmed === '') {
+      if (inList) { html += `</${listType}>`; inList = false; }
+    } else {
+      if (inList) { html += `</${listType}>`; inList = false; }
+      html += `<p>${formatInline(trimmed)}</p>`;
+    }
+  }
+  if (inList) html += `</${listType}>`;
+  return html;
+}
+
+async function submitCodestoryQuestion(queryText = null) {
+  const input = qs('#codestory-ask-input');
+  const question = (queryText !== null ? queryText : (input ? input.value : '')).trim();
+  if (!question) return;
+
+  const loadingEl = qs('#codestory-ask-loading');
+  const respArea = qs('#codestory-ask-response-area');
+  const mdEl = qs('#codestory-ask-markdown');
+  const engBadge = qs('#codestory-ask-engine-badge');
+  const latBadge = qs('#codestory-ask-latency-badge');
+  const citCount = qs('#codestory-ask-citations-count');
+  const citGrid = qs('#codestory-ask-citations-grid');
+  const storiesSec = qs('#codestory-ask-storylines-section');
+  const storiesGrid = qs('#codestory-ask-storylines-grid');
+
+  if (loadingEl) loadingEl.style.display = 'flex';
+  if (respArea) respArea.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/ai/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (respArea) respArea.style.display = 'flex';
+
+    if (engBadge) {
+      const p = data.provider || 'local';
+      engBadge.textContent = p === 'local' ? 'Deterministic Synthesizer' : `${p.toUpperCase()} (${data.model || ''})`;
+    }
+    if (latBadge) {
+      latBadge.textContent = `${data.responseTimeMs || 0}ms`;
+    }
+
+    if (mdEl) {
+      mdEl.innerHTML = renderSimpleMarkdown(data.answerText);
+    }
+
+    // Render Citations
+    const citations = data.citations || [];
+    if (citCount) citCount.textContent = citations.length;
+    if (citGrid) {
+      if (citations.length === 0) {
+        citGrid.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">No specific AST span cited for this high-level query.</span>';
+      } else {
+        citGrid.innerHTML = citations.map(c => {
+          const src = c.file || '';
+          const shortFile = src.includes('/') ? src.substring(src.lastIndexOf('/') + 1) : (src || 'source');
+          return `
+            <button class="ask-citation-chip" data-file="${esc(c.file)}" data-line="${c.line}">
+              <span class="cite-role-tag">${esc(c.role || 'Code')}</span>
+              <span>${esc(c.symbol || shortFile)} (${esc(shortFile)}:${c.line})</span>
+            </button>
+          `;
+        }).join('');
+
+        citGrid.querySelectorAll('.ask-citation-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const file = btn.getAttribute('data-file');
+            const line = parseInt(btn.getAttribute('data-line'), 10);
+            if (file) {
+              closeCodestoryAskModal();
+              openSourceFile(file, line);
+            }
+          });
+        });
+      }
+    }
+
+    // Render Related Storylines
+    const stories = data.relevantStorylines || [];
+    if (storiesSec && storiesGrid) {
+      if (stories.length > 0) {
+        storiesSec.style.display = 'block';
+        storiesGrid.innerHTML = stories.map(sTitle => `
+          <div class="ask-story-card" data-story-title="${esc(sTitle)}">
+            <div class="ask-story-card-title">${esc(sTitle)}</div>
+            <div class="ask-story-card-sub">Click to explore workflow sequence →</div>
+          </div>
+        `).join('');
+
+        storiesGrid.querySelectorAll('.ask-story-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const title = card.getAttribute('data-story-title');
+            closeCodestoryAskModal();
+            switchTab('storylines');
+            selectStoryline(null, title);
+          });
+        });
+      } else {
+        storiesSec.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (respArea) respArea.style.display = 'flex';
+    if (mdEl) {
+      mdEl.innerHTML = `<div style="color:var(--rose, #f43f5e);">Failed to query Grounded AI engine: ${esc(err.message)}</div>`;
+    }
+  }
+}
+
+async function openCodestoryExplain(fqn) {
+  if (!fqn) return;
+  const modal = qs('#codestory-ask-modal');
+  const input = qs('#codestory-ask-input');
+  const loadingEl = qs('#codestory-ask-loading');
+  const respArea = qs('#codestory-ask-response-area');
+  const mdEl = qs('#codestory-ask-markdown');
+  const engBadge = qs('#codestory-ask-engine-badge');
+  const latBadge = qs('#codestory-ask-latency-badge');
+  const citCount = qs('#codestory-ask-citations-count');
+  const citGrid = qs('#codestory-ask-citations-grid');
+  const storiesSec = qs('#codestory-ask-storylines-section');
+  const storiesGrid = qs('#codestory-ask-storylines-grid');
+
+  if (modal) {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+  if (input) input.value = `Explain ${fqn}`;
+  if (loadingEl) loadingEl.style.display = 'flex';
+  if (respArea) respArea.style.display = 'none';
+
+  await fetchAiConfig();
+
+  try {
+    const res = await fetch(`/api/ai/explain?fqn=${encodeURIComponent(fqn)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (respArea) respArea.style.display = 'flex';
+
+    if (engBadge) engBadge.textContent = 'AST & Coupling Synthesizer';
+    if (latBadge) latBadge.textContent = 'Local';
+
+    let markdown = `### Architectural Role: ${data.role || 'Component'}\n`;
+    markdown += `${data.summary || ''}\n\n`;
+    markdown += `**Detailed Narrative:**\n${data.detailedNarrative || ''}\n\n`;
+    markdown += `### Coupling Analysis\n`;
+    markdown += `- **Incoming Callers (${data.incomingCallersCount || 0}):** ${(data.callers || []).slice(0, 5).join(', ') || 'None'}\n`;
+    markdown += `- **Outgoing Invocations (${data.outgoingCallsCount || 0}):** ${(data.callees || []).slice(0, 5).join(', ') || 'None'}\n`;
+
+    if (mdEl) mdEl.innerHTML = renderSimpleMarkdown(markdown);
+
+    const citations = data.citations || [];
+    if (citCount) citCount.textContent = citations.length;
+    if (citGrid) {
+      citGrid.innerHTML = citations.map(c => {
+        const src = c.file || '';
+        const shortFile = src.includes('/') ? src.substring(src.lastIndexOf('/') + 1) : (src || 'source');
+        return `
+          <button class="ask-citation-chip" data-file="${esc(c.file)}" data-line="${c.line}">
+            <span class="cite-role-tag">${esc(c.role || data.role || 'Symbol')}</span>
+            <span>${esc(data.simpleName || shortFile)} (${esc(shortFile)}:${c.line})</span>
+          </button>
+        `;
+      }).join('');
+
+      citGrid.querySelectorAll('.ask-citation-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const file = btn.getAttribute('data-file');
+          const line = parseInt(btn.getAttribute('data-line'), 10);
+          if (file) {
+            closeCodestoryAskModal();
+            openSourceFile(file, line);
+          }
+        });
+      });
+    }
+
+    const stories = data.affectedStorylines || [];
+    if (storiesSec && storiesGrid) {
+      if (stories.length > 0) {
+        storiesSec.style.display = 'block';
+        storiesGrid.innerHTML = stories.map(sTitle => `
+          <div class="ask-story-card" data-story-title="${esc(sTitle)}">
+            <div class="ask-story-card-title">${esc(sTitle)}</div>
+            <div class="ask-story-card-sub">Involved in workflow execution →</div>
+          </div>
+        `).join('');
+
+        storiesGrid.querySelectorAll('.ask-story-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const title = card.getAttribute('data-story-title');
+            closeCodestoryAskModal();
+            switchTab('storylines');
+            selectStoryline(null, title);
+          });
+        });
+      } else {
+        storiesSec.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (respArea) respArea.style.display = 'flex';
+    if (mdEl) {
+      mdEl.innerHTML = `<div style="color:var(--rose, #f43f5e);">Failed to explain symbol: ${esc(err.message)}</div>`;
+    }
+  }
+}
+
+async function loadAiConfigToSettings() {
+  const cfg = await fetchAiConfig();
+  if (!cfg) return;
+  const provEl = qs('#set-ai-provider');
+  const modEl = qs('#set-ai-model');
+  const endEl = qs('#set-ai-endpoint');
+  if (provEl && cfg.provider) provEl.value = cfg.provider;
+  if (modEl && cfg.model) modEl.value = cfg.model;
+  if (endEl && cfg.endpoint) endEl.value = cfg.endpoint;
+}
+
+async function saveAiConfigFromSettings() {
+  const provEl = qs('#set-ai-provider');
+  const modEl = qs('#set-ai-model');
+  const endEl = qs('#set-ai-endpoint');
+  const keyEl = qs('#set-ai-apikey');
+
+  const payload = {
+    provider: provEl ? provEl.value : 'local',
+    model: modEl ? modEl.value : 'llama3',
+    endpoint: endEl ? endEl.value : 'http://localhost:11434/api/generate',
+    apiKey: keyEl ? keyEl.value : ''
+  };
+
+  try {
+    const res = await fetch('/api/ai/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      if (typeof showToast === 'function') showToast('AI Grounding configuration saved successfully');
+      await fetchAiConfig();
+    } else {
+      if (typeof showToast === 'function') showToast('Failed to save AI configuration');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('Error saving AI config: ' + err.message);
+  }
+}
+
+window.openCodestoryAskModal = openCodestoryAskModal;
+window.closeCodestoryAskModal = closeCodestoryAskModal;
+window.submitCodestoryQuestion = submitCodestoryQuestion;
+window.openCodestoryExplain = openCodestoryExplain;
+window.loadAiConfigToSettings = loadAiConfigToSettings;
+window.saveAiConfigFromSettings = saveAiConfigFromSettings;
 
 
 

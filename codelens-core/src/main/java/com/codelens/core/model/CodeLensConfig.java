@@ -62,6 +62,12 @@ public class CodeLensConfig {
     // ── Custom Archetype Rules (JSON string array) ──
     private String archetypeRulesJson = "[]";
 
+    // ── AI & Grounding Configuration ──
+    private String aiProvider = "local"; // "local" | "ollama" | "openai"
+    private String aiModel = "llama3";
+    private String aiEndpoint = "http://localhost:11434/api/generate";
+    private String aiApiKey = "";
+
     public CodeLensConfig() {}
 
     // ── Getters and Setters ──
@@ -195,6 +201,18 @@ public class CodeLensConfig {
 
     public void setArchetypeRulesJson(String archetypeRulesJson) { this.archetypeRulesJson = archetypeRulesJson != null ? archetypeRulesJson : "[]"; }
 
+    public String getAiProvider() { return aiProvider; }
+    public void setAiProvider(String aiProvider) { this.aiProvider = aiProvider != null ? aiProvider : "local"; }
+
+    public String getAiModel() { return aiModel; }
+    public void setAiModel(String aiModel) { this.aiModel = aiModel != null ? aiModel : "llama3"; }
+
+    public String getAiEndpoint() { return aiEndpoint; }
+    public void setAiEndpoint(String aiEndpoint) { this.aiEndpoint = aiEndpoint != null ? aiEndpoint : "http://localhost:11434/api/generate"; }
+
+    public String getAiApiKey() { return aiApiKey; }
+    public void setAiApiKey(String aiApiKey) { this.aiApiKey = aiApiKey != null ? aiApiKey : ""; }
+
     // ── Serialization / Deserialization ──
 
     /**
@@ -253,7 +271,13 @@ public class CodeLensConfig {
         sb.append("pojo.customPatterns=").append(escapeVal(pojoCustomPatterns)).append("\n\n");
 
         sb.append("# ── Custom Archetype Rules ──\n");
-        sb.append("archetypes.rulesJson=").append(escapeVal(archetypeRulesJson)).append("\n");
+        sb.append("archetypes.rulesJson=").append(escapeVal(archetypeRulesJson)).append("\n\n");
+
+        sb.append("# ── AI & Grounding Configuration ──\n");
+        sb.append("ai.provider=").append(escapeVal(aiProvider)).append("\n");
+        sb.append("ai.model=").append(escapeVal(aiModel)).append("\n");
+        sb.append("ai.endpoint=").append(escapeVal(aiEndpoint)).append("\n");
+        sb.append("ai.apiKey=").append(escapeVal(aiApiKey)).append("\n");
 
         return sb.toString();
     }
@@ -375,6 +399,19 @@ public class CodeLensConfig {
 
         if (props.containsKey("archetypes.rulesJson")) {
             this.archetypeRulesJson = props.getProperty("archetypes.rulesJson");
+        }
+
+        if (props.containsKey("ai.provider")) {
+            this.aiProvider = props.getProperty("ai.provider");
+        }
+        if (props.containsKey("ai.model")) {
+            this.aiModel = props.getProperty("ai.model");
+        }
+        if (props.containsKey("ai.endpoint")) {
+            this.aiEndpoint = props.getProperty("ai.endpoint");
+        }
+        if (props.containsKey("ai.apiKey")) {
+            this.aiApiKey = props.getProperty("ai.apiKey");
         }
     }
 

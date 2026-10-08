@@ -467,6 +467,10 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
           <span class="action-btn-text">Reports</span>
         </button>
+        <button id="btn-codestory-ask" class="header-action-btn codestory-ask-btn" aria-label="Ask CodeStory Architectural Q&A" title="Ask CodeStory: Grounded Architectural Q&A (Shortcut: ?)">
+          <span class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg></span>
+          <span class="action-btn-text">Ask</span>
+        </button>
         <div class="theme-dropdown-wrap" id="theme-dropdown-wrap">
           <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Current theme: Dark. Click to choose theme." title="Theme: Dark · Click to change" aria-haspopup="true" aria-expanded="false">
             <span id="theme-toggle-icon" class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></span>
@@ -1945,6 +1949,10 @@
                     <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
                     <span>Blast Radius</span>
                   </button>
+                  <button id="storyline-btn-ask-ai" class="btn btn-sm btn-primary" title="Ask CodeStory about architecture or execution flow">
+                    <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg>
+                    <span>Ask CodeStory</span>
+                  </button>
                   <button id="storyline-btn-export-story" class="btn btn-sm btn-secondary" title="Copy workflow narrative &amp; citations to clipboard">
                     <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                     <span>Copy Narrative</span>
@@ -3039,6 +3047,60 @@
               <span class="status-dot"></span>
               <span id="deployment-config-status-text">Server deployment file active (./codelens.conf)</span>
             </div>
+          </div>
+        </section>
+
+        <!-- ── AI Grounding & Provider Engine ──────────────────────────────── -->
+        <section class="settings-group ai-config-section">
+          <div class="settings-section-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg>
+              Grounded AI Architecture Engine
+            </h3>
+            <p class="settings-help-text">Configure local deterministic fact synthesizer, Ollama, or OpenAI provider.</p>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-ai-provider">AI Provider</label>
+              <span class="settings-row-desc">Engine used to synthesize natural language answers</span>
+            </div>
+            <div class="settings-row-control">
+              <select id="set-ai-provider" class="settings-select">
+                <option value="local">Local Synthesizer (100% Offline, Deterministic)</option>
+                <option value="ollama">Ollama (Local LLM e.g. Llama-3)</option>
+                <option value="openai">OpenAI / Compatible REST API</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-ai-model">Model Name</label>
+              <span class="settings-row-desc">Target LLM identifier (e.g. llama3, mistral, gpt-4o-mini)</span>
+            </div>
+            <div class="settings-row-control">
+              <input type="text" id="set-ai-model" class="settings-input" placeholder="llama3" />
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-ai-endpoint">Endpoint URL</label>
+              <span class="settings-row-desc">HTTP API generation endpoint URL</span>
+            </div>
+            <div class="settings-row-control">
+              <input type="text" id="set-ai-endpoint" class="settings-input" placeholder="http://localhost:11434/api/generate" />
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label for="set-ai-apikey">API Key (Optional)</label>
+              <span class="settings-row-desc">Bearer token for cloud LLM endpoints</span>
+            </div>
+            <div class="settings-row-control">
+              <input type="password" id="set-ai-apikey" class="settings-input" placeholder="sk-..." />
+            </div>
+          </div>
+          <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+            <button id="btn-save-ai-conf" class="btn btn-sm btn-primary">Save AI Settings</button>
           </div>
         </section>
       </div>
@@ -4734,6 +4796,104 @@
         <span>Explore Full Blast Radius</span>
       </button>
       <button class="btn btn-primary" id="whatif-btn-done">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     ASK CODESTORY: GROUNDED ARCHITECTURAL Q&A MODAL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="codestory-ask-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-labelledby="codestory-ask-modal-title">
+  <div class="modal-dialog codestory-ask-dialog">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <span class="modal-icon">
+          <svg class="svg-icon icon-cyan icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <path d="M12 7v3"/><path d="M12 13h.01"/>
+          </svg>
+        </span>
+        <div>
+          <h2 id="codestory-ask-modal-title">Ask CodeStory</h2>
+          <p class="modal-subtitle">Grounded architectural intelligence synthesized from AST &amp; call graph evidence</p>
+        </div>
+      </div>
+      <div class="modal-header-actions">
+        <div class="codestory-ask-provider-badge" id="codestory-ask-provider-badge" title="Active AI / Fact Engine">
+          <span class="provider-dot"></span>
+          <span class="provider-label" id="codestory-ask-provider-label">Local Synthesizer</span>
+        </div>
+        <button class="modal-close-btn" id="codestory-ask-modal-close" aria-label="Close Ask CodeStory">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body codestory-ask-body">
+      <!-- Question input area -->
+      <div class="codestory-ask-input-wrap">
+        <div class="codestory-ask-input-box">
+          <svg class="svg-icon icon-slate icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="codestory-ask-input" class="codestory-ask-input" placeholder="Ask about architecture, workflow execution, or symbol..." autocomplete="off" />
+          <button id="codestory-ask-submit-btn" class="btn btn-sm btn-primary">
+            <span>Ask</span>
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </div>
+        <!-- Suggested prompt chips -->
+        <div class="codestory-ask-suggestions" id="codestory-ask-suggestions">
+          <span class="suggestion-label">Suggested:</span>
+          <button class="ask-prompt-chip" data-prompt="How does order placement flow work?">Order placement flow?</button>
+          <button class="ask-prompt-chip" data-prompt="What are the main entry points?">Entry points?</button>
+          <button class="ask-prompt-chip" data-prompt="What are the core domain services?">Core services?</button>
+          <button class="ask-prompt-chip" data-prompt="Explain repository persistence architecture">Persistence layer?</button>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div class="codestory-ask-loading" id="codestory-ask-loading" style="display:none;">
+        <div class="codestory-ask-spinner"></div>
+        <span>Synthesizing verified architectural facts...</span>
+      </div>
+
+      <!-- Response area -->
+      <div class="codestory-ask-response-area" id="codestory-ask-response-area" style="display:none;">
+        <div class="codestory-ask-meta-row">
+          <div class="codestory-ask-engine-info">
+            <span class="engine-badge" id="codestory-ask-engine-badge">Deterministic Synthesizer</span>
+            <span class="latency-badge" id="codestory-ask-latency-badge">12ms</span>
+          </div>
+          <button id="codestory-ask-copy-btn" class="btn btn-xs btn-ghost" title="Copy answer to clipboard">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+
+        <div class="codestory-ask-markdown" id="codestory-ask-markdown">
+          <!-- Rendered formatted answer -->
+        </div>
+
+        <!-- Verified Evidence & Citations Ledger -->
+        <div class="codestory-ask-citations-section" id="codestory-ask-citations-section">
+          <div class="codestory-ask-section-title">
+            <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>Verified Source Evidence &amp; Citations (<span id="codestory-ask-citations-count">0</span>)</span>
+          </div>
+          <div class="codestory-ask-citations-grid" id="codestory-ask-citations-grid">
+            <!-- Dynamic citation chips -->
+          </div>
+        </div>
+
+        <!-- Related Storylines Section -->
+        <div class="codestory-ask-storylines-section" id="codestory-ask-storylines-section" style="display:none;">
+          <div class="codestory-ask-section-title">
+            <svg class="svg-icon icon-purple icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/></svg>
+            <span>Related Architectural Storylines</span>
+          </div>
+          <div class="codestory-ask-storylines-grid" id="codestory-ask-storylines-grid">
+            <!-- Dynamic storyline cards -->
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

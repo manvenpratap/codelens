@@ -91,6 +91,7 @@ public class CodeLensServer {
     private final ReportService      reportService;
     private final CriticalPathAnalyzer criticalPathAnalyzer;
     private final StoryEngine        storyEngine = new StoryEngine();
+    private final AiGroundingService aiGroundingService = new AiGroundingService();
     private final GitBlameService    gitBlameService;
     private final StressTestService  stressTestService = new StressTestService();
     private final JvmManagerService  jvmManager = new JvmManagerService();
@@ -1371,6 +1372,14 @@ public class CodeLensServer {
         app.get("/api/storyline",                   this::getStoryline);
         app.get("/api/storyline/what-if",           this::getStorylineWhatIf);
         app.get("/api/storyline/teach-me",          this::getStorylineTeachMe);
+
+        // ── Grounded Architectural AI Q&A ──────────────────────────────────────
+        app.get("/api/ai/ask",                      this::aiAsk);
+        app.post("/api/ai/ask",                     this::aiAsk);
+        app.get("/api/ai/explain",                  this::aiExplain);
+        app.post("/api/ai/explain",                 this::aiExplain);
+        app.get("/api/ai/config",                   this::getAiConfig);
+        app.post("/api/ai/config",                  this::saveAiConfig);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -4099,6 +4108,101 @@ public class CodeLensServer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Grounded Architectural AI Q&A
+    // ─────────────────────────────────────────────────────────────────────────
+    private void aiAsk(Context ctx) throws Exception {
+        String question = ctx.queryParam("q");
+        if (question == null || question.isBlank()) {
+            question = ctx.queryParam("question");
+        }
+        if ((question == null || question.isBlank()) && "POST".equalsIgnoreCase(ctx.method().name())) {
+            try {
+                Map<?, ?> body = ctx.bodyAsClass(Map.class);
+                if (body != null) {
+                    Object qVal = body.get("question");
+                    if (qVal == null) qVal = body.get("q");
+                    if (qVal != null) question = qVal.toString();
+                }
+            } catch (Exception ignored) {}
+        }
+        if (question == null || question.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Question parameter 'q' or JSON field 'question' is required"));
+            return;
+        }
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+        List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+
+        AiGroundingService.GroundedAnswer answer = aiGroundingService.askQuestion(question, types, methods, graph, summaries);
+        ctx.json(answer);
+    }
+
+    private void aiExplain(Context ctx) throws Exception {
+        String fqn = ctx.queryParam("fqn");
+        if (fqn == null || fqn.isBlank()) {
+            fqn = ctx.queryParam("target");
+        }
+        if ((fqn == null || fqn.isBlank()) && "POST".equalsIgnoreCase(ctx.method().name())) {
+            try {
+                Map<?, ?> body = ctx.bodyAsClass(Map.class);
+                if (body != null) {
+                    Object fVal = body.get("fqn");
+                    if (fVal == null) fVal = body.get("target");
+                    if (fVal != null) fqn = fVal.toString();
+                }
+            } catch (Exception ignored) {}
+        }
+        if (fqn == null || fqn.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Target parameter 'fqn' is required"));
+            return;
+        }
+
+        List<CodeType> types = dao.findAllTypes();
+        List<CodeMethod> methods = dao.findAllMethods();
+        org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> graph = (callGraph != null) ? callGraph.getCallGraph() : null;
+        List<StoryEngine.StorylineSummary> summaries = storyEngine.discoverStorylines(types, methods, graph);
+
+        AiGroundingService.SymbolExplanation explanation = aiGroundingService.explainSymbol(fqn, types, methods, graph, summaries);
+        ctx.json(explanation);
+    }
+
+    private void getAiConfig(Context ctx) {
+        Map<String, Object> cfg = new LinkedHashMap<>();
+        cfg.put("provider", aiGroundingService.getProvider());
+        cfg.put("model", aiGroundingService.getModel());
+        cfg.put("endpoint", aiGroundingService.getEndpoint());
+        cfg.put("hasApiKey", aiGroundingService.getApiKey() != null && !aiGroundingService.getApiKey().isBlank());
+        ctx.json(cfg);
+    }
+
+    private void saveAiConfig(Context ctx) {
+        try {
+            Map<?, ?> body = ctx.bodyAsClass(Map.class);
+            String provider = body.get("provider") != null ? body.get("provider").toString() : null;
+            String model = body.get("model") != null ? body.get("model").toString() : null;
+            String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : null;
+            String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : null;
+
+            aiGroundingService.configure(provider, model, endpoint, apiKey);
+
+            CodeLensConfig c = getActiveConfig();
+            if (provider != null) c.setAiProvider(provider);
+            if (model != null) c.setAiModel(model);
+            if (endpoint != null) c.setAiEndpoint(endpoint);
+            if (apiKey != null) c.setAiApiKey(apiKey);
+
+            File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
+            c.saveToFile(targetFile);
+
+            ctx.json(Map.of("status", "ok", "provider", aiGroundingService.getProvider(), "model", aiGroundingService.getModel()));
+        } catch (Exception e) {
+            ctx.status(400).json(Map.of("error", "Failed to update AI config: " + e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Fields
     // ─────────────────────────────────────────────────────────────────────────
     private void getField(Context ctx) throws Exception {
@@ -5680,6 +5784,7 @@ public class CodeLensServer {
         this.activeConfigFile = configFile;
         if (config != null) {
             CallGraphAnalyzer.setCustomPojoPatterns(config.getPojoCustomPatterns());
+            aiGroundingService.configure(config.getAiProvider(), config.getAiModel(), config.getAiEndpoint(), config.getAiApiKey());
         }
     }
 
@@ -5700,6 +5805,7 @@ public class CodeLensServer {
             this.activeConfig = updated;
             if (updated != null) {
                 CallGraphAnalyzer.setCustomPojoPatterns(updated.getPojoCustomPatterns());
+                aiGroundingService.configure(updated.getAiProvider(), updated.getAiModel(), updated.getAiEndpoint(), updated.getAiApiKey());
                 invalidateGraphCache();
                 triggerReportsPrecomputeAsync(null, true);
             }
@@ -5739,6 +5845,7 @@ public class CodeLensServer {
             this.activeConfig = imported;
             if (imported != null) {
                 CallGraphAnalyzer.setCustomPojoPatterns(imported.getPojoCustomPatterns());
+                aiGroundingService.configure(imported.getAiProvider(), imported.getAiModel(), imported.getAiEndpoint(), imported.getAiApiKey());
                 invalidateGraphCache();
             }
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
@@ -5755,6 +5862,7 @@ public class CodeLensServer {
         this.activeConfig = new CodeLensConfig();
         try {
             CallGraphAnalyzer.setCustomPojoPatterns(activeConfig.getPojoCustomPatterns());
+            aiGroundingService.configure(activeConfig.getAiProvider(), activeConfig.getAiModel(), activeConfig.getAiEndpoint(), activeConfig.getAiApiKey());
             invalidateGraphCache();
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);

@@ -190,10 +190,10 @@ public class Application {
             return;
         }
 
-        // ── CLI What-If mode: java -jar codelens-app.jar what-if <fqn> ────────
-        if (args.length > 0 && ("what-if".equalsIgnoreCase(args[0]) || "whatif".equalsIgnoreCase(args[0]))) {
+        // ── CLI What-If / Impact mode: java -jar codelens-app.jar impact <fqn> ──
+        if (args.length > 0 && ("what-if".equalsIgnoreCase(args[0]) || "whatif".equalsIgnoreCase(args[0]) || "impact".equalsIgnoreCase(args[0]))) {
             if (args.length < 2) {
-                System.err.println("Usage: java -jar codelens-app.jar what-if <method-fqn>");
+                System.err.println("Usage: java -jar codelens-app.jar impact <method-fqn>");
                 return;
             }
             if (tryExecuteCliViaHttp(port, args)) {
@@ -212,6 +212,66 @@ public class Application {
             com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
             com.codelens.analysis.StoryEngine.ChangeImpactStory impact = storyEngine.analyzeChangeImpact(args[1], types, methods, callGraph.getCallGraph());
             printWhatIfCli(impact);
+            db.close();
+            return;
+        }
+
+        // ── CLI Ask mode: java -jar codelens-app.jar ask "<question>" ─────────
+        if (args.length > 0 && "ask".equalsIgnoreCase(args[0])) {
+            if (args.length < 2) {
+                System.err.println("Usage: java -jar codelens-app.jar ask \"<natural language question>\"");
+                return;
+            }
+            if (tryExecuteCliViaHttp(port, args)) {
+                return;
+            }
+            DatabaseManager db = new DatabaseManager(dataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
+            List<com.codelens.analysis.StoryEngine.StorylineSummary> storylines = storyEngine.discoverStorylines(types, methods, callGraph.getCallGraph());
+
+            com.codelens.analysis.AiGroundingService ai = new com.codelens.analysis.AiGroundingService(
+                config.getAiProvider(), config.getAiModel(), config.getAiEndpoint(), config.getAiApiKey());
+            com.codelens.analysis.AiGroundingService.GroundedAnswer answer = ai.askQuestion(args[1], types, methods, callGraph.getCallGraph(), storylines);
+            printAiAskCli(answer);
+            db.close();
+            return;
+        }
+
+        // ── CLI Explain mode: java -jar codelens-app.jar explain <fqn> ────────
+        if (args.length > 0 && "explain".equalsIgnoreCase(args[0])) {
+            if (args.length < 2) {
+                System.err.println("Usage: java -jar codelens-app.jar explain <symbol-or-class-fqn>");
+                return;
+            }
+            if (tryExecuteCliViaHttp(port, args)) {
+                return;
+            }
+            DatabaseManager db = new DatabaseManager(dataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            com.codelens.analysis.StoryEngine storyEngine = new com.codelens.analysis.StoryEngine();
+            List<com.codelens.analysis.StoryEngine.StorylineSummary> storylines = storyEngine.discoverStorylines(types, methods, callGraph.getCallGraph());
+
+            com.codelens.analysis.AiGroundingService ai = new com.codelens.analysis.AiGroundingService(
+                config.getAiProvider(), config.getAiModel(), config.getAiEndpoint(), config.getAiApiKey());
+            com.codelens.analysis.AiGroundingService.SymbolExplanation explanation = ai.explainSymbol(args[1], types, methods, callGraph.getCallGraph(), storylines);
+            printAiExplainCli(explanation);
             db.close();
             return;
         }
@@ -330,9 +390,15 @@ public class Application {
             if ("trace".equals(mode)) {
                 if (query == null || query.isBlank()) return false;
                 url = "http://127.0.0.1:" + port + "/api/storyline?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
-            } else if ("what-if".equals(mode) || "whatif".equals(mode)) {
+            } else if ("what-if".equals(mode) || "whatif".equals(mode) || "impact".equals(mode)) {
                 if (query == null || query.isBlank()) return false;
                 url = "http://127.0.0.1:" + port + "/api/storyline/what-if?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+            } else if ("ask".equals(mode)) {
+                if (query == null || query.isBlank()) return false;
+                url = "http://127.0.0.1:" + port + "/api/ai/ask?q=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+            } else if ("explain".equals(mode)) {
+                if (query == null || query.isBlank()) return false;
+                url = "http://127.0.0.1:" + port + "/api/ai/explain?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
             } else {
                 if (query != null && (query.contains(".") || query.contains("("))) {
                     url = "http://127.0.0.1:" + port + "/api/storyline?fqn=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
@@ -343,14 +409,18 @@ public class Application {
 
             java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(java.time.Duration.ofSeconds(5))
+                .timeout(java.time.Duration.ofSeconds(6))
                 .header("Accept", "application/json")
                 .GET()
                 .build();
             java.net.http.HttpResponse<String> resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 200) {
                 com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-                if (root.has("storylines")) {
+                if (root.has("answerText")) {
+                    printAiAskJsonCli(root);
+                } else if (root.has("detailedNarrative") || root.has("targetFqn")) {
+                    printAiExplainJsonCli(root);
+                } else if (root.has("storylines")) {
                     com.fasterxml.jackson.databind.JsonNode list = root.get("storylines");
                     System.out.printf("%n=== CodeStory: Discovered Repository Storylines (%d) ===%n%n", list.size());
                     for (int i = 0; i < list.size(); i++) {
@@ -455,6 +525,129 @@ public class Application {
         System.out.printf("%nCovering Automated Tests (%d):%n", tests.size());
         for (int i = 0; i < tests.size(); i++) {
             System.out.printf("  ✓ %s%n", tests.get(i).asText());
+        }
+        System.out.println();
+    }
+
+    private static void printAiAskCli(com.codelens.analysis.AiGroundingService.GroundedAnswer a) {
+        System.out.println();
+        System.out.println("=== CodeStory Grounded Q&A ===");
+        System.out.printf("Question: %s%n", a.question);
+        System.out.printf("Engine:   %s (%s) | %dms latency%n%n", a.provider, a.model, a.responseTimeMs);
+        System.out.println("[Answer]");
+        System.out.println(a.answerText);
+        System.out.println();
+        if (a.citations != null && !a.citations.isEmpty()) {
+            System.out.printf("[Verified Source Citations (%d)]%n", a.citations.size());
+            for (int i = 0; i < a.citations.size(); i++) {
+                var c = a.citations.get(i);
+                System.out.printf("  %d. [%-12s] %s (%s:%d)%n", i + 1, c.role != null ? c.role : "Evidence", c.symbol, c.file, c.line);
+            }
+            System.out.println();
+        }
+        if (a.relevantStorylines != null && !a.relevantStorylines.isEmpty()) {
+            System.out.printf("[Related Storylines (%d)]%n", a.relevantStorylines.size());
+            for (String s : a.relevantStorylines) {
+                System.out.printf("  • %s%n", s);
+            }
+            System.out.println();
+        }
+    }
+
+    private static void printAiAskJsonCli(com.fasterxml.jackson.databind.JsonNode root) {
+        System.out.println();
+        System.out.println("=== CodeStory Grounded Q&A ===");
+        System.out.printf("Question: %s%n", root.path("question").asText());
+        System.out.printf("Engine:   %s (%s) | %dms latency%n%n",
+            root.path("provider").asText(), root.path("model").asText(), root.path("responseTimeMs").asLong());
+        System.out.println("[Answer]");
+        System.out.println(root.path("answerText").asText());
+        System.out.println();
+        var citations = root.path("citations");
+        if (citations.isArray() && citations.size() > 0) {
+            System.out.printf("[Verified Source Citations (%d)]%n", citations.size());
+            for (int i = 0; i < citations.size(); i++) {
+                var c = citations.get(i);
+                System.out.printf("  %d. [%-12s] %s (%s:%d)%n",
+                    i + 1, c.path("role").asText("Evidence"), c.path("symbol").asText(), c.path("file").asText(), c.path("line").asInt());
+            }
+            System.out.println();
+        }
+        var stories = root.path("relevantStorylines");
+        if (stories.isArray() && stories.size() > 0) {
+            System.out.printf("[Related Storylines (%d)]%n", stories.size());
+            for (int i = 0; i < stories.size(); i++) {
+                System.out.printf("  • %s%n", stories.get(i).asText());
+            }
+            System.out.println();
+        }
+    }
+
+    private static void printAiExplainCli(com.codelens.analysis.AiGroundingService.SymbolExplanation exp) {
+        System.out.println();
+        System.out.printf("=== CodeStory Symbol Explanation: %s ===%n", exp.simpleName);
+        System.out.printf("Target: %s [%s]%n", exp.targetFqn, exp.role);
+        System.out.printf("Summary: %s%n%n", exp.summary);
+        System.out.println("[Architectural Narrative]");
+        System.out.println(exp.detailedNarrative != null ? exp.detailedNarrative : exp.summary);
+        System.out.println();
+        System.out.printf("[Architectural Coupling]%n");
+        System.out.printf("Incoming Callers (%d):%n", exp.incomingCallersCount);
+        for (String c : exp.callers) {
+            System.out.printf("  ↑ %s%n", c);
+        }
+        System.out.printf("%nOutgoing Calls (%d):%n", exp.outgoingCallsCount);
+        for (String d : exp.callees) {
+            System.out.printf("  ↓ %s%n", d);
+        }
+        if (exp.affectedStorylines != null && !exp.affectedStorylines.isEmpty()) {
+            System.out.printf("%n[Storyline Involvements (%d)]%n", exp.affectedStorylines.size());
+            for (String s : exp.affectedStorylines) {
+                System.out.printf("  • %s%n", s);
+            }
+        }
+        if (exp.citations != null && !exp.citations.isEmpty()) {
+            System.out.printf("%n[Verified Citations (%d)]%n", exp.citations.size());
+            for (var c : exp.citations) {
+                System.out.printf("  • %s:%d [%s]%n", c.file, c.line, c.symbol);
+            }
+        }
+        System.out.println();
+    }
+
+    private static void printAiExplainJsonCli(com.fasterxml.jackson.databind.JsonNode root) {
+        System.out.println();
+        System.out.printf("=== CodeStory Symbol Explanation: %s ===%n", root.path("simpleName").asText());
+        System.out.printf("Target: %s [%s]%n", root.path("targetFqn").asText(), root.path("role").asText());
+        System.out.printf("Summary: %s%n%n", root.path("summary").asText());
+        System.out.println("[Architectural Narrative]");
+        System.out.println(root.path("detailedNarrative").asText(root.path("summary").asText()));
+        System.out.println();
+        var callers = root.path("callers");
+        System.out.printf("[Architectural Coupling]%n");
+        System.out.printf("Incoming Callers (%d):%n", root.path("incomingCallersCount").asInt());
+        for (int i = 0; i < callers.size(); i++) {
+            System.out.printf("  ↑ %s%n", callers.get(i).asText());
+        }
+        var callees = root.path("callees");
+        System.out.printf("%nOutgoing Calls (%d):%n", root.path("outgoingCallsCount").asInt());
+        for (int i = 0; i < callees.size(); i++) {
+            System.out.printf("  ↓ %s%n", callees.get(i).asText());
+        }
+        var stories = root.path("affectedStorylines");
+        if (stories.isArray() && stories.size() > 0) {
+            System.out.printf("%n[Storyline Involvements (%d)]%n", stories.size());
+            for (int i = 0; i < stories.size(); i++) {
+                System.out.printf("  • %s%n", stories.get(i).asText());
+            }
+        }
+        var citations = root.path("citations");
+        if (citations.isArray() && citations.size() > 0) {
+            System.out.printf("%n[Verified Citations (%d)]%n", citations.size());
+            for (int i = 0; i < citations.size(); i++) {
+                var c = citations.get(i);
+                System.out.printf("  • %s:%d [%s]%n", c.path("file").asText(), c.path("line").asInt(), c.path("symbol").asText());
+            }
         }
         System.out.println();
     }
