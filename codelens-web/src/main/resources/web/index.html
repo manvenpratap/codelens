@@ -819,10 +819,28 @@
         class="graph-empty"
         aria-label="No graph loaded"
       >
-        <div class="graph-empty-icon" aria-hidden="true"><svg class="svg-icon icon-emerald icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
-        <div class="graph-empty-text">Select a method or field to visualise</div>
-        <div class="graph-empty-sub" id="graph-empty-sub">
-          Click any method in the Knowledge Base or Explorer to load its Graphify knowledge graph.
+        <div class="graph-empty-card">
+          <div class="graph-empty-icon-wrap" aria-hidden="true">
+            <svg class="svg-icon icon-emerald icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </div>
+          <h2 class="graph-empty-title">Architectural Call &amp; Field Topology</h2>
+          <p class="graph-empty-sub" id="graph-empty-sub">
+            Select any class or method in the Explorer to visualize its execution graph, or jump straight into analysis:
+          </p>
+          <div class="graph-empty-actions">
+            <button id="btn-empty-explore-classes" class="empty-action-pill primary" type="button" title="Open first high-impact package and class">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2-5.5 9.5h11L12 2z"/><path d="M12 22V12"/></svg>
+              <span>Explore High-Impact Classes</span>
+            </button>
+            <button id="btn-empty-open-cmdk" class="empty-action-pill" type="button" title="Quick Search across all types, methods, fields (⌘K)">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span>Search Codebase (⌘K)</span>
+            </button>
+            <button id="btn-empty-critical-path" class="empty-action-pill" type="button" title="Trace critical execution path across services">
+              <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <span>Critical Path Analyzer</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2443,8 +2461,16 @@
 
     <!-- Placeholder shown when no entity is selected -->
     <div class="detail-empty" id="detail-empty-state" aria-label="No entity selected">
-      <div class="detail-empty-icon" aria-hidden="true"><svg class="svg-icon icon-blue icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
-      <div class="detail-empty-text">Select a type, method, or field<br>to view its details &amp; graph topology</div>
+      <div class="detail-empty-icon-wrap" aria-hidden="true">
+        <svg class="svg-icon icon-blue icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      </div>
+      <h3 class="detail-empty-title">Entity Inspector</h3>
+      <p class="detail-empty-text">Select any class, interface, method, or field to inspect its signatures, hierarchy, complexity, and blast radius.</p>
+      <div class="detail-empty-hints">
+        <span class="detail-hint-pill"><kbd>⌘K</kbd> Quick Search</span>
+        <span class="detail-hint-pill"><kbd>[</kbd> Toggle Explorer</span>
+        <span class="detail-hint-pill"><kbd>]</kbd> Toggle Inspector</span>
+      </div>
     </div>
 
     <!-- Scrollable body: metadata grid + relationships + notes -->

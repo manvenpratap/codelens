@@ -3823,7 +3823,6 @@ function renderPackageTree(nodes, container, depth) {
       class: `tree-item${App.selected.id === node.fqn ? ' active' : ''}`,
       'data-depth': depth,
       'data-fqn': node.fqn,
-      style: `border-left-color: ${pkgColor};`,
     });
 
     // Toggle arrow
@@ -3832,7 +3831,7 @@ function renderPackageTree(nodes, container, depth) {
     item.appendChild(toggle);
 
     // Icon with package color badge
-    const icon = createElement('span', { class: 'tree-icon', style: `color: ${pkgColor}; display:inline-flex; align-items:center;` });
+    const icon = createElement('span', { class: 'tree-icon', style: 'color: var(--primary); display:inline-flex; align-items:center;' });
     icon.innerHTML = '<svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>';
     item.appendChild(icon);
 
@@ -3846,7 +3845,6 @@ function renderPackageTree(nodes, container, depth) {
     if (node.typeCount > 0) {
       const count = createElement('span', {
         class: 'tree-count',
-        style: `border: 1px solid ${pkgColor}44; color: ${pkgColor}; background: ${pkgColor}11; border-radius: 10px; padding: 0 5px;`,
       });
       count.textContent = node.typeCount;
       item.appendChild(count);
@@ -3957,7 +3955,6 @@ async function loadTypesInTree(pkgFqn, container, depth) {
         'data-depth': depth,
         'data-id': t.id,
         'data-fqn': t.id || t.fqn,
-        style: `border-left-color: ${pkgColor}88;`,
       });
 
       const icon = createElement('span', { class: `tree-icon kind-${(t.kind || 'class').toLowerCase()}` });
@@ -12536,8 +12533,49 @@ function initScopeManagement() {
   try {
     if (typeof initSystemTour === 'function') initSystemTour();
     if (typeof initGitPrStory === 'function') initGitPrStory();
+    initEmptyStateActions();
   } catch (err) {
     console.warn('initSystemTour/initGitPrStory failed:', err);
+  }
+}
+
+function initEmptyStateActions() {
+  const btnExplore = qs('#btn-empty-explore-classes');
+  if (btnExplore) {
+    btnExplore.onclick = () => {
+      if (App.packages && App.packages.length > 0) {
+        const firstPkg = App.packages[0];
+        const treeItem = qs(`#explorer-tree [data-fqn="${CSS.escape(firstPkg.fqn)}"]`);
+        if (treeItem) {
+          treeItem.click();
+          api.typesByPackage(firstPkg.fqn).then(types => {
+            if (types && types.length > 0) {
+              selectType(types[0]);
+            }
+          }).catch(() => {});
+        }
+      }
+    };
+  }
+
+  const btnCmdK = qs('#btn-empty-open-cmdk');
+  if (btnCmdK) {
+    btnCmdK.onclick = () => {
+      if (window.CmdK && typeof window.CmdK.open === 'function') {
+        window.CmdK.open();
+      } else {
+        const cmdkBtn = qs('#btn-command-palette');
+        if (cmdkBtn) cmdkBtn.click();
+      }
+    };
+  }
+
+  const btnCP = qs('#btn-empty-critical-path');
+  if (btnCP) {
+    btnCP.onclick = () => {
+      const cpBtn = qs('#btn-critical-path-tool');
+      if (cpBtn) cpBtn.click();
+    };
   }
 }
 
