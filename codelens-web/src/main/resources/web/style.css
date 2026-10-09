@@ -2180,6 +2180,9 @@ body.theme-light .settings-guide-btn:hover {
 }
 
 .explorer-stats-footer {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 0;
   border-radius: 0;
   border: none;
@@ -2187,8 +2190,11 @@ body.theme-light .settings-guide-btn:hover {
   background: rgba(18, 22, 31, 0.75);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  padding: 6px 8px;
-  justify-content: space-around;
+  padding: 6px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
   flex-shrink: 0;
   position: relative;
   z-index: 50;
@@ -2198,6 +2204,13 @@ body.theme-light .explorer-stats-footer {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-top-color: #e2e8f0;
+}
+
+.explorer-stats-footer .stat-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 3px 2px;
 }
 
 .stat-pill {
@@ -2222,12 +2235,20 @@ body.theme-light .explorer-stats-footer {
   font-weight: 700;
   color: var(--primary);
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 .stat-pill .stat-label {
   color: var(--text-muted);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+.stat-pill .label-full {
+  display: inline;
+}
+.stat-pill .label-short,
+.stat-pill .label-mini {
+  display: none;
 }
 
 .stat-pill.stat-pill-interactive {
@@ -2249,6 +2270,7 @@ body.theme-light .stat-pill.stat-pill-interactive.popover-open {
   height: 11px;
   color: var(--text-muted);
   opacity: 0.7;
+  flex-shrink: 0;
   transition: opacity var(--dur-fast) var(--ease);
 }
 .stat-pill.stat-pill-interactive:hover .stat-info-icon,
@@ -2261,6 +2283,7 @@ body.theme-light .stat-pill.stat-pill-interactive.popover-open {
   width: 1px;
   height: 12px;
   background: var(--border);
+  flex-shrink: 0;
 }
 
 /* Method / Class Archetypes Breakup Popover */
@@ -2268,7 +2291,9 @@ body.theme-light .stat-pill.stat-pill-interactive.popover-open {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 6px;
-  right: 6px;
+  width: calc(100% - 12px);
+  min-width: 250px;
+  max-width: 440px;
   max-height: 320px;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -2282,6 +2307,80 @@ body.theme-light .stat-pill.stat-pill-interactive.popover-open {
   pointer-events: auto;
   transform-origin: bottom left;
   animation: popoverFadeUp var(--dur-dropdown) var(--ease-out);
+}
+
+/* Responsive Explorer Sidebar Footer via Container Queries */
+@container explorer (max-width: 329px) {
+  .explorer-stats-footer {
+    padding: 6px 4px;
+    gap: 1px;
+  }
+  .explorer-stats-footer .stat-pill {
+    padding: 3px 1px;
+    gap: 3px;
+  }
+  .explorer-stats-footer .stat-info-icon {
+    display: none !important;
+  }
+}
+
+@container explorer (max-width: 284px) {
+  .explorer-stats-footer .stat-pill .label-full {
+    display: none;
+  }
+  .explorer-stats-footer .stat-pill .label-short {
+    display: inline;
+  }
+  .explorer-stats-footer .stat-pill {
+    gap: 2px;
+    font-size: 10.5px;
+  }
+  .explorer-stats-footer .stat-label {
+    font-size: 9px;
+    letter-spacing: 0.2px;
+  }
+}
+
+@container explorer (max-width: 224px) {
+  .explorer-stats-footer {
+    padding: 5px 2px;
+    gap: 1px;
+  }
+  .explorer-stats-footer .stat-divider {
+    display: none;
+  }
+  .explorer-stats-footer .stat-pill .label-short {
+    display: none;
+  }
+  .explorer-stats-footer .stat-pill .label-mini {
+    display: inline;
+  }
+  .explorer-stats-footer .stat-pill {
+    gap: 1.5px;
+    font-size: 10px;
+    padding: 2px 1px;
+  }
+  .explorer-stats-footer .stat-label {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+}
+
+@container explorer (max-width: 174px) {
+  .explorer-stats-footer {
+    padding: 4px 1px;
+    gap: 0;
+  }
+  .explorer-stats-footer .stat-pill .label-mini,
+  .explorer-stats-footer .stat-label {
+    display: none;
+  }
+  .explorer-stats-footer .stat-pill {
+    gap: 0;
+    font-size: 10px;
+    padding: 2px 0;
+    justify-content: center;
+  }
 }
 body.theme-light .methods-archetypes-popover {
   background: #ffffff;
@@ -2926,6 +3025,8 @@ body.theme-swiss .theme-dropdown-badge {
   height: 100%;
   position: relative;
   z-index: 60;
+  container-type: inline-size;
+  container-name: explorer;
 }
 #left-panel:has(.popover-open),
 #left-panel:has(.methods-archetypes-popover[style*="display: flex"]),
