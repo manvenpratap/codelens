@@ -323,7 +323,9 @@ public class CodeLensServer {
         logProcessBanner("LAYOUT_WARMUP_STARTED", "Sunflower Layout Precomputer", resolveCurrentSourcePath(), "Precomputing graph layouts and module overview");
         try {
             if (progress != null) {
+                progress.setActiveStage("LAYOUT");
                 progress.recordStageStart("LAYOUT", "Graph Layout & Topology Precomputation", "Precomputing sunflower spiral cluster layouts");
+                broadcastSseEvent("scan_status", progress);
             }
             log.info("Starting graph layout precomputation & warm-up...");
             long start = System.currentTimeMillis();
@@ -1589,26 +1591,25 @@ public class CodeLensServer {
             } catch (Exception ignored) {}
         }, 200, 200, TimeUnit.MILLISECONDS);
 
-        // Build call graph from database on startup with streaming cursor (independent of scanState)
+        // Hydrate call graph from database cache on startup with streaming cursor (independent of scanState)
         try {
             List<String> allMethodFqns = dao.findAllMethodFqns();
             if (!allMethodFqns.isEmpty()) {
-                logProcessBanner("GRAPH_BUILD_STARTED", "Call Graph & Topology Engine", resolveCurrentSourcePath(), "Building in-memory call graph from database (" + allMethodFqns.size() + " methods)");
                 graphWarmupRunning.set(true);
-                graphWarmupPhase.set("Call Graph Analysis");
+                graphWarmupPhase.set("Hydrating Call Graph Cache");
                 graphWarmupPercentage.set(15);
 
                 callGraph.rebuild(allMethodFqns, dao::streamCallRelationships);
-                graphWarmupPhase.set("Field Impact Analysis");
+                graphWarmupPhase.set("Hydrating Field Impact Cache");
                 graphWarmupPercentage.set(50);
                 int totalFieldRels = dao.countFieldRelationships();
                 fieldImpact.rebuildWithStream(consumer -> dao.streamFieldRelationships(consumer::accept), totalFieldRels, callGraph.getCallingMethodFqns());
                 graphWarmupPhase.set("Ready");
                 graphWarmupPercentage.set(100);
                 graphWarmupRunning.set(false);
-                logProcessBanner("GRAPH_BUILD_COMPLETED", "Call Graph & Topology Engine", resolveCurrentSourcePath(),
-                    String.format("Rebuilt %,d vertices and %,d call edges", callGraph.vertexCount(), callGraph.edgeCount()));
-                log.info("Initialized in-memory call graph from database with {} methods",
+                logProcessBanner("GRAPH_CACHE_HYDRATED", "Call Graph & Topology Engine", resolveCurrentSourcePath(),
+                    String.format("Loaded %,d vertices and %,d call edges from database cache into memory", callGraph.vertexCount(), callGraph.edgeCount()));
+                log.info("Hydrated in-memory call graph cache from database with {} methods",
                     allMethodFqns.size());
 
                 CompletableFuture.runAsync(() -> {
@@ -1623,8 +1624,8 @@ public class CodeLensServer {
             }
         } catch (Exception e) {
             graphWarmupRunning.set(false);
-            logProcessBanner("GRAPH_BUILD_FAILED", "Call Graph & Topology Engine", resolveCurrentSourcePath(), "Error: " + e.getMessage());
-            log.error("Failed to initialize call graph from database on startup: {}", e.getMessage(), e);
+            logProcessBanner("GRAPH_CACHE_HYDRATE_FAILED", "Call Graph & Topology Engine", resolveCurrentSourcePath(), "Error: " + e.getMessage());
+            log.error("Failed to hydrate call graph cache from database on startup: {}", e.getMessage(), e);
         }
     }
 
@@ -2932,6 +2933,7 @@ public class CodeLensServer {
             // Phase 1: prepare database and lucene index
             progress.setActiveStage("PREPARE");
             progress.recordStageStart("PREPARE", "Preparing Storage", "Clearing database tables and enabling bulk ingestion mode");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Preparing Storage");
             progress.setMessage("Clearing existing database & index data…");
             progress.setCurrentDetail("Resetting schema & indices");
@@ -2944,6 +2946,7 @@ public class CodeLensServer {
             // Phase 2: bounded streaming scan
             progress.setActiveStage("PARSE");
             progress.recordStageStart("PARSE", "AST Parsing & Storage", "Scanning Java source files and extracting AST nodes in parallel");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("AST Parsing & Storage");
             progress.setMessage("Scanning Java source files in parallel…");
 
@@ -3046,6 +3049,7 @@ public class CodeLensServer {
             // Phase 3: finish Lucene commit & rebuild secondary database indexes
             progress.setActiveStage("INDEX");
             progress.recordStageStart("INDEX", "Search Index & Database Index Rebuild", "Committing Lucene search documents & rebuilding secondary database B-tree indexes");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Finalizing Index");
             progress.setMessage("Committing search index & rebuilding database indexes…");
             progress.setCurrentDetail("Committing Lucene search documents…");
@@ -3100,6 +3104,7 @@ public class CodeLensServer {
             // Phase 4: rebuild in-memory call graph and field impact with streaming cursor
             progress.setActiveStage("GRAPH");
             progress.recordStageStart("GRAPH", "Call Graph Analysis & Field Propagation", "Computing method call hierarchy, caller triggers, and field impact propagation");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Call Graph Analysis");
             progress.setMessage("Computing call graph & topology…");
             progress.setPercentage(75);
@@ -3209,6 +3214,7 @@ public class CodeLensServer {
             // Phase 6: Module Dependency Analysis
             progress.setActiveStage("MODULES");
             progress.recordStageStart("MODULES", "Module Dependency Analysis", "Analyzing package architecture, coupling, and circular dependencies");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Module Dependencies");
             progress.setMessage("Analyzing inter-module relationships & architecture…");
             progress.setPercentage(86);
@@ -3246,6 +3252,7 @@ public class CodeLensServer {
             // Phase 6: Structural Inconsistency Detection & Integrity Audit
             progress.setActiveStage("INTEGRITY");
             progress.recordStageStart("INTEGRITY", "Structural Integrity Audit", "Auditing class-aware structural integrity, broken linkages & type discrepancies");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Integrity Audit");
             progress.setMessage("Auditing codebase structural integrity…");
             progress.setPercentage(90);
@@ -3283,6 +3290,7 @@ public class CodeLensServer {
             // Phase 7: CodeStory Narratives & Transaction Flows
             progress.setActiveStage("CODESTORY");
             progress.recordStageStart("CODESTORY", "CodeStory Narratives & Flows", "Discovering transaction storylines, critical path targets & guided onboarding paths");
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("CodeStory Discovery");
             progress.setMessage("Discovering transaction flows & CodeStory narratives…");
             progress.setPercentage(93);
@@ -3322,6 +3330,7 @@ public class CodeLensServer {
             // Phase 8: Codebase Intelligence Reports Precomputation
             progress.setActiveStage("REPORTS");
             progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", String.format("Generating all %d architecture, risk, quality, and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
+            broadcastSseEvent("scan_status", progress);
             progress.setCurrentPhase("Generating Reports");
             progress.setMessage("Generating codebase intelligence reports…");
             progress.setPercentage(96);
@@ -3353,6 +3362,7 @@ public class CodeLensServer {
 
             // Complete: All 8 stages fully ready
             progress.setActiveStage("COMPLETE");
+            broadcastSseEvent("scan_status", progress);
             progress.setPercentage(100);
             progress.setCurrentPhase("Complete");
             progress.setCurrentDetail("All graphs, modules, CodeStory flows, and intelligence reports ready");

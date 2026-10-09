@@ -2587,7 +2587,7 @@
           <div class="help-grid">
             <div class="help-card">
               <div class="help-card-header">
-                <h4>1. Graph View (<kbd>1</kbd>)</h4>
+                <h4>1. Graph View <kbd>1</kbd></h4>
                 <span class="help-card-badge">Primary Canvas</span>
               </div>
               <p>Call hierarchy and field impact canvas with force-directed physics, BFS depth pills (1–15 hops / Max), package convex hulls, composite Behavioral Hotspot heat mode (<kbd>H</kbd>), and radar minimap.</p>
@@ -2599,7 +2599,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4>2. Knowledge Base (<kbd>2</kbd>)</h4>
+                <h4>2. Knowledge Base <kbd>2</kbd></h4>
                 <span class="help-card-badge">Catalog &amp; Stats</span>
               </div>
               <p>Structured package/type/member catalog with Cyclomatic Complexity health scores (Green: 1–4, Amber: 5–10, Red: 11+ High Risk) and instant search filtering across all symbols.</p>
@@ -2611,7 +2611,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4>3. Code Review &amp; Logic Auditor (<kbd>3</kbd>)</h4>
+                <h4>3. Code Review &amp; Logic Auditor <kbd>3</kbd></h4>
                 <span class="help-card-badge">AST Linter</span>
               </div>
               <p>32 AST-backed static quality rules detecting null pointer risks, concurrency hazards, swallowed exceptions, code smells, and high blast radius centrality with single-click location navigation.</p>
@@ -2623,7 +2623,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4>4. Git Analytics &amp; Churn (<kbd>4</kbd>)</h4>
+                <h4>4. Git Analytics &amp; Churn <kbd>4</kbd></h4>
                 <span class="help-card-badge">History &amp; Risk</span>
               </div>
               <p>Top author leaderboards, recent commit timeline, and churn heatmaps. Correlates commit frequency with complexity to compute Behavioral Hotspot debt metrics.</p>
@@ -2635,7 +2635,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4>5. Source Code Editor (<kbd>5</kbd>)</h4>
+                <h4>5. Source Code Editor <kbd>5</kbd></h4>
                 <span class="help-card-badge">Monaco IDE</span>
               </div>
               <p>Embedded Microsoft Monaco code editor. Jump directly from any graph node or line link (<code>Class.java:42</code>) to view, edit, and save source files directly to disk.</p>
@@ -2647,7 +2647,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4>Reports Hub (<kbd>R</kbd>) &amp; 3D Studio (<kbd>M</kbd>)</h4>
+                <h4>Reports Hub <kbd>R</kbd> &amp; 3D Studio <kbd>M</kbd></h4>
                 <span class="help-card-badge">Hubs &amp; Engines</span>
               </div>
               <p>14 Intelligence Reports with pre-rendered artifacts, WebGL 3D Software City &amp; Force Galaxy, and Background Process Manager monitoring 13 subsystem engines with live telemetry.</p>
@@ -3067,7 +3067,7 @@
 
         <section class="help-section" style="margin-top:16px;">
           <h3>Documentation &amp; Community Resources</h3>
-          <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+          <div class="guide-resource-card" style="border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div>
                 <strong style="color:var(--text-primary); font-size:13px;">Official GitHub Documentation Wiki</strong>
@@ -3183,7 +3183,10 @@
             </div>
           </div>
         </section>
+      </div>
 
+      <!-- Row 2: Grounded AI Architecture Engine & Diagnostics -->
+      <div class="settings-grid-row">
         <!-- ── AI Grounding & Provider Engine ──────────────────────────────── -->
         <section class="settings-group ai-config-section">
           <div class="settings-section-header">
@@ -3206,7 +3209,7 @@
               </select>
             </div>
           </div>
-          <div class="settings-row">
+          <div class="settings-row" id="row-ai-model">
             <div class="settings-row-info">
               <label for="set-ai-model">Model Name</label>
               <span class="settings-row-desc">Target LLM identifier (e.g. llama3, mistral, gpt-4o-mini)</span>
@@ -3215,7 +3218,7 @@
               <input type="text" id="set-ai-model" class="settings-input" placeholder="llama3" />
             </div>
           </div>
-          <div class="settings-row">
+          <div class="settings-row" id="row-ai-endpoint">
             <div class="settings-row-info">
               <label for="set-ai-endpoint">Endpoint URL</label>
               <span class="settings-row-desc">HTTP API generation endpoint URL</span>
@@ -3224,7 +3227,7 @@
               <input type="text" id="set-ai-endpoint" class="settings-input" placeholder="http://localhost:11434/api/generate" />
             </div>
           </div>
-          <div class="settings-row">
+          <div class="settings-row" id="row-ai-apikey">
             <div class="settings-row-info">
               <label for="set-ai-apikey">API Key (Optional)</label>
               <span class="settings-row-desc">Bearer token for cloud LLM endpoints</span>
@@ -3233,13 +3236,63 @@
               <input type="password" id="set-ai-apikey" class="settings-input" placeholder="sk-..." />
             </div>
           </div>
-          <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+          <div style="margin-top:12px; display:flex; justify-content:flex-end;">
             <button id="btn-save-ai-conf" class="btn btn-sm btn-primary">Save AI Settings</button>
+          </div>
+        </section>
+
+        <!-- ── AI Grounding Diagnostics & Verification ─────────────────────── -->
+        <section class="settings-group ai-diagnostics-section">
+          <div class="settings-section-header">
+            <h3 class="settings-group-title">
+              <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              AI Diagnostics &amp; Grounding Pipeline
+            </h3>
+            <p class="settings-help-text">Real-time engine status, deterministic grounding feeds, and local privacy telemetry.</p>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label>Engine Telemetry</label>
+              <span class="settings-row-desc">Active synthesis pipeline responding to queries</span>
+            </div>
+            <div class="settings-row-control">
+              <div class="ai-status-pill" id="ai-engine-status-pill">
+                <span class="status-dot"></span>
+                <span id="ai-status-text">Local Synthesizer Active</span>
+              </div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-info">
+              <label>Pipeline Verification</label>
+              <span class="settings-row-desc">Ping active provider and measure synthesis roundtrip latency</span>
+            </div>
+            <div class="settings-row-control">
+              <button id="btn-test-ai-conn" class="btn btn-sm btn-ghost" title="Test AI Provider connection and latency">
+                <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span id="btn-test-ai-label">Test Connection</span>
+              </button>
+            </div>
+          </div>
+          <div class="settings-row" style="flex-direction:column; align-items:flex-start; gap:8px;">
+            <div class="settings-row-info" style="padding-right:0;">
+              <label>Deterministic Context Ingestion Feeds</label>
+              <span class="settings-row-desc">Ground-truth AST metrics injected into architecture prompts</span>
+            </div>
+            <div class="ai-grounding-chips">
+              <span class="ai-chip" title="Callers, callees, and transitive hops injected from JGraphT model"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> AST Call Hierarchy</span>
+              <span class="ai-chip" title="Incoming call blast radius centrality and affected public endpoints"><svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m4.93 19.07 4.24-4.24"/></svg> Blast Radius Centrality</span>
+              <span class="ai-chip" title="Git revision velocity, LOC mass, and Cyclomatic Complexity hotspot score"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="m17 5-5-3-5 3"/><path d="m17 19-5 3-5-3"/></svg> Churn &amp; CC Hotspots</span>
+            </div>
+          </div>
+          <div class="ai-privacy-banner">
+            <svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span><strong>100% Air-Gapped Privacy:</strong> Proprietary code never leaves your local machine. Zero telemetry or cloud egress.</span>
           </div>
         </section>
       </div>
 
-      <!-- Row 2: Physics & Visuals -->
+      <!-- Row 3: Physics & Visuals -->
       <div class="settings-grid-row">
         <!-- ── Graph Physics ────────────────────────────────────────────── -->
         <section class="settings-group">
@@ -3599,9 +3652,9 @@
         <div id="archetype-rules-list" class="archetype-rules-list"></div>
       </section>
 
-      <!-- ── Reports & Export Pointer ────────────────────────────────────────── -->
+      <!-- ── Platform Navigation: Reports & Shortcuts ─────────────────────── -->
       <div class="settings-grid-row">
-        <section class="settings-group full-width settings-reports-pointer">
+        <section class="settings-group settings-reports-pointer">
           <div class="settings-reports-banner">
             <div class="settings-reports-text">
               <div class="settings-reports-title">
@@ -3609,14 +3662,13 @@
                 <span>Codebase Intelligence &amp; Reports Hub</span>
                 <span class="usp-badge">PRIMARY VIEW (6)</span>
               </div>
-              <p class="settings-help-text">Deep structural insights, blast radius &amp; mutation hotspots, dead code elimination, circular cycles, enterprise archetype governance, and data exports have been promoted to a primary standalone workspace.</p>
+              <p class="settings-help-text">Deep structural insights, blast radius &amp; mutation hotspots, dead code elimination, circular cycles, and export engines.</p>
             </div>
-            <button type="button" id="settings-open-reports-btn" class="btn-primary" style="white-space:nowrap; padding: 8px 16px;">
-              Open Reports Hub (6) →
+            <button type="button" id="settings-open-reports-btn" class="btn-primary" style="white-space:nowrap; padding: 8px 16px; margin-top:10px;">
+              Open Reports Hub (6) &rarr;
             </button>
           </div>
         </section>
-      </div>
 
         <!-- ── Feature Guide & Shortcuts ──────────────────────────────── -->
         <section class="settings-group settings-guide-section">
@@ -3627,7 +3679,7 @@
             </h3>
             <button id="settings-guide-open-btn" class="btn-ghost settings-guide-btn" title="Open full interactive Feature &amp; User Guide">
               <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              Open Full Guide →
+              Open Full Guide &rarr;
             </button>
           </div>
           <div class="settings-guide-shortcuts">
@@ -3647,21 +3699,22 @@
         </section>
       </div>
 
-      <!-- ── Footer ───────────────────────────────────────────────────── -->
-      <div class="settings-footer">
-        <div class="settings-footer-actions">
-          <button id="btn-shutdown-server" class="btn-ghost btn-danger-ghost" style="color:var(--rose-400,#f43f5e);" title="Gracefully stop the CodeLens server process">
-            <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-            Shutdown Server
-          </button>
-          <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
-        </div>
+    </div><!-- /.modal-body.settings-body -->
+
+    <!-- ── Settings Footer (Docked Action Bar) ────────────────────────── -->
+    <div class="settings-footer">
+      <button id="btn-shutdown-server" class="btn-ghost btn-danger-ghost" title="Gracefully stop the CodeLens server process">
+        <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        Shutdown Server
+      </button>
+      <div class="settings-footer-right">
         <div class="settings-footer-msg" id="settings-footer-msg"></div>
+        <button id="settings-reset-btn" class="btn-ghost settings-reset-btn">Reset Defaults</button>
       </div>
-
-
-
     </div>
+
+
+
   </div>
 </div>
 

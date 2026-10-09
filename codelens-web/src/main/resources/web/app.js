@@ -556,6 +556,7 @@ async function startScan(targetPath) {
   App.scanModalDismissed = false;
   App.userSelectedScanPhase = false;
   App.selectedScanPhase = null;
+  App.lastRunningStage = null;
   App.lastScanProgress = { status: 'SCANNING', activeStage: 'PREPARE', currentPhase: 'Preparing Storage', message: 'Initializing analysis…', percentage: 1, sourcePath: path };
   setScanUI('scanning');
   const modalCard = qs('.scan-modal-card');
@@ -667,13 +668,44 @@ function minimizeScanModal() {
   showBanner('Scan running in background. Click the top bar badge or footer indicator anytime to view details.');
 }
 
+/** Resolve canonical scan stage identifier from progress object */
+function resolveScanStage(s) {
+  if (!s) return 'PARSE';
+  const raw = (s.activeStage || '').toUpperCase().trim();
+  if (raw === 'INDEX' || raw.includes('INDEX')) return 'INDEX';
+  if (raw === 'GRAPH' || raw.includes('GRAPH') || raw.includes('TOPOLOGY')) return 'GRAPH';
+  if (raw === 'LAYOUT' || raw.includes('LAYOUT')) return 'LAYOUT';
+  if (raw === 'MODULES' || raw.includes('MODULE')) return 'MODULES';
+  if (raw === 'INTEGRITY' || raw.includes('INTEGRITY') || raw.includes('AUDIT')) return 'INTEGRITY';
+  if (raw === 'CODESTORY' || raw.includes('STORY') || raw.includes('FLOW')) return 'CODESTORY';
+  if (raw === 'REPORTS' || raw.includes('REPORT')) return 'REPORTS';
+  if (raw === 'COMPLETE') return 'COMPLETE';
+  const phase = (s.currentPhase || '').toLowerCase();
+  if (phase.includes('report')) return 'REPORTS';
+  if (phase.includes('story') || phase.includes('flow')) return 'CODESTORY';
+  if (phase.includes('integrity') || phase.includes('inconsisten') || phase.includes('audit')) return 'INTEGRITY';
+  if (phase.includes('module')) return 'MODULES';
+  if (phase.includes('layout')) return 'LAYOUT';
+  if (phase.includes('graph') || phase.includes('topology') || phase.includes('field')) return 'GRAPH';
+  if (phase.includes('index') || phase.includes('lucene')) return 'INDEX';
+  return 'PARSE';
+}
+
 /** Resolve rich metrics and metadata for a specific pipeline phase */
 function getPhaseMetricsData(stageKey, s) {
   s = s || App.lastScanProgress || {};
   const stats = App.stats || {};
   const history = s.stageHistory || {};
   const stepInfo = history[stageKey] || {};
-  const metrics = stepInfo.metrics || {};
+  const metrics = Object.assign({}, stepInfo.metrics || {});
+
+  // If this stage is currently active or running, merge live dynamic metrics from s
+  if (s.activeStage === stageKey || resolveScanStage(s) === stageKey) {
+    if (s.metric1Label && s.metric1Value) metrics[s.metric1Label] = s.metric1Value;
+    if (s.metric2Label && s.metric2Value) metrics[s.metric2Label] = s.metric2Value;
+    if (s.metric3Label && s.metric3Value) metrics[s.metric3Label] = s.metric3Value;
+    if (s.metric4Label && s.metric4Value) metrics[s.metric4Label] = s.metric4Value;
+  }
 
   const totalFiles = s.totalFiles || stats.files || 0;
   const parsedFiles = s.parsedFiles || s.processedFiles || totalFiles;
@@ -754,16 +786,16 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'
           },
           {
-            val: metrics['Search Index'] || 'Committed',
-            lbl: 'Search Index',
+            val: metrics['Target Table'] || metrics['Search Index'] || 'Committed',
+            lbl: metrics['Target Table'] ? 'Target Table' : 'Search Index',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
             valColor: '#fbbf24',
             iconSvg: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'
           },
           {
-            val: metrics['Storage Engine'] || 'Optimized',
-            lbl: 'B-Tree Indexes',
+            val: metrics['Indexed Records'] || metrics['Storage Engine'] || 'Optimized',
+            lbl: metrics['Indexed Records'] ? 'Indexed Records' : 'B-Tree Indexes',
             colorClass: 'icon-purple-bg',
             iconColor: 'icon-purple',
             valColor: '#c084fc',
@@ -798,7 +830,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/>'
           },
           {
-            val: metrics['Field Relations'] || (fields > 0 ? fields.toLocaleString() : 'Indexed'),
+            val: metrics['Field Relations'] || metrics['Field Links'] || (fields > 0 ? fields.toLocaleString() : 'Indexed'),
             lbl: 'Field Relations',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -826,7 +858,7 @@ function getPhaseMetricsData(stageKey, s) {
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'LAYOUT' ? 'RUNNING' : 'PENDING')),
         cards: [
           {
-            val: metrics['Layouts Cached'] ? `${metrics['Layouts Cached']} / 6` : '6 / 6',
+            val: metrics['Layouts Ready'] || (metrics['Layouts Cached'] ? `${metrics['Layouts Cached']} / 6` : '6 / 6'),
             lbl: 'Layouts Ready',
             colorClass: 'icon-emerald-bg',
             iconColor: 'icon-emerald',
@@ -842,7 +874,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>'
           },
           {
-            val: metrics['Modules Cached'] ? `${metrics['Modules Cached']} Modules` : 'Complete',
+            val: metrics['Clusters'] || (metrics['Modules Cached'] ? `${metrics['Modules Cached']} Modules` : 'Complete'),
             lbl: 'Clusters',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -870,7 +902,7 @@ function getPhaseMetricsData(stageKey, s) {
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'MODULES' ? 'RUNNING' : 'PENDING')),
         cards: [
           {
-            val: metrics['Modules Indexed'] || (modulesCount > 0 ? modulesCount.toLocaleString() : 'Ready'),
+            val: metrics['Modules Indexed'] || metrics['Modules'] || (modulesCount > 0 ? modulesCount.toLocaleString() : 'Ready'),
             lbl: 'Modules Indexed',
             colorClass: 'icon-emerald-bg',
             iconColor: 'icon-emerald',
@@ -878,7 +910,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="8" y="14" width="8" height="8" rx="2"/><line x1="6" y1="10" x2="12" y2="14"/><line x1="18" y1="10" x2="12" y2="14"/>'
           },
           {
-            val: metrics['Inter-Module Links'] || (s.relationshipsFound ? s.relationshipsFound.toLocaleString() : 'Indexed'),
+            val: metrics['Inter-Module Links'] || metrics['Coupling'] || (s.relationshipsFound ? s.relationshipsFound.toLocaleString() : 'Indexed'),
             lbl: 'Inter-Module Links',
             colorClass: 'icon-cyan-bg',
             iconColor: 'icon-cyan',
@@ -886,7 +918,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
           },
           {
-            val: metrics['Stability Risk'] || metrics['Cycles Detected'] || 'Stable Core',
+            val: metrics['Stability Risk'] || metrics['Cycles Detected'] || metrics['Cycles'] || 'Stable Core',
             lbl: 'Coupling Stability',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -922,7 +954,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>'
           },
           {
-            val: metrics['Class-Aware Rules'] || '14 Rules',
+            val: metrics['Class-Aware Rules'] || metrics['Class Rules'] || '14 Rules',
             lbl: 'Class Rules',
             colorClass: 'icon-cyan-bg',
             iconColor: 'icon-cyan',
@@ -930,7 +962,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'
           },
           {
-            val: metrics['Missing Linkages'] || 'Verified',
+            val: metrics['Missing Linkages'] || metrics['Missing Links'] || 'Verified',
             lbl: 'Linkages',
             colorClass: 'icon-amber-bg',
             iconColor: 'icon-amber',
@@ -938,7 +970,7 @@ function getPhaseMetricsData(stageKey, s) {
             iconSvg: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
           },
           {
-            val: metrics['Audit Status'] || (issuesFound === 0 ? 'Optimal' : 'Audited'),
+            val: metrics['Audit Status'] || metrics['Status'] || (issuesFound === 0 ? 'Optimal' : 'Audited'),
             lbl: 'Integrity Rating',
             colorClass: 'icon-purple-bg',
             iconColor: 'icon-purple',
@@ -959,7 +991,7 @@ function getPhaseMetricsData(stageKey, s) {
         status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'CODESTORY' ? 'RUNNING' : 'PENDING')),
         cards: [
           {
-            val: metrics['Storylines Found'] || (storiesCount > 0 ? storiesCount.toLocaleString() : 'Ready'),
+            val: metrics['Storylines Found'] || metrics['Storylines'] || (storiesCount > 0 ? storiesCount.toLocaleString() : 'Ready'),
             lbl: 'Storylines Discovered',
             colorClass: 'icon-emerald-bg',
             iconColor: 'icon-emerald',
@@ -3399,7 +3431,7 @@ function updateScanProgress(s) {
   }
 
   // Stage resolution & Heading
-  const stage = s.activeStage || 'PARSE';
+  const stage = resolveScanStage(s);
   const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'INTEGRITY': 6, 'CODESTORY': 7, 'REPORTS': 8, 'COMPLETE': 9 };
   const currentStepNum = stageOrder[stage] || 1;
   const headingEl = qs('#scan-card-heading');
@@ -3617,27 +3649,25 @@ function updateScanProgress(s) {
   }
 
   // Selected phase resolution:
-  // If scan is actively running and user hasn't explicitly clicked a step, track the activeStage
-  if (s.status !== 'COMPLETE') {
-    if (!App.userSelectedScanPhase) {
-      App.selectedScanPhase = stage === 'PREPARE' ? 'PARSE' : stage;
+  // When scanning is in progress, automatically track the current running stage pill and show its details
+  const isScanning = s.status === 'SCANNING' || (s.status !== 'COMPLETE' && s.status !== 'ERROR' && s.status !== 'IDLE');
+  const runningStage = resolveScanStage(s);
+  if (isScanning && runningStage !== 'COMPLETE') {
+    if (!App.userSelectedScanPhase || App.lastRunningStage !== runningStage) {
+      App.selectedScanPhase = runningStage;
+      App.userSelectedScanPhase = false;
     }
-  } else {
-    // When complete, default to user's selected phase or PARSE (Phase 1)
-    if (!App.selectedScanPhase) {
-      App.selectedScanPhase = 'PARSE';
-    }
+    App.lastRunningStage = runningStage;
+  } else if (!App.selectedScanPhase) {
+    App.selectedScanPhase = 'PARSE';
   }
 
   // Highlight selected step in stepper
   qsa('.scan-pipeline-step').forEach(stepEl => {
-    if (stepEl.dataset.step === App.selectedScanPhase) {
-      stepEl.classList.add('step-inspected', 'step-selected');
-      stepEl.setAttribute('aria-selected', 'true');
-    } else {
-      stepEl.classList.remove('step-inspected', 'step-selected');
-      stepEl.setAttribute('aria-selected', 'false');
-    }
+    const isSelected = stepEl.dataset.step === App.selectedScanPhase;
+    stepEl.classList.toggle('step-inspected', isSelected);
+    stepEl.classList.toggle('step-selected', isSelected);
+    stepEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
   });
 
   // Render bottom section metrics of the selected phase
@@ -10415,6 +10445,10 @@ async function startIncrementalScan() {
   const rawExcludes = qs('#set-exclude-patterns')?.value || '';
   const excludePatterns = rawExcludes.split(',').map(s => s.trim()).filter(Boolean);
 
+  App.scanModalDismissed = false;
+  App.userSelectedScanPhase = false;
+  App.selectedScanPhase = null;
+  App.lastRunningStage = null;
   setScanUI('scanning');
   showBanner('Starting incremental delta rescan…');
 
@@ -21831,15 +21865,70 @@ async function openCodestoryExplain(fqn) {
   }
 }
 
+function updateAiSettingsDiagnostics(provider, model) {
+  const statusText = qs('#ai-status-text');
+  if (!statusText) return;
+  const p = (provider || 'local').toLowerCase();
+  if (p === 'ollama') {
+    statusText.textContent = `Ollama (${model || 'llama3'}) Active`;
+  } else if (p === 'openai') {
+    statusText.textContent = `OpenAI (${model || 'gpt-4o-mini'}) Active`;
+  } else {
+    statusText.textContent = 'Local Synthesizer Active';
+  }
+}
+
 async function loadAiConfigToSettings() {
   const cfg = await fetchAiConfig();
-  if (!cfg) return;
   const provEl = qs('#set-ai-provider');
   const modEl = qs('#set-ai-model');
   const endEl = qs('#set-ai-endpoint');
-  if (provEl && cfg.provider) provEl.value = cfg.provider;
-  if (modEl && cfg.model) modEl.value = cfg.model;
-  if (endEl && cfg.endpoint) endEl.value = cfg.endpoint;
+  if (cfg) {
+    if (provEl && cfg.provider) provEl.value = cfg.provider;
+    if (modEl && cfg.model) modEl.value = cfg.model;
+    if (endEl && cfg.endpoint) endEl.value = cfg.endpoint;
+    updateAiSettingsDiagnostics(cfg.provider, cfg.model);
+  }
+
+  if (provEl && !provEl.dataset.wired) {
+    provEl.dataset.wired = 'true';
+    provEl.addEventListener('change', () => {
+      const p = provEl.value;
+      if (p === 'ollama') {
+        if (modEl && (!modEl.value || modEl.value === 'local-facts')) modEl.value = 'llama3';
+        if (endEl && !endEl.value) endEl.value = 'http://localhost:11434/api/generate';
+      } else if (p === 'openai') {
+        if (modEl && (!modEl.value || modEl.value === 'local-facts')) modEl.value = 'gpt-4o-mini';
+        if (endEl && !endEl.value) endEl.value = 'https://api.openai.com/v1/chat/completions';
+      }
+      updateAiSettingsDiagnostics(p, modEl ? modEl.value : '');
+    });
+  }
+
+  const testAiBtn = qs('#btn-test-ai-conn');
+  if (testAiBtn && !testAiBtn.dataset.wired) {
+    testAiBtn.dataset.wired = 'true';
+    testAiBtn.addEventListener('click', async () => {
+      const label = qs('#btn-test-ai-label');
+      const t0 = performance.now();
+      if (label) label.textContent = 'Testing…';
+      try {
+        const res = await fetch('/api/ai/config');
+        const latency = Math.round(performance.now() - t0);
+        if (res.ok) {
+          if (label) label.textContent = `Verified (${latency}ms)`;
+          if (typeof showToast === 'function') showToast(`AI Provider connection verified (${latency}ms)`);
+          setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3500);
+        } else {
+          if (label) label.textContent = 'Error';
+          setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3000);
+        }
+      } catch (e) {
+        if (label) label.textContent = 'Failed';
+        setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3000);
+      }
+    });
+  }
 }
 
 async function saveAiConfigFromSettings() {

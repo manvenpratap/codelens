@@ -165,7 +165,7 @@ public class ScanProgress {
     public String getMetric4Value()             { return metric4Value; }
     public void setMetric4Value(String v)       { this.metric4Value = v; }
 
-    public void setDynamicMetrics(String l1, String v1, String l2, String v2, String l3, String v3, String l4, String v4) {
+    public synchronized void setDynamicMetrics(String l1, String v1, String l2, String v2, String l3, String v3, String l4, String v4) {
         this.metric1Label = l1;
         this.metric1Value = v1;
         this.metric2Label = l2;
@@ -174,6 +174,13 @@ public class ScanProgress {
         this.metric3Value = v3;
         this.metric4Label = l4;
         this.metric4Value = v4;
+        StepDetail activeStep = stageHistory.get(activeStage);
+        if (activeStep != null) {
+            if (l1 != null && v1 != null) activeStep.getMetrics().put(l1, v1);
+            if (l2 != null && v2 != null) activeStep.getMetrics().put(l2, v2);
+            if (l3 != null && v3 != null) activeStep.getMetrics().put(l3, v3);
+            if (l4 != null && v4 != null) activeStep.getMetrics().put(l4, v4);
+        }
     }
 
     // ── Per-Step Telemetry & History ─────────────────────────────────────────
@@ -241,6 +248,9 @@ public class ScanProgress {
     }
 
     public synchronized StepDetail recordStageStart(String stage, String name, String summary) {
+        if (stage != null && !stage.isBlank()) {
+            this.activeStage = stage;
+        }
         StepDetail step = stageHistory.computeIfAbsent(stage, k -> new StepDetail(stage, name));
         step.setName(name);
         step.setStatus("RUNNING");
