@@ -2,34 +2,40 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "CodeLens - System Architecture",
+    "title": "CodeLens - System Architecture & Subsystems",
     "output": "architecture.html",
     "quality_profile": "showcase"
   },
   "components": [
-    { "id": "browser", "type": "frontend", "label": "Web Workspace", "sublabel": "Verlet Canvas / 3D WebGL", "pos": [40, 260], "size": [140, 60] },
-    { "id": "api", "type": "backend", "label": "Javalin Server", "sublabel": "Embedded Jetty REST / WS", "pos": [280, 260], "size": [140, 60], "tag": ":8080" },
-    { "id": "parser", "type": "backend", "label": "AST Parser", "sublabel": "JavaParser 3.25.8", "pos": [520, 120], "size": [140, 60] },
-    { "id": "analyzer", "type": "backend", "label": "Analysis Core", "sublabel": "JGraphT Call Graph & DSM", "pos": [520, 260], "size": [140, 60] },
-    { "id": "git_engine", "type": "backend", "label": "Git Churn Engine", "sublabel": "JGit Blame & Heatmap", "pos": [520, 400], "size": [140, 60] },
-    { "id": "h2_store", "type": "database", "label": "H2 Database", "sublabel": "LZF MVStore Persistence", "pos": [780, 180], "size": [140, 60] },
-    { "id": "lucene_idx", "type": "database", "label": "Lucene Search", "sublabel": "Full-Text Code Index", "pos": [780, 340], "size": [140, 60] }
+    { "id": "browser", "type": "frontend", "label": "Web Workspace", "sublabel": "Graphify / 3D City / Storyline Dock", "pos": [40, 260], "size": [140, 60] },
+    { "id": "api", "type": "backend", "label": "Javalin Server", "sublabel": "Embedded Jetty REST / WS", "pos": [290, 260], "size": [140, 60], "tag": ":7878" },
+    { "id": "parser", "type": "backend", "label": "AST Parser", "sublabel": "JavaParser 3.25.8 Ingestion", "pos": [530, 80], "size": [140, 60] },
+    { "id": "analyzer", "type": "backend", "label": "Topology Engine", "sublabel": "JGraphT Call Graph & DSM", "pos": [530, 200], "size": [140, 60] },
+    { "id": "integrity", "type": "backend", "label": "Structural Integrity", "sublabel": "14 Class Rules & AST Drift", "pos": [530, 320], "size": [140, 60] },
+    { "id": "codestory", "type": "backend", "label": "CodeStory Engine", "sublabel": "Storylines & Guided Tour", "pos": [530, 440], "size": [140, 60] },
+    { "id": "reports", "type": "backend", "label": "Reports Generator", "sublabel": "14 Architecture & Risk Reports", "pos": [780, 140], "size": [140, 60] },
+    { "id": "h2_store", "type": "database", "label": "H2 Database", "sublabel": "LZF MVStore Relational Core", "pos": [780, 280], "size": [140, 60] },
+    { "id": "lucene_idx", "type": "database", "label": "Lucene Search", "sublabel": "Full-Text Symbol Index", "pos": [780, 420], "size": [140, 60] }
   ],
   "boundaries": [
-    { "kind": "region", "label": "JVM Fat-JAR Runtime (Zero Cloud Dependencies)", "wraps": ["api", "parser", "analyzer", "git_engine", "h2_store", "lucene_idx"] },
+    { "kind": "region", "label": "JVM Fat-JAR Runtime (Zero Cloud Dependencies)", "wraps": ["api", "parser", "analyzer", "integrity", "codestory", "reports", "h2_store", "lucene_idx"] },
     { "kind": "security-group", "label": "Storage Subsystem", "wraps": ["h2_store", "lucene_idx"] }
   ],
   "connections": [
-    { "id": "c1", "from": "browser", "to": "api", "label": "REST / WS", "variant": "emphasis" },
-    { "id": "c2", "from": "api", "to": "parser", "fromSide": "top", "toSide": "left" },
-    { "id": "c3", "from": "api", "to": "analyzer", "label": "query graph", "variant": "emphasis" },
-    { "id": "c4", "from": "api", "to": "git_engine", "fromSide": "bottom", "toSide": "left" },
-    { "id": "c5", "from": "parser", "to": "h2_store", "label": "batch insert", "variant": "emphasis" },
-    { "id": "c6", "from": "parser", "to": "lucene_idx", "fromSide": "bottom", "toSide": "top" },
-    { "id": "c7", "from": "analyzer", "to": "h2_store", "fromSide": "right", "toSide": "left" }
+    { "id": "c1", "from": "browser", "to": "api", "label": "REST / SSE / WS", "variant": "emphasis" },
+    { "id": "c2", "from": "api", "to": "parser", "fromSide": "top", "toSide": "left", "label": "scan" },
+    { "id": "c3", "from": "api", "to": "analyzer", "fromSide": "right", "toSide": "left", "label": "topology" },
+    { "id": "c4", "from": "api", "to": "integrity", "fromSide": "right", "toSide": "left", "label": "audits" },
+    { "id": "c5", "from": "api", "to": "codestory", "fromSide": "bottom", "toSide": "left", "label": "narratives" },
+    { "id": "c6", "from": "parser", "to": "h2_store", "fromSide": "right", "toSide": "top", "label": "batch insert" },
+    { "id": "c7", "from": "parser", "to": "lucene_idx", "fromSide": "right", "toSide": "top" },
+    { "id": "c8", "from": "analyzer", "to": "h2_store", "fromSide": "right", "toSide": "left" },
+    { "id": "c9", "from": "codestory", "to": "h2_store", "fromSide": "right", "toSide": "left", "label": "sink traces" },
+    { "id": "c10", "from": "reports", "to": "h2_store", "fromSide": "bottom", "toSide": "top" }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Zero Dependencies", "items": ["Runs on local JVM 17+ without external services", "Embedded file-based H2 database and Lucene index", "100% offline security boundary"] },
-    { "dot": "cyan", "title": "High Scale", "items": ["Supports 125k+ classes with LOD culling and sparse matrices", "LZF compressed page storage with bulk chunk commits", "Sub-100ms API response times across multi-hop BFS queries"] }
+    { "dot": "emerald", "title": "Zero Dependencies", "items": ["Runs on local JVM 17+ without external network services", "Embedded file-based H2 database and Lucene index", "100% offline local-first operational boundary"] },
+    { "dot": "violet", "title": "CodeStory & Semantic Analysis", "items": ["Automatic transaction storyline synthesis from controllers to DB sinks", "5-Stop 'Teach Me' guided tour for rapid developer onboarding", "Blast radius impact analysis with persistent target tracing"] },
+    { "dot": "cyan", "title": "High Scale Architecture", "items": ["Supports 125k+ classes with LOD culling and sparse matrices", "LZF compressed page storage with bulk chunk commits", "Sub-100ms API response times across multi-hop BFS queries"] }
   ]
 }

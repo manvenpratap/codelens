@@ -79,21 +79,24 @@ A high-performance, **100% offline**, self-contained Java codebase intelligence 
 |---|---|---|---|
 | 1 | **Source AST Indexing** | Scans 100% of `.java` source files, extracting packages, types, methods, fields, modifiers, and line numbers into an embedded database. | JavaParser 3.25.8 + Embedded H2 Database |
 | 2 | **Dynamic Call Hierarchies** | Computes upstream callers and downstream callees across methods with user-selectable BFS traversal depths (1 to 15 hops / Max). | In-memory JGraphT directed graph + reversed BFS iterator |
-| 3 | **Field Impact & Propagation Chains** | Maps every method that reads or writes a field, and traces multi-hop upstream triggers (`Field` $\leftarrow$ `Writers` $\leftarrow$ `Callers`) across the entire repository. | Custom relationship visitor + caller propagation engine |
-| 4 | **Scope Management & Boundary Control** | Exclude classes or packages directly from Explorer (hover `×` or right-click). Cascadingly purges entities from H2, Lucene, call graphs, DSM, and reports, with instant one-click restoration. | Cascading H2 DAO + Multi-doc Lucene purge + Scope Manager |
-| 5 | **Behavioral Hotspots Intelligence** | Evaluates code risk and technical debt via composite metric $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$. Overlays heat shaders on 2D Blooming Tree and 3D Software City. | JGit churn log + AST complexity scorer + Thermal shaders |
-| 6 | **Interactive DSM with Method Drilldown** | Multi-tier Dependency Structure Matrix (`Modules` $\to$ `Packages` $\to$ `Classes` $\to$ `Methods`). Double-click headers to drill into method invocations with breadcrumbs, DAG acyclicity rating, and CSV/JSON exports. | Matrix permutation engine + Tarjan cycles + Adjacency exporter |
-| 7 | **Critical Path Execution Trace** | Traces end-to-end execution sequences from controllers through domain services down to persistent entity mutations (`Get`, `Create`, `Modify`) and downstream audit sinks. | Multi-hop graph search + Risk scoring + Stepper Dock |
-| 8 | **Semantic Archetypes Engine** | Classifies methods and types into domain-specific roles (BaNCS ET/BT/TO/TC/Batch, Spring, DDD) with module token substitution (`{MODULE}`) and custom rules. | Regex & Prefix token substitution + LocalStorage persistence |
-| 9 | **Structural Inconsistency Detection** | 3-pass heuristic engine identifying signature divergences, naming drift, and duplicate AST body hashes across classes. | Levenshtein distance + AST Normalizer + SHA-256 body hashing |
-| 10 | **Git Blame & Churn Heatmap** | Computes commit counts, top contributing authors, and churn frequency per entity, rendering commit heat directly on graph nodes. | JGit 6.9 engine + Dynamic Canvas Color Shaders |
-| 11 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
-| 12 | **Reports Hub & Compliance Audits** | 13 comprehensive enterprise reports (Change Risk, Circular Dependencies, Dead Code, API Surface, Database Access Flow, Concurrency Audit, etc.) with 57 pre-rendered artifacts (CSV, standalone HTML, Markdown, and JSON). | ReportService + REST export endpoints + Standalone HTML templates |
-| 13 | **Modular Two-JAR Distribution** | Lightweight `codelens-app.jar` (~1.1 MB) referencing pre-extracted `codelens-deps.jar` (~22 MB) for ~4-second fast rebuilds and seamless enterprise distribution. | Maven Shade + Class-Path manifest isolation |
-| 14 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
-| 15 | **Storage Compression & Compaction** | LZF compressed H2 page storage with single-transaction chunk commits and MVStore tuning, eliminating leaks and reducing disk footprints by ~95%. | H2 MVStore Compression + HikariCP Transaction Safety |
-| 16 | **Headless CLI Scan Mode** | High-throughput headless command-line scanning directly into H2 & Lucene without launching a web server, ideal for CI/CD batch pipelines. | Dedicated CLI mode + Fast bulk ingestion |
-| 17 | **11-Engine Background Task Manager** | Real-time monitoring and lifecycle controls over 11 background engines (AST Ingestion, Delta Watcher, Call Graph, Layout Engine, Module Coupling, Lucene Indexer, Git Churn, DB Sentinel, Stress Tester, Heap Watchdog, and Reports Precomputer). | Dedicated Process Hub + JMX Thresholds + REST lifecycle APIs |
+| 3 | **CodeStory Transaction Narratives** | Automatically discovers and synthesizes end-to-end execution flows from entry points down to persistent database mutation sinks into plain-English storylines. | Multi-hop sink tracer + Narrative synthesis engine |
+| 4 | **"Teach Me" Onboarding Tour** | Guided 5-layer architectural tour (Domain Core, Ingestion & Store, Topology & Layouts, Semantic Storylines, Intelligence Reports) with source citations. | Multi-layer tour generator + Step traverser |
+| 5 | **Field Impact & Mutation Chains** | Maps every method reading or writing a field, tracing multi-hop upstream triggers (`Field` $\leftarrow$ `Writers` $\leftarrow$ `Callers`) across the entire repository. | Custom relationship visitor + caller propagation engine |
+| 6 | **Structural Integrity Audit** | 14 active class-awareness rules auditing AST signature divergences, naming drift, interface contract gaps, and body hash clones. | 14 AST rules + Levenshtein distance + SHA-256 hashing |
+| 7 | **Behavioral Hotspots Intelligence** | Evaluates code risk and technical debt via composite metric $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$. Overlays heat shaders on 2D Blooming Tree and 3D Software City. | JGit churn log + AST complexity scorer + Thermal shaders |
+| 8 | **Interactive DSM with Method Drilldown** | Multi-tier Dependency Structure Matrix (`Modules` $\to$ `Packages` $\to$ `Classes` $\to$ `Methods`). Double-click headers to drill into method invocations with breadcrumbs, DAG acyclicity rating, and CSV/JSON exports. | Matrix permutation engine + Tarjan cycles + Adjacency exporter |
+| 9 | **Critical Path Execution Trace** | Traces end-to-end execution sequences from controllers through domain services down to persistent entity mutations (`Get`, `Create`, `Modify`) and downstream audit sinks. | Multi-hop graph search + Risk scoring + Stepper Dock |
+| 10 | **Grounded AI Architecture Assistant** | Context-grounded Q&A and code explanation engine supporting local Ollama models, OpenAI, and deterministic fallback templates. | Dual-provider AI bridge + Prompt grounding |
+| 11 | **Developer CLI Toolsuite** | Headless CLI subcommands (`scan`, `story`, `trace`, `what-if`/`impact`, `ask`, `explain`, `teach-me`, `pr-story`) for terminals and CI/CD. | Built-in CLI runner + Direct H2/Lucene access |
+| 12 | **Semantic Archetypes Engine** | Classifies methods and types into domain-specific roles (BaNCS ET/BT/TO/TC/Batch, Spring, DDD) with module token substitution (`{MODULE}`) and custom rules. | Regex & Prefix token substitution + LocalStorage persistence |
+| 13 | **Git Blame, Churn & PR Story** | Computes commit counts, author blame, churn frequency, and automated Git pull request change narratives comparing base and head refs. | JGit 6.9 engine + Git PR storyline analyzer |
+| 14 | **Embedded Monaco Code Editor** | Jump directly from graph nodes, member lists, or relationship links to precise source code lines with full Java syntax highlighting. | Monaco Editor 0.45 + REST file reader/writer |
+| 15 | **Reports Hub & Compliance Audits** | 14 comprehensive enterprise reports (Change Risk, Circular Dependencies, Dead Code, API Surface, Database Access Flow, Concurrency Audit, Module Coupling, etc.) with 60+ pre-rendered artifacts. | ReportService + REST export endpoints + Standalone HTML templates |
+| 16 | **Modular Two-JAR Distribution** | Lightweight `codelens-app.jar` (~1.1 MB) referencing pre-extracted `codelens-deps.jar` (~22 MB) for ~4-second fast rebuilds and seamless enterprise distribution. | Maven Shade + Class-Path manifest isolation |
+| 17 | **125k Classes Scalability Engine** | Multi-tier quotient graph rollups, Level-of-Detail (LOD) sub-pixel culling in Treemap/Sunburst/Chord/Graphify, and Sparse DSM matrix grids maintaining sub-100ms API response and 60 FPS UI rendering. | SQL-level aggregation queries + Viewport culling + Sparse DSM payload |
+| 18 | **Storage Compression & Compaction** | LZF compressed H2 page storage with single-transaction chunk commits and MVStore tuning, eliminating leaks and reducing disk footprints by ~95%. | H2 MVStore Compression + HikariCP Transaction Safety |
+| 19 | **11-Engine Background Task Manager** | Real-time monitoring and lifecycle controls over 11 background engines (AST Ingestion, Delta Watcher, Call Graph, Layout Engine, Module Coupling, Lucene Indexer, Git Churn, DB Sentinel, Stress Tester, Heap Watchdog, and Reports Precomputer). | Dedicated Process Hub + JMX Thresholds + REST lifecycle APIs |
+| 20 | **8-Stage Scan & Readiness Engine** | Rigorous sequential scan execution (`PARSE`, `INDEX`, `GRAPH`, `LAYOUT`, `MODULES`, `INTEGRITY`, `CODESTORY`, `REPORTS`) guaranteeing 100% readiness across all views. | Sequential orchestrator + Dynamic SSE telemetry |
 
 ---
 
@@ -185,19 +188,37 @@ java -Dcodelens.data=/custom/path/codelens-data -jar codelens-app/target/codelen
 java -Xms1g -Xmx4g -XX:+UseG1GC -jar codelens-app/target/codelens-app.jar
 ```
 
-### 3. Headless CLI Scan Mode (Direct Ingestion)
-Scan and index any Java codebase directly into the embedded H2 database and Lucene index from the command line without launching the web server. Ideal for CI/CD automated test pipelines and batch ingestion:
+### 3. Developer CLI Command Suite
+
+CodeLens can run completely headless from your terminal or CI/CD pipelines without starting the web UI. All subcommands read directly from the embedded H2 database and Lucene index:
 
 ```bash
-# Scan a specific directory
+# 1. Full Ingestion & Indexing
 java -jar codelens-app/target/codelens-app.jar scan ./path/to/java/src
 
-# Scan default configured path with custom data directory
-java -Dcodelens.data=./codelens-data -jar codelens-app/target/codelens-app.jar scan
+# 2. Transaction Storyline Extraction
+java -jar codelens-app/target/codelens-app.jar story [storyId]
 
-# Production high-speed headless scan
-java -Xms2g -Xmx6g -XX:+UseG1GC -jar codelens-app/target/codelens-app.jar scan /path/to/enterprise/repo
+# 3. Method Call Trace (Entry Point to Sinks)
+java -jar codelens-app/target/codelens-app.jar trace "com.example.OrderController.submitOrder"
+
+# 4. Blast Radius & Field Mutation Impact
+java -jar codelens-app/target/codelens-app.jar impact "com.example.Account.balance"
+java -jar codelens-app/target/codelens-app.jar what-if "com.example.PaymentService.charge"
+
+# 5. Grounded AI Architecture Assistant
+java -jar codelens-app/target/codelens-app.jar ask "Where are payments persisted in this codebase?"
+
+# 6. Entity Purpose & Role Narrative Explanation
+java -jar codelens-app/target/codelens-app.jar explain "com.example.OrderService"
+
+# 7. Guided Onboarding Tour (Layers L1-L5)
+java -jar codelens-app/target/codelens-app.jar teach-me
+
+# 8. Git Pull Request Change Story Generator
+java -jar codelens-app/target/codelens-app.jar pr-story main feature/billing-v2
 ```
+
 
 ---
 
@@ -427,22 +448,25 @@ CodeLens supports two intelligent scanning modes tailored for initial onboarding
 
 #### A. Full Rescan (`POST /api/scan`)
 - **Use Case**: First-time repository indexing, major branch switches, or clean rebuilds.
-- **Granular 6-Stage Pipeline**:
-  1. `PREPARE` (0–2%): Workspace validation, schema initialization, and clean state setup.
-  2. `PARSE` (2–70%): High-speed AST parsing and batch entity ingestion (streaming file counters).
-  3. `INDEX` (70–75%): Apache Lucene index commit and relational database secondary B-tree index finalization.
-  4. `GRAPH` (75–92%): `CallGraphAnalyzer` vertex indexing and fuzzy edge resolution (75–87%), followed by `FieldImpactAnalyzer` field mutation propagation indexing (87–92%).
-  5. `LAYOUT` (92–99%): Sequential precomputation and caching of all 6 sunflower spiral and architectural layouts (ensures zero rendering freeze when switching to graph views).
-  6. `COMPLETE` (100%): All graph views, full-text indexes, and review engines warmed and ready.
+- **Granular 8-Stage Sequential Pipeline**:
+  1. `PARSE` (2–70%): High-speed parallel AST parsing, type hierarchy extraction, method/field discovery, and batch chunk insertion.
+  2. `INDEX` (70–76%): Apache Lucene full-text symbol search commit and secondary relational B-tree index rebuild.
+  3. `GRAPH` (76–82%): In-memory JGraphT call graph vertex indexing and bidirectional call edge resolution, followed by field mutation propagation indexing.
+  4. `LAYOUT` (82–86%): Sequential precomputation and caching of all 6 sunflower spiral and 3D architectural layouts (ensures zero rendering freeze when opening graph views).
+  5. `MODULES` (86–90%): Package architecture, afferent/efferent couplings, and Robert C. Martin's instability ratings ($I = C_e / (C_a + C_e)$).
+  6. `INTEGRITY` (90–93%): Class-aware structural inconsistency detection & integrity audit (14 active rules, AST signature drift, naming divergences).
+  7. `CODESTORY` (93–96%): Business transaction storylines discovery from controllers to persistent DB sinks, 5-layer guided onboarding tour synthesis, and critical path targets.
+  8. `REPORTS` (96–99%): Sequential precomputation of all 14 enterprise architecture, debt, quality, and risk snapshots.
+  - `COMPLETE` (100%): 100% readiness across all views, tabs, and interactive engines.
 
 #### B. Incremental Delta Scan (`POST /api/scan/incremental`)
 - **Use Case**: Day-to-day development after editing, pulling Git changes, or creating new classes.
-- **Pipeline Stages**:
+- **Sequential Pipeline**:
   1. Compares disk file modification timestamps and sizes against indexed metadata via `GET /api/scan/changes`.
   2. Identifies exact sets of **New**, **Modified**, and **Deleted** files.
   3. Purges database records **only for changed/deleted files** via `deleteBySourceFiles(...)`.
-  4. Parses only the delta files and merges them using idempotent `MERGE INTO ... KEY(id)`.
-  5. Updates Lucene documents and refreshes the in-memory call graph and layouts in sub-seconds.
+  4. Parses delta files and merges them using idempotent `MERGE INTO ... KEY(id)`.
+  5. Runs the exact same sequential 8-stage pipeline (Index, Topology, Layouts, Modules, Integrity, CodeStory, Reports) to guarantee 100% readiness across all features.
 
 ```bash
 # Trigger an incremental delta rescan via cURL
@@ -461,9 +485,13 @@ curl -X POST http://localhost:7878/api/scan/incremental \
 CodeLens features a fully non-blocking scan workflow designed so analysts never have to wait idly on a modal screen:
 - **Dismiss at Any Point**: Minimize the central scan modal at any time using the top-right `✕` button, the **"Run in Background"** button, clicking the backdrop, or pressing `Escape`.
 - **Live Background Progress**:
-  - **Top-Bar Status Badge & Header Progress Bar**: Displays live progress percentage (e.g. `17%`), animated spinner, and linear gradient fill.
-  - **Bottom-Left Footer Status Indicator**: Displays the active phase, file details (e.g. `[AST Parsing & Storage] Parsing HoldReason.java (140/612) · HoldReason.java (17%)`), and an orange busy pulse indicator.
-- **Instant Reopen**: Click **either** the top-bar badge, the header progress bar, or the bottom-left footer status text to bring back the detailed scan dialog at any point.
+  - **Top-Bar Status Badge & Header Progress Bar**: Displays live progress percentage (e.g. `94%`), animated spinner, and linear gradient fill.
+  - **Bottom-Left Footer Status Indicator**: Displays the active phase with color-coded status pills (`footer-scan-pill-integrity`, `footer-scan-pill-codestory`, etc.) and real-time step details.
+- **Instant Reopen & Post-Scan Navigation**:
+  - Click **either** the top-bar badge, the header progress bar, or the bottom-left footer status text to bring back the detailed scan dialog at any point.
+  - Upon completion, the modal provides two dedicated exploration buttons:
+    - **`📖 Explore CodeStory`**: Navigates directly to the interactive Storylines tab.
+    - **`▶ Explore Graph`**: Navigates directly to the 2D Graphify Canvas.
 
 ---
 
@@ -472,8 +500,12 @@ CodeLens features a fully non-blocking scan workflow designed so analysts never 
 As each pipeline step completes, corresponding navigation tabs and analytical modules unlock dynamically without waiting for the entire deep analysis run to finish:
 - **Stage 1 (`PARSE` complete)**: **Source Code** and **Git Analytics** unlock immediately so code can be inspected and blame examined.
 - **Stage 2 (`INDEX` complete)**: **Knowledge Base Catalog**, **On-Demand Code Review**, and **Global Full-Text Search** unlock.
-- **Stage 3 (`GRAPH` complete)**: **Critical Path Tracing** and **Call Hierarchy BFS** unlock.
+- **Stage 3 (`GRAPH` complete)**: **Call Hierarchy BFS** unlocks.
 - **Stage 4 (`LAYOUT` complete)**: **Interactive 2D Graph** and **3D Macro Studio (City & Galaxy)** unlock with precomputed sunflower coordinates for immediate 60 FPS rendering.
+- **Stage 5 (`MODULES` complete)**: **Macro Architecture Studio** and **Module Coupling Matrices** unlock.
+- **Stage 6 (`INTEGRITY` complete)**: **Structural Integrity & Inconsistency Audits** unlock.
+- **Stage 7 (`CODESTORY` complete)**: **CodeStory Narratives**, **Storyline Player**, and **Guided Onboarding Tour** unlock.
+- **Stage 8 (`REPORTS` complete)**: **All 14 Intelligence Reports** unlock.
 - **Feedback on Locked Features**: Clicking any pending tab displays an informational banner stating the exact analysis stage needed for activation.
 
 ---
@@ -668,9 +700,9 @@ Click the **Reports Hub** button in the header (<kbd>R</kbd>) to access 11 enter
 
 ---
 
-### 6. Export Reports Hub (13 Reports & 57 Export Artifacts)
+### 6. Export Reports Hub (14 Reports & 60+ Export Artifacts)
 
-CodeLens automatically precomputes a comprehensive suite of **13 deep architectural, risk, persistence, and concurrency reports**, generating **57 pre-rendered artifacts** in CSV, standalone HTML, Markdown, and JSON stored in `./codelens-data/graph-cache/reports/`:
+CodeLens automatically precomputes a comprehensive suite of **14 deep architectural, risk, persistence, coupling, and concurrency reports**, generating **60+ pre-rendered artifacts** in CSV, standalone HTML, Markdown, and JSON stored in `./codelens-data/graph-cache/reports/`:
 
 | # | Report Key | Report Title | Focus & Primary Indicators |
 |---|---|---|---|
@@ -686,7 +718,8 @@ CodeLens automatically precomputes a comprehensive suite of **13 deep architectu
 | 10 | `api-catalog` | API Surface & REST Endpoint Catalog | REST routes, HTTP verbs (GET, POST, PUT, DELETE), controllers, auth checks, and blast radius |
 | 11 | `database-access` | Database & Data Access Flow | Persistence integrity score, DAO access points, CRUD distribution, and target tables touched |
 | 12 | `concurrency-audit` | Concurrency & Thread Safety Audit | Thread safety score/grade, synchronized locks, volatile fields, and mutable shared collections |
-| 13 | `html-snapshot` | Standalone Offline HTML Snapshot | Bundled single-file offline interactive HTML snapshot for offline review and air-gapped sharing |
+| 13 | `module-coupling` | Inter-Module Dependency & Stability | Cross-module caller-callee couplings, stability indices, and dependency violation warnings |
+| 14 | `html-snapshot` | Standalone Offline HTML Snapshot | Bundled single-file offline interactive HTML snapshot for offline review and air-gapped sharing |
 
 #### Sequential Precomputation & Audit Logging
 Reports precomputation runs in a strict sequential runner (1 through 13) with per-report error isolation, individual execution duration tracking, and formatted ASCII logging banners in the server console:
@@ -778,6 +811,85 @@ The Stepper Dock header displays real-time telemetry:
 - **$\Sigma$ CC**: Cumulative cyclomatic complexity across all methods in the path.
 - **Risk Score**: Weighted impact score factoring complexity, mutation types, and audit sinks.
 - **Bottlenecks**: Automatic flagging of methods with excessive branching ($CC > 8$).
+
+---
+
+## CodeStory — Guided Onboarding & Narrative Flow Engine
+
+CodeLens elevates traditional graph visualization into an interactive **storytelling platform**. Rather than navigating an overwhelming hairball of hundreds of thousands of disconnected AST nodes, engineers can explore the codebase as sequential, human-readable **transaction storylines**.
+
+```mermaid
+flowchart LR
+    subgraph L1["Layer 1: Entry Point"]
+        Ctrl["REST Controller / Endpoint\ne.g. OrderController.placeOrder()"]
+    end
+    subgraph L2["Layer 2: Domain Workflows"]
+        Svc["Domain Services & Policies\ne.g. PricingEngine.calculate()"]
+    end
+    subgraph L3["Layer 3: Mutation Sinks"]
+        Repo["Database Mutation Target\ne.g. OrderRepository.save()"]
+    end
+    subgraph L4["Layer 4: Audit & Events"]
+        Audit["Downstream Sinks & Events\ne.g. AuditLog.record(), EventBus"]
+    end
+
+    Ctrl --> Svc
+    Svc --> Repo
+    Repo --> Audit
+```
+
+### 1. Interactive Transaction Storylines
+- **Automated Workflow Synthesis**: Scans entry points (`@RestController`, `@PostMapping`, `@GetMapping`, message consumers) and traces all reachable execution paths down to persistent entities and downstream mutation sinks.
+- **Natural Language Explanations**: Translates multi-hop call hierarchies into plain-English narrative summaries explaining the business intent, roles, and potential failure points of the transaction.
+- **Storyline Player & Stepper Dock**:
+  - Interactive sequence cards showing method names, archetype badges, source line citations, and execution sequence numbers.
+  - One-click step navigation (`‹` Previous / `›` Next) that centers and pulses the canvas with particle flow tracers.
+  - Step details show exact input parameters, return types, field mutations, and downstream blast radius.
+
+### 2. "Teach Me This Codebase" — 5-Layer Guided Onboarding Tour
+Designed to take new developers from zero to architectural mastery in minutes, the **Teach Me** tour organizes repository exploration into 5 progressive layers:
+- **Layer 1: Domain Core & Entities**: Core persistent entities, aggregates, and data models defining the business domain.
+- **Layer 2: Ingestion & Storage Architecture**: Database access objects, repository interfaces, and data persistence contracts.
+- **Layer 3: Topology & Call Graphs**: High-traffic service orchestrators, task executors, and inter-module communication channels.
+- **Layer 4: Semantic Storylines**: Primary user journeys and critical transactions from external API boundaries to database commits.
+- **Layer 5: Intelligence & Risk Hotspots**: Behavioral hotspots, circular dependency hubs, and prioritized technical debt areas.
+
+Each stop on the tour includes a comprehensive explanation, file/line links to the source code in Monaco, and direct visualization in the Graph.
+
+### 3. Git Pull Request Change Story Generator
+Compare any branch or pull request against a base reference (`main` or `release`):
+- Summarizes the structural impact of changes instead of just line-by-line diffs.
+- Identifies newly added entry points, modified persistent entity contracts, and widened blast radiuses.
+- Generates a ready-to-paste Markdown PR architectural summary for code reviews.
+
+### 4. Grounded AI Architecture Assistant
+CodeLens includes a context-grounded AI conversational assistant accessible via the web drawer or CLI (`codelens-app.jar ask "<question>"`):
+- **Local Ollama Integration**: Fully air-gapped support for local LLMs (DeepSeek-Coder, Llama 3, Qwen 2.5 Coder) running via Ollama (`http://localhost:11434`).
+- **OpenAI Compatible**: Connects to OpenAI or any OpenAI-compatible API endpoint with custom API keys and model selections.
+- **Deterministic Template Fallback**: When no LLM is configured or available, CodeLens automatically falls back to an internal deterministic template engine that answers architectural questions using pure static AST facts and graph queries.
+
+---
+
+## Structural Integrity Engine (14 Active Class Rules)
+
+Phase 6 of the scan pipeline executes a rigorous **Structural Integrity Audit** evaluating 14 foundational architectural contracts and class-awareness rules:
+
+| # | Integrity Rule | Contract & Verification Focus | Severity |
+|---|---|---|---|
+| 1 | **DTO Encapsulation** | Request/Response Message Objects (`MO_*`) must never directly access persistence sinks or DAOs | 🔴 High |
+| 2 | **Repository Isolation** | Repositories and DAOs must only be invoked from domain service layers, never directly from controllers | 🔴 High |
+| 3 | **Controller Boundary** | API Controllers must not contain raw SQL, business mutation logic, or multiple persistence mutations | 🟡 Moderate |
+| 4 | **Service Layer Integrity** | Domain services must implement consistent transaction boundaries and logging sinks | 🟡 Moderate |
+| 5 | **Entity Contract Symmetry** | Persistent entities must declare symmetric `equals()` and `hashCode()` implementations | 🟡 Moderate |
+| 6 | **Immutable Value Objects** | Classes designated as Value Objects must have final fields and zero public mutation methods | 🟢 Low |
+| 7 | **Interface Segregation** | Interfaces exceeding 15 method declarations are flagged for separation | 🟡 Moderate |
+| 8 | **Dead Storage Methods** | DAO methods with zero incoming call edges across the repository | 🟢 Low |
+| 9 | **Signature Divergence** | Classes with similar naming but divergent method signatures (Levenshtein distance $\le 2$) | 🟡 Moderate |
+| 10 | **AST Body Clones** | Duplicate AST method body hashes across non-inherited class implementations | 🟡 Moderate |
+| 11 | **Exception Swallowing** | Catch blocks that catch `Exception` or `Throwable` and neither log nor re-throw | 🔴 High |
+| 12 | **Circular Module Coupling** | Tightly coupled packages violating acyclic dependency graph principles | 🔴 High |
+| 13 | **Unsynchronized Mutations** | Multithreaded components mutating shared non-thread-safe collection instances | 🔴 High |
+| 14 | **Naming Convention Drift** | Classes violating configured domain prefixes or semantic archetype conventions | 🟢 Low |
 
 ---
 
@@ -902,20 +1014,43 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 
 ### Reports & Export Hub
 - `GET /api/reports/status` — Current precomputation progress, percentage, phase, and cached keys
-- `POST /api/reports/regenerate` — Trigger background sequential precomputation of all 13 reports
+- `POST /api/reports/regenerate` — Trigger background sequential precomputation of all 14 reports
 - `GET /api/reports/{reportKey}?format=markdown|html|json|csv` — Retrieve report in requested format
-  - Supported keys: `architecture`, `change-risk`, `dead-code`, `circular-dependencies`, `archetype-governance`, `technical-debt`, `executive-summary`, `review`, `metrics`, `api-catalog`, `database-access`, `concurrency-audit`, `html-snapshot`
+  - Supported keys: `architecture`, `change-risk`, `dead-code`, `circular-dependencies`, `archetype-governance`, `technical-debt`, `executive-summary`, `review`, `metrics`, `api-catalog`, `database-access`, `concurrency-audit`, `module-coupling`, `html-snapshot`
 - `GET /api/reports/download?type={key}&format=markdown|html|csv` — Direct file download endpoint
+
+### CodeStory, Narrative Flows & Guided Tour
+- `GET /api/storylines` — List all discovered transaction storylines with entry points, persistent targets, and step counts
+- `GET /api/storyline?id={id}` — Detailed storyline execution trace with narrative synthesis, step metadata, and blast radius
+- `GET /api/storyline/what-if?method={fqn}` — Hypothetical blast radius simulation and mutation impact for a method
+- `GET /api/storyline/teach-me` — 5-layer guided architectural onboarding tour stops
+- `GET /api/storyline/system-tour` — Complete system walkthrough data with Monaco source line citations
+- `GET /api/git/pr-story?base={baseRef}&head={headRef}` — Structural change storyline comparing Git branches or commits
+
+### Grounded AI Architecture Assistant
+- `GET /api/ai/ask?q={query}` or `POST /api/ai/ask` — Context-grounded architectural question answering (Ollama/OpenAI/Deterministic fallback)
+- `GET /api/ai/explain?target={fqn}` or `POST /api/ai/explain` — Plain-English narrative explanation of class or method responsibilities
+- `GET /api/ai/config` — Retrieve active AI provider configuration
+- `POST /api/ai/config` — Save AI configuration (provider `ollama`|`openai`, model, endpoint URL, API key)
+
+### Modules & Macro Architecture
+- `GET /api/modules/dependencies` — Full inter-module dependency matrix
+- `GET /api/modules/insights` — High-level module stability and architectural violation insights
+- `GET /api/modules/{name}/dependencies` — Focused dependencies for a single module
 
 ### Background Process Manager & JVM Sentinel
 - `GET /api/processes` — Live status, stage, progress %, and throughput for all 11 background engines
 - `POST /api/processes/{id}/restart` — Restart/re-queue engine (`scanner`, `call-graph`, `layout-engine`, `module-analyzer`, `lucene-indexer`, `git-analyzer`, `reports-generator`, etc.)
 - `POST /api/processes/{id}/kill` — Cooperatively terminate/cancel active task
-- `GET /api/jvm/status` — Live heap usage, pool occupancy, GC stats, and circuit breaker state
-- `POST /api/jvm/trigger-recovery` — Force cache eviction, DB compaction, and garbage collection
-- `POST /api/jvm/reset-circuit-breaker` — Reset circuit breaker to CLOSED
-- `POST /api/jvm/simulate-pressure` — Test auto-recovery sentinel by injecting synthetic memory spike
+- `GET /api/jvm/metrics` — Live heap usage, pool occupancy, GC stats, and circuit breaker state
+- `POST /api/jvm/gc` — Trigger JVM garbage collection
+- `POST /api/jvm/trim-memory` — Force cache eviction, DB compaction, and memory trimming
+- `GET /api/jvm/auto-recovery` — Current auto-recovery watchdog metrics and status
+- `POST /api/jvm/auto-recovery/trigger` — Manually trigger auto-recovery sequence
+- `POST /api/jvm/auto-recovery/reset-circuit-breaker` — Reset memory circuit breaker to CLOSED
+- `POST /api/jvm/auto-recovery/simulate` — Test auto-recovery sentinel by injecting synthetic memory pressure
 - `GET /api/jvm/threads` — Dump live JVM thread stacks, monitors, and lock contention
+- `GET /api/jvm/deadlocks` — Detect active thread deadlocks
 
 ### Fields & Impact Analysis
 - `GET /api/fields/{fqn}` — Field metadata and initializer expression
@@ -924,7 +1059,8 @@ All endpoints return JSON and are accessible locally at `http://localhost:7878/a
 ### Analysis, Critical Path & Search
 - `GET /api/analysis/persistent-classes` — Discover and rank all persistent domain entities across the repository by risk score, hops, and complexity
 - `GET /api/analysis/critical-path?class={classFqn}&mode=primary|mutation|read|longest|max_complexity` — Multi-hop end-to-end critical execution path report with candidate paths, precomputed coordinates, and metrics
-- `GET /api/inconsistencies` — List of all flagged structural inconsistencies and AST clones
+- `GET /api/analysis/blast-radius?method={methodFqn}` — Calculate downstream blast radius fan-out for a method
+- `GET /api/inconsistencies` — List of all flagged structural inconsistencies and AST clones across 14 class rules
 - `GET /api/search?q={query}&limit=30` — Apache Lucene full-text entity search
 
 ### Scope Management & Boundary Exclusion
