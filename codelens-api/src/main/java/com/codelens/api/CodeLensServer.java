@@ -2130,6 +2130,13 @@ public class CodeLensServer {
             String id = (String) proc.get("id");
             BackgroundTaskOrchestrator.TaskSnapshot snap = orchestrator.getTaskSnapshot(id);
             if (snap != null) {
+                proc.put("stage", snap.stage);
+                proc.put("stageName", snap.stageName);
+                proc.put("step", snap.step);
+                proc.put("pipelineOrder", snap.pipelineOrder);
+                proc.put("category", snap.category);
+                proc.put("categoryLabel", snap.categoryLabel);
+                proc.put("dependencies", snap.dependencies);
                 proc.put("loadWeight", snap.loadUnits);
                 proc.put("loadTier", snap.loadTier);
                 proc.put("mutexGroup", snap.mutexGroup);
@@ -2157,6 +2164,9 @@ public class CodeLensServer {
                 }
             }
         }
+
+        // Sort processes strictly in Processing Pipeline Order (Stage 1 -> 5, Step 1.1 -> 5.5)
+        processes.sort(Comparator.comparingInt(p -> (Integer) p.getOrDefault("pipelineOrder", 99)));
 
         // System resources, JVM telemetry & Pool metrics
         Map<String, Object> jvmMetrics = jvmManager.getComprehensiveMetrics();

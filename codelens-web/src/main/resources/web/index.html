@@ -3790,6 +3790,57 @@
           </div>
         </div>
 
+        <!-- Processing Pipeline Order & Stage Stepper -->
+        <div class="hub-pipeline-stepper" id="hub-pipeline-stepper" role="region" aria-label="Processing Pipeline Stages">
+          <button class="pipeline-step-item active" data-stage="all" title="View all pipeline stages in sequence">
+            <span class="step-num-circle">ALL</span>
+            <div class="step-label-group">
+              <span class="step-title">Full Pipeline</span>
+              <span class="step-sub" id="step-sub-all">18 tasks · 5 stages</span>
+            </div>
+          </button>
+          <div class="pipeline-step-arrow" aria-hidden="true">→</div>
+          <button class="pipeline-step-item" data-stage="1" title="Stage 1: Source Ingestion & Workspace Tracking">
+            <span class="step-num-circle">1</span>
+            <div class="step-label-group">
+              <span class="step-title">Ingestion</span>
+              <span class="step-sub" id="step-sub-1">2 tasks</span>
+            </div>
+          </button>
+          <div class="pipeline-step-arrow" aria-hidden="true">→</div>
+          <button class="pipeline-step-item" data-stage="2" title="Stage 2: Graph Topology & Execution Flow">
+            <span class="step-num-circle">2</span>
+            <div class="step-label-group">
+              <span class="step-title">Topology</span>
+              <span class="step-sub" id="step-sub-2">3 tasks</span>
+            </div>
+          </button>
+          <div class="pipeline-step-arrow" aria-hidden="true">→</div>
+          <button class="pipeline-step-item" data-stage="3" title="Stage 3: Indexing, Integrity & Repository Context">
+            <span class="step-num-circle">3</span>
+            <div class="step-label-group">
+              <span class="step-title">Indexing & Audit</span>
+              <span class="step-sub" id="step-sub-3">4 tasks</span>
+            </div>
+          </button>
+          <div class="pipeline-step-arrow" aria-hidden="true">→</div>
+          <button class="pipeline-step-item" data-stage="4" title="Stage 4: Semantic Intelligence & AI Reasoning">
+            <span class="step-num-circle">4</span>
+            <div class="step-label-group">
+              <span class="step-title">Semantic AI</span>
+              <span class="step-sub" id="step-sub-4">4 tasks</span>
+            </div>
+          </button>
+          <div class="pipeline-step-arrow" aria-hidden="true">→</div>
+          <button class="pipeline-step-item" data-stage="5" title="Stage 5: Continuous Sentinels & Runtime Infrastructure">
+            <span class="step-num-circle">5</span>
+            <div class="step-label-group">
+              <span class="step-title">Sentinels & Infra</span>
+              <span class="step-sub" id="step-sub-5">5 tasks</span>
+            </div>
+          </button>
+        </div>
+
         <!-- Process Cards List Container -->
         <div class="process-hub-list" id="process-hub-list">
           <!-- Rendered dynamically from /api/processes -->

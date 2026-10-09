@@ -17460,6 +17460,354 @@ body.theme-light .hub-search-box input:focus {
   color: var(--text-primary);
 }
 
+/* ── Processing Pipeline Stepper ── */
+.hub-pipeline-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow-x: auto;
+  margin-bottom: 4px;
+}
+body.theme-light .hub-pipeline-stepper {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+body.theme-swiss .hub-pipeline-stepper {
+  background: #121213;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+.pipeline-step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.pipeline-step-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+.pipeline-step-item.active {
+  background: rgba(56, 139, 253, 0.14);
+  border-color: rgba(56, 139, 253, 0.4);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+body.theme-light .pipeline-step-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+body.theme-light .pipeline-step-item.active {
+  background: rgba(2, 132, 199, 0.12);
+  border-color: rgba(2, 132, 199, 0.4);
+  color: #0369a1;
+}
+body.theme-swiss .pipeline-step-item {
+  border-radius: 2px;
+}
+body.theme-swiss .pipeline-step-item.active {
+  background: rgba(235, 0, 40, 0.12);
+  border-color: rgba(235, 0, 40, 0.4);
+  color: #ffffff;
+}
+
+.pipeline-step-item .step-num-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.pipeline-step-item.active .step-num-circle {
+  background: var(--primary);
+  color: #ffffff;
+}
+body.theme-light .pipeline-step-item .step-num-circle {
+  background: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+body.theme-light .pipeline-step-item.active .step-num-circle {
+  background: #0284c7;
+  color: #ffffff;
+}
+body.theme-swiss .pipeline-step-item .step-num-circle {
+  border-radius: 2px;
+}
+body.theme-swiss .pipeline-step-item.active .step-num-circle {
+  background: #eb0028;
+  color: #ffffff;
+}
+
+.step-label-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+.step-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.step-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.pipeline-step-arrow {
+  color: var(--text-muted);
+  opacity: 0.45;
+  font-size: 12px;
+  user-select: none;
+}
+
+/* ── Pipeline Stage Section ── */
+.pipeline-stage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.pipeline-stage-section:first-child {
+  margin-top: 0;
+}
+.pipeline-stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+body.theme-light .pipeline-stage-header {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.06);
+  border-left-color: #0284c7;
+}
+body.theme-swiss .pipeline-stage-header {
+  background: #181819;
+  border-color: rgba(255, 255, 255, 0.08);
+  border-left-color: #eb0028;
+  border-radius: 2px;
+}
+
+.stage-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage-header-num {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+}
+body.theme-light .stage-header-num {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+}
+body.theme-swiss .stage-header-num {
+  background: rgba(235, 0, 40, 0.15);
+  color: #eb0028;
+  border-radius: 2px;
+}
+
+.stage-header-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.15px;
+}
+.stage-header-precedence-chip {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.theme-light .stage-header-precedence-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+body.theme-swiss .stage-header-precedence-chip {
+  border-radius: 2px;
+}
+
+.stage-header-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stage-header-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: inline-block;
+  max-width: 440px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage-header-count {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-secondary);
+}
+body.theme-light .stage-header-count {
+  background: rgba(0, 0, 0, 0.06);
+}
+body.theme-swiss .stage-header-title {
+  color: #f5f5f7;
+}
+body.theme-swiss .stage-header-sub {
+  color: #86868b;
+}
+body.theme-swiss .stage-header-count {
+  background: #242426;
+  color: #86868b;
+  border-radius: 2px;
+}
+body.theme-swiss .pipeline-step-item {
+  background: #161617;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+body.theme-swiss .pipeline-step-item .step-title {
+  color: #f5f5f7;
+}
+body.theme-swiss .pipeline-step-item .step-sub {
+  color: #86868b;
+}
+body.theme-swiss .pipeline-step-item .step-num-circle {
+  background: #242426;
+  color: #86868b;
+  border-radius: 2px;
+}
+body.theme-swiss .pipeline-step-item.active {
+  background: rgba(235, 0, 40, 0.12);
+  border-color: #eb0028;
+}
+body.theme-swiss .pipeline-step-item.active .step-title {
+  color: #eb0028;
+}
+body.theme-swiss .pipeline-step-item.active .step-num-circle {
+  background: #eb0028;
+  color: #ffffff;
+}
+body.theme-swiss .process-card-title {
+  color: #f5f5f7;
+}
+body.theme-swiss .meta-field-label {
+  color: #86868b;
+}
+body.theme-swiss .meta-detail-text {
+  color: #d2d2d7;
+}
+body.theme-swiss .meta-elapsed-val {
+  color: #d2d2d7;
+}
+body.theme-swiss .meta-chip-prereq {
+  color: #a1a1a6;
+}
+body.theme-swiss .meta-chip-prereq-root {
+  color: #30d158;
+}
+body.theme-swiss .meta-chip-prereq-daemon {
+  color: #86868b;
+}
+
+.pipeline-stage-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Badges inside Process Card ── */
+.pipeline-step-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border-radius: 4px;
+  background: rgba(56, 139, 253, 0.15);
+  color: #388bfd;
+  border: 1px solid rgba(56, 139, 253, 0.3);
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+body.theme-light .pipeline-step-badge {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.25);
+}
+body.theme-swiss .pipeline-step-badge {
+  background: rgba(235, 0, 40, 0.12);
+  color: #eb0028;
+  border-color: rgba(235, 0, 40, 0.3);
+  border-radius: 2px;
+}
+
+.process-card-category-tag {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.meta-chip-mutex {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.meta-chip-prereq {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.meta-chip-prereq-root {
+  color: #10b981;
+  font-size: 11px;
+}
+.meta-chip-prereq-daemon {
+  color: #64748b;
+  font-size: 11px;
+}
+
 /* ── Process Cards List ── */
 .process-hub-list {
   display: flex;
@@ -17813,7 +18161,7 @@ body.theme-light .process-card-bar-track {
   font-size: 11.5px;
   color: var(--text-secondary);
   display: grid;
-  grid-template-columns: minmax(190px, auto) 1fr 110px 90px;
+  grid-template-columns: minmax(130px, 160px) minmax(140px, auto) 1fr 110px 75px;
   align-items: center;
   gap: 16px;
   padding-top: 8px;

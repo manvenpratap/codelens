@@ -101,6 +101,24 @@ public class BackgroundTaskOrchestrator {
         void triggerRecovery(String reason);
     }
 
+    public enum FunctionalCategory {
+        SOURCE_INGESTION(1, "Stage 1: Source Ingestion & Workspace Tracking", "Source Ingestion"),
+        GRAPH_TOPOLOGY(2, "Stage 2: Graph Topology & Execution Flow", "Graph Topology"),
+        INDEXING_AUDIT(3, "Stage 3: Indexing, Integrity & Repository Context", "Indexing & Audit"),
+        SEMANTIC_INTELLIGENCE(4, "Stage 4: Semantic Intelligence & AI Reasoning", "Semantic Intelligence"),
+        SYSTEM_INFRASTRUCTURE(5, "Stage 5: Continuous Sentinels & Runtime Infrastructure", "Infrastructure & Sentinels");
+
+        public final int stage;
+        public final String stageName;
+        public final String label;
+
+        FunctionalCategory(int stage, String stageName, String label) {
+            this.stage = stage;
+            this.stageName = stageName;
+            this.label = label;
+        }
+    }
+
     /**
      * Definition template for a registered background task.
      */
@@ -113,10 +131,21 @@ public class BackgroundTaskOrchestrator {
         public final Priority defaultPriority;
         public final Set<String> dependencies;
         public final BooleanSupplier isReadySupplier;
+        public final FunctionalCategory category;
+        public final String step;
+        public final int pipelineOrder;
 
         public TaskDefinition(String id, String name, LoadTier tier, int loadUnits,
                               MutexGroup mutexGroup, Priority defaultPriority,
                               Set<String> dependencies, BooleanSupplier isReadySupplier) {
+            this(id, name, tier, loadUnits, mutexGroup, defaultPriority, dependencies, isReadySupplier,
+                 FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.0", 99);
+        }
+
+        public TaskDefinition(String id, String name, LoadTier tier, int loadUnits,
+                              MutexGroup mutexGroup, Priority defaultPriority,
+                              Set<String> dependencies, BooleanSupplier isReadySupplier,
+                              FunctionalCategory category, String step, int pipelineOrder) {
             this.id = id;
             this.name = name;
             this.tier = tier;
@@ -125,6 +154,9 @@ public class BackgroundTaskOrchestrator {
             this.defaultPriority = defaultPriority;
             this.dependencies = dependencies != null ? new LinkedHashSet<>(dependencies) : Collections.emptySet();
             this.isReadySupplier = isReadySupplier;
+            this.category = category != null ? category : FunctionalCategory.SYSTEM_INFRASTRUCTURE;
+            this.step = step != null ? step : "5.0";
+            this.pipelineOrder = pipelineOrder;
         }
     }
 
@@ -201,11 +233,30 @@ public class BackgroundTaskOrchestrator {
         public final long endTime;
         public final long durationMs;
         public final String errorDetail;
+        public final int stage;
+        public final String stageName;
+        public final String step;
+        public final int pipelineOrder;
+        public final String category;
+        public final String categoryLabel;
+        public final List<String> dependencies;
 
         public TaskSnapshot(String id, String name, String loadTier, int loadUnits,
                             String mutexGroup, TaskStatus status, int queuePosition,
                             List<String> waitingFor, String throttleReason,
                             long startTime, long endTime, long durationMs, String errorDetail) {
+            this(id, name, loadTier, loadUnits, mutexGroup, status, queuePosition,
+                 waitingFor, throttleReason, startTime, endTime, durationMs, errorDetail,
+                 5, "Stage 5: Continuous Sentinels & Runtime Infrastructure", "5.0", 99,
+                 "SYSTEM_INFRASTRUCTURE", "Infrastructure & Sentinels", Collections.emptyList());
+        }
+
+        public TaskSnapshot(String id, String name, String loadTier, int loadUnits,
+                            String mutexGroup, TaskStatus status, int queuePosition,
+                            List<String> waitingFor, String throttleReason,
+                            long startTime, long endTime, long durationMs, String errorDetail,
+                            int stage, String stageName, String step, int pipelineOrder,
+                            String category, String categoryLabel, List<String> dependencies) {
             this.id = id;
             this.name = name;
             this.loadTier = loadTier;
@@ -219,6 +270,13 @@ public class BackgroundTaskOrchestrator {
             this.endTime = endTime;
             this.durationMs = durationMs;
             this.errorDetail = errorDetail;
+            this.stage = stage;
+            this.stageName = stageName;
+            this.step = step;
+            this.pipelineOrder = pipelineOrder;
+            this.category = category;
+            this.categoryLabel = categoryLabel;
+            this.dependencies = dependencies != null ? new ArrayList<>(dependencies) : Collections.emptyList();
         }
 
         public Map<String, Object> toMap() {
@@ -236,6 +294,13 @@ public class BackgroundTaskOrchestrator {
             m.put("endTime", endTime);
             m.put("durationMs", durationMs);
             if (errorDetail != null) m.put("errorDetail", errorDetail);
+            m.put("stage", stage);
+            m.put("stageName", stageName);
+            m.put("step", step);
+            m.put("pipelineOrder", pipelineOrder);
+            m.put("category", category);
+            m.put("categoryLabel", categoryLabel);
+            m.put("dependencies", dependencies);
             return m;
         }
     }
@@ -335,78 +400,101 @@ public class BackgroundTaskOrchestrator {
     }
 
     private void registerStandardTasks() {
+        // ── STAGE 1: Source Ingestion & Workspace Tracking ─────────────────────────────
         // 1. Full Source Scanner: Heavy, wipes DB tables, bulk mode
         registerTask(new TaskDefinition("scanner", "Source Code Scanner", LoadTier.HEAVY, 10,
-                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null));
+                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null,
+                FunctionalCategory.SOURCE_INGESTION, "1.1", 1));
 
         // 2. Incremental Delta Scanner: Heavy, DB exclusive
         registerTask(new TaskDefinition("delta-scanner", "Delta Change Scanner", LoadTier.HEAVY, 8,
-                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null));
+                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null,
+                FunctionalCategory.SOURCE_INGESTION, "1.2", 2));
 
-        // 3. Stress Test Runner: Heavy, DB exclusive
-        registerTask(new TaskDefinition("stress-test", "Scale & Stress Test Runner", LoadTier.HEAVY, 10,
-                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null));
-
-        // 4. Database Maintenance: Heavy, DB exclusive
-        registerTask(new TaskDefinition("db-maintenance", "Database Compaction & Maintenance", LoadTier.HEAVY, 10,
-                MutexGroup.DATABASE_EXCLUSIVE, Priority.URGENT, Collections.emptySet(), null));
-
-        // 5. Lucene Indexer: Medium, depends on scanner
-        registerTask(new TaskDefinition("lucene-indexer", "Lucene Full-Text Search Indexer", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
-
-        // 6. Inconsistency Detector: Medium, depends on scanner
-        registerTask(new TaskDefinition("inconsistency-detector", "Structural Inconsistency & Anomaly Detector", LoadTier.MEDIUM, 3,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
-
-        // 7. Call Graph & Topology: Medium, waits for scanner bulk load
+        // ── STAGE 2: Graph Topology & Execution Flow ───────────────────────────────────
+        // 3. Call Graph & Topology: Medium, waits for scanner bulk load
         registerTask(new TaskDefinition("call-graph", "Call Graph & Topology Engine", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null,
+                FunctionalCategory.GRAPH_TOPOLOGY, "2.1", 3));
 
-        // 8. Layout Precomputation: Medium, depends on call-graph
+        // 4. Layout Precomputation: Medium, depends on call-graph
         registerTask(new TaskDefinition("layout-engine", "Sunflower Layout Precomputer", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null,
+                FunctionalCategory.GRAPH_TOPOLOGY, "2.2", 4));
 
-        // 9. Module Analyzer: Medium, depends on scanner
-        registerTask(new TaskDefinition("module-analyzer", "Module Dependency Engine", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
-
-        // 10. Critical Path Analyzer: Medium, depends on call-graph
+        // 5. Critical Path Analyzer: Medium, depends on call-graph
         registerTask(new TaskDefinition("critical-path-analyzer", "Critical Execution Path Analyzer", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph"), null,
+                FunctionalCategory.GRAPH_TOPOLOGY, "2.3", 5));
 
-        // 11. Git Analyzer: Medium, depends on scanner
+        // ── STAGE 3: Indexing, Integrity & Repository Context ──────────────────────────
+        // 6. Lucene Indexer: Medium, depends on scanner
+        registerTask(new TaskDefinition("lucene-indexer", "Lucene Full-Text Search Indexer", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null,
+                FunctionalCategory.INDEXING_AUDIT, "3.1", 6));
+
+        // 7. Module Analyzer: Medium, depends on scanner
+        registerTask(new TaskDefinition("module-analyzer", "Module Dependency Engine", LoadTier.MEDIUM, 4,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null,
+                FunctionalCategory.INDEXING_AUDIT, "3.2", 7));
+
+        // 8. Inconsistency Detector: Medium, depends on scanner
+        registerTask(new TaskDefinition("inconsistency-detector", "Structural Inconsistency & Anomaly Detector", LoadTier.MEDIUM, 3,
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null,
+                FunctionalCategory.INDEXING_AUDIT, "3.3", 8));
+
+        // 9. Git Analyzer: Medium, depends on scanner
         registerTask(new TaskDefinition("git-analyzer", "Git Churn & Hotspot Analyzer", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("scanner"), null,
+                FunctionalCategory.INDEXING_AUDIT, "3.4", 9));
 
-        // 12. CodeStory Storylines Generator: Medium, depends on call-graph and scanner
+        // ── STAGE 4: Semantic Intelligence & AI Reasoning ──────────────────────────────
+        // 10. CodeStory Storylines Generator: Medium, depends on call-graph and scanner
         registerTask(new TaskDefinition("storylines-generator", "CodeStory Narrative Flows & Storylines", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph", "scanner"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("call-graph", "scanner"), null,
+                FunctionalCategory.SEMANTIC_INTELLIGENCE, "4.1", 10));
 
-        // 13. Change Story Analyzer: Medium, depends on storylines-generator and git-analyzer
+        // 11. Change Story Analyzer: Medium, depends on storylines-generator and git-analyzer
         registerTask(new TaskDefinition("change-story-analyzer", "Git PR Change Story & Blast Radius Engine", LoadTier.MEDIUM, 4,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "git-analyzer"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "git-analyzer"), null,
+                FunctionalCategory.SEMANTIC_INTELLIGENCE, "4.2", 11));
 
-        // 14. AI Grounding Engine: Light, depends on storylines-generator and call-graph
+        // 12. AI Grounding Engine: Light, depends on storylines-generator and call-graph
         registerTask(new TaskDefinition("ai-grounding-engine", "Architectural Q&A & Semantic Grounding Engine", LoadTier.LIGHT, 2,
-                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "call-graph"), null));
+                MutexGroup.NONE, Priority.NORMAL, Set.of("storylines-generator", "call-graph"), null,
+                FunctionalCategory.SEMANTIC_INTELLIGENCE, "4.3", 12));
 
-        // 15. Reports Generator: Heavy, analysis exclusive, depends on graph, modules, and search
+        // 13. Reports Generator: Heavy, analysis exclusive, depends on graph, modules, and search
         registerTask(new TaskDefinition("reports-generator", "Intelligence Reports Generator", LoadTier.HEAVY, 7,
                 MutexGroup.ANALYSIS_EXCLUSIVE, Priority.NORMAL,
-                Set.of("call-graph", "module-analyzer", "lucene-indexer"), null));
+                Set.of("call-graph", "module-analyzer", "lucene-indexer"), null,
+                FunctionalCategory.SEMANTIC_INTELLIGENCE, "4.4", 13));
 
-        // 16. Database Connection Watchdog: Light
+        // ── STAGE 5: Continuous Sentinels & Runtime Infrastructure ─────────────────────
+        // 14. Database Connection Watchdog: Light
         registerTask(new TaskDefinition("db-watchdog", "Database Connection Watchdog", LoadTier.LIGHT, 1,
-                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
+                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null,
+                FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.1", 14));
 
-        // 17. Heap Watchdog: Sentinel
+        // 15. Heap Watchdog: Sentinel
         registerTask(new TaskDefinition("heap-watchdog", "Heap Auto-Recovery Watchdog", LoadTier.SENTINEL, 0,
-                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
+                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null,
+                FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.2", 15));
 
-        // 18. SSE Live Telemetry Broadcaster: Light
+        // 16. Database Maintenance: Heavy, DB exclusive
+        registerTask(new TaskDefinition("db-maintenance", "Database Compaction & Maintenance", LoadTier.HEAVY, 10,
+                MutexGroup.DATABASE_EXCLUSIVE, Priority.URGENT, Collections.emptySet(), null,
+                FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.3", 16));
+
+        // 17. SSE Live Telemetry Broadcaster: Light
         registerTask(new TaskDefinition("sse-broadcaster", "SSE Live Telemetry Broadcaster", LoadTier.LIGHT, 1,
-                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null));
+                MutexGroup.NONE, Priority.LOW, Collections.emptySet(), null,
+                FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.4", 17));
+
+        // 18. Stress Test Runner: Heavy, DB exclusive
+        registerTask(new TaskDefinition("stress-test", "Scale & Stress Test Runner", LoadTier.HEAVY, 10,
+                MutexGroup.DATABASE_EXCLUSIVE, Priority.HIGH, Collections.emptySet(), null,
+                FunctionalCategory.SYSTEM_INFRASTRUCTURE, "5.5", 18));
     }
 
     /**
@@ -833,13 +921,23 @@ public class BackgroundTaskOrchestrator {
     public TaskSnapshot getTaskSnapshot(String taskId) {
         dispatchLock.lock();
         try {
+            TaskDefinition def = registry.get(taskId);
+            int stage = def != null ? def.category.stage : 5;
+            String stageName = def != null ? def.category.stageName : "Stage 5: Continuous Sentinels & Runtime Infrastructure";
+            String step = def != null ? def.step : "5.0";
+            int pipelineOrder = def != null ? def.pipelineOrder : 99;
+            String category = def != null ? def.category.name() : "SYSTEM_INFRASTRUCTURE";
+            String categoryLabel = def != null ? def.category.label : "Infrastructure & Sentinels";
+            List<String> deps = def != null ? new ArrayList<>(def.dependencies) : Collections.emptyList();
+
             // 1. Is it actively running?
             QueuedTask running = activeRunningTasks.get(taskId);
             if (running != null) {
                 return new TaskSnapshot(running.taskId, running.taskName, running.loadTier.name(),
                         running.loadUnits, running.mutexGroup.name(), TaskStatus.RUNNING, 0,
                         null, null, running.startTime, 0,
-                        System.currentTimeMillis() - running.startTime, null);
+                        System.currentTimeMillis() - running.startTime, null,
+                        stage, stageName, step, pipelineOrder, category, categoryLabel, deps);
             }
 
             // 2. Is it in queue?
@@ -849,13 +947,13 @@ public class BackgroundTaskOrchestrator {
                     return new TaskSnapshot(q.taskId, q.taskName, q.loadTier.name(),
                             q.loadUnits, q.mutexGroup.name(), q.status, i + 1,
                             new ArrayList<>(q.waitingFor), q.throttleReason,
-                            q.submitTimestamp, 0, 0, null);
+                            q.submitTimestamp, 0, 0, null,
+                            stage, stageName, step, pipelineOrder, category, categoryLabel, deps);
                 }
             }
 
             // 3. Fall back to historical state / registry definition
             TaskState state = taskStates.get(taskId);
-            TaskDefinition def = registry.get(taskId);
             String name = def != null ? def.name : taskId;
             String tier = def != null ? def.tier.name() : LoadTier.MEDIUM.name();
             int units = def != null ? def.loadUnits : 4;
@@ -867,7 +965,8 @@ public class BackgroundTaskOrchestrator {
                     state != null ? state.lastStartTime : 0,
                     state != null ? state.lastEndTime : 0,
                     state != null ? state.lastDurationMs : 0,
-                    state != null ? state.lastErrorDetail : null);
+                    state != null ? state.lastErrorDetail : null,
+                    stage, stageName, step, pipelineOrder, category, categoryLabel, deps);
         } finally {
             dispatchLock.unlock();
         }

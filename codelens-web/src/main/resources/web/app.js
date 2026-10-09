@@ -1107,11 +1107,65 @@ function closeStepDetail() {
    ───────────────────────────────────────────────────────────────────────────── */
 let processHubPollInterval = null;
 let processHubFilter = 'all';
+let processHubStageFilter = 'all';
 let processHubSearch = '';
 let processHubActiveTab = 'tasks';
 let processHubApiCategory = 'all';
 let processHubApiSearch = '';
 let processHubLastData = null;
+
+const PIPELINE_STAGES = [
+  {
+    stage: 1,
+    title: 'Stage 1: Source Ingestion & Workspace Tracking',
+    precedence: 'Precedence 1 (Source Ingestion)',
+    sub: 'Raw source code parsing, AST extraction & file change detection'
+  },
+  {
+    stage: 2,
+    title: 'Stage 2: Graph Topology & Execution Flow',
+    precedence: 'Precedence 2 (Graph Topology)',
+    sub: 'Call graph edge traversal, layout matrix & critical path analysis'
+  },
+  {
+    stage: 3,
+    title: 'Stage 3: Indexing, Integrity & Repository Context',
+    precedence: 'Precedence 3 (Indexing & Integrity)',
+    sub: 'Full-text symbol search, module clustering, integrity audit & Git history'
+  },
+  {
+    stage: 4,
+    title: 'Stage 4: Semantic Intelligence & AI Reasoning',
+    precedence: 'Precedence 4 (Semantic Intelligence)',
+    sub: 'Transaction storylines, change impact synthesis, AI grounding & executive reports'
+  },
+  {
+    stage: 5,
+    title: 'Stage 5: Continuous Sentinels & Runtime Infrastructure',
+    precedence: 'Precedence 5 (Continuous / On-Demand)',
+    sub: 'Database health watchdog, heap memory circuit breaker, compaction & telemetry'
+  }
+];
+
+function formatPrerequisite(p) {
+  if (p.dependencies && p.dependencies.length > 0) {
+    const deps = p.dependencies.map(d => esc(d)).join(', ');
+    return `<span class="meta-chip-prereq font-mono" title="Prerequisites: ${deps}">↳ ${deps}</span>`;
+  }
+  if (p.id === 'scanner') {
+    return `<span class="meta-chip-prereq-root" title="Root ingestion task for entire pipeline">✓ Root Ingestion</span>`;
+  }
+  if (p.id === 'delta-scanner') {
+    return `<span class="meta-chip-prereq-root" title="Watches filesystem for file modifications">✓ File Watcher</span>`;
+  }
+  if (p.stage === 5 || p.id === 'db-watchdog' || p.id === 'heap-watchdog' || p.id === 'sse-broadcaster') {
+    return `<span class="meta-chip-prereq-daemon" title="Runs continuously in background">Continuous Daemon</span>`;
+  }
+  if (p.id === 'db-maintenance' || p.id === 'stress-test') {
+    return `<span class="meta-chip-prereq-daemon" title="Triggered on-demand">On-Demand</span>`;
+  }
+  return `<span class="meta-chip-prereq-root">✓ Independent</span>`;
+}
 let jvmThreadsFilterState = 'ALL';
 let jvmThreadsSearchQuery = '';
 let jvmLastThreadsList = [];
@@ -2307,6 +2361,26 @@ async function loadProcessHubData() {
     const navTasksCount = qs('#hub-nav-count-tasks');
     if (navTasksCount) navTasksCount.textContent = totalCount;
 
+    // 2b. Update Pipeline Stepper stage counts
+    const stage1Count = procs.filter(p => (p.stage || 1) === 1).length;
+    const stage2Count = procs.filter(p => (p.stage || 1) === 2).length;
+    const stage3Count = procs.filter(p => (p.stage || 1) === 3).length;
+    const stage4Count = procs.filter(p => (p.stage || 1) === 4).length;
+    const stage5Count = procs.filter(p => (p.stage || 1) === 5).length;
+
+    const subAll = qs('#step-sub-all');
+    if (subAll) subAll.textContent = `${totalCount} tasks · 5 stages`;
+    const sub1 = qs('#step-sub-1');
+    if (sub1) sub1.textContent = `${stage1Count} tasks`;
+    const sub2 = qs('#step-sub-2');
+    if (sub2) sub2.textContent = `${stage2Count} tasks`;
+    const sub3 = qs('#step-sub-3');
+    if (sub3) sub3.textContent = `${stage3Count} tasks`;
+    const sub4 = qs('#step-sub-4');
+    if (sub4) sub4.textContent = `${stage4Count} tasks`;
+    const sub5 = qs('#step-sub-5');
+    if (sub5) sub5.textContent = `${stage5Count} tasks`;
+
     // 3. Update compact telemetry HUD strip
     const hudTasks = qs('#hub-hud-tasks');
     if (hudTasks) hudTasks.textContent = `${runningCount}/${totalCount} Active`;
@@ -2413,14 +2487,20 @@ function renderTasksPanel(procs) {
   const filteredProcs = (procs || []).filter(p => {
     const cat = getTaskCategory(p);
 
-    // 1. Tab filter
+    // 1. Stage filter
+    if (processHubStageFilter !== 'all') {
+      const reqStage = parseInt(processHubStageFilter, 10);
+      if ((p.stage || 1) !== reqStage) return false;
+    }
+
+    // 2. Tab filter
     if (processHubFilter === 'running' && cat !== 'running') return false;
     if (processHubFilter === 'queued' && cat !== 'queued') return false;
     if (processHubFilter === 'complete' && cat !== 'complete') return false;
     if (processHubFilter === 'idle' && cat !== 'idle') return false;
     if (processHubFilter === 'error' && cat !== 'error') return false;
 
-    // 2. Search query filter
+    // 3. Search query filter
     if (searchTerms.length > 0) {
       const statusRaw = String(p.status || '').toLowerCase();
       const statusCat = cat;
@@ -2435,10 +2515,11 @@ function renderTasksPanel(procs) {
         p.loadTier ? `${p.loadTier.toLowerCase()} load tier` : '',
         p.mutexGroup ? `${p.mutexGroup.toLowerCase()} mutex` : '',
         p.throttleReason ? p.throttleReason.toLowerCase() : '',
-        p.waitingFor && p.waitingFor.length > 0 ? `waiting ${p.waitingFor.join(' ')}` : ''
+        p.waitingFor && p.waitingFor.length > 0 ? `waiting ${p.waitingFor.join(' ')}` : '',
+        p.dependencies && p.dependencies.length > 0 ? `prerequisite ${p.dependencies.join(' ')}` : ''
       ].join(' ');
 
-      const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${statusAliases} ${p.activeStage || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''}`.toLowerCase();
+      const haystack = `${p.name || ''} ${p.id || ''} ${p.type || ''} ${p.step || ''} ${p.stageName || ''} ${p.categoryLabel || ''} ${statusAliases} ${p.activeStage || ''} ${p.currentPhase || ''} ${p.currentDetail || ''} ${p.thread || ''} ${p.mutexGroup || ''}`.toLowerCase();
 
       const matches = searchTerms.every(term => haystack.includes(term));
       if (!matches) return false;
@@ -2450,211 +2531,289 @@ function renderTasksPanel(procs) {
     emptyEl.style.display = filteredProcs.length === 0 ? 'flex' : 'none';
   }
 
-  // Keyed reconciliation for process cards
-  const existingCards = new Map();
-  listEl.querySelectorAll('.process-card[data-process-id]').forEach(c => {
-    existingCards.set(c.dataset.processId, c);
+  // Group filtered processes by stage (1 to 5)
+  const stageMap = new Map();
+  PIPELINE_STAGES.forEach(s => stageMap.set(s.stage, []));
+  filteredProcs.forEach(p => {
+    const stg = p.stage || 1;
+    if (!stageMap.has(stg)) stageMap.set(stg, []);
+    stageMap.get(stg).push(p);
   });
 
-  const activeIds = new Set(filteredProcs.map(p => p.id));
-  for (const [id, el] of existingCards.entries()) {
-    if (!activeIds.has(id)) {
-      el.remove();
-      existingCards.delete(id);
+  // Track existing stage sections in listEl
+  const existingSections = new Map();
+  listEl.querySelectorAll('.pipeline-stage-section[data-stage]').forEach(sec => {
+    existingSections.set(parseInt(sec.dataset.stage, 10), sec);
+  });
+
+  // Render each stage in pipeline sequence
+  PIPELINE_STAGES.forEach(s => {
+    const tasks = stageMap.get(s.stage) || [];
+    let section = existingSections.get(s.stage);
+
+    if (tasks.length === 0) {
+      if (section) {
+        section.remove();
+        existingSections.delete(s.stage);
+      }
+      return;
     }
-  }
 
-  filteredProcs.forEach((p) => {
-    let card = existingCards.get(p.id);
-    const isNew = !card;
-
-    if (isNew) {
-      card = document.createElement('div');
-      card.dataset.processId = p.id;
+    if (!section) {
+      section = document.createElement('div');
+      section.className = 'pipeline-stage-section';
+      section.dataset.stage = s.stage;
+      section.innerHTML = `
+        <div class="pipeline-stage-header">
+          <div class="stage-header-title-wrap">
+            <span class="stage-header-num">STAGE ${s.stage}</span>
+            <span class="stage-header-title">${esc(s.title)}</span>
+            <span class="stage-header-precedence-chip">${esc(s.precedence)}</span>
+          </div>
+          <div class="stage-header-summary">
+            <span class="stage-header-sub" title="${esc(s.sub)}">${esc(s.sub)}</span>
+            <span class="stage-header-count">${tasks.length} task${tasks.length === 1 ? '' : 's'}</span>
+          </div>
+        </div>
+        <div class="pipeline-stage-cards"></div>
+      `;
+      listEl.appendChild(section);
+      existingSections.set(s.stage, section);
+    } else {
+      const countEl = section.querySelector('.stage-header-count');
+      if (countEl) countEl.textContent = `${tasks.length} task${tasks.length === 1 ? '' : 's'}`;
     }
 
-    const cat = getTaskCategory(p);
-    const isRunning = cat === 'running';
-    const isComplete = cat === 'complete';
-    const isError = cat === 'error';
-    const isQueued = cat === 'queued';
-    const statusUpper = String(p.status || '').toUpperCase();
+    const cardsContainer = section.querySelector('.pipeline-stage-cards');
+    if (!cardsContainer) return;
 
-    const isThrottled = statusUpper === 'THROTTLED' || p.queueStatus === 'THROTTLED';
-    const isWaiting = statusUpper === 'WAITING' || statusUpper === 'WAITING_DEPENDENCY' || p.queueStatus === 'WAITING_DEPENDENCY';
+    // Keyed reconciliation of process cards inside cardsContainer
+    const existingCards = new Map();
+    cardsContainer.querySelectorAll('.process-card[data-process-id]').forEach(c => {
+      existingCards.set(c.dataset.processId, c);
+    });
 
-    card.className = 'process-card' +
-      (isRunning ? ' is-running' : '') +
-      (isError ? ' is-error' : '') +
-      (isQueued ? (isThrottled ? ' is-throttled' : (isWaiting ? ' is-waiting' : ' is-queued')) : '');
-
-    const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
-    const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
-
-    const iconSvg = getProcessIconSvg(p.id, p.type);
-    let statusBadgeIcon = '• ';
-    let statusBadgeText = esc(p.status || 'IDLE');
-
-    if (isRunning) {
-      const dotBg = statusUpper === 'ALERT' ? 'style="width:5px;height:5px;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"' : 'style="width:5px;height:5px;"';
-      statusBadgeIcon = `<span class="hub-live-dot" ${dotBg}></span>`;
-      statusBadgeText = esc(p.status || 'RUNNING');
-    } else if (isComplete) {
-      statusBadgeIcon = '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
-      statusBadgeText = esc(p.status || 'COMPLETE');
-    } else if (isError) {
-      statusBadgeIcon = '<svg class="svg-icon icon-xs icon-rose" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-      statusBadgeText = esc(p.status || 'ERROR');
-    } else if (isQueued) {
-      if (isThrottled) {
-        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-amber" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-        statusBadgeText = 'THROTTLED';
-      } else if (isWaiting) {
-        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>';
-        statusBadgeText = 'WAITING';
-      } else {
-        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-        statusBadgeText = p.queuePosition ? `QUEUED #${p.queuePosition}` : 'QUEUED';
+    const activeIds = new Set(tasks.map(p => p.id));
+    for (const [id, el] of existingCards.entries()) {
+      if (!activeIds.has(id)) {
+        el.remove();
+        existingCards.delete(id);
       }
     }
 
-    let rawDetail = p.currentDetail || '';
-    if (!rawDetail) {
-      if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
-      else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
-      else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
-      else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
-      else if (p.id === 'db-maintenance') rawDetail = 'H2 MVStore compaction & index optimizer';
-      else if (p.id === 'sse-broadcaster') rawDetail = 'Real-time telemetry event bus';
-      else if (p.id === 'inconsistency-detector') rawDetail = 'Cross-entity integrity & class-awareness auditor';
-      else if (p.id === 'critical-path-analyzer') rawDetail = 'Entrypoint-to-sink persistence flow bottlenecks';
-      else if (p.id === 'storylines-generator') rawDetail = 'Execution flow discovery & transaction narratives';
-      else if (p.id === 'change-story-analyzer') rawDetail = 'PR diff & narrative impact synthesizer';
-      else if (p.id === 'ai-grounding-engine') rawDetail = 'Fact-verified context & citation synthesizer';
-      else if (isQueued) {
+    tasks.forEach(p => {
+      let card = existingCards.get(p.id);
+      const isNew = !card;
+
+      if (isNew) {
+        card = document.createElement('div');
+        card.dataset.processId = p.id;
+      }
+
+      const cat = getTaskCategory(p);
+      const isRunning = cat === 'running';
+      const isComplete = cat === 'complete';
+      const isError = cat === 'error';
+      const isQueued = cat === 'queued';
+      const statusUpper = String(p.status || '').toUpperCase();
+
+      const isThrottled = statusUpper === 'THROTTLED' || p.queueStatus === 'THROTTLED';
+      const isWaiting = statusUpper === 'WAITING' || statusUpper === 'WAITING_DEPENDENCY' || p.queueStatus === 'WAITING_DEPENDENCY';
+
+      card.className = 'process-card' +
+        (isRunning ? ' is-running' : '') +
+        (isError ? ' is-error' : '') +
+        (isQueued ? (isThrottled ? ' is-throttled' : (isWaiting ? ' is-waiting' : ' is-queued')) : '');
+
+      const pct = typeof p.percentage === 'number' ? Math.max(0, Math.min(100, p.percentage)) : 0;
+      const durSec = p.durationMs ? (p.durationMs / 1000).toFixed(1) + 's' : (p.startTime ? ((Date.now() - p.startTime) / 1000).toFixed(1) + 's' : '-');
+
+      const iconSvg = getProcessIconSvg(p.id, p.type);
+      let statusBadgeIcon = '• ';
+      let statusBadgeText = esc(p.status || 'IDLE');
+
+      if (isRunning) {
+        const dotBg = statusUpper === 'ALERT' ? 'style="width:5px;height:5px;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"' : 'style="width:5px;height:5px;"';
+        statusBadgeIcon = `<span class="hub-live-dot" ${dotBg}></span>`;
+        statusBadgeText = esc(p.status || 'RUNNING');
+      } else if (isComplete) {
+        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-emerald" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+        statusBadgeText = esc(p.status || 'COMPLETE');
+      } else if (isError) {
+        statusBadgeIcon = '<svg class="svg-icon icon-xs icon-rose" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+        statusBadgeText = esc(p.status || 'ERROR');
+      } else if (isQueued) {
+        if (isThrottled) {
+          statusBadgeIcon = '<svg class="svg-icon icon-xs icon-amber" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          statusBadgeText = 'THROTTLED';
+        } else if (isWaiting) {
+          statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>';
+          statusBadgeText = 'WAITING';
+        } else {
+          statusBadgeIcon = '<svg class="svg-icon icon-xs icon-purple" style="width:10px;height:10px;margin-right:4px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+          statusBadgeText = p.queuePosition ? `QUEUED #${p.queuePosition}` : 'QUEUED';
+        }
+      }
+
+      let rawDetail = p.currentDetail || '';
+      if (!rawDetail) {
+        if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
+        else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
+        else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
+        else if (p.id === 'heap-watchdog') rawDetail = 'Memory sentinel & heap watchdog';
+        else if (p.id === 'db-maintenance') rawDetail = 'H2 MVStore compaction & index optimizer';
+        else if (p.id === 'sse-broadcaster') rawDetail = 'Real-time telemetry event bus';
+        else if (p.id === 'inconsistency-detector') rawDetail = 'Cross-entity integrity & class-awareness auditor';
+        else if (p.id === 'critical-path-analyzer') rawDetail = 'Entrypoint-to-sink persistence flow bottlenecks';
+        else if (p.id === 'storylines-generator') rawDetail = 'Execution flow discovery & transaction narratives';
+        else if (p.id === 'change-story-analyzer') rawDetail = 'PR diff & narrative impact synthesizer';
+        else if (p.id === 'ai-grounding-engine') rawDetail = 'Fact-verified context & citation synthesizer';
+        else if (isQueued) {
+          if (p.waitingFor && p.waitingFor.length > 0) {
+            rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
+          } else if (p.throttleReason) {
+            rawDetail = p.throttleReason;
+          } else if (p.currentPhase) {
+            rawDetail = p.currentPhase;
+          } else {
+            rawDetail = `Queued in orchestrator (#${p.queuePosition || 1})`;
+          }
+        }
+        else if (cat === 'idle') rawDetail = 'Idle · Waiting for trigger';
+        else if (cat === 'complete') rawDetail = 'Execution complete · Ready';
+        else if (cat === 'error') rawDetail = 'Task encountered an error';
+        else rawDetail = 'Ready';
+      } else if (isQueued) {
         if (p.waitingFor && p.waitingFor.length > 0) {
           rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
         } else if (p.throttleReason) {
           rawDetail = p.throttleReason;
-        } else if (p.currentPhase) {
-          rawDetail = p.currentPhase;
-        } else {
-          rawDetail = `Queued in orchestrator (#${p.queuePosition || 1})`;
         }
       }
-      else if (cat === 'idle') rawDetail = 'Idle · Waiting for trigger';
-      else if (cat === 'complete') rawDetail = 'Execution complete · Ready';
-      else if (cat === 'error') rawDetail = 'Task encountered an error';
-      else rawDetail = 'Ready';
-    } else if (isQueued) {
-      if (p.waitingFor && p.waitingFor.length > 0) {
-        rawDetail = `Waiting on prerequisite: ${p.waitingFor.join(', ')}`;
-      } else if (p.throttleReason) {
-        rawDetail = p.throttleReason;
-      }
-    }
-    const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
-    const badgeStatusClass = (p.status || 'idle').toLowerCase().replace(/\s+/g, '_');
+      const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
+      const badgeStatusClass = (p.status || 'idle').toLowerCase().replace(/\s+/g, '_');
 
-    card.innerHTML = `
-      <div class="process-card-header">
-        <div class="process-card-title-group">
-          <div class="process-card-icon-wrap" title="${esc(p.type || p.id)}">
-            ${iconSvg}
+      card.innerHTML = `
+        <div class="process-card-header">
+          <div class="process-card-title-group">
+            <div class="process-card-icon-wrap" title="${esc(p.type || p.id)}">
+              ${iconSvg}
+            </div>
+            <div class="process-card-title-col">
+              <div class="process-card-title">
+                <span class="pipeline-step-badge">Step ${esc(p.step || '1.0')}</span>
+                ${esc(p.name || p.id)}
+              </div>
+              <div class="process-card-type">
+                <span class="process-card-category-tag">${esc(p.categoryLabel || p.stageName || 'Pipeline Worker')}</span>
+                · ${esc(p.type || '')}
+              </div>
+            </div>
           </div>
-          <div class="process-card-title-col">
-            <div class="process-card-title">${esc(p.name || p.id)}</div>
-            <div class="process-card-type">${esc(p.type || '')}</div>
-          </div>
-        </div>
-        <div class="process-card-badges-actions">
-          ${p.loadTier ? `<span class="meta-chip-load tier-${(p.loadTier).toLowerCase()}" title="Load weight: ${p.loadWeight ?? 0} unit(s)${p.mutexGroup && p.mutexGroup !== 'NONE' ? ` · Mutex: ${p.mutexGroup}` : ''}">${esc(p.loadTier)} · ${p.loadWeight ?? 0}u</span>` : ''}
-          <span class="process-card-badge status-${badgeStatusClass}">${statusBadgeIcon}${statusBadgeText}</span>
-          ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
-          ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
-        </div>
-      </div>
-
-      ${pct > 0 || isRunning ? `
-        <div class="process-card-progress">
-          <div class="process-card-bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(p.name || p.id)} Progress">
-            <div class="process-card-bar-fill" style="width:${pct}%;"></div>
+          <div class="process-card-badges-actions">
+            ${p.mutexGroup && p.mutexGroup !== 'NONE' ? `<span class="meta-chip-mutex" title="Concurrency lock: ${esc(p.mutexGroup)}">🔒 ${esc(p.mutexGroup === 'DATABASE_EXCLUSIVE' || p.mutexGroup === 'DB_EXCLUSIVE' ? 'DB Exclusive' : (p.mutexGroup === 'ANALYSIS_EXCLUSIVE' ? 'Analysis Mutex' : p.mutexGroup))}</span>` : ''}
+            ${p.loadTier ? `<span class="meta-chip-load tier-${(p.loadTier).toLowerCase()}" title="Load weight: ${p.loadWeight ?? 0} unit(s)${p.mutexGroup && p.mutexGroup !== 'NONE' ? ` · Mutex: ${p.mutexGroup}` : ''}">${esc(p.loadTier)} · ${p.loadWeight ?? 0}u</span>` : ''}
+            <span class="process-card-badge status-${badgeStatusClass}">${statusBadgeIcon}${statusBadgeText}</span>
+            ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
+            ${p.canRestart ? `<button class="btn-restart-process" data-id="${esc(p.id)}" title="Trigger immediate worker restart"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Restart</button>` : ''}
           </div>
         </div>
-      ` : ''}
 
-      <div class="process-card-meta">
-        <div class="process-meta-col meta-col-phase">
-          <span class="meta-field-label">PHASE</span>
-          <span class="process-meta-chip meta-chip-phase" title="${esc(p.currentPhase || 'Idle')}">${esc(p.currentPhase || 'Idle')}</span>
-        </div>
-        <div class="process-meta-col meta-col-detail">
-          <span class="meta-field-label">ACTIVITY</span>
-          <span class="meta-detail-text" title="${esc(rawDetail)}">${esc(cleanDetail)}</span>
-        </div>
-        <div class="process-meta-col meta-col-thread">
-          <span class="meta-field-label">THREAD</span>
-          <span class="process-meta-chip meta-chip-thread font-mono" title="${esc(p.thread || '-')}">${esc(p.thread || '-')}</span>
-        </div>
-        <div class="process-meta-col meta-col-elapsed">
-          <span class="meta-field-label">TIME</span>
-          <span class="meta-elapsed-val font-mono">${durSec}</span>
-        </div>
-      </div>
-    `;
+        ${pct > 0 || isRunning ? `
+          <div class="process-card-progress">
+            <div class="process-card-bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(p.name || p.id)} Progress">
+              <div class="process-card-bar-fill" style="width:${pct}%;"></div>
+            </div>
+          </div>
+        ` : ''}
 
-    // Kill button handler with inline two-step confirmation
-    const killBtn = card.querySelector('.btn-kill-process');
-    if (killBtn) {
-      killBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!killBtn.classList.contains('confirm-state')) {
-          killBtn.classList.add('confirm-state');
-          killBtn.textContent = 'Confirm Kill?';
-          const timer = setTimeout(() => {
-            killBtn.classList.remove('confirm-state');
+        <div class="process-card-meta">
+          <div class="process-meta-col meta-col-prereq">
+            <span class="meta-field-label">PREREQ</span>
+            <span class="meta-detail-text">${formatPrerequisite(p)}</span>
+          </div>
+          <div class="process-meta-col meta-col-phase">
+            <span class="meta-field-label">PHASE</span>
+            <span class="process-meta-chip meta-chip-phase" title="${esc(p.currentPhase || 'Idle')}">${esc(p.currentPhase || 'Idle')}</span>
+          </div>
+          <div class="process-meta-col meta-col-detail">
+            <span class="meta-field-label">ACTIVITY</span>
+            <span class="meta-detail-text" title="${esc(rawDetail)}">${esc(cleanDetail)}</span>
+          </div>
+          <div class="process-meta-col meta-col-thread">
+            <span class="meta-field-label">THREAD</span>
+            <span class="process-meta-chip meta-chip-thread font-mono" title="${esc(p.thread || '-')}">${esc(p.thread || '-')}</span>
+          </div>
+          <div class="process-meta-col meta-col-elapsed">
+            <span class="meta-field-label">TIME</span>
+            <span class="meta-elapsed-val font-mono">${durSec}</span>
+          </div>
+        </div>
+      `;
+
+      // Kill button handler with inline two-step confirmation
+      const killBtn = card.querySelector('.btn-kill-process');
+      if (killBtn && !killBtn._hasHandler) {
+        killBtn._hasHandler = true;
+        killBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!killBtn.classList.contains('confirm-state')) {
+            killBtn.classList.add('confirm-state');
+            killBtn.textContent = 'Confirm Kill?';
+            const timer = setTimeout(() => {
+              killBtn.classList.remove('confirm-state');
+              killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
+            }, 3500);
+            killBtn._confirmTimer = timer;
+            return;
+          }
+          clearTimeout(killBtn._confirmTimer);
+          killBtn.classList.remove('confirm-state');
+          try {
+            killBtn.disabled = true;
+            killBtn.textContent = 'Terminating…';
+            await api.killProcess(p.id);
+            showBanner(`Process "${p.name || p.id}" killed.`);
+            loadProcessHubData();
+          } catch (err) {
+            showError(`Failed to kill process: ${err.message}`);
+            killBtn.disabled = false;
             killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
-          }, 3500);
-          killBtn._confirmTimer = timer;
-          return;
-        }
-        clearTimeout(killBtn._confirmTimer);
-        killBtn.classList.remove('confirm-state');
-        try {
-          killBtn.disabled = true;
-          killBtn.textContent = 'Terminating…';
-          await api.killProcess(p.id);
-          showBanner(`Process "${p.name || p.id}" killed.`);
-          loadProcessHubData();
-        } catch (err) {
-          showError(`Failed to kill process: ${err.message}`);
-          killBtn.disabled = false;
-          killBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill';
-        }
-      });
-    }
+          }
+        });
+      }
 
-    // Restart button handler
-    const restartBtn = card.querySelector('.btn-restart-process');
-    if (restartBtn) {
-      restartBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        try {
-          restartBtn.disabled = true;
-          restartBtn.textContent = 'Restarting…';
-          await api.restartProcess(p.id);
-          showBanner(`Process "${p.name || p.id}" restarted.`);
-          loadProcessHubData();
-        } catch (err) {
-          showError(`Failed to restart process: ${err.message}`);
-          restartBtn.disabled = false;
-          restartBtn.textContent = 'Restart';
-        }
-      });
-    }
+      // Restart button handler
+      const restartBtn = card.querySelector('.btn-restart-process');
+      if (restartBtn && !restartBtn._hasHandler) {
+        restartBtn._hasHandler = true;
+        restartBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            restartBtn.disabled = true;
+            restartBtn.textContent = 'Restarting…';
+            await api.restartProcess(p.id);
+            showBanner(`Process "${p.name || p.id}" restarted.`);
+            loadProcessHubData();
+          } catch (err) {
+            showError(`Failed to restart process: ${err.message}`);
+            restartBtn.disabled = false;
+            restartBtn.textContent = 'Restart';
+          }
+        });
+      }
 
-    if (isNew) {
-      listEl.appendChild(card);
+      if (isNew) {
+        cardsContainer.appendChild(card);
+      }
+    });
+  });
+
+  // Ensure stage sections in listEl remain strictly in pipeline sequence (1 to 5)
+  PIPELINE_STAGES.forEach(s => {
+    const sec = existingSections.get(s.stage);
+    if (sec && sec.parentNode === listEl) {
+      listEl.appendChild(sec);
     }
   });
 }
@@ -2819,16 +2978,35 @@ function initProcessHub() {
     });
   }
 
+  // Pipeline Stepper stage click handling
+  qsa('#hub-pipeline-stepper .pipeline-step-item').forEach(stepBtn => {
+    stepBtn.addEventListener('click', () => {
+      qsa('#hub-pipeline-stepper .pipeline-step-item').forEach(b => b.classList.remove('active'));
+      stepBtn.classList.add('active');
+      processHubStageFilter = stepBtn.dataset.stage || 'all';
+      if (processHubLastData?.processes) {
+        renderTasksPanel(processHubLastData.processes);
+      } else {
+        loadProcessHubData();
+      }
+    });
+  });
+
   // Reset Tasks Filter Button in Tab 1 Empty State
   qs('#btn-reset-tasks-filter')?.addEventListener('click', () => {
     if (searchInput) searchInput.value = '';
     processHubSearch = '';
     if (clearBtn) clearBtn.style.display = 'none';
     processHubFilter = 'all';
+    processHubStageFilter = 'all';
     qsa('.hub-tab-btn').forEach(b => {
       const isAll = (b.dataset.filter || 'all') === 'all';
       b.classList.toggle('active', isAll);
       b.setAttribute('aria-selected', isAll ? 'true' : 'false');
+    });
+    qsa('#hub-pipeline-stepper .pipeline-step-item').forEach(b => {
+      const isAll = (b.dataset.stage || 'all') === 'all';
+      b.classList.toggle('active', isAll);
     });
     if (processHubLastData?.processes) {
       renderTasksPanel(processHubLastData.processes);
