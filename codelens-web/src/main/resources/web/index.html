@@ -5294,7 +5294,7 @@
       <div class="scan-step-divider" data-after="INDEX"></div>
       <div class="scan-pipeline-step step-clickable step-pending" data-step="GRAPH" tabindex="0" role="tab" aria-selected="false" title="Click to view Call & Field Graph details">
         <span class="step-dot"><span class="step-dot-num">3</span></span>
-        <span class="step-label">3. Call &amp; Field Graph</span>
+        <span class="step-label">3. Topology</span>
       </div>
       <div class="scan-step-divider" data-after="GRAPH"></div>
       <div class="scan-pipeline-step step-clickable step-pending" data-step="LAYOUT" tabindex="0" role="tab" aria-selected="false" title="Click to view Layout Precomputation details">
@@ -5307,9 +5307,19 @@
         <span class="step-label">5. Modules</span>
       </div>
       <div class="scan-step-divider" data-after="MODULES"></div>
-      <div class="scan-pipeline-step step-clickable step-pending" data-step="REPORTS" tabindex="0" role="tab" aria-selected="false" title="Click to view Codebase Intelligence Reports details">
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="INTEGRITY" tabindex="0" role="tab" aria-selected="false" title="Click to view Structural Integrity audit details">
         <span class="step-dot"><span class="step-dot-num">6</span></span>
-        <span class="step-label">6. Reports</span>
+        <span class="step-label">6. Integrity</span>
+      </div>
+      <div class="scan-step-divider" data-after="INTEGRITY"></div>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="CODESTORY" tabindex="0" role="tab" aria-selected="false" title="Click to view CodeStory Transaction Narratives & Flows">
+        <span class="step-dot"><span class="step-dot-num">7</span></span>
+        <span class="step-label">7. CodeStory</span>
+      </div>
+      <div class="scan-step-divider" data-after="CODESTORY"></div>
+      <div class="scan-pipeline-step step-clickable step-pending" data-step="REPORTS" tabindex="0" role="tab" aria-selected="false" title="Click to view Codebase Intelligence Reports details">
+        <span class="step-dot"><span class="step-dot-num">8</span></span>
+        <span class="step-label">8. Reports</span>
       </div>
     </div>
 
@@ -5419,6 +5429,10 @@
         </button>
         <button id="btn-dismiss-scan" class="btn btn-sm btn-ghost" style="display:none;" title="Close dialog">
           Close
+        </button>
+        <button id="btn-explore-codestory" class="btn btn-sm btn-explore-codestory" style="display:none;" title="Explore CodeStory transaction flows and guided tour">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="10 8 13 11 10 14"/></svg>
+          Explore CodeStory
         </button>
         <button id="btn-explore-scan" class="btn btn-sm btn-primary" style="display:none;" title="Explore graph visualization">
           <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>

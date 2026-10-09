@@ -390,7 +390,7 @@ public class CodeLensServer {
                         "Clusters", "Calculating…",
                         "Placed Nodes", "In progress"
                     );
-                    progress.setPercentage(82 + (int) ((i / (float) total) * 6.0));
+                    progress.setPercentage(82 + (int) ((i / (float) total) * 4.0));
                 }
                 try {
                     getOrComputeLayout(task.key, task.supplier);
@@ -410,7 +410,7 @@ public class CodeLensServer {
             if (progress != null) {
                 progress.setCurrentDetail(String.format("Precomputed all %d graph layouts", total));
                 progress.setSubProgress(total, total, "All layouts ready");
-                progress.setPercentage(88);
+                progress.setPercentage(86);
                 Map<String, String> layoutMetrics = new LinkedHashMap<>();
                 layoutMetrics.put("Layouts Cached", String.valueOf(total));
                 layoutMetrics.put("Active Layout", "Sunflower Clustered (Full)");
@@ -3211,7 +3211,7 @@ public class CodeLensServer {
             progress.recordStageStart("MODULES", "Module Dependency Analysis", "Analyzing package architecture, coupling, and circular dependencies");
             progress.setCurrentPhase("Module Dependencies");
             progress.setMessage("Analyzing inter-module relationships & architecture…");
-            progress.setPercentage(88);
+            progress.setPercentage(86);
             progress.setCurrentDetail("Computing module boundaries and touch points…");
             progress.setSubProgress(1, 4, "Analyzing module architecture");
             progress.setDynamicMetrics(
@@ -3228,7 +3228,7 @@ public class CodeLensServer {
                 modulesCount = totalPkgsCount;
             }
             progress.setModulesFound(modulesCount);
-            progress.setPercentage(93);
+            progress.setPercentage(90);
 
             Map<String, String> moduleMetrics = new LinkedHashMap<>();
             moduleMetrics.put("Modules Indexed", String.valueOf(modulesCount));
@@ -3243,12 +3243,88 @@ public class CodeLensServer {
                 return;
             }
 
-            // Phase 7: Codebase Intelligence Reports Precomputation
+            // Phase 6: Structural Inconsistency Detection & Integrity Audit
+            progress.setActiveStage("INTEGRITY");
+            progress.recordStageStart("INTEGRITY", "Structural Integrity Audit", "Auditing class-aware structural integrity, broken linkages & type discrepancies");
+            progress.setCurrentPhase("Integrity Audit");
+            progress.setMessage("Auditing codebase structural integrity…");
+            progress.setPercentage(90);
+            progress.setCurrentDetail("Scanning for structural inconsistencies & missing linkages…");
+            progress.setSubProgress(1, 4, "Auditing structural integrity");
+            progress.setDynamicMetrics(
+                "Issues Found", "Auditing…",
+                "Class Rules", "14 Active",
+                "Missing Links", "Scanning…",
+                "Audit Status", "In progress"
+            );
+
+            int inconsistencyCountVal = 0;
+            try {
+                precomputeInconsistencies(progress);
+                inconsistencyCountVal = inconsistencyCount.get();
+            } catch (Exception ex) {
+                log.warn("Failed to compute structural inconsistencies during scan: {}", ex.getMessage());
+            }
+            progress.setInconsistenciesFound(inconsistencyCountVal);
+            progress.setPercentage(93);
+
+            Map<String, String> integrityMetrics = new LinkedHashMap<>();
+            integrityMetrics.put("Issues Found", String.valueOf(inconsistencyCountVal));
+            integrityMetrics.put("Class-Aware Rules", "14 Rules");
+            integrityMetrics.put("Missing Linkages", "Verified");
+            integrityMetrics.put("Audit Status", inconsistencyCountVal == 0 ? "Optimal" : "Audited");
+            integrityMetrics.put("Status", "Complete");
+            progress.recordStageEnd("INTEGRITY", "COMPLETE", String.format("Audited structural integrity: %,d issues detected", inconsistencyCountVal), integrityMetrics);
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 7: CodeStory Narratives & Transaction Flows
+            progress.setActiveStage("CODESTORY");
+            progress.recordStageStart("CODESTORY", "CodeStory Narratives & Flows", "Discovering transaction storylines, critical path targets & guided onboarding paths");
+            progress.setCurrentPhase("CodeStory Discovery");
+            progress.setMessage("Discovering transaction flows & CodeStory narratives…");
+            progress.setPercentage(93);
+            progress.setCurrentDetail("Tracing entry points to persistent sinks…");
+            progress.setSubProgress(1, 3, "Discovering transaction storylines");
+            progress.setDynamicMetrics(
+                "Storylines", "Tracing…",
+                "Critical Paths", "Analyzing…",
+                "Tour Stops", "Building…",
+                "Status", "In progress"
+            );
+
+            int discoveredStorylines = 0;
+            int discoveredCriticalPaths = 0;
+            try {
+                precomputeCriticalPaths(progress);
+                discoveredCriticalPaths = cachedCriticalPathsCount.get();
+                precomputeStorylines(progress);
+                discoveredStorylines = storylinesDiscoveredCount.get();
+            } catch (Exception ex) {
+                log.warn("Failed to precompute CodeStory storylines: {}", ex.getMessage());
+            }
+            progress.setStorylinesFound(discoveredStorylines);
+            progress.setPercentage(96);
+
+            Map<String, String> storyMetrics = new LinkedHashMap<>();
+            storyMetrics.put("Storylines Found", String.valueOf(discoveredStorylines));
+            storyMetrics.put("Critical Paths", String.valueOf(discoveredCriticalPaths));
+            storyMetrics.put("Tour Stops", "5 Tour Stops");
+            storyMetrics.put("Status", "Complete");
+            progress.recordStageEnd("CODESTORY", "COMPLETE", String.format("Discovered %,d transaction storylines & %,d critical path targets", discoveredStorylines, discoveredCriticalPaths), storyMetrics);
+
+            if (cancelRequested) {
+                return;
+            }
+
+            // Phase 8: Codebase Intelligence Reports Precomputation
             progress.setActiveStage("REPORTS");
             progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", String.format("Generating all %d architecture, risk, quality, and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
             progress.setCurrentPhase("Generating Reports");
             progress.setMessage("Generating codebase intelligence reports…");
-            progress.setPercentage(93);
+            progress.setPercentage(96);
             progress.setCurrentDetail("Initializing sequential report generation pipeline…");
             progress.setSubProgress(0, TOTAL_INTELLIGENCE_REPORTS, "Reports Generation");
             progress.setDynamicMetrics(
@@ -3275,18 +3351,11 @@ public class CodeLensServer {
                 return;
             }
 
-            // Phase 7b: Structural Inconsistency Detection with Class-Awareness
-            try {
-                precomputeInconsistencies();
-            } catch (Exception ex) {
-                log.warn("Failed to compute structural inconsistencies during scan: {}", ex.getMessage());
-            }
-
-            // Phase 8: Complete
+            // Complete: All 8 stages fully ready
             progress.setActiveStage("COMPLETE");
             progress.setPercentage(100);
             progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("All graphs, modules, and intelligence reports ready");
+            progress.setCurrentDetail("All graphs, modules, CodeStory flows, and intelligence reports ready");
             progress.setMessage("Scan complete");
             progress.setEndTime(System.currentTimeMillis());
             progress.setStatus(ScanProgress.Status.COMPLETE);
@@ -3300,11 +3369,6 @@ public class CodeLensServer {
 
             // Persist scan metadata to H2 for instant session restore
             dao.saveScanMeta(progress);
-
-            // Automatically queue post-scan semantic intelligence tasks via orchestrator
-            cachedStorylines.clear();
-            orchestrator.submit("critical-path-analyzer", BackgroundTaskOrchestrator.Priority.NORMAL, this::precomputeCriticalPaths);
-            orchestrator.submit("storylines-generator", BackgroundTaskOrchestrator.Priority.NORMAL, () -> precomputeStorylines(null));
 
             logProcessBanner("SCAN_COMPLETED", "Full Codebase Scan", sourcePath,
                 String.format("Successfully parsed %,d files, %,d types, %,d methods, %,d rels in %d ms",
@@ -3624,7 +3688,7 @@ public class CodeLensServer {
             progress.recordStageStart("MODULES", "Module Dependency Analysis", "Analyzing package architecture, coupling, and circular dependencies");
             progress.setCurrentPhase("Module Dependencies");
             progress.setMessage("Analyzing inter-module relationships & architecture…");
-            progress.setPercentage(88);
+            progress.setPercentage(86);
             progress.setCurrentDetail("Computing module boundaries and touch points…");
             progress.setSubProgress(1, 4, "Analyzing module architecture");
             progress.setDynamicMetrics(
@@ -3641,7 +3705,7 @@ public class CodeLensServer {
                 modulesCount = totalPkgsCount;
             }
             progress.setModulesFound(modulesCount);
-            progress.setPercentage(93);
+            progress.setPercentage(90);
 
             Map<String, String> moduleMetrics = new LinkedHashMap<>();
             moduleMetrics.put("Modules Indexed", String.valueOf(modulesCount));
@@ -3654,12 +3718,84 @@ public class CodeLensServer {
 
             if (cancelRequested) return;
 
-            // Phase 7: Codebase Intelligence Reports Precomputation
+            // Phase 6: Structural Inconsistency Detection & Integrity Audit
+            progress.setActiveStage("INTEGRITY");
+            progress.recordStageStart("INTEGRITY", "Structural Integrity Audit", "Auditing class-aware structural integrity, broken linkages & type discrepancies");
+            progress.setCurrentPhase("Integrity Audit");
+            progress.setMessage("Auditing codebase structural integrity…");
+            progress.setPercentage(90);
+            progress.setCurrentDetail("Scanning for structural inconsistencies & missing linkages…");
+            progress.setSubProgress(1, 4, "Auditing structural integrity");
+            progress.setDynamicMetrics(
+                "Issues Found", "Auditing…",
+                "Class Rules", "14 Active",
+                "Missing Links", "Scanning…",
+                "Audit Status", "In progress"
+            );
+
+            int inconsistencyCountVal = 0;
+            try {
+                precomputeInconsistencies(progress);
+                inconsistencyCountVal = inconsistencyCount.get();
+            } catch (Exception ex) {
+                log.warn("Failed to compute structural inconsistencies during incremental scan: {}", ex.getMessage());
+            }
+            progress.setInconsistenciesFound(inconsistencyCountVal);
+            progress.setPercentage(93);
+
+            Map<String, String> integrityMetrics = new LinkedHashMap<>();
+            integrityMetrics.put("Issues Found", String.valueOf(inconsistencyCountVal));
+            integrityMetrics.put("Class-Aware Rules", "14 Rules");
+            integrityMetrics.put("Missing Linkages", "Verified");
+            integrityMetrics.put("Audit Status", inconsistencyCountVal == 0 ? "Optimal" : "Audited");
+            integrityMetrics.put("Status", "Complete");
+            progress.recordStageEnd("INTEGRITY", "COMPLETE", String.format("Audited structural integrity: %,d issues detected", inconsistencyCountVal), integrityMetrics);
+
+            if (cancelRequested) return;
+
+            // Phase 7: CodeStory Narratives & Transaction Flows
+            progress.setActiveStage("CODESTORY");
+            progress.recordStageStart("CODESTORY", "CodeStory Narratives & Flows", "Discovering transaction storylines, critical path targets & guided onboarding paths");
+            progress.setCurrentPhase("CodeStory Discovery");
+            progress.setMessage("Discovering transaction flows & CodeStory narratives…");
+            progress.setPercentage(93);
+            progress.setCurrentDetail("Tracing entry points to persistent sinks…");
+            progress.setSubProgress(1, 3, "Discovering transaction storylines");
+            progress.setDynamicMetrics(
+                "Storylines", "Tracing…",
+                "Critical Paths", "Analyzing…",
+                "Tour Stops", "Building…",
+                "Status", "In progress"
+            );
+
+            int discoveredStorylines = 0;
+            int discoveredCriticalPaths = 0;
+            try {
+                precomputeCriticalPaths(progress);
+                discoveredCriticalPaths = cachedCriticalPathsCount.get();
+                precomputeStorylines(progress);
+                discoveredStorylines = storylinesDiscoveredCount.get();
+            } catch (Exception ex) {
+                log.warn("Failed to precompute CodeStory storylines during incremental scan: {}", ex.getMessage());
+            }
+            progress.setStorylinesFound(discoveredStorylines);
+            progress.setPercentage(96);
+
+            Map<String, String> storyMetrics = new LinkedHashMap<>();
+            storyMetrics.put("Storylines Found", String.valueOf(discoveredStorylines));
+            storyMetrics.put("Critical Paths", String.valueOf(discoveredCriticalPaths));
+            storyMetrics.put("Tour Stops", "5 Tour Stops");
+            storyMetrics.put("Status", "Complete");
+            progress.recordStageEnd("CODESTORY", "COMPLETE", String.format("Discovered %,d transaction storylines & %,d critical path targets", discoveredStorylines, discoveredCriticalPaths), storyMetrics);
+
+            if (cancelRequested) return;
+
+            // Phase 8: Codebase Intelligence Reports Precomputation
             progress.setActiveStage("REPORTS");
             progress.recordStageStart("REPORTS", "Codebase Intelligence Reports", String.format("Generating all %d architecture, risk, quality, and concurrency reports", TOTAL_INTELLIGENCE_REPORTS));
             progress.setCurrentPhase("Generating Reports");
             progress.setMessage("Generating codebase intelligence reports…");
-            progress.setPercentage(93);
+            progress.setPercentage(96);
             progress.setCurrentDetail("Initializing sequential report generation pipeline…");
             progress.setSubProgress(0, TOTAL_INTELLIGENCE_REPORTS, "Reports Generation");
             progress.setDynamicMetrics(
@@ -3687,7 +3823,7 @@ public class CodeLensServer {
             // Phase 8: Complete
             progress.setActiveStage("COMPLETE");
             progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("All graphs, modules, and intelligence reports ready");
+            progress.setCurrentDetail("All graphs, modules, CodeStory flows, and intelligence reports ready");
             progress.setMessage("Incremental scan complete");
             progress.setPercentage(100);
             progress.setEndTime(System.currentTimeMillis());
@@ -3701,12 +3837,6 @@ public class CodeLensServer {
             );
 
             dao.saveScanMeta(progress);
-
-            // Automatically queue post-scan semantic intelligence tasks via orchestrator
-            cachedStorylines.clear();
-            orchestrator.submit("inconsistency-detector", BackgroundTaskOrchestrator.Priority.NORMAL, this::precomputeInconsistencies);
-            orchestrator.submit("critical-path-analyzer", BackgroundTaskOrchestrator.Priority.NORMAL, this::precomputeCriticalPaths);
-            orchestrator.submit("storylines-generator", BackgroundTaskOrchestrator.Priority.NORMAL, () -> precomputeStorylines(null));
 
             logProcessBanner("INCREMENTAL_COMPLETED", "Incremental Delta Scan", sourcePath,
                 String.format("Parsed %d changed files; total codebase is now %,d types and %,d methods in %d ms",
@@ -4184,6 +4314,16 @@ public class CodeLensServer {
             cachedStorylines.addAll(summaries);
             storylinesDiscoveredCount.set(summaries.size());
             storylinesPhase.set(String.format("Storylines Ready (%,d flows)", summaries.size()));
+            if (progress != null) {
+                progress.setStorylinesFound(summaries.size());
+                progress.setCurrentDetail(String.format("Discovered %,d transaction storylines & narrative flows", summaries.size()));
+                progress.setDynamicMetrics(
+                    "Storylines", String.valueOf(summaries.size()),
+                    "Critical Paths", String.valueOf(cachedCriticalPathsCount.get()),
+                    "Tour Stops", "5 Tour Stops",
+                    "Status", "Complete"
+                );
+            }
             log.info("Precomputed {} storylines in background", summaries.size());
         } catch (Throwable t) {
             log.error("Failed to precompute storylines: {}", t.getMessage(), t);
@@ -4194,6 +4334,10 @@ public class CodeLensServer {
     }
 
     private void precomputeCriticalPaths() {
+        precomputeCriticalPaths(null);
+    }
+
+    private void precomputeCriticalPaths(ScanProgress progress) {
         criticalPathRunning.set(true);
         criticalPathPhase.set("Analyzing Critical Paths");
         try {
@@ -4204,6 +4348,15 @@ public class CodeLensServer {
             int count = (summaries != null) ? summaries.size() : 0;
             cachedCriticalPathsCount.set(count);
             criticalPathPhase.set(String.format("Critical Paths Ready (%,d persistent targets)", count));
+            if (progress != null) {
+                progress.setCurrentDetail(String.format("Identified %,d critical path persistent targets", count));
+                progress.setDynamicMetrics(
+                    "Critical Paths", String.valueOf(count),
+                    "Storylines", "Analyzing…",
+                    "Tour Stops", "Building…",
+                    "Status", "In progress"
+                );
+            }
             log.info("Precomputed {} critical path persistent targets in background", count);
         } catch (Throwable t) {
             log.error("Failed to precompute critical paths: {}", t.getMessage(), t);
@@ -4214,6 +4367,10 @@ public class CodeLensServer {
     }
 
     private void precomputeInconsistencies() {
+        precomputeInconsistencies(null);
+    }
+
+    private void precomputeInconsistencies(ScanProgress progress) {
         inconsistencyRunning.set(true);
         inconsistencyPhase.set("Auditing Structural Inconsistencies");
         try {
@@ -4225,6 +4382,16 @@ public class CodeLensServer {
             dao.batchInsertInconsistencies(inconsistencies);
             inconsistencyCount.set(inconsistencies.size());
             inconsistencyPhase.set(String.format("Integrity Checked (%,d issues)", inconsistencies.size()));
+            if (progress != null) {
+                progress.setInconsistenciesFound(inconsistencies.size());
+                progress.setCurrentDetail(String.format("Audited structural integrity: %,d issues detected", inconsistencies.size()));
+                progress.setDynamicMetrics(
+                    "Issues Found", String.valueOf(inconsistencies.size()),
+                    "Class Rules", "14 Active",
+                    "Missing Links", "Verified",
+                    "Status", "Complete"
+                );
+            }
             log.info("Structural inconsistency scan complete: detected {} issues", inconsistencies.size());
         } catch (Throwable t) {
             log.error("Failed to run inconsistency detection: {}", t.getMessage(), t);

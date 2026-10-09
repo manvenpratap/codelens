@@ -20,6 +20,8 @@ public class ScanProgress {
     private int fieldsFound;
     private int relationshipsFound;
     private int modulesFound;
+    private int inconsistenciesFound;
+    private int storylinesFound;
     private int reportsFound;
     private int skippedRecords;
     private String message;
@@ -113,6 +115,10 @@ public class ScanProgress {
     public void setRelationshipsFound(int n)   { this.relationshipsFound = n; }
     public int getModulesFound()                { return modulesFound; }
     public void setModulesFound(int n)         { this.modulesFound = n; }
+    public int getInconsistenciesFound()        { return inconsistenciesFound; }
+    public void setInconsistenciesFound(int n) { this.inconsistenciesFound = n; }
+    public int getStorylinesFound()             { return storylinesFound; }
+    public void setStorylinesFound(int n)      { this.storylinesFound = n; }
     public int getReportsFound()                { return reportsFound; }
     public void setReportsFound(int n)         { this.reportsFound = n; }
     public int getSkippedRecords()              { return skippedRecords; }

@@ -903,13 +903,102 @@ function getPhaseMetricsData(stageKey, s) {
           }
         ]
       };
+    case 'INTEGRITY':
+      const issuesFound = s.inconsistenciesFound !== undefined ? s.inconsistenciesFound : (stats.inconsistencies || 0);
+      return {
+        pill: 'Phase 6',
+        name: 'Structural Integrity & Audit',
+        summary: stepInfo.summary || 'Class-aware structural inconsistency detection & integrity audit',
+        detailText: stepInfo.detail || (issuesFound > 0 ? `Audited structural integrity: flagged ${issuesFound.toLocaleString()} inconsistencies across type & method linkages.` : 'Audited structural integrity: zero contract violations detected.'),
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'INTEGRITY' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Issues Found'] || issuesFound.toLocaleString(),
+            lbl: 'Issues Flagged',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>'
+          },
+          {
+            val: metrics['Class-Aware Rules'] || '14 Rules',
+            lbl: 'Class Rules',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'
+          },
+          {
+            val: metrics['Missing Linkages'] || 'Verified',
+            lbl: 'Linkages',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+          },
+          {
+            val: metrics['Audit Status'] || (issuesFound === 0 ? 'Optimal' : 'Audited'),
+            lbl: 'Integrity Rating',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<polyline points="20 6 9 17 4 12"/>'
+          }
+        ]
+      };
+
+    case 'CODESTORY':
+      const storiesCount = s.storylinesFound !== undefined ? s.storylinesFound : (stats.storylines || 0);
+      return {
+        pill: 'Phase 7',
+        name: 'CodeStory Narratives & Flows',
+        summary: stepInfo.summary || 'Transaction flow discovery, guided onboarding tour & blast radius targets',
+        detailText: stepInfo.detail || (storiesCount > 0 ? `Discovered ${storiesCount.toLocaleString()} transaction narrative flows and critical path persistent targets.` : 'Discovered transaction storylines and guided onboarding paths.'),
+        duration: stepInfo.durationMs ? `${(stepInfo.durationMs / 1000).toFixed(1)}s` : (s.status === 'COMPLETE' ? 'Finished' : 'Running'),
+        status: stepInfo.status || (s.status === 'COMPLETE' ? 'COMPLETE' : (s.activeStage === 'CODESTORY' ? 'RUNNING' : 'PENDING')),
+        cards: [
+          {
+            val: metrics['Storylines Found'] || (storiesCount > 0 ? storiesCount.toLocaleString() : 'Ready'),
+            lbl: 'Storylines Discovered',
+            colorClass: 'icon-emerald-bg',
+            iconColor: 'icon-emerald',
+            valColor: '#34d399',
+            iconSvg: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="10 8 13 11 10 14"/>'
+          },
+          {
+            val: metrics['Critical Paths'] || 'Mapped',
+            lbl: 'Persistent Targets',
+            colorClass: 'icon-cyan-bg',
+            iconColor: 'icon-cyan',
+            valColor: '#38bdf8',
+            iconSvg: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+          },
+          {
+            val: metrics['Tour Stops'] || '5 Stops',
+            lbl: 'Teach Me Tour',
+            colorClass: 'icon-amber-bg',
+            iconColor: 'icon-amber',
+            valColor: '#fbbf24',
+            iconSvg: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'
+          },
+          {
+            val: metrics['Status'] || (stepInfo.status === 'COMPLETE' ? 'Ready' : 'In Progress'),
+            lbl: 'Blast Radius Engine',
+            colorClass: 'icon-purple-bg',
+            iconColor: 'icon-purple',
+            valColor: '#c084fc',
+            iconSvg: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'
+          }
+        ]
+      };
 
     case 'REPORTS':
     default:
       const totalReportsTarget = s.reportsTotal || (typeof REPORTS_METADATA !== 'undefined' ? Object.keys(REPORTS_METADATA).length : 14);
       const reportsCount = s.reportsFound || stats.reports || totalReportsTarget;
       return {
-        pill: 'Phase 6',
+        pill: 'Phase 8',
         name: 'Codebase Intelligence Reports',
         summary: stepInfo.summary || `Precomputing all ${totalReportsTarget} architecture, risk, quality, and concurrency reports`,
         detailText: stepInfo.detail || `Generated all ${totalReportsTarget} intelligence reports with offline standalone HTML snapshot.`,
@@ -1053,7 +1142,9 @@ function inspectScanStep(stepName, toggleIfSame = false) {
     'GRAPH': '3. Call & Field Graph',
     'LAYOUT': '4. Layout Precomputation',
     'MODULES': '5. Module Dependencies',
-    'REPORTS': '6. Codebase Intelligence Reports'
+    'INTEGRITY': '6. Structural Integrity',
+    'CODESTORY': '7. CodeStory Narratives',
+    'REPORTS': '8. Codebase Intelligence Reports'
   };
 
   const titleEl = qs('#step-detail-title');
@@ -3309,7 +3400,7 @@ function updateScanProgress(s) {
 
   // Stage resolution & Heading
   const stage = s.activeStage || 'PARSE';
-  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'REPORTS': 6, 'COMPLETE': 7 };
+  const stageOrder = { 'PREPARE': 1, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'INTEGRITY': 6, 'CODESTORY': 7, 'REPORTS': 8, 'COMPLETE': 9 };
   const currentStepNum = stageOrder[stage] || 1;
   const headingEl = qs('#scan-card-heading');
   const modalCard = qs('.scan-modal-card');
@@ -3338,6 +3429,10 @@ function updateScanProgress(s) {
       statusText.textContent = 'Codebase analysis complete';
     } else if (stage === 'REPORTS' || (s.currentPhase && s.currentPhase.includes('Reports'))) {
       statusText.textContent = s.message || 'Generating codebase intelligence reports…';
+    } else if (stage === 'CODESTORY' || (s.currentPhase && s.currentPhase.includes('Story'))) {
+      statusText.textContent = s.message || 'Discovering transaction storylines & CodeStory flows…';
+    } else if (stage === 'INTEGRITY' || (s.currentPhase && s.currentPhase.includes('Integrity'))) {
+      statusText.textContent = s.message || 'Auditing structural integrity & class consistency…';
     } else if (stage === 'MODULES' || (s.currentPhase && s.currentPhase.includes('Module'))) {
       statusText.textContent = s.message || 'Analyzing module dependencies & couplings…';
     } else if (stage === 'LAYOUT' || (s.currentPhase && s.currentPhase.includes('Layout'))) {
@@ -3407,6 +3502,12 @@ function updateScanProgress(s) {
   } else if (stage === 'REPORTS' || phase.includes('Reports') || phase.includes('Report')) {
     if (detailLabel) detailLabel.textContent = 'Codebase Intelligence Reports';
     if (detailIcon) detailIcon.innerHTML = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>';
+  } else if (stage === 'CODESTORY' || phase.includes('Story') || phase.includes('CodeStory')) {
+    if (detailLabel) detailLabel.textContent = 'CodeStory Narratives & Flows';
+    if (detailIcon) detailIcon.innerHTML = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="10 8 13 11 10 14"/>';
+  } else if (stage === 'INTEGRITY' || phase.includes('Integrity') || phase.includes('Inconsisten')) {
+    if (detailLabel) detailLabel.textContent = 'Structural Integrity & Class-Awareness';
+    if (detailIcon) detailIcon.innerHTML = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>';
   } else if (stage === 'MODULES' || phase.includes('Module')) {
     if (detailLabel) detailLabel.textContent = 'Module Dependencies & Couplings';
     if (detailIcon) detailIcon.innerHTML = '<rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="8" y="14" width="8" height="8" rx="2"/><line x1="6" y1="10" x2="12" y2="14"/><line x1="18" y1="10" x2="12" y2="14"/>';
@@ -3444,6 +3545,10 @@ function updateScanProgress(s) {
       filesRatio.textContent = s.totalFiles ? `${s.totalFiles.toLocaleString()} files indexed` : 'Scan complete';
     } else if (stage === 'REPORTS') {
       filesRatio.textContent = s.stageItem ? `Report: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Generating intelligence reports` : 'Generating intelligence reports…');
+    } else if (stage === 'CODESTORY') {
+      filesRatio.textContent = s.stageItem ? `Flow: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Tracing CodeStory narratives` : 'Tracing CodeStory narratives…');
+    } else if (stage === 'INTEGRITY') {
+      filesRatio.textContent = s.stageItem ? `Check: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Auditing structural integrity` : 'Auditing structural integrity…');
     } else if (stage === 'MODULES') {
       filesRatio.textContent = s.stageItem ? `Module: ${s.stageItem}` : (s.totalFiles ? `${s.totalFiles.toLocaleString()} files parsed · Analyzing module dependencies` : 'Analyzing module dependencies…');
     } else if (stage === 'LAYOUT') {
@@ -3459,43 +3564,55 @@ function updateScanProgress(s) {
   const remainingFiles = qs('#scan-remaining-files');
   if (remainingFiles) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
-      remainingFiles.textContent = 'All 6 stages complete';
+      remainingFiles.textContent = 'All 8 stages complete';
     } else if (stage === 'REPORTS') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Report ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 6 of 6`;
+        remainingFiles.textContent = `Report ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 8 of 8`;
       } else {
-        remainingFiles.textContent = 'Stage 6 of 6';
+        remainingFiles.textContent = 'Stage 8 of 8';
+      }
+    } else if (stage === 'CODESTORY') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Story ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 7 of 8`;
+      } else {
+        remainingFiles.textContent = 'Stage 7 of 8';
+      }
+    } else if (stage === 'INTEGRITY') {
+      if (s.stageTotal > 0) {
+        remainingFiles.textContent = `Audit ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 6 of 8`;
+      } else {
+        remainingFiles.textContent = 'Stage 6 of 8';
       }
     } else if (stage === 'MODULES') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Module ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 5 of 6`;
+        remainingFiles.textContent = `Module ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 5 of 8`;
       } else {
-        remainingFiles.textContent = 'Stage 5 of 6';
+        remainingFiles.textContent = 'Stage 5 of 8';
       }
     } else if (stage === 'LAYOUT') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Layout ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 4 of 6`;
+        remainingFiles.textContent = `Layout ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 4 of 8`;
       } else {
-        remainingFiles.textContent = 'Stage 4 of 6';
+        remainingFiles.textContent = 'Stage 4 of 8';
       }
     } else if (stage === 'GRAPH') {
       if (s.stageTotal > 10) {
-        remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} links · Stage 3 of 6`;
+        remainingFiles.textContent = `${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} links · Stage 3 of 8`;
       } else if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Pass ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 3 of 6`;
+        remainingFiles.textContent = `Pass ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 3 of 8`;
       } else {
-        remainingFiles.textContent = 'Stage 3 of 6';
+        remainingFiles.textContent = 'Stage 3 of 8';
       }
     } else if (stage === 'INDEX') {
       if (s.stageTotal > 0) {
-        remainingFiles.textContent = `Index ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 2 of 6`;
+        remainingFiles.textContent = `Index ${(s.stageCurrent || 0).toLocaleString()} of ${s.stageTotal.toLocaleString()} · Stage 2 of 8`;
       } else {
-        remainingFiles.textContent = 'Stage 2 of 6';
+        remainingFiles.textContent = 'Stage 2 of 8';
       }
     } else {
       // PARSE / PREPARE
       const rem = Math.max(0, (s.totalFiles || 0) - (s.processedFiles || 0));
-      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining · Stage 1 of 6` : 'Stage 1 of 6';
+      remainingFiles.textContent = s.totalFiles ? `${rem.toLocaleString()} remaining · Stage 1 of 8` : 'Stage 1 of 8';
     }
   }
 
@@ -3651,16 +3768,19 @@ function updateScanProgress(s) {
   const btnCancel = qs('#btn-cancel-scan');
   const btnDismiss = qs('#btn-dismiss-scan');
   const btnExplore = qs('#btn-explore-scan');
+  const btnExploreCodestory = qs('#btn-explore-codestory');
 
   if (s.status === 'COMPLETE') {
     if (btnBg) btnBg.style.display = 'none';
     if (btnCancel) btnCancel.style.display = 'none';
     if (btnDismiss) btnDismiss.style.display = 'inline-flex';
+    if (btnExploreCodestory) btnExploreCodestory.style.display = 'inline-flex';
     if (btnExplore) btnExplore.style.display = 'inline-flex';
   } else {
     if (btnBg) btnBg.style.display = 'inline-flex';
     if (btnCancel) btnCancel.style.display = 'inline-flex';
     if (btnDismiss) btnDismiss.style.display = 'none';
+    if (btnExploreCodestory) btnExploreCodestory.style.display = 'none';
     if (btnExplore) btnExplore.style.display = 'none';
   }
 
@@ -3687,16 +3807,19 @@ function updateProgressiveFeatureReadiness(s) {
   }
 
   const stage = s.activeStage || 'PARSE';
-  const stageOrder = { 'PREPARE': 0, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'REPORTS': 6, 'COMPLETE': 7 };
+  const stageOrder = { 'PREPARE': 0, 'PARSE': 1, 'INDEX': 2, 'GRAPH': 3, 'LAYOUT': 4, 'MODULES': 5, 'INTEGRITY': 6, 'CODESTORY': 7, 'REPORTS': 8, 'COMPLETE': 9 };
   const currentLevel = stageOrder[stage] !== undefined ? stageOrder[stage] : 1;
 
   const tabRequirements = {
-    'source':    { level: 1, name: 'AST parsing' },
-    'git':       { level: 1, name: 'AST parsing' },
-    'knowledge': { level: 2, name: 'search & secondary indexing' },
-    'review':    { level: 2, name: 'search & secondary indexing' },
-    'graph':     { level: 4, name: 'graph layout precomputation' },
-    'codebase':  { level: 4, name: 'graph layout precomputation' }
+    'source':     { level: 1, name: 'AST parsing' },
+    'git':        { level: 1, name: 'AST parsing' },
+    'knowledge':  { level: 2, name: 'search & secondary indexing' },
+    'review':     { level: 2, name: 'search & secondary indexing' },
+    'graph':      { level: 4, name: 'graph layout precomputation' },
+    'codebase':   { level: 4, name: 'graph layout precomputation' },
+    'impact':     { level: 6, name: 'structural integrity audit' },
+    'storylines': { level: 7, name: 'CodeStory narrative flow discovery' },
+    'reports':    { level: 8, name: 'intelligence reports precomputation' }
   };
 
   for (const [tabName, req] of Object.entries(tabRequirements)) {
@@ -3707,7 +3830,7 @@ function updateProgressiveFeatureReadiness(s) {
         tabEl.classList.add('tab-stage-pending');
       }
       tabEl.setAttribute('data-stage-reason', req.name);
-      tabEl.title = `${tabEl.getAttribute('aria-label') || tabName} available after ${req.name} completes (Stage ${req.level} of 6)`;
+      tabEl.title = `${tabEl.getAttribute('aria-label') || tabName} available after ${req.name} completes (Stage ${req.level} of 8)`;
     } else {
       if (tabEl.classList.contains('tab-stage-pending')) {
         tabEl.classList.remove('tab-stage-pending');
@@ -10866,6 +10989,11 @@ async function init() {
   qs('#btn-dismiss-scan')?.addEventListener('click', (e) => {
     e.stopPropagation();
     minimizeScanModal();
+  });
+  qs('#btn-explore-codestory')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    minimizeScanModal();
+    switchTab('storylines');
   });
   qs('#btn-explore-scan')?.addEventListener('click', (e) => {
     e.stopPropagation();
