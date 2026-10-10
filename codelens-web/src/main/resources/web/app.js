@@ -22003,14 +22003,28 @@ async function openCodestoryExplain(fqn) {
   }
 }
 
-function updateAiSettingsDiagnostics(provider, model) {
+function updateAiSettingsDiagnostics(provider, model, statusOverride, isError = false) {
   const statusText = qs('#ai-status-text');
+  const statusPill = qs('#ai-engine-status-pill');
   if (!statusText) return;
+
+  if (statusPill) {
+    statusPill.classList.remove('status-error', 'status-warning');
+    if (isError) {
+      statusPill.classList.add('status-error');
+    }
+  }
+
+  if (statusOverride) {
+    statusText.textContent = statusOverride;
+    return;
+  }
+
   const p = (provider || 'local').toLowerCase();
   if (p === 'ollama') {
-    statusText.textContent = `Ollama (${model || 'llama3'}) Active`;
+    statusText.textContent = `Ollama (${model || 'llama3'}) Selected`;
   } else if (p === 'openai') {
-    statusText.textContent = `OpenAI (${model || 'gpt-4o-mini'}) Active`;
+    statusText.textContent = `OpenAI (${model || 'gpt-4o-mini'}) Selected`;
   } else {
     statusText.textContent = 'Local Synthesizer Active';
   }
@@ -22021,11 +22035,14 @@ async function loadAiConfigToSettings() {
   const provEl = qs('#set-ai-provider');
   const modEl = qs('#set-ai-model');
   const endEl = qs('#set-ai-endpoint');
+  const keyEl = qs('#set-ai-apikey');
   if (cfg) {
     if (provEl && cfg.provider) provEl.value = cfg.provider;
     if (modEl && cfg.model) modEl.value = cfg.model;
     if (endEl && cfg.endpoint) endEl.value = cfg.endpoint;
-    updateAiSettingsDiagnostics(cfg.provider, cfg.model);
+    const pName = cfg.provider === 'ollama' ? 'Ollama' : (cfg.provider === 'openai' ? 'OpenAI' : 'Local Synthesizer');
+    const label = cfg.provider === 'local' ? 'Local Synthesizer Active' : `${pName} (${cfg.model || 'active'}) Active`;
+    updateAiSettingsDiagnostics(cfg.provider, cfg.model, label, false);
   }
 
   if (provEl && !provEl.dataset.wired) {
@@ -22043,27 +22060,60 @@ async function loadAiConfigToSettings() {
     });
   }
 
+  if (modEl && !modEl.dataset.wired) {
+    modEl.dataset.wired = 'true';
+    modEl.addEventListener('input', () => {
+      updateAiSettingsDiagnostics(provEl ? provEl.value : 'local', modEl.value);
+    });
+  }
+
   const testAiBtn = qs('#btn-test-ai-conn');
   if (testAiBtn && !testAiBtn.dataset.wired) {
     testAiBtn.dataset.wired = 'true';
     testAiBtn.addEventListener('click', async () => {
       const label = qs('#btn-test-ai-label');
-      const t0 = performance.now();
+      const prov = provEl ? provEl.value : 'local';
+      const mod = modEl ? modEl.value : '';
+      const endp = endEl ? endEl.value : '';
+      const key = keyEl ? keyEl.value : '';
+
       if (label) label.textContent = 'Testing…';
+      testAiBtn.disabled = true;
+
       try {
-        const res = await fetch('/api/ai/config');
-        const latency = Math.round(performance.now() - t0);
-        if (res.ok) {
-          if (label) label.textContent = `Verified (${latency}ms)`;
-          if (typeof showToast === 'function') showToast(`AI Provider connection verified (${latency}ms)`);
-          setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3500);
+        const res = await fetch('/api/ai/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: prov, model: mod, endpoint: endp, apiKey: key })
+        });
+        const data = await res.json();
+        const pTitle = prov === 'ollama' ? 'Ollama' : (prov === 'openai' ? 'OpenAI' : 'Local Synthesizer');
+
+        if (data.ok) {
+          const lat = data.latencyMs != null ? data.latencyMs : 0;
+          if (label) label.textContent = `Verified (${lat}ms)`;
+          if (typeof showToast === 'function') {
+            showToast(data.message || `${pTitle} connection verified (${lat}ms)`, 'success');
+          }
+          const diagLabel = prov === 'local' ? 'Local Synthesizer Active' : `${pTitle} (${mod || 'default'}) Verified`;
+          updateAiSettingsDiagnostics(prov, mod, diagLabel, false);
         } else {
-          if (label) label.textContent = 'Error';
-          setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3000);
+          if (label) label.textContent = 'Failed';
+          if (typeof showToast === 'function') {
+            showToast('⚠️ ' + (data.message || 'Connection test failed'), 'error', 4500);
+          }
+          const diagLabel = prov === 'local' ? 'Local Synthesizer Error' : `${pTitle} (${mod || 'default'}) Offline`;
+          updateAiSettingsDiagnostics(prov, mod, diagLabel, true);
         }
       } catch (e) {
         if (label) label.textContent = 'Failed';
-        setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3000);
+        if (typeof showToast === 'function') {
+          showToast('⚠️ Failed to run AI test: ' + (e.message || 'Network error'), 'error', 4500);
+        }
+        updateAiSettingsDiagnostics(prov, mod, 'Test Handshake Failed', true);
+      } finally {
+        testAiBtn.disabled = false;
+        setTimeout(() => { if (label) label.textContent = 'Test Connection'; }, 3500);
       }
     });
   }

@@ -25,7 +25,9 @@ public class AiGroundingServiceTest {
     }
 
     public static void main(String[] args) {
-        new AiGroundingServiceTest().testAskQuestionAndDeterministicSynthesis();
+        AiGroundingServiceTest test = new AiGroundingServiceTest();
+        test.testAskQuestionAndDeterministicSynthesis();
+        test.testConnectionHandshake();
         System.out.println("AiGroundingServiceTest: ALL CHECKS PASSED!");
     }
 
@@ -81,6 +83,46 @@ public class AiGroundingServiceTest {
         assertEquals(1, exp.incomingCallersCount, "Callers count check");
         assertEquals(1, exp.outgoingCallsCount, "Callees count check");
         assertTrue(exp.detailedNarrative.contains("Inbound Coupling"), "Narrative should mention Inbound Coupling");
+    }
+
+    public void testConnectionHandshake() {
+        AiGroundingService ai = new AiGroundingService();
+
+        // 1. Local provider handshake
+        AiGroundingService.ConnectionTestResult localRes = ai.testConnection("local", null, null, null);
+        assertNotNull(localRes, "Local test result must not be null");
+        assertTrue(localRes.success, "Local provider test should succeed");
+        assertEquals("local", localRes.provider, "Provider should be local");
+        assertTrue(localRes.message.contains("Local Fact Synthesizer"), "Message should mention local synthesizer");
+        assertTrue(localRes.latencyMs >= 0, "Latency should be non-negative");
+
+        // 2. Ollama on unreachable port
+        AiGroundingService.ConnectionTestResult ollamaFail = ai.testConnection("ollama", "llama3", "http://localhost:19999", null);
+        assertNotNull(ollamaFail, "Ollama fail result must not be null");
+        assertTrue(!ollamaFail.success, "Ollama on unreachable port should fail");
+        assertEquals("ollama", ollamaFail.provider, "Provider should be ollama");
+        assertTrue(ollamaFail.message.toLowerCase().contains("failed") || ollamaFail.message.toLowerCase().contains("refused"),
+            "Message should indicate connection failure: " + ollamaFail.message);
+
+        // 3. OpenAI missing API key
+        AiGroundingService.ConnectionTestResult openAiNoKey = ai.testConnection("openai", "gpt-4o-mini", null, "");
+        assertNotNull(openAiNoKey, "OpenAI no key result must not be null");
+        assertTrue(!openAiNoKey.success, "OpenAI without API key should fail");
+        assertEquals("openai", openAiNoKey.provider, "Provider should be openai");
+        assertTrue(openAiNoKey.message.contains("API key is required"),
+            "Message should indicate API key required: " + openAiNoKey.message);
+
+        // 4. OpenAI on unreachable custom endpoint
+        AiGroundingService.ConnectionTestResult openAiFail = ai.testConnection("openai", "gpt-4o-mini", "http://localhost:19999", "sk-mock-key");
+        assertNotNull(openAiFail, "OpenAI unreachable result must not be null");
+        assertTrue(!openAiFail.success, "OpenAI unreachable should fail");
+        assertEquals("openai", openAiFail.provider, "Provider should be openai");
+
+        // 5. Unknown provider
+        AiGroundingService.ConnectionTestResult unknown = ai.testConnection("unsupported-engine", null, null, null);
+        assertNotNull(unknown, "Unknown provider result must not be null");
+        assertTrue(!unknown.success, "Unknown provider should fail");
+        assertTrue(unknown.message.contains("Unrecognized"), "Message should mention Unrecognized provider");
     }
 
     private CodeType createType(String fqn, String simpleName, String file, int line) {

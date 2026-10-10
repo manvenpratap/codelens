@@ -1420,6 +1420,8 @@ public class CodeLensServer {
         app.post("/api/ai/explain",                 this::aiExplain);
         app.get("/api/ai/config",                   this::getAiConfig);
         app.post("/api/ai/config",                  this::saveAiConfig);
+        app.get("/api/ai/test",                     this::testAiConnection);
+        app.post("/api/ai/test",                    this::testAiConnection);
 
         // ── Fields ────────────────────────────────────────────────────────────
         app.get("/api/fields/{id}",          this::getField);
@@ -4620,6 +4622,32 @@ public class CodeLensServer {
             ctx.json(Map.of("status", "ok", "provider", aiGroundingService.getProvider(), "model", aiGroundingService.getModel()));
         } catch (Exception e) {
             ctx.status(400).json(Map.of("error", "Failed to update AI config: " + e.getMessage()));
+        }
+    }
+
+    private void testAiConnection(Context ctx) {
+        try {
+            String bodyStr = ctx.body();
+            Map<?, ?> body = (bodyStr != null && !bodyStr.isBlank()) ? ctx.bodyAsClass(Map.class) : Collections.emptyMap();
+            String provider = body.get("provider") != null ? body.get("provider").toString() : ctx.queryParam("provider");
+            String model = body.get("model") != null ? body.get("model").toString() : ctx.queryParam("model");
+            String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : ctx.queryParam("endpoint");
+            String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : ctx.queryParam("apiKey");
+
+            AiGroundingService.ConnectionTestResult res = aiGroundingService.testConnection(provider, model, endpoint, apiKey);
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", res.success);
+            resp.put("provider", res.provider);
+            resp.put("message", res.message);
+            resp.put("latencyMs", res.latencyMs);
+            ctx.json(resp);
+        } catch (Exception e) {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", false);
+            resp.put("provider", "unknown");
+            resp.put("message", "Connection test error: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            resp.put("latencyMs", 0);
+            ctx.json(resp);
         }
     }
 

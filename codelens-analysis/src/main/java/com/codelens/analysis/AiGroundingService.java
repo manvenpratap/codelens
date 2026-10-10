@@ -124,6 +124,134 @@ public class AiGroundingService {
         public String detailedNarrative;
     }
 
+    public static class ConnectionTestResult {
+        public boolean success;
+        public String provider;
+        public String message;
+        public long latencyMs;
+
+        public ConnectionTestResult() {}
+        public ConnectionTestResult(boolean success, String provider, String message, long latencyMs) {
+            this.success = success;
+            this.provider = provider;
+            this.message = message;
+            this.latencyMs = latencyMs;
+        }
+    }
+
+    /**
+     * Executes a live handshake test against the designated provider endpoint.
+     */
+    public ConnectionTestResult testConnection(String prov, String mod, String endp, String key) {
+        long t0 = System.currentTimeMillis();
+        String p = (prov != null && !prov.isBlank()) ? prov.toLowerCase(Locale.ROOT).trim() : this.provider;
+        String targetEndpoint = (endp != null && !endp.isBlank()) ? endp.trim() : this.endpoint;
+        String targetKey = (key != null && !key.isBlank()) ? key.trim() : (this.apiKey != null ? this.apiKey : "");
+        String targetModel = (mod != null && !mod.isBlank()) ? mod.trim() : this.model;
+
+        if ("local".equals(p)) {
+            long latency = Math.max(1, System.currentTimeMillis() - t0);
+            return new ConnectionTestResult(true, "local", "Local Fact Synthesizer is active and ready (100% offline)", latency);
+        }
+
+        if ("ollama".equals(p)) {
+            try {
+                String base = targetEndpoint;
+                if (base == null || base.isBlank() || base.contains("api.openai.com")) {
+                    base = "http://localhost:11434";
+                }
+                if (base.contains("/api/")) {
+                    base = base.substring(0, base.indexOf("/api/"));
+                }
+                base = base.replaceAll("/+$", "");
+                String tagsUrl = base + "/api/tags";
+
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(tagsUrl))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                long latency = System.currentTimeMillis() - t0;
+
+                if (resp.statusCode() == 200) {
+                    String body = resp.body() != null ? resp.body() : "";
+                    if (!targetModel.isBlank()) {
+                        String cleanTarget = targetModel.toLowerCase(Locale.ROOT);
+                        boolean found = body.toLowerCase(Locale.ROOT).contains("\"name\":\"" + cleanTarget + "\"")
+                                     || body.toLowerCase(Locale.ROOT).contains("\"name\":\"" + cleanTarget + ":latest\"")
+                                     || body.toLowerCase(Locale.ROOT).contains("\"model\":\"" + cleanTarget + "\"");
+                        if (found) {
+                            return new ConnectionTestResult(true, "ollama", "Connected to Ollama · Model '" + targetModel + "' verified (" + latency + "ms)", latency);
+                        } else {
+                            List<String> installed = new ArrayList<>();
+                            Matcher m = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+                            while (m.find() && installed.size() < 3) {
+                                installed.add(m.group(1));
+                            }
+                            String avail = installed.isEmpty() ? "none" : String.join(", ", installed);
+                            return new ConnectionTestResult(false, "ollama", "Ollama is running, but model '" + targetModel + "' is not installed (Found: " + avail + "). Run 'ollama pull " + targetModel + "'.", latency);
+                        }
+                    }
+                    return new ConnectionTestResult(true, "ollama", "Connected to Ollama at " + base + " (" + latency + "ms)", latency);
+                } else {
+                    return new ConnectionTestResult(false, "ollama", "Ollama responded with HTTP " + resp.statusCode() + " on " + tagsUrl, latency);
+                }
+            } catch (Exception e) {
+                long latency = System.currentTimeMillis() - t0;
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                return new ConnectionTestResult(false, "ollama", "Ollama connection failed at " + targetEndpoint + " (" + msg + ")", latency);
+            }
+        }
+
+        if ("openai".equals(p)) {
+            if (targetKey.isBlank()) {
+                return new ConnectionTestResult(false, "openai", "API key is required for OpenAI provider. Please enter a valid API key.", 0);
+            }
+            try {
+                String testUrl = targetEndpoint;
+                if (testUrl == null || testUrl.isBlank() || testUrl.contains("localhost:11434") || testUrl.contains("/generate")) {
+                    testUrl = "https://api.openai.com/v1/models";
+                } else if (testUrl.endsWith("/chat/completions")) {
+                    testUrl = testUrl.substring(0, testUrl.length() - "/chat/completions".length()) + "/models";
+                } else if (testUrl.endsWith("/completions")) {
+                    testUrl = testUrl.substring(0, testUrl.length() - "/completions".length()) + "/models";
+                } else if (!testUrl.contains("/models")) {
+                    testUrl = testUrl.replaceAll("/+$", "") + "/models";
+                }
+
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(testUrl))
+                    .timeout(Duration.ofSeconds(4))
+                    .header("Authorization", "Bearer " + targetKey)
+                    .GET()
+                    .build();
+
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                long latency = System.currentTimeMillis() - t0;
+
+                if (resp.statusCode() == 200) {
+                    return new ConnectionTestResult(true, "openai", "OpenAI connection & credentials verified · Model '" + targetModel + "' (" + latency + "ms)", latency);
+                } else if (resp.statusCode() == 401) {
+                    return new ConnectionTestResult(false, "openai", "OpenAI authentication failed: Invalid API key (HTTP 401 Unauthorized)", latency);
+                } else if (resp.statusCode() == 403) {
+                    return new ConnectionTestResult(false, "openai", "OpenAI access denied (HTTP 403 Forbidden)", latency);
+                } else if (resp.statusCode() == 429) {
+                    return new ConnectionTestResult(false, "openai", "OpenAI rate limit or quota exceeded (HTTP 429)", latency);
+                } else {
+                    return new ConnectionTestResult(false, "openai", "OpenAI endpoint returned HTTP " + resp.statusCode() + " on " + testUrl, latency);
+                }
+            } catch (Exception e) {
+                long latency = System.currentTimeMillis() - t0;
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                return new ConnectionTestResult(false, "openai", "Failed to connect to OpenAI endpoint: " + msg, latency);
+            }
+        }
+
+        return new ConnectionTestResult(false, p, "Unrecognized AI provider: " + p, 0);
+    }
+
     /**
      * Answers a natural language developer query grounded strictly in AST & call graph facts.
      */

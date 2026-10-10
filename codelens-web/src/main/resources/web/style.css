@@ -11181,6 +11181,18 @@ body.theme-light .guide-badge-pill {
   white-space: nowrap;
 }
 
+.ai-status-pill.status-error {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(244, 63, 94, 0.35);
+  color: var(--rose, #f43f5e);
+}
+
+.ai-status-pill.status-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: var(--amber, #f59e0b);
+}
+
 .ai-status-pill .status-dot {
   width: 7px;
   height: 7px;
@@ -12029,6 +12041,18 @@ body[data-theme="light"] .ai-status-pill {
   border: 1px solid #a7f3d0;
   color: #047857;
   border-radius: 9999px;
+}
+body.theme-light .ai-status-pill.status-error,
+body[data-theme="light"] .ai-status-pill.status-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #e11d48;
+}
+body.theme-light .ai-status-pill.status-warning,
+body[data-theme="light"] .ai-status-pill.status-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #d97706;
 }
 body.theme-light .ai-chip,
 body[data-theme="light"] .ai-chip {
@@ -24159,6 +24183,18 @@ body.theme-swiss .ai-status-pill {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+}
+
+body.theme-swiss .ai-status-pill.status-error {
+  background: rgba(235, 0, 40, 0.15);
+  border-color: #eb0028;
+  color: #eb0028;
+}
+
+body.theme-swiss .ai-status-pill.status-warning {
+  background: rgba(255, 170, 0, 0.15);
+  border-color: #ffaa00;
+  color: #ffaa00;
 }
 
 body.theme-swiss .ai-chip {
