@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -104,53 +105,75 @@ public class GitBlameService {
 
             log.info("Starting parallel Git blame across {} source files…", totalFiles);
 
-            // ── Step 3: Parallel blame execution across CPU cores ────────────
-            workItems.parallelStream().forEach(item -> {
-                String fileName = (item.sourceFile != null) ? new File(item.sourceFile).getName() : "unknown";
-                try (Repository threadRepo = openRepo(repoRoot);
-                     Git threadGit = new Git(threadRepo)) {
-
-                    if (item.sourceFile == null) return;
-                    String relPath = repoRoot.toPath()
-                        .relativize(Paths.get(item.sourceFile).toAbsolutePath())
-                        .toString()
-                        .replace(File.separatorChar, '/');
-
-                    int count = globalCommitCounts.getOrDefault(relPath, 1);
-
-                    BlameCommand blameCmd = threadGit.blame()
-                        .setFilePath(relPath)
-                        .setFollowFileRenames(false); // Fast path: avoid expensive full-history rename matrix
-
-                    BlameResult blame = blameCmd.call();
-                    if (blame != null) {
-                        blame.computeAll();
-
-                        for (CodeType t : item.types) {
-                            if (t == null || t.getFqn() == null) continue;
-                            GitMeta m = buildMeta(t.getFqn(), t.getStartLine(), t.getEndLine(), blame, count);
-                            if (m != null) allMeta.add(m);
-                        }
-                        for (CodeMethod method : item.methods) {
-                            if (method == null || method.getFqn() == null) continue;
-                            GitMeta m = buildMeta(method.getFqn(), method.getStartLine(), method.getEndLine(), blame, count);
-                            if (m != null) allMeta.add(m);
-                        }
-                        for (CodeField f : item.fields) {
-                            if (f == null || f.getFqn() == null) continue;
-                            GitMeta m = buildMeta(f.getFqn(), f.getStartLine(), f.getStartLine(), blame, count);
-                            if (m != null) allMeta.add(m);
-                        }
-                    }
-                } catch (Throwable e) {
-                    log.debug("Blame failed for {}: {}", item.sourceFile, e.getMessage());
-                } finally {
-                    int done = processedCount.incrementAndGet();
-                    if (progress != null) {
-                        progress.onProgress(done, totalFiles, fileName);
-                    }
-                }
+            // ── Step 3: Parallel blame execution across isolated worker pool ────────────
+            int blameThreads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors()));
+            ExecutorService blamePool = Executors.newFixedThreadPool(blameThreads, r -> {
+                Thread t = new Thread(r, "codelens-git-blame");
+                t.setDaemon(true);
+                return t;
             });
+
+            try {
+                blamePool.invokeAll(workItems.stream().map(item -> (Callable<Void>) () -> {
+                    String fileName = (item.sourceFile != null) ? new File(item.sourceFile).getName() : "unknown";
+                    try (Repository threadRepo = openRepo(repoRoot);
+                         Git threadGit = new Git(threadRepo)) {
+
+                        if (item.sourceFile == null) return null;
+                        String relPath = repoRoot.toPath()
+                            .relativize(Paths.get(item.sourceFile).toAbsolutePath())
+                            .toString()
+                            .replace(File.separatorChar, '/');
+
+                        int count = globalCommitCounts.getOrDefault(relPath, 1);
+
+                        BlameCommand blameCmd = threadGit.blame()
+                            .setFilePath(relPath)
+                            .setFollowFileRenames(false); // Fast path: avoid expensive full-history rename matrix
+
+                        BlameResult blame = blameCmd.call();
+                        if (blame != null) {
+                            blame.computeAll();
+
+                            for (CodeType t : item.types) {
+                                if (t == null || t.getFqn() == null) continue;
+                                GitMeta m = buildMeta(t.getFqn(), t.getStartLine(), t.getEndLine(), blame, count);
+                                if (m != null) allMeta.add(m);
+                            }
+                            for (CodeMethod method : item.methods) {
+                                if (method == null || method.getFqn() == null) continue;
+                                GitMeta m = buildMeta(method.getFqn(), method.getStartLine(), method.getEndLine(), blame, count);
+                                if (m != null) allMeta.add(m);
+                            }
+                            for (CodeField f : item.fields) {
+                                if (f == null || f.getFqn() == null) continue;
+                                GitMeta m = buildMeta(f.getFqn(), f.getStartLine(), f.getStartLine(), blame, count);
+                                if (m != null) allMeta.add(m);
+                            }
+                        }
+                    } catch (Throwable e) {
+                        log.debug("Blame failed for {}: {}", item.sourceFile, e.getMessage());
+                    } finally {
+                        int done = processedCount.incrementAndGet();
+                        if (progress != null) {
+                            progress.onProgress(done, totalFiles, fileName);
+                        }
+                    }
+                    return null;
+                }).toList());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } finally {
+                blamePool.shutdown();
+                try {
+                    if (!blamePool.awaitTermination(60, TimeUnit.SECONDS)) {
+                        blamePool.shutdownNow();
+                    }
+                } catch (InterruptedException ie) {
+                    blamePool.shutdownNow();
+                    Thread.currentThread().interrupt();
+                }
+            }
 
             log.info("Git annotation complete in {}ms: {} entities annotated across {} files",
                 (System.currentTimeMillis() - startTime), allMeta.size(), totalFiles);

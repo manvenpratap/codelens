@@ -96,7 +96,10 @@ public class LuceneService {
         });
         IndexWriterConfig cfg = new IndexWriterConfig(analyzer);
         cfg.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-        cfg.setRAMBufferSizeMB(256.0);
+        long maxMem = Runtime.getRuntime().maxMemory();
+        // Dynamic Lucene RAM buffer: 10% of max heap, clamped between 32MB and 256MB
+        double ramBufferMb = Math.max(32.0, Math.min(256.0, (maxMem * 0.10) / (1024.0 * 1024.0)));
+        cfg.setRAMBufferSizeMB(ramBufferMb);
         writer    = new IndexWriter(directory, cfg);
         searcherManager = new SearcherManager(writer, true, true, new SearcherFactory());
         log.info("Lucene index initialised at {} with SearcherManager", indexDir);

@@ -5,7 +5,7 @@ package com.codelens.core.model;
  * Polled by the UI every second while status == SCANNING.
  */
 public class ScanProgress {
-    public enum Status { IDLE, SCANNING, COMPLETE, ERROR }
+    public enum Status { IDLE, SCANNING, COMPLETE, ERROR, CANCELLED }
 
     private Status status = Status.IDLE;
     private String sourcePath;

@@ -53,17 +53,26 @@ public class DatabaseManager {
     // Lifecycle
     // ─────────────────────────────────────────────────────────────────────────
 
+    public static int calculateDefaultCacheSizeKb() {
+        long maxMem = Runtime.getRuntime().maxMemory();
+        // Dynamic: allocate ~15% of max JVM heap to H2 cache, clamped between 32MB (32768 KB) and 512MB (524288 KB)
+        long targetKb = (long) ((maxMem * 0.15) / 1024L);
+        return (int) Math.max(32768L, Math.min(524288L, targetKb));
+    }
+
     private HikariConfig createHikariConfig() {
         HikariConfig cfg = new HikariConfig();
         // DB_CLOSE_DELAY=-1: keep H2 alive as long as the JVM runs.
-        // CACHE_SIZE=524288 (512MB cache), PAGE_SIZE=4096 (standard B-Tree page size).
+        // Dynamic CACHE_SIZE scaled to JVM heap; PAGE_SIZE=4096 (standard B-Tree page size).
         // COMPRESS=TRUE: enable page compression (4x-5x disk reduction for text/FQNs).
         // AUTO_COMPACT_FILL_RATE=90: enable active MVStore chunk compaction and space reuse.
         // RETENTION_TIME=45000: retain page versions for 45s so concurrent readers never hit reclaimed pages during bulk commits.
         // Note: DEFRAG_ALWAYS=TRUE is intentionally omitted because it forces full-file disk rewrite on checkpoints, stalling bulk scans.
         // LOCK_TIMEOUT=120000: 120s timeout to handle heavy bulk indexing gracefully without SQLState 57014.
+        int defaultCacheKb = calculateDefaultCacheSizeKb();
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
-                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=120000;CACHE_SIZE=524288;PAGE_SIZE=4096;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=45000;TRACE_LEVEL_FILE=0");
+                     + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=120000;CACHE_SIZE=" + defaultCacheKb
+                     + ";PAGE_SIZE=4096;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=45000;TRACE_LEVEL_FILE=0");
         cfg.setUsername("sa");
         cfg.setPassword("");
         cfg.setMaximumPoolSize(32);
@@ -140,12 +149,14 @@ public class DatabaseManager {
      * Called during heap pressure auto-recovery to release up to hundreds of MBs.
      */
     public boolean trimCache(int targetCacheSizeKb) {
-        if (dataSource == null || dataSource.isClosed() || bulkLoadInProgress) return false;
+        if (dataSource == null || dataSource.isClosed()) return false;
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("SET CACHE_SIZE " + Math.max(8192, targetCacheSizeKb));
-            stmt.execute("CHECKPOINT");
-            log.info("H2 database cache trimmed to {} KB and checkpointed", targetCacheSizeKb);
+            if (!bulkLoadInProgress) {
+                stmt.execute("CHECKPOINT");
+            }
+            log.info("H2 database cache trimmed to {} KB{}", targetCacheSizeKb, bulkLoadInProgress ? " (checkpoint deferred for active bulk load)" : " and checkpointed");
             return true;
         } catch (Exception e) {
             log.warn("Failed to trim H2 database cache: {}", e.getMessage());
@@ -154,14 +165,15 @@ public class DatabaseManager {
     }
 
     /**
-     * Restore default H2 database cache size (512MB) after memory pressure subsides.
+     * Restore default dynamic H2 database cache size after memory pressure subsides.
      */
     public boolean restoreDefaultCache() {
         if (dataSource == null || dataSource.isClosed()) return false;
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
-            stmt.execute("SET CACHE_SIZE 524288");
-            log.info("Restored default H2 database cache size (512MB)");
+            int defaultCacheKb = calculateDefaultCacheSizeKb();
+            stmt.execute("SET CACHE_SIZE " + defaultCacheKb);
+            log.info("Restored default H2 database cache size ({} KB)", defaultCacheKb);
             return true;
         } catch (Exception e) {
             log.warn("Failed to restore default H2 database cache: {}", e.getMessage());
@@ -1079,9 +1091,15 @@ public class DatabaseManager {
             if (t.getId() == threadId && t.isAlive()) {
                 for (StackTraceElement ste : entry.getValue()) {
                     String cn = ste.getClassName();
+                    String mn = ste.getMethodName();
+                    if (cn.contains("DatabaseManager") && (mn.contains("checkAndRecover") || mn.contains("sweep"))) {
+                        continue;
+                    }
+                    if (cn.contains("Test")) {
+                        continue;
+                    }
                     if (cn.contains("org.h2") || cn.contains("java.sql") || cn.contains("Hikari")
-                        || cn.contains("com.codelens.storage") || cn.contains("JavaSourceScanner")
-                        || cn.contains("runScan") || cn.contains("runIncrementalScan")) {
+                        || (bulkLoadInProgress && (cn.contains("JavaSourceScanner") || cn.contains("runScan") || cn.contains("runIncrementalScan")))) {
                         return true;
                     }
                 }
@@ -1194,7 +1212,7 @@ public class DatabaseManager {
             Thread t = Thread.currentThread();
             this.threadId = t.getId();
             this.threadName = t.getName();
-            this.allocationStack = t.getStackTrace();
+            this.allocationStack = null; // ponytail: allocationStack = null; ceiling: leak reports log threadName instead of call-site stack trace; upgrade: populate stack if -Dcodelens.db.traceLease=true
         }
 
         public void touch() {
@@ -1250,7 +1268,7 @@ public class DatabaseManager {
         }
 
         public String getAllocationSite() {
-            if (allocationStack == null) return "Unknown";
+            if (allocationStack == null) return threadName + " (thread-" + threadId + ")";
             for (StackTraceElement elem : allocationStack) {
                 String cls = elem.getClassName();
                 if (!cls.startsWith("com.codelens.storage.DatabaseManager") &&
@@ -1360,32 +1378,7 @@ public class DatabaseManager {
                 (proxy, m, mArgs) -> {
                     lease.beginJdbcCall();
                     try {
-                        Object res = m.invoke(rawStmt, mArgs);
-                        if (res instanceof ResultSet) {
-                            return wrapResultSet((ResultSet) res, lease);
-                        }
-                        return res;
-                    } catch (java.lang.reflect.InvocationTargetException ite) {
-                        Throwable t = ite.getTargetException();
-                        if (t instanceof SQLException) throw (SQLException) t;
-                        if (t instanceof RuntimeException) throw (RuntimeException) t;
-                        if (t instanceof Error) throw (Error) t;
-                        throw new SQLException(t);
-                    } finally {
-                        lease.endJdbcCall();
-                    }
-                }
-            );
-        }
-
-        private ResultSet wrapResultSet(ResultSet rawRs, ConnectionLease lease) {
-            return (ResultSet) java.lang.reflect.Proxy.newProxyInstance(
-                ResultSet.class.getClassLoader(),
-                new Class<?>[]{ ResultSet.class },
-                (proxy, m, mArgs) -> {
-                    lease.beginJdbcCall();
-                    try {
-                        return m.invoke(rawRs, mArgs);
+                        return m.invoke(rawStmt, mArgs); // ponytail: raw ResultSet; ceiling: per-row rs.next() time not tracked in lease timer; upgrade: wrap ResultSet when -Dcodelens.db.traceRowFetch=true
                     } catch (java.lang.reflect.InvocationTargetException ite) {
                         Throwable t = ite.getTargetException();
                         if (t instanceof SQLException) throw (SQLException) t;

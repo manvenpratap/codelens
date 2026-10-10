@@ -988,6 +988,33 @@ public class EntityDao {
         return list;
     }
 
+    public int countMethods() throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM methods")) {
+            ps.setQueryTimeout(120);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    public int streamMethodFqns(java.util.function.Consumer<String> consumer) throws SQLException {
+        if (consumer == null) return 0;
+        int count = 0;
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT fqn FROM methods")) {
+            ps.setQueryTimeout(120);
+            ps.setFetchSize(5000);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    consumer.accept(rs.getString("fqn"));
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     // =========================================================================
     // RELATIONSHIPS
     // =========================================================================

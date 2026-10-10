@@ -1469,21 +1469,60 @@
     >
       <div class="kb-help-bar">
         <div class="kb-help-left">
-          <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <span>Cyclomatic Complexity (CC):</span>
+          <span class="kb-help-legend-badge">
+            <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Complexity (CC)</span>
+          </span>
           <div class="kb-help-pills">
-            <span class="cc-pill cc-low" title="Low risk method (CC 1-4)">CC 1–4 Low</span>
-            <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)">CC 5–10 Med</span>
-            <span class="cc-pill cc-high" title="High risk method (CC 11+)">CC 11+ High</span>
+            <span class="cc-pill cc-low" title="Low risk method (CC 1-4)"><span class="cc-dot cc-dot-low"></span> CC 1–4 Low</span>
+            <span class="cc-pill cc-med" title="Moderate complexity method (CC 5-10)"><span class="cc-dot cc-dot-med"></span> CC 5–10 Med</span>
+            <span class="cc-pill cc-high" title="High risk method (CC 11+)"><span class="cc-dot cc-dot-high"></span> CC 11+ High</span>
           </div>
         </div>
       </div>
-      <div class="kb-empty-container">
-        <div class="kb-empty-icon">
+      <div class="kb-empty-container kb-empty-landing" id="kb-empty-state">
+        <div class="kb-empty-icon-hero">
           <svg class="svg-icon icon-indigo icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </div>
-        <div class="kb-empty-title">Knowledge Base Explorer</div>
-        <div class="kb-empty-desc">Select a class, record, interface, or package from the sidebar explorer to inspect its architecture, fields, methods, and complexity metrics.</div>
+        <h2 class="kb-empty-title">Knowledge Base Explorer</h2>
+        <p class="kb-empty-desc">Inspect repository architecture, field mutations, method signatures, and cyclomatic complexity directly from the AST model.</p>
+        <div class="kb-empty-actions">
+          <button id="btn-kb-empty-explore" class="empty-action-pill primary" type="button" title="Select and inspect first high-impact class">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2-5.5 9.5h11L12 2z"/><path d="M12 22V12"/></svg>
+            <span>Explore High-Impact Classes</span>
+          </button>
+          <button id="btn-kb-empty-search" class="empty-action-pill" type="button" title="Quick Search across types, methods, fields (⌘K)">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search Codebase (⌘K)</span>
+          </button>
+          <button id="btn-kb-empty-cp" class="empty-action-pill" type="button" title="Trace critical paths across services">
+            <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <span>Critical Path Analyzer</span>
+          </button>
+        </div>
+        <div class="kb-empty-features-grid">
+          <div class="kb-feature-chip">
+            <span class="kb-feature-icon">🏛️</span>
+            <div class="kb-feature-text">
+              <strong>Hierarchy &amp; Modularity</strong>
+              <span>Extends, implements, and package boundaries</span>
+            </div>
+          </div>
+          <div class="kb-feature-chip">
+            <span class="kb-feature-icon">⚡</span>
+            <div class="kb-feature-text">
+              <strong>Cyclomatic CC &amp; Hotspots</strong>
+              <span>Decision points, loops, and cognitive complexity</span>
+            </div>
+          </div>
+          <div class="kb-feature-chip">
+            <span class="kb-feature-icon">🔗</span>
+            <div class="kb-feature-text">
+              <strong>Field Propagation Chains</strong>
+              <span>Writer methods, callers, and blast cascades</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section><!-- /#knowledge-view -->
 
@@ -2466,6 +2505,16 @@
       </div>
       <h3 class="detail-empty-title">Entity Inspector</h3>
       <p class="detail-empty-text">Select any class, interface, method, or field to inspect its signatures, hierarchy, complexity, and blast radius.</p>
+      <div class="detail-empty-actions">
+        <button id="btn-inspector-empty-explore" class="empty-action-pill primary" type="button" title="Select and inspect first high-impact class">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2-5.5 9.5h11L12 2z"/><path d="M12 22V12"/></svg>
+          <span>Explore Classes</span>
+        </button>
+        <button id="btn-inspector-empty-search" class="empty-action-pill" type="button" title="Quick Search across all entities (⌘K)">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span>Quick Search</span>
+        </button>
+      </div>
       <div class="detail-empty-hints">
         <span class="detail-hint-pill"><kbd>⌘K</kbd> Quick Search</span>
         <span class="detail-hint-pill"><kbd>[</kbd> Toggle Explorer</span>
@@ -2519,7 +2568,7 @@
       <div class="guide-header-search-wrap">
         <div class="guide-search-box">
           <svg class="svg-icon icon-xs guide-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" id="guide-search-input" class="guide-search-input" placeholder="Search guide topics, rules, shortcuts... (Press / to focus)" autocomplete="off" spellcheck="false" />
+          <input type="text" id="guide-search-input" class="guide-search-input" placeholder="Search guide (/)..." autocomplete="off" spellcheck="false" />
           <span id="guide-search-count" class="guide-search-count" style="display:none;">0 matches</span>
           <button id="guide-search-clear" class="guide-search-clear" style="display:none;" aria-label="Clear search">&times;</button>
         </div>

@@ -544,27 +544,28 @@ class TreemapRenderer {
     ctx.clearRect(0, 0, w / dpr, h / dpr);
 
     // 1. Draw container frames (packages or classes)
+    const isLight = document.body.classList.contains('theme-light') || document.body.getAttribute('data-theme') === 'light';
     for (const c of this._containers) {
       if (c.w < 2 || c.h < 2) continue;
 
       // Container background
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+      ctx.fillStyle = isLight ? 'rgba(241, 245, 249, 0.85)' : 'rgba(15, 23, 42, 0.65)';
       ctx.globalAlpha = 1.0 * alphaMult;
       ctx.beginPath();
       this._roundRect(ctx, c.x, c.y, c.w, c.h, 6);
       ctx.fill();
 
       // Container border
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.strokeStyle = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
       // Container header bar
-      ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+      ctx.fillStyle = isLight ? 'rgba(226, 232, 240, 0.95)' : 'rgba(30, 41, 59, 0.85)';
       ctx.beginPath();
       this._roundRectTop(ctx, c.x, c.y, c.w, 24, 6);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.strokeStyle = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
       ctx.stroke();
 
       // Left accent bar on container header
@@ -576,7 +577,7 @@ class TreemapRenderer {
       }
 
       // Header label
-      ctx.fillStyle = '#cbd5e1';
+      ctx.fillStyle = isLight ? '#0f172a' : '#cbd5e1';
       ctx.font = '600 11px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
@@ -596,7 +597,7 @@ class TreemapRenderer {
 
       // Total LOC badge
       if (c.w > 120) {
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.fillStyle = isLight ? '#475569' : 'rgba(148, 163, 184, 0.7)';
         ctx.font = '400 10px "JetBrains Mono", monospace';
         ctx.textAlign = 'right';
         ctx.fillText(`${c.size} loc`, c.x + c.w - 8, c.y + 12);

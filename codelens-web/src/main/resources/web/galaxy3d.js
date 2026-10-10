@@ -700,41 +700,27 @@
       const search = document.createElement('input');
       search.type        = 'text';
       search.placeholder = 'Filter nodes...';
+      search.className   = 'city3d-search-box';
       search.value       = this._filterQuery;
-      Object.assign(search.style, {
-        background: 'rgba(2,4,10,0.9)', border: '1px solid rgba(255,255,255,0.15)',
-        color: '#f8fafc', borderRadius: '6px', padding: '4px 10px',
-        fontSize: '11px', width: '140px', outline: 'none',
-      });
+      search.style.width = '130px';
       search.addEventListener('input', e => this.setFilter(e.target.value));
       this._toolbar.appendChild(search);
 
-      const mkBtn = (label, icon, active) => {
-        const b = document.createElement('button');
-        b.innerHTML = `<span class="hud-btn-icon">${icon}</span> <span class="hud-btn-text">${label}</span>`;
-        Object.assign(b.style, {
-          background: '#02040a', border: `1px solid ${active ? '#10b981' : 'rgba(255,255,255,0.15)'}`,
-          color: active ? '#f8fafc' : '#94a3b8', borderRadius: '6px',
-          padding: '5px 10px', fontSize: '11px', cursor: 'pointer',
-        });
-        return b;
-      };
-
-      const orbitBtn = mkBtn('Orbit', '⟳', this._autoRotate);
+      const orbitBtn = document.createElement('button');
+      orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
+      orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
       orbitBtn.addEventListener('click', () => {
         this.toggleAutoRotate();
-        orbitBtn.style.borderColor = this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)';
-        orbitBtn.style.color       = this._autoRotate ? '#f8fafc'  : '#94a3b8';
+        orbitBtn.classList.toggle('active', this._autoRotate);
       });
       this._toolbar.appendChild(orbitBtn);
 
-      const planeBtn = mkBtn('Cluster Planes',
-        `<svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
-        true);
+      const planeBtn = document.createElement('button');
+      planeBtn.className = 'hud-btn' + (this._showPlanes ? ' active' : '');
+      planeBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Cluster Planes</span>';
       planeBtn.addEventListener('click', () => {
         this.togglePlanes();
-        planeBtn.style.borderColor = this._showPlanes ? '#10b981' : 'rgba(255,255,255,0.15)';
-        planeBtn.style.color       = this._showPlanes ? '#f8fafc'  : '#94a3b8';
+        planeBtn.classList.toggle('active', this._showPlanes);
       });
       this._toolbar.appendChild(planeBtn);
 
@@ -883,10 +869,17 @@
           if (arch) archHtml = `<div style="margin-top:6px;"><span class="archetype-badge" style="background:${arch.color}22;border:1px solid ${arch.color};color:${arch.color};font-size:10px;padding:2px 6px;border-radius:4px;">${arch.icon} ${arch.label} (${arch.badge})</span></div>`;
         }
 
+        const isLight = document.body.classList.contains('theme-light') || document.body.getAttribute('data-theme') === 'light';
+        const ttBg = isLight ? 'rgba(255, 255, 255, 0.96)' : '#02040a';
+        const ttText = isLight ? '#0f172a' : '#f8fafc';
+        const ttSub = isLight ? '#64748b' : '#64748b';
+        const ttBorder = isLight ? 'rgba(0, 0, 0, 0.10)' : col;
+        const ttShadow = isLight ? '0 12px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95)' : `0 8px 32px rgba(0,0,0,0.85), 0 0 20px ${col}22`;
+
         this._tooltip.innerHTML = `
-          <div style="background:#02040a;border:1px solid ${col};border-radius:8px;padding:10px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.85),0 0 20px ${col}22;">
-            <div style="font-size:12px;font-weight:700;color:#f8fafc;font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
-            <div style="font-size:11px;color:#64748b;font-family:'JetBrains Mono',monospace;margin-top:2px;">${data.package || hit.userData.pkg || ''}</div>
+          <div style="background:${ttBg};border:1px solid ${ttBorder};border-radius:8px;padding:10px 14px;box-shadow:${ttShadow};">
+            <div style="font-size:12px;font-weight:700;color:${ttText};font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
+            <div style="font-size:11px;color:${ttSub};font-family:'JetBrains Mono',monospace;margin-top:2px;">${data.package || hit.userData.pkg || ''}</div>
             <div style="font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:4px;">Kind: ${badge}</div>
             ${archHtml}
           </div>`;

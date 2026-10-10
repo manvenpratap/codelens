@@ -433,12 +433,13 @@ class SunburstRenderer {
     const hovered = this._hovered;
 
     // ── Center circle disc background ─────────────────────────────────────────
+    const isLight = document.body.classList.contains('theme-light') || document.body.getAttribute('data-theme') === 'light';
     ctx.beginPath();
     ctx.arc(cx, cy, this._innerRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+    ctx.fillStyle = isLight ? '#ffffff' : 'rgba(15, 23, 42, 0.95)';
     ctx.globalAlpha = 1.0 * alphaMult;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.strokeStyle = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.14)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 

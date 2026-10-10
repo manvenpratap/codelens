@@ -545,6 +545,11 @@ public class BackgroundTaskOrchestratorTest {
             orchestrator.submit("call-graph", taskDone::countDown);
             assertTrue(taskDone.await(3, TimeUnit.SECONDS), "Call graph should finish initially");
 
+            long deadline = System.currentTimeMillis() + 1000;
+            while (orchestrator.getTaskSnapshot("call-graph").status != BackgroundTaskOrchestrator.TaskStatus.COMPLETE && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+
             assertEquals(BackgroundTaskOrchestrator.TaskStatus.COMPLETE,
                     orchestrator.getTaskSnapshot("call-graph").status,
                     "Call graph should be COMPLETE");

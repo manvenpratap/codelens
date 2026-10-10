@@ -162,6 +162,8 @@ public class ModuleDependencyAnalyzer {
         void accept(String fromEntity, String toEntity, String kind, int sourceLine);
     }
 
+    // ponytail: uncapped touchpoints per commit a2d4399; ceiling: retained heap scales with edge count on 100k+ repos; upgrade: paginate from DB if heap-profiled under memory stress
+    // enforced by ModuleDependencyAnalyzerTest.testUncappedTouchPointsAboveFifty.
     public static final int MAX_SAMPLE_TOUCHPOINTS_PER_MODULE = Integer.MAX_VALUE;
     public static final int MAX_SAMPLE_TOUCHPOINTS_PER_CLASS_USAGE = Integer.MAX_VALUE;
 
@@ -330,6 +332,8 @@ public class ModuleDependencyAnalyzer {
 
             String srcType = ctx.getTypeForEntity(srcFqn);
             String tgtType = ctx.getTypeForEntity(tgtFqn);
+            String canonicalKind = (kind != null) ? kind.intern() : "";
+            TouchPointDetail sharedDetail = null;
 
             // Update source module deep insights
             if (isSrcProject) {
@@ -345,7 +349,8 @@ public class ModuleDependencyAnalyzer {
                         cm.totalTouchPoints++;
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
-                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
+                        cm.touchPoints.add(sharedDetail);
                     } else {
                         miSrc.totalOutboundTouchPoints++;
                         miSrc.totalTouchPoints++;
@@ -357,7 +362,8 @@ public class ModuleDependencyAnalyzer {
                         cm.totalTouchPoints++;
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
-                        cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
+                        cm.touchPoints.add(sharedDetail);
 
                         if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                             String classPairKey = srcType + "->" + tgtType;
@@ -366,7 +372,8 @@ public class ModuleDependencyAnalyzer {
                                 .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                             cus.touchPointCount++;
                             increment(cus.kinds, kind);
-                            cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                            if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
+                            cus.touchPoints.add(sharedDetail);
                         }
                     }
                 }
@@ -386,7 +393,8 @@ public class ModuleDependencyAnalyzer {
                     cm.totalTouchPoints++;
                     if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                     increment(cm.kinds, kind);
-                    cm.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                    if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
+                    cm.touchPoints.add(sharedDetail);
 
                     if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                         String classPairKey = srcType + "->" + tgtType;
@@ -395,7 +403,8 @@ public class ModuleDependencyAnalyzer {
                             .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                         cus.touchPointCount++;
                         increment(cus.kinds, kind);
-                        cus.touchPoints.add(new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, kind, line));
+                        if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
+                        cus.touchPoints.add(sharedDetail);
                     }
                 }
             }

@@ -40,12 +40,13 @@ public class ConnectionLeakAutoRecoveryTest {
 
     public static void main(String[] args) throws Exception {
         System.out.println("Running ConnectionLeakAutoRecoveryTest...");
-        testConnectionLeakAutoRecovery();
-        testManualSweepLeaksEndpoint();
+        ConnectionLeakAutoRecoveryTest runner = new ConnectionLeakAutoRecoveryTest();
+        runner.testConnectionLeakAutoRecovery();
+        runner.testManualSweepLeaksEndpoint();
         System.out.println("All ConnectionLeakAutoRecoveryTest tests passed successfully!");
     }
 
-    public static void testConnectionLeakAutoRecovery() throws Exception {
+    public void testConnectionLeakAutoRecovery() throws Exception {
         Path tempDir = Files.createTempDirectory("codelens-leak-test-");
         DatabaseManager db = new DatabaseManager(tempDir.toString());
         try {
@@ -112,7 +113,7 @@ public class ConnectionLeakAutoRecoveryTest {
         }
     }
 
-    public static void testManualSweepLeaksEndpoint() throws Exception {
+    public void testManualSweepLeaksEndpoint() throws Exception {
         Path tempDir = Files.createTempDirectory("codelens-sweep-test-");
         DatabaseManager db = new DatabaseManager(tempDir.toString());
         try {

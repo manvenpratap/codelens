@@ -2816,6 +2816,10 @@ function renderTasksPanel(procs) {
       const cleanDetail = rawDetail.replace(/\(rev=(\d{5})\d*\)/g, '(rev: $1…)');
       const badgeStatusClass = (p.status || 'idle').toLowerCase().replace(/\s+/g, '_');
 
+      const sig = `${p.status}|${pct}|${p.currentPhase}|${cleanDetail}|${p.thread}|${durSec}|${p.canKill}|${p.canRestart}`;
+      if (card.dataset.sig === sig) return;
+      card.dataset.sig = sig;
+
       card.innerHTML = `
         <div class="process-card-header">
           <div class="process-card-title-group">
@@ -3410,10 +3414,31 @@ async function reopenScanModal() {
   }
 }
 
-/** Update the progress bar and status text during an active scan. */
+let scanProgressRafId = null;
+let pendingScanProgress = null;
+
+/** Update the progress bar and status text during an active scan (rAF coalesced). */
 function updateScanProgress(s) {
   if (!s) return;
   App.lastScanProgress = s;
+  pendingScanProgress = s;
+  if (s.status === 'COMPLETE' || s.status === 'CANCELLED') {
+    if (scanProgressRafId) {
+      cancelAnimationFrame(scanProgressRafId);
+      scanProgressRafId = null;
+    }
+    renderScanProgress(s);
+    return;
+  }
+  if (scanProgressRafId) return;
+  scanProgressRafId = requestAnimationFrame(() => {
+    scanProgressRafId = null;
+    if (pendingScanProgress) renderScanProgress(pendingScanProgress);
+  });
+}
+
+function renderScanProgress(s) {
+  if (!s) return;
   const pct = (typeof s.percentage === 'number' && s.percentage >= 0) ? s.percentage : 0;
   
   // Header thin progress bar
@@ -5040,8 +5065,9 @@ async function openSourceFile(filePath, lineNum = null, skipTabSwitch = false) {
 
     if (!App.editor) {
       const container = qs('#editor-container');
+      const isLight = document.body.classList.contains('theme-light') || document.body.getAttribute('data-theme') === 'light';
       App.editor = monaco.editor.create(container, {
-        theme: 'vs-dark',
+        theme: isLight ? 'vs' : 'vs-dark',
         automaticLayout: false, // handled manually via layout() to avoid overhead
         minimap: { enabled: true },
         fontSize: 13,
@@ -6119,6 +6145,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       </defs>
     `;
     flowSvg.innerHTML = defsHtml;
+    const flowFrag = document.createDocumentFragment();
 
     const hubLeftX = hubRect.left - contRect.left;
     const hubRightX = hubRect.right - contRect.left;
@@ -6127,26 +6154,19 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     const hubDockTop = hubRect.top - contRect.top + hubPad;
     const hubDockHeight = Math.max(16, hubRect.height - (hubPad * 2));
 
-    // Visible Inbound Cards
+    // Visible Inbound Cards (single pass geometry read to avoid forced synchronous layout thrashing)
     const inCards = Array.from(flowContent.querySelectorAll('.flow-in-node'));
     const inListRect = inList ? inList.getBoundingClientRect() : null;
-    const visibleInCards = inCards.filter(card => {
-      if (card.offsetParent === null) return false;
-      if (!inListRect) return true;
-      const cr = card.getBoundingClientRect();
-      return cr.bottom >= inListRect.top - 12 && cr.top <= inListRect.bottom + 12;
-    });
+    const visibleInCards = inCards
+      .filter(card => card.offsetParent !== null)
+      .map(card => ({ card, rect: card.getBoundingClientRect() }))
+      .filter(({ rect }) => !inListRect || (rect.bottom >= inListRect.top - 12 && rect.top <= inListRect.bottom + 12));
 
     // Sort strictly by vertical center to avoid conduit crossing
-    visibleInCards.sort((a, b) => {
-      const ra = a.getBoundingClientRect();
-      const rb = b.getBoundingClientRect();
-      return (ra.top + ra.height / 2) - (rb.top + rb.height / 2);
-    });
+    visibleInCards.sort((a, b) => (a.rect.top + a.rect.height / 2) - (b.rect.top + b.rect.height / 2));
 
     const inCount = visibleInCards.length;
-    visibleInCards.forEach((card, idx) => {
-      const cRect = card.getBoundingClientRect();
+    visibleInCards.forEach(({ card, rect: cRect }, idx) => {
       const x1 = cRect.right - contRect.left;
       const y1 = cRect.top - contRect.top + cRect.height / 2;
       const x2 = hubLeftX;
@@ -6174,7 +6194,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       path.dataset.dir = 'in';
       path.dataset.share = card.dataset.share;
       path.dataset.usagesCount = card.dataset.usagesCount;
-      flowSvg.appendChild(path);
+      flowFrag.appendChild(path);
 
       // Terminal anchor dots
       const dot1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -6184,7 +6204,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       dot1.setAttribute('fill', modColor);
       dot1.setAttribute('class', 'flow-terminal-dot');
       dot1.dataset.nodeFqn = fqn;
-      flowSvg.appendChild(dot1);
+      flowFrag.appendChild(dot1);
 
       const dot2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot2.setAttribute('cx', x2);
@@ -6193,28 +6213,21 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       dot2.setAttribute('fill', '#06b6d4');
       dot2.setAttribute('class', 'flow-terminal-dot');
       dot2.dataset.nodeFqn = fqn;
-      flowSvg.appendChild(dot2);
+      flowFrag.appendChild(dot2);
     });
 
-    // Visible Outbound Cards
+    // Visible Outbound Cards (single pass geometry read to avoid forced synchronous layout thrashing)
     const outCards = Array.from(flowContent.querySelectorAll('.flow-out-node'));
     const outListRect = outList ? outList.getBoundingClientRect() : null;
-    const visibleOutCards = outCards.filter(card => {
-      if (card.offsetParent === null) return false;
-      if (!outListRect) return true;
-      const cr = card.getBoundingClientRect();
-      return cr.bottom >= outListRect.top - 12 && cr.top <= outListRect.bottom + 12;
-    });
+    const visibleOutCards = outCards
+      .filter(card => card.offsetParent !== null)
+      .map(card => ({ card, rect: card.getBoundingClientRect() }))
+      .filter(({ rect }) => !outListRect || (rect.bottom >= outListRect.top - 12 && rect.top <= outListRect.bottom + 12));
 
-    visibleOutCards.sort((a, b) => {
-      const ra = a.getBoundingClientRect();
-      const rb = b.getBoundingClientRect();
-      return (ra.top + ra.height / 2) - (rb.top + rb.height / 2);
-    });
+    visibleOutCards.sort((a, b) => (a.rect.top + a.rect.height / 2) - (b.rect.top + b.rect.height / 2));
 
     const outCount = visibleOutCards.length;
-    visibleOutCards.forEach((card, idx) => {
-      const cRect = card.getBoundingClientRect();
+    visibleOutCards.forEach(({ card, rect: cRect }, idx) => {
       const x1 = hubRightX;
       const y1 = outCount === 1 ? hubCenterY : hubDockTop + (hubDockHeight * idx / (outCount - 1));
       const x2 = cRect.left - contRect.left;
@@ -6242,7 +6255,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       path.dataset.dir = 'out';
       path.dataset.share = card.dataset.share;
       path.dataset.usagesCount = card.dataset.usagesCount;
-      flowSvg.appendChild(path);
+      flowFrag.appendChild(path);
 
       // Terminal anchor dots
       const dot1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -6252,7 +6265,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       dot1.setAttribute('fill', '#06b6d4');
       dot1.setAttribute('class', 'flow-terminal-dot');
       dot1.dataset.nodeFqn = fqn;
-      flowSvg.appendChild(dot1);
+      flowFrag.appendChild(dot1);
 
       const dot2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot2.setAttribute('cx', x2);
@@ -6261,8 +6274,10 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       dot2.setAttribute('fill', modColor);
       dot2.setAttribute('class', 'flow-terminal-dot');
       dot2.dataset.nodeFqn = fqn;
-      flowSvg.appendChild(dot2);
+      flowFrag.appendChild(dot2);
     });
+
+    flowSvg.appendChild(flowFrag);
 
     bindConduitHover();
   }
@@ -7049,8 +7064,11 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <tbody></tbody>
     `;
     const tbody = table.querySelector('tbody');
+    const MAX_RENDER_ROWS = 250;
+    const renderItems = filtered.length > MAX_RENDER_ROWS ? filtered.slice(0, MAX_RENDER_ROWS) : filtered;
+    const cuFrag = document.createDocumentFragment();
 
-    for (const cu of filtered) {
+    for (const cu of renderItems) {
       const tr = createElement('tr');
       const dirCls = cu.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
@@ -7174,7 +7192,19 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         }
       });
 
-      tbody.appendChild(tr);
+      cuFrag.appendChild(tr);
+    }
+
+    tbody.appendChild(cuFrag);
+
+    if (filtered.length > MAX_RENDER_ROWS) {
+      const noticeTr = createElement('tr', { class: 'table-limit-notice-row' });
+      noticeTr.innerHTML = `
+        <td colspan="7" style="text-align:center;padding:10px;font-size:11px;color:var(--text-muted);background:var(--bg-surface);border-top:1px dashed var(--border);">
+          Showing first ${MAX_RENDER_ROWS} of ${filtered.length} class usage pairs. Use the search or kind filter above to narrow down results.
+        </td>
+      `;
+      tbody.appendChild(noticeTr);
     }
 
     tableWrap.appendChild(table);
@@ -7236,8 +7266,11 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <tbody></tbody>
     `;
     const tbody = table.querySelector('tbody');
+    const MAX_RENDER_ROWS = 250;
+    const renderItems = filtered.length > MAX_RENDER_ROWS ? filtered.slice(0, MAX_RENDER_ROWS) : filtered;
+    const fcFrag = document.createDocumentFragment();
 
-    for (const fc of filtered) {
+    for (const fc of renderItems) {
       const tr = createElement('tr');
       const dirCls = fc.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = fc.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
@@ -7265,7 +7298,19 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         if (fc.toType) selectType(fc.toType);
       });
 
-      tbody.appendChild(tr);
+      fcFrag.appendChild(tr);
+    }
+
+    tbody.appendChild(fcFrag);
+
+    if (filtered.length > MAX_RENDER_ROWS) {
+      const noticeTr = createElement('tr', { class: 'table-limit-notice-row' });
+      noticeTr.innerHTML = `
+        <td colspan="6" style="text-align:center;padding:10px;font-size:11px;color:var(--text-muted);background:var(--bg-surface);border-top:1px dashed var(--border);">
+          Showing first ${MAX_RENDER_ROWS} of ${filtered.length} function calls. Use the search filter above to narrow down results.
+        </td>
+      `;
+      tbody.appendChild(noticeTr);
     }
 
     tableWrap.appendChild(table);
@@ -12898,43 +12943,58 @@ function initScopeManagement() {
 }
 
 function initEmptyStateActions() {
-  const btnExplore = qs('#btn-empty-explore-classes');
-  if (btnExplore) {
-    btnExplore.onclick = () => {
-      if (App.packages && App.packages.length > 0) {
-        const firstPkg = App.packages[0];
-        const treeItem = qs(`#explorer-tree [data-fqn="${CSS.escape(firstPkg.fqn)}"]`);
-        if (treeItem) {
-          treeItem.click();
-          api.typesByPackage(firstPkg.fqn).then(types => {
-            if (types && types.length > 0) {
-              selectType(types[0]);
-            }
-          }).catch(() => {});
-        }
+  const exploreFirstClass = () => {
+    if (App.packages && App.packages.length > 0) {
+      const firstPkg = App.packages[0];
+      const treeItem = qs(`#explorer-tree [data-fqn="${CSS.escape(firstPkg.fqn)}"]`);
+      if (treeItem) {
+        treeItem.click();
+        api.typesByPackage(firstPkg.fqn).then(types => {
+          if (types && types.length > 0) {
+            selectType(types[0]);
+          }
+        }).catch(() => {});
       }
-    };
-  }
+    }
+  };
+
+  const openPalette = () => {
+    if (window.CmdK && typeof window.CmdK.open === 'function') {
+      window.CmdK.open();
+    } else {
+      const cmdkBtn = qs('#btn-command-palette');
+      if (cmdkBtn) cmdkBtn.click();
+    }
+  };
+
+  const openCriticalPath = () => {
+    const cpBtn = qs('#btn-critical-path-tool');
+    if (cpBtn) cpBtn.click();
+  };
+
+  const btnExplore = qs('#btn-empty-explore-classes');
+  if (btnExplore) btnExplore.onclick = exploreFirstClass;
+
+  const btnKbExplore = qs('#btn-kb-empty-explore');
+  if (btnKbExplore) btnKbExplore.onclick = exploreFirstClass;
+
+  const btnInspExplore = qs('#btn-inspector-empty-explore');
+  if (btnInspExplore) btnInspExplore.onclick = exploreFirstClass;
 
   const btnCmdK = qs('#btn-empty-open-cmdk');
-  if (btnCmdK) {
-    btnCmdK.onclick = () => {
-      if (window.CmdK && typeof window.CmdK.open === 'function') {
-        window.CmdK.open();
-      } else {
-        const cmdkBtn = qs('#btn-command-palette');
-        if (cmdkBtn) cmdkBtn.click();
-      }
-    };
-  }
+  if (btnCmdK) btnCmdK.onclick = openPalette;
+
+  const btnKbCmdK = qs('#btn-kb-empty-search');
+  if (btnKbCmdK) btnKbCmdK.onclick = openPalette;
+
+  const btnInspCmdK = qs('#btn-inspector-empty-search');
+  if (btnInspCmdK) btnInspCmdK.onclick = openPalette;
 
   const btnCP = qs('#btn-empty-critical-path');
-  if (btnCP) {
-    btnCP.onclick = () => {
-      const cpBtn = qs('#btn-critical-path-tool');
-      if (cpBtn) cpBtn.click();
-    };
-  }
+  if (btnCP) btnCP.onclick = openCriticalPath;
+
+  const btnKbCP = qs('#btn-kb-empty-cp');
+  if (btnKbCP) btnKbCP.onclick = openCriticalPath;
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -13494,7 +13554,7 @@ function kindIcon(kind) {
 
 const DEFAULT_LEFT_WIDTH = 310;
 const DEFAULT_RIGHT_WIDTH = 370;
-const DEFAULT_REPORTS_SIDEBAR_WIDTH = 290;
+const DEFAULT_REPORTS_SIDEBAR_WIDTH = 340;
 const MIN_LEFT_WIDTH = 160;
 const MAX_LEFT_WIDTH = 600;
 const MIN_RIGHT_WIDTH = 220;
@@ -14045,15 +14105,17 @@ const THEMES = {
   light: {
     label: 'Light', icon: 'sun', tagline: 'Pure Daylight. Crisp emerald contrast, ultra-readable typography.',
     css: {
-      '--bg-base': '#f1f5f9', '--bg-panel': '#ffffff', '--bg-surface': '#f8fafc',
-      '--bg-elevated': '#e2e8f0', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(241,245,249,0.95)',
-      '--border': '#cbd5e1', '--border-hover': '#94a3b8',
-      '--border-light': '#e2e8f0', '--border-focus': '#059669',
-      '--primary': '#059669', '--primary-bg': '#e2e8f0', '--primary-hover': '#cbd5e1', '--primary-active': '#94a3b8',
-      '--primary-subtle': 'rgba(5,150,105,0.08)', '--primary-glow': 'rgba(5,150,105,0.12)',
-      '--primary-border': 'rgba(5,150,105,0.45)',
-      '--cyan-bright': '#059669', '--emerald': '#059669', '--amber': '#d97706', '--red': '#dc2626',
+      '--bg-base': '#f8fafc', '--bg-canvas': '#f8fafc', '--bg-panel': '#ffffff', '--bg-surface': '#ffffff',
+      '--bg-elevated': '#f1f5f9', '--bg-modal': '#ffffff', '--bg-glass': 'rgba(255, 255, 255, 0.85)',
+      '--border': 'rgba(0, 0, 0, 0.08)', '--border-hover': 'rgba(0, 0, 0, 0.16)',
+      '--border-light': 'rgba(0, 0, 0, 0.04)', '--border-focus': '#059669',
+      '--primary': '#059669', '--primary-bg': '#059669', '--primary-hover': '#047857', '--primary-active': '#065f46',
+      '--primary-subtle': 'rgba(5, 150, 105, 0.08)', '--primary-glow': 'rgba(5, 150, 105, 0.12)',
+      '--primary-border': 'rgba(5, 150, 105, 0.35)',
+      '--cyan': '#0284c7', '--cyan-bright': '#0284c7', '--cyan-subtle': 'rgba(2, 132, 199, 0.08)',
+      '--emerald': '#059669', '--amber': '#d97706', '--red': '#dc2626', '--purple': '#7c3aed',
       '--text-primary': '#0f172a', '--text-secondary': '#334155', '--text-muted': '#475569',
+      '--radius-xs': '6px', '--radius-sm': '8px', '--radius-md': '12px', '--radius-lg': '16px',
     },
     graph: {
       bg: '#f1f5f9', grid: 'rgba(0,0,0,0.06)',
@@ -14187,6 +14249,20 @@ function applyTheme(themeKey) {
   // Apply graph canvas theme
   if (App.graph) {
     App.graph.applyTheme({ ...theme.graph, key: themeKey });
+  }
+
+  // Apply Monaco editor theme
+  if (window.monaco && App.editor) {
+    monaco.editor.setTheme(themeKey === 'light' ? 'vs' : 'vs-dark');
+  }
+
+  // Apply theme to active alternate visualizer (Treemap, Sunburst, DSM, etc.)
+  if (App.activeAltRenderer) {
+    if (typeof App.activeAltRenderer.render === 'function') {
+      try { App.activeAltRenderer.render(); } catch (_) {}
+    } else if (typeof App.activeAltRenderer.applyTheme === 'function') {
+      try { App.activeAltRenderer.applyTheme(themeKey); } catch (_) {}
+    }
   }
 
   // Update theme card active state

@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 public class CallGraphAnalyzer {
 
     private static final Logger log = LoggerFactory.getLogger(CallGraphAnalyzer.class);
+    public static final int DSM_SPARSE_THRESHOLD = 1000;
 
     /** Directed graph: edge from → to means "from calls to". */
     private Graph<String, DefaultEdge> callGraph =
@@ -57,6 +58,12 @@ public class CallGraphAnalyzer {
         void stream(java.util.function.BiConsumer<String, String> consumer) throws Exception;
     }
 
+    /** Functional interface for providing a method vertex stream. */
+    @FunctionalInterface
+    public interface MethodStreamer {
+        void stream(java.util.function.Consumer<String> consumer) throws Exception;
+    }
+
     @FunctionalInterface
     public interface ProgressListener {
         void onProgress(String phase, int current, int total, String detail);
@@ -71,22 +78,23 @@ public class CallGraphAnalyzer {
     }
 
     /**
-     * Rebuilds the call graph by streaming edges directly from a database cursor with optional progress updates.
+     * Rebuilds the call graph by streaming method vertices and call edges directly from database cursors with optional progress updates.
      */
-    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
+    public synchronized void rebuild(MethodStreamer methodStreamer, int totalMethods, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
         Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
-        int totalMethods = allMethodFqns != null ? allMethodFqns.size() : 0;
         Map<String, List<String>> byName = new HashMap<>();
         Map<String, List<String>> byClassAndMethod = new HashMap<>();
         Map<String, List<String>> byClassFqnAndMethod = new HashMap<>();
         Map<String, List<String>> byPackageAndMethod = new HashMap<>();
-        Map<String, String> dedupPool = new HashMap<>(Math.min(500_000, totalMethods));
+        Map<String, String> dedupPool = new HashMap<>(Math.min(500_000, Math.max(1024, totalMethods)));
         Map<String, String> resolveCache = new HashMap<>(Math.max(65536, totalMethods));
 
         // Populate vertex set with scoped deduplicated strings
-        if (allMethodFqns != null) {
-            int mCount = 0;
-            for (String fqn : allMethodFqns) {
+        if (methodStreamer != null) {
+            final int[] mCount = new int[]{0};
+            final int mStride = Math.max(1000, totalMethods / 100);
+            methodStreamer.stream(fqn -> {
+                if (fqn == null || fqn.isBlank()) return;
                 String interned = dedup(dedupPool, fqn);
                 g.addVertex(interned);
                 String simpleName = dedup(dedupPool, simpleMethodName(interned));
@@ -107,13 +115,12 @@ public class CallGraphAnalyzer {
                     byPackageAndMethod.computeIfAbsent(pkgMethodKey, k -> new ArrayList<>(2)).add(interned);
                 }
 
-                mCount++;
-                int mStride = Math.max(1000, totalMethods / 100);
-                if (listener != null && (mCount % mStride == 0 || mCount == totalMethods)) {
-                    listener.onProgress("Call Graph: Indexing Methods", mCount, totalMethods,
-                        String.format("Indexed %,d / %,d method vertices (%s)", mCount, totalMethods, simpleName));
+                mCount[0]++;
+                if (listener != null && (mCount[0] % mStride == 0 || mCount[0] == totalMethods)) {
+                    listener.onProgress("Call Graph: Indexing Methods", mCount[0], totalMethods,
+                        String.format("Indexed %,d / %,d method vertices (%s)", mCount[0], totalMethods, simpleName));
                 }
-            }
+            });
         }
 
         // Stream edges, resolving "~" prefixed targets with fast memoization
@@ -200,8 +207,21 @@ public class CallGraphAnalyzer {
             g.vertexSet().size(), g.edgeSet().size());
     }
 
+    public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
+        int total = allMethodFqns != null ? allMethodFqns.size() : 0;
+        rebuild(consumer -> {
+            if (allMethodFqns != null) {
+                for (String fqn : allMethodFqns) consumer.accept(fqn);
+            }
+        }, total, edgeStreamer, listener);
+    }
+
     public synchronized void rebuild(List<String> allMethodFqns, EdgeStreamer edgeStreamer) throws Exception {
         rebuild(allMethodFqns, edgeStreamer, null);
+    }
+
+    public synchronized void rebuild(MethodStreamer methodStreamer, int totalMethods, EdgeStreamer edgeStreamer) throws Exception {
+        rebuild(methodStreamer, totalMethods, edgeStreamer, null);
     }
 
     /**
@@ -1979,14 +1999,21 @@ public class CallGraphAnalyzer {
         for (int i = 0; i < classList.size(); i++) indexMap.put(classList.get(i), i);
 
         int n = classList.size();
-        int[][] matrix = new int[n][n];
-        for (Map.Entry<String, Map<String, Integer>> srcEntry : classCalls.entrySet()) {
-            Integer si = indexMap.get(srcEntry.getKey());
-            if (si == null) continue;
-            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
-                Integer ti = indexMap.get(tgtEntry.getKey());
-                if (ti == null) continue;
-                matrix[si][ti] = tgtEntry.getValue();
+        int[][] matrix;
+        List<DSMSparseCell> sparseCells = null;
+        if (n > DSM_SPARSE_THRESHOLD) {
+            matrix = new int[0][0];
+            sparseCells = buildSparseCells(classCalls, indexMap);
+        } else {
+            matrix = new int[n][n];
+            for (Map.Entry<String, Map<String, Integer>> srcEntry : classCalls.entrySet()) {
+                Integer si = indexMap.get(srcEntry.getKey());
+                if (si == null) continue;
+                for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                    Integer ti = indexMap.get(tgtEntry.getKey());
+                    if (ti == null) continue;
+                    matrix[si][ti] = tgtEntry.getValue();
+                }
             }
         }
 
@@ -1996,7 +2023,23 @@ public class CallGraphAnalyzer {
             classPackages.put(c, dot >= 0 ? c.substring(0, dot) : "(default)");
         }
 
-        return new DSMPayload(classList, matrix, classPackages, "classes");
+        return new DSMPayload(classList, matrix, sparseCells, classPackages, "classes");
+    }
+
+    private List<DSMSparseCell> buildSparseCells(Map<String, Map<String, Integer>> calls, Map<String, Integer> indexMap) {
+        List<DSMSparseCell> cells = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Integer>> srcEntry : calls.entrySet()) {
+            Integer si = indexMap.get(srcEntry.getKey());
+            if (si == null) continue;
+            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                Integer ti = indexMap.get(tgtEntry.getKey());
+                if (ti == null) continue;
+                Map<String, Integer> rev = calls.get(tgtEntry.getKey());
+                boolean cycle = !si.equals(ti) && rev != null && rev.containsKey(srcEntry.getKey());
+                cells.add(new DSMSparseCell(si, ti, tgtEntry.getValue(), cycle));
+            }
+        }
+        return cells;
     }
 
     private DSMPayload methodDsmView(String filter) {
@@ -2051,14 +2094,21 @@ public class CallGraphAnalyzer {
         for (int i = 0; i < methodList.size(); i++) indexMap.put(methodList.get(i), i);
 
         int n = methodList.size();
-        int[][] matrix = new int[n][n];
-        for (Map.Entry<String, Map<String, Integer>> srcEntry : methodCalls.entrySet()) {
-            Integer si = indexMap.get(srcEntry.getKey());
-            if (si == null) continue;
-            for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
-                Integer ti = indexMap.get(tgtEntry.getKey());
-                if (ti == null) continue;
-                matrix[si][ti] = tgtEntry.getValue();
+        int[][] matrix;
+        List<DSMSparseCell> sparseCells = null;
+        if (n > DSM_SPARSE_THRESHOLD) {
+            matrix = new int[0][0];
+            sparseCells = buildSparseCells(methodCalls, indexMap);
+        } else {
+            matrix = new int[n][n];
+            for (Map.Entry<String, Map<String, Integer>> srcEntry : methodCalls.entrySet()) {
+                Integer si = indexMap.get(srcEntry.getKey());
+                if (si == null) continue;
+                for (Map.Entry<String, Integer> tgtEntry : srcEntry.getValue().entrySet()) {
+                    Integer ti = indexMap.get(tgtEntry.getKey());
+                    if (ti == null) continue;
+                    matrix[si][ti] = tgtEntry.getValue();
+                }
             }
         }
 
@@ -2067,7 +2117,7 @@ public class CallGraphAnalyzer {
             methodContainers.put(m, extractClassFqn(m));
         }
 
-        return new DSMPayload(methodList, matrix, methodContainers, "methods");
+        return new DSMPayload(methodList, matrix, sparseCells, methodContainers, "methods");
     }
 
     public static class DSMSparseCell {
@@ -2098,6 +2148,10 @@ public class CallGraphAnalyzer {
         public final List<String> cyclesList;
 
         public DSMPayload(List<String> classes, int[][] matrix, Map<String, String> packages, String scope) {
+            this(classes, matrix, null, packages, scope);
+        }
+
+        public DSMPayload(List<String> classes, int[][] matrix, List<DSMSparseCell> customCells, Map<String, String> packages, String scope) {
             this.classes = classes != null ? classes : Collections.emptyList();
             this.matrix  = matrix;
             this.packages = packages != null ? packages : Collections.emptyMap();
@@ -2107,7 +2161,18 @@ public class CallGraphAnalyzer {
             int totalDeps = 0;
             int cycleCells = 0;
 
-            if (matrix != null) {
+            if (customCells != null) {
+                this.cells.addAll(customCells);
+                for (DSMSparseCell cell : customCells) {
+                    totalDeps++;
+                    if (cell.isCycle) {
+                        cycleCells++;
+                        if (cell.r < cell.c && cell.r < this.classes.size() && cell.c < this.classes.size()) {
+                            cycles.add(this.classes.get(cell.r) + " <-> " + this.classes.get(cell.c));
+                        }
+                    }
+                }
+            } else if (matrix != null && matrix.length > 0) {
                 int n = matrix.length;
                 for (int r = 0; r < n; r++) {
                     for (int c = 0; c < matrix[r].length; c++) {

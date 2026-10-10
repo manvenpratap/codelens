@@ -793,7 +793,7 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Name expression → READS_FIELD (heuristic: name matches a known field)
+    // Name expression & Field access → READS_FIELD (heuristic: name matches a known field)
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     public void visit(NameExpr n, VisitContext ctx) {
@@ -804,6 +804,22 @@ public class AstVisitor extends VoidVisitorAdapter<AstVisitor.VisitContext> {
             addRelationship(ctx, ctx.currentMethodFqn,
                 ctx.currentTypeFqn + "." + n.getNameAsString(),
                 "READS_FIELD", line);
+        }
+        super.visit(n, ctx);
+    }
+
+    @Override
+    public void visit(FieldAccessExpr n, VisitContext ctx) {
+        if (!ctx.currentMethodFqn.isEmpty()
+            && !isBoilerplateFieldAccessMethod(ctx.currentMethodFqn)) {
+            String scope = n.getScope().toString();
+            String fieldName = n.getNameAsString();
+            if ("this".equals(scope) && ctx.currentTypeFieldNames.contains(fieldName)) {
+                int line = n.getRange().map(r -> r.begin.line).orElse(0);
+                addRelationship(ctx, ctx.currentMethodFqn,
+                    ctx.currentTypeFqn + "." + fieldName,
+                    "READS_FIELD", line);
+            }
         }
         super.visit(n, ctx);
     }

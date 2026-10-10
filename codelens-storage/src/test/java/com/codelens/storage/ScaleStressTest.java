@@ -53,10 +53,18 @@ public class ScaleStressTest {
         int classes = Integer.getInteger("scale.classes", scaleEnabled ? 30_000 : 300);
         int fields = Integer.getInteger("scale.fields", scaleEnabled ? 150_000 : 1_500);
         long rels = Long.getLong("scale.rels", scaleEnabled ? 15_000_000L : 15_000L);
-        String targetDir = System.getProperty("scale.dir", DEFAULT_STRESS_DIR);
+        boolean isExplicitDir = System.getProperty("scale.dir") != null;
+        Path tempDir = (!isExplicitDir && !scaleEnabled) ? Files.createTempDirectory("codelens-stress-") : null;
+        String targetDir = isExplicitDir ? System.getProperty("scale.dir") : (tempDir != null ? tempDir.toString() : DEFAULT_STRESS_DIR);
         boolean verifyOnly = Boolean.getBoolean("scale.verifyOnly");
 
-        runScaleBenchmark(classes, fields, rels, targetDir, verifyOnly);
+        try {
+            runScaleBenchmark(classes, fields, rels, targetDir, verifyOnly);
+        } finally {
+            if (tempDir != null) {
+                deleteRecursively(tempDir.toFile());
+            }
+        }
     }
 
     public void runScaleBenchmark(int totalClasses, int totalFields, long totalRels, String dbPathStr) throws Exception {

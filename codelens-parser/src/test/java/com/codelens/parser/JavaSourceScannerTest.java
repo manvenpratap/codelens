@@ -47,6 +47,38 @@ public class JavaSourceScannerTest {
         assertFalse(JavaSourceScanner.isExcluded(Paths.get("com/example/OrderService.java"), matchers, raw), "order service");
     }
 
+    private static void deleteRecursively(java.io.File file) {
+        if (file.isDirectory()) {
+            java.io.File[] children = file.listFiles();
+            if (children != null) {
+                for (java.io.File c : children) deleteRecursively(c);
+            }
+        }
+        file.delete();
+    }
+
+    @FunctionalInterface
+    private interface TempDirTest {
+        void run(Path dir) throws Exception;
+    }
+
+    private void withTempDir(TempDirTest test) throws Exception {
+        Path tempDir = Files.createTempDirectory("scanner-test-");
+        try {
+            test.run(tempDir);
+        } finally {
+            deleteRecursively(tempDir.toFile());
+        }
+    }
+
+    public void testScanExcludesFolders() throws Exception { withTempDir(this::testScanExcludesFolders); }
+    public void testRecordParsing() throws Exception { withTempDir(this::testRecordParsing); }
+    public void testPascalCasePackageNames() throws Exception { withTempDir(this::testPascalCasePackageNames); }
+    public void testBoilerplateFieldAccessFiltered() throws Exception { withTempDir(this::testBoilerplateFieldAccessFiltered); }
+    public void testDetectDiskChanges() throws Exception { withTempDir(this::testDetectDiskChanges); }
+    public void testAsyncFlusherStreaming() throws Exception { withTempDir(this::testAsyncFlusherStreaming); }
+    public void testLineCountsAndRangesExtracted() throws Exception { withTempDir(this::testLineCountsAndRangesExtracted); }
+
     public void testScanExcludesFolders(Path tempDir) throws IOException {
         // Create sample project tree with main, test, and target folders
         Path mainPkg = tempDir.resolve("src/main/java/com/app");
@@ -138,139 +170,19 @@ public class JavaSourceScannerTest {
         System.out.println("Running testIsExcludedWithGlobPatterns...");
         test.testIsExcludedWithGlobPatterns();
         System.out.println("Running testScanExcludesFolders...");
-        Path tempDir = Files.createTempDirectory("codelens_scanner_test");
-        try {
-            test.testScanExcludesFolders(tempDir);
-        } finally {
-            // cleanup temp files
-            Files.walkFileTree(tempDir, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-        
+        test.withTempDir(test::testScanExcludesFolders);
         System.out.println("Running testRecordParsing...");
-        Path tempDir2 = Files.createTempDirectory("codelens_record_test");
-        try {
-            test.testRecordParsing(tempDir2);
-        } finally {
-            Files.walkFileTree(tempDir2, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testRecordParsing);
         System.out.println("Running testPascalCasePackageNames...");
-        Path tempDir3 = Files.createTempDirectory("codelens_pascal_pkg_test");
-        try {
-            test.testPascalCasePackageNames(tempDir3);
-        } finally {
-            Files.walkFileTree(tempDir3, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testPascalCasePackageNames);
         System.out.println("Running testDetectDiskChanges...");
-        Path tempDir4 = Files.createTempDirectory("codelens_delta_test");
-        try {
-            test.testDetectDiskChanges(tempDir4);
-        } finally {
-            Files.walkFileTree(tempDir4, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testDetectDiskChanges);
         System.out.println("Running testAsyncFlusherStreaming...");
-        Path tempDir5 = Files.createTempDirectory("codelens_async_flush_test");
-        try {
-            test.testAsyncFlusherStreaming(tempDir5);
-        } finally {
-            Files.walkFileTree(tempDir5, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testAsyncFlusherStreaming);
         System.out.println("Running testBoilerplateFieldAccessFiltered...");
-        Path tempDir6 = Files.createTempDirectory("codelens_boilerplate_filter_test");
-        try {
-            test.testBoilerplateFieldAccessFiltered(tempDir6);
-        } finally {
-            Files.walkFileTree(tempDir6, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testBoilerplateFieldAccessFiltered);
         System.out.println("Running testLineCountsAndRangesExtracted...");
-        Path tempDir7 = Files.createTempDirectory("codelens_lines_test");
-        try {
-            test.testLineCountsAndRangesExtracted(tempDir7);
-        } finally {
-            Files.walkFileTree(tempDir7, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Files.delete(f);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override
-                public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
-                    Files.delete(d);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
-
+        test.withTempDir(test::testLineCountsAndRangesExtracted);
         System.out.println("ALL JAVA SOURCE SCANNER AND DELTA CHANGE TESTS PASSED SUCCESSFULLY!");
     }
 

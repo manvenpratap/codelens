@@ -667,14 +667,7 @@
       searchBox.placeholder = 'Filter buildings...';
       searchBox.className = 'city3d-search-box';
       searchBox.value = this._filterQuery;
-      searchBox.style.background = 'rgba(10, 13, 18, 0.9)';
-      searchBox.style.border = '1px solid rgba(255, 255, 255, 0.15)';
-      searchBox.style.color = '#f8fafc';
-      searchBox.style.borderRadius = '6px';
-      searchBox.style.padding = '4px 10px';
-      searchBox.style.fontSize = '11px';
       searchBox.style.width = '130px';
-      searchBox.style.outline = 'none';
       searchBox.addEventListener('input', (e) => {
         this.setFilter(e.target.value);
       });
@@ -684,18 +677,9 @@
       const orbitBtn = document.createElement('button');
       orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
       orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
-      orbitBtn.style.background = '#0a0d12';
-      orbitBtn.style.border = '1px solid ' + (this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)');
-      orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
-      orbitBtn.style.borderRadius = '6px';
-      orbitBtn.style.padding = '5px 10px';
-      orbitBtn.style.fontSize = '11px';
-      orbitBtn.style.cursor = 'pointer';
       orbitBtn.addEventListener('click', () => {
         this.toggleAutoRotate();
         orbitBtn.classList.toggle('active', this._autoRotate);
-        orbitBtn.style.borderColor = this._autoRotate ? '#10b981' : 'rgba(255,255,255,0.15)';
-        orbitBtn.style.color = this._autoRotate ? '#f8fafc' : '#94a3b8';
       });
       this._toolbar.appendChild(orbitBtn);
 
@@ -703,18 +687,9 @@
       const wireBtn = document.createElement('button');
       wireBtn.className = 'hud-btn' + (this._showWireframe ? ' active' : '');
       wireBtn.innerHTML = '<span class="hud-btn-icon">⬡</span> <span class="hud-btn-text">Wireframe</span>';
-      wireBtn.style.background = '#0a0d12';
-      wireBtn.style.border = '1px solid ' + (this._showWireframe ? '#10b981' : 'rgba(255,255,255,0.15)');
-      wireBtn.style.color = this._showWireframe ? '#f8fafc' : '#94a3b8';
-      wireBtn.style.borderRadius = '6px';
-      wireBtn.style.padding = '5px 10px';
-      wireBtn.style.fontSize = '11px';
-      wireBtn.style.cursor = 'pointer';
       wireBtn.addEventListener('click', () => {
         this.toggleWireframe();
         wireBtn.classList.toggle('active', this._showWireframe);
-        wireBtn.style.borderColor = this._showWireframe ? '#10b981' : 'rgba(255,255,255,0.15)';
-        wireBtn.style.color = this._showWireframe ? '#f8fafc' : '#94a3b8';
       });
       this._toolbar.appendChild(wireBtn);
 
@@ -779,10 +754,17 @@
           }
         }
 
+        const isLight = document.body.classList.contains('theme-light') || document.body.getAttribute('data-theme') === 'light';
+        const ttBg = isLight ? 'rgba(255, 255, 255, 0.96)' : '#0a0d12';
+        const ttText = isLight ? '#0f172a' : '#f8fafc';
+        const ttSub = isLight ? '#64748b' : '#94a3b8';
+        const ttBorder = isLight ? 'rgba(0, 0, 0, 0.10)' : col;
+        const ttShadow = isLight ? '0 12px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95)' : '0 8px 24px rgba(0,0,0,0.8)';
+
         this._tooltip.innerHTML = `
-          <div class="tt-inner" style="background:#0a0d12; border:1px solid ${col}; border-radius:6px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.8);">
-            <div style="font-size:12px; font-weight:700; color:#f8fafc; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
-            <div style="font-size:11px; color:#94a3b8; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
+          <div class="tt-inner" style="background:${ttBg}; border:1px solid ${ttBorder}; border-radius:8px; padding:8px 12px; box-shadow:${ttShadow};">
+            <div style="font-size:12px; font-weight:700; color:${ttText}; font-family:Sora,sans-serif;">${data.label || data.simpleName || data.id}</div>
+            <div style="font-size:11px; color:${ttSub}; font-family:JetBrains Mono,monospace; margin-top:2px;">${data.package || hit.userData.pkg || data.id}</div>
             <div style="font-size:11px; font-family:JetBrains Mono,monospace; margin-top:4px;">${subInfo}</div>
             ${archetypeHtml}
             ${hotspotHtml}
