@@ -3313,11 +3313,19 @@
           </div>
           <div class="settings-row" id="row-ai-model">
             <div class="settings-row-info">
-              <label for="set-ai-model">Model Name</label>
-              <span class="settings-row-desc">Target LLM identifier (e.g. llama3, mistral, gpt-4o-mini)</span>
+              <label for="set-ai-model-select">Model</label>
+              <span class="settings-row-desc">Target LLM (automatically detected from installed models)</span>
             </div>
-            <div class="settings-row-control">
-              <input type="text" id="set-ai-model" class="settings-input" placeholder="llama3" />
+            <div class="settings-row-control" style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+              <div style="display:flex; gap:6px; width:100%; justify-content:flex-end;">
+                <select id="set-ai-model-select" class="settings-select" style="min-width:220px; max-width:320px;">
+                  <option value="">Auto-detecting installed models…</option>
+                </select>
+                <button id="btn-refresh-ai-models" class="btn btn-sm btn-ghost" title="Refresh installed models" type="button" style="padding:6px 9px;">
+                  <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+              </div>
+              <input type="text" id="set-ai-model" class="settings-input" placeholder="Custom model name..." style="display:none; width:100%; max-width:320px;" />
             </div>
           </div>
           <div class="settings-row" id="row-ai-endpoint">

@@ -129,13 +129,20 @@ public class AiGroundingService {
         public String provider;
         public String message;
         public long latencyMs;
+        public List<String> availableModels = new ArrayList<>();
 
         public ConnectionTestResult() {}
         public ConnectionTestResult(boolean success, String provider, String message, long latencyMs) {
+            this(success, provider, message, latencyMs, Collections.emptyList());
+        }
+        public ConnectionTestResult(boolean success, String provider, String message, long latencyMs, List<String> availableModels) {
             this.success = success;
             this.provider = provider;
             this.message = message;
             this.latencyMs = latencyMs;
+            if (availableModels != null) {
+                this.availableModels = new ArrayList<>(availableModels);
+            }
         }
     }
 
@@ -151,7 +158,7 @@ public class AiGroundingService {
 
         if ("local".equals(p)) {
             long latency = Math.max(1, System.currentTimeMillis() - t0);
-            return new ConnectionTestResult(true, "local", "Local Fact Synthesizer is active and ready (100% offline)", latency);
+            return new ConnectionTestResult(true, "local", "Local Fact Synthesizer is active and ready (100% offline)", latency, List.of("local-facts"));
         }
 
         if ("ollama".equals(p)) {
@@ -177,24 +184,25 @@ public class AiGroundingService {
 
                 if (resp.statusCode() == 200) {
                     String body = resp.body() != null ? resp.body() : "";
+                    List<String> installed = parseOllamaModelNames(body);
                     if (!targetModel.isBlank()) {
                         String cleanTarget = targetModel.toLowerCase(Locale.ROOT);
-                        boolean found = body.toLowerCase(Locale.ROOT).contains("\"name\":\"" + cleanTarget + "\"")
-                                     || body.toLowerCase(Locale.ROOT).contains("\"name\":\"" + cleanTarget + ":latest\"")
-                                     || body.toLowerCase(Locale.ROOT).contains("\"model\":\"" + cleanTarget + "\"");
-                        if (found) {
-                            return new ConnectionTestResult(true, "ollama", "Connected to Ollama · Model '" + targetModel + "' verified (" + latency + "ms)", latency);
-                        } else {
-                            List<String> installed = new ArrayList<>();
-                            Matcher m = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
-                            while (m.find() && installed.size() < 3) {
-                                installed.add(m.group(1));
+                        boolean found = false;
+                        for (String inst : installed) {
+                            String lower = inst.toLowerCase(Locale.ROOT);
+                            if (lower.equals(cleanTarget) || lower.equals(cleanTarget + ":latest") || (cleanTarget.contains(":") && lower.startsWith(cleanTarget))) {
+                                found = true;
+                                break;
                             }
-                            String avail = installed.isEmpty() ? "none" : String.join(", ", installed);
-                            return new ConnectionTestResult(false, "ollama", "Ollama is running, but model '" + targetModel + "' is not installed (Found: " + avail + "). Run 'ollama pull " + targetModel + "'.", latency);
+                        }
+                        if (found) {
+                            return new ConnectionTestResult(true, "ollama", "Connected to Ollama · Model '" + targetModel + "' verified (" + latency + "ms)", latency, installed);
+                        } else {
+                            String avail = installed.isEmpty() ? "none" : String.join(", ", installed.subList(0, Math.min(3, installed.size())));
+                            return new ConnectionTestResult(false, "ollama", "Ollama is running, but model '" + targetModel + "' is not installed (Found: " + avail + "). Run 'ollama pull " + targetModel + "'.", latency, installed);
                         }
                     }
-                    return new ConnectionTestResult(true, "ollama", "Connected to Ollama at " + base + " (" + latency + "ms)", latency);
+                    return new ConnectionTestResult(true, "ollama", "Connected to Ollama at " + base + " (" + latency + "ms)", latency, installed);
                 } else {
                     return new ConnectionTestResult(false, "ollama", "Ollama responded with HTTP " + resp.statusCode() + " on " + tagsUrl, latency);
                 }
@@ -232,7 +240,11 @@ public class AiGroundingService {
                 long latency = System.currentTimeMillis() - t0;
 
                 if (resp.statusCode() == 200) {
-                    return new ConnectionTestResult(true, "openai", "OpenAI connection & credentials verified · Model '" + targetModel + "' (" + latency + "ms)", latency);
+                    List<String> openAiModels = parseOpenAiModelNames(resp.body());
+                    if (openAiModels.isEmpty()) {
+                        openAiModels = List.of("gpt-4o-mini", "gpt-4o", "o1-mini", "o3-mini", "gpt-4-turbo", "gpt-3.5-turbo");
+                    }
+                    return new ConnectionTestResult(true, "openai", "OpenAI connection & credentials verified · Model '" + targetModel + "' (" + latency + "ms)", latency, openAiModels);
                 } else if (resp.statusCode() == 401) {
                     return new ConnectionTestResult(false, "openai", "OpenAI authentication failed: Invalid API key (HTTP 401 Unauthorized)", latency);
                 } else if (resp.statusCode() == 403) {
@@ -250,6 +262,113 @@ public class AiGroundingService {
         }
 
         return new ConnectionTestResult(false, p, "Unrecognized AI provider: " + p, 0);
+    }
+
+    /**
+     * Dynamically discovers and returns installed / supported models for the designated provider.
+     */
+    public List<String> discoverModels(String prov, String endp, String key) {
+        String p = (prov != null && !prov.isBlank()) ? prov.toLowerCase(Locale.ROOT).trim() : this.provider;
+        String targetEndpoint = (endp != null && !endp.isBlank()) ? endp.trim() : this.endpoint;
+        String targetKey = (key != null && !key.isBlank()) ? key.trim() : (this.apiKey != null ? this.apiKey : "");
+
+        if ("local".equals(p)) {
+            return List.of("local-facts");
+        }
+
+        if ("ollama".equals(p)) {
+            try {
+                String base = targetEndpoint;
+                if (base == null || base.isBlank() || base.contains("api.openai.com")) {
+                    base = "http://localhost:11434";
+                }
+                if (base.contains("/api/")) {
+                    base = base.substring(0, base.indexOf("/api/"));
+                }
+                base = base.replaceAll("/+$", "");
+                String tagsUrl = base + "/api/tags";
+
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(tagsUrl))
+                    .timeout(Duration.ofSeconds(2))
+                    .GET()
+                    .build();
+
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200 && resp.body() != null) {
+                    List<String> models = parseOllamaModelNames(resp.body());
+                    if (!models.isEmpty()) {
+                        return models;
+                    }
+                }
+            } catch (Exception ignored) {}
+            return List.of("llama3", "codellama", "mistral", "qwen2.5-coder", "deepseek-coder");
+        }
+
+        if ("openai".equals(p)) {
+            if (!targetKey.isBlank()) {
+                try {
+                    String testUrl = targetEndpoint;
+                    if (testUrl == null || testUrl.isBlank() || testUrl.contains("localhost:11434") || testUrl.contains("/generate")) {
+                        testUrl = "https://api.openai.com/v1/models";
+                    } else if (testUrl.endsWith("/chat/completions")) {
+                        testUrl = testUrl.substring(0, testUrl.length() - "/chat/completions".length()) + "/models";
+                    } else if (testUrl.endsWith("/completions")) {
+                        testUrl = testUrl.substring(0, testUrl.length() - "/completions".length()) + "/models";
+                    } else if (!testUrl.contains("/models")) {
+                        testUrl = testUrl.replaceAll("/+$", "") + "/models";
+                    }
+
+                    HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(testUrl))
+                        .timeout(Duration.ofSeconds(3))
+                        .header("Authorization", "Bearer " + targetKey)
+                        .GET()
+                        .build();
+
+                    HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200 && resp.body() != null) {
+                        List<String> filtered = parseOpenAiModelNames(resp.body());
+                        if (!filtered.isEmpty()) {
+                            return filtered;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            return List.of("gpt-4o-mini", "gpt-4o", "o1-mini", "o3-mini", "gpt-4-turbo", "gpt-3.5-turbo");
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<String> parseOllamaModelNames(String body) {
+        List<String> models = new ArrayList<>();
+        if (body == null || body.isBlank()) return models;
+        Matcher m = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+        while (m.find()) {
+            String name = m.group(1);
+            if (!models.contains(name)) {
+                models.add(name);
+            }
+        }
+        return models;
+    }
+
+    private List<String> parseOpenAiModelNames(String body) {
+        List<String> models = new ArrayList<>();
+        if (body == null || body.isBlank()) return models;
+        Matcher m = Pattern.compile("\"id\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+        while (m.find()) {
+            String id = m.group(1);
+            if ((id.startsWith("gpt-") || id.startsWith("o1-") || id.startsWith("o3-") || id.startsWith("chatgpt-"))
+                && !id.contains("realtime") && !id.contains("audio") && !id.contains("transcribe")) {
+                if (!models.contains(id)) {
+                    models.add(id);
+                }
+            }
+        }
+        Collections.sort(models);
+        return models;
     }
 
     /**

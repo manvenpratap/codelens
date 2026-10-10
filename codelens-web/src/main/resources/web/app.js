@@ -22030,33 +22030,183 @@ function updateAiSettingsDiagnostics(provider, model, statusOverride, isError = 
   }
 }
 
+async function populateAiModelDropdown(provider, currentModel, endpoint, apiKey, preloadedModels) {
+  const selectEl = qs('#set-ai-model-select');
+  const modEl = qs('#set-ai-model');
+  if (!selectEl || !modEl) return;
+
+  const p = (provider || 'local').toLowerCase();
+
+  if (p === 'local') {
+    selectEl.innerHTML = '<option value="local-facts" selected>local-facts (Deterministic AST Engine)</option>';
+    selectEl.disabled = true;
+    modEl.value = 'local-facts';
+    modEl.style.display = 'none';
+    return;
+  }
+
+  selectEl.disabled = false;
+  let models = Array.isArray(preloadedModels) && preloadedModels.length ? preloadedModels : [];
+
+  if (!models.length) {
+    try {
+      const qsParams = new URLSearchParams({
+        provider: p,
+        endpoint: endpoint || '',
+        apiKey: apiKey || ''
+      });
+      const res = await fetch(`/api/ai/models?${qsParams.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.models && Array.isArray(json.models)) {
+          models = json.models;
+        }
+      }
+    } catch (ignored) {}
+  }
+
+  let html = '';
+  if (p === 'ollama') {
+    if (models.length > 0) {
+      html += '<optgroup label="Installed on Host (Ollama)">';
+      for (const m of models) {
+        html += `<option value="${esc(m)}">${esc(m)}</option>`;
+      }
+      html += '</optgroup>';
+
+      const popular = ['llama3', 'codellama', 'deepseek-coder', 'mistral', 'qwen2.5-coder'];
+      const uninstalledPopular = popular.filter(pop => !models.some(m => m.toLowerCase().startsWith(pop)));
+      if (uninstalledPopular.length > 0) {
+        html += '<optgroup label="Popular Ollama Models">';
+        for (const pop of uninstalledPopular) {
+          html += `<option value="${esc(pop)}">${esc(pop)}</option>`;
+        }
+        html += '</optgroup>';
+      }
+    } else {
+      html += '<optgroup label="Standard Ollama Models">';
+      ['llama3', 'codellama', 'deepseek-coder', 'mistral', 'qwen2.5-coder'].forEach(m => {
+        html += `<option value="${esc(m)}">${esc(m)}</option>`;
+      });
+      html += '</optgroup>';
+    }
+  } else if (p === 'openai') {
+    if (models.length > 0) {
+      html += '<optgroup label="Available OpenAI Models">';
+      for (const m of models) {
+        html += `<option value="${esc(m)}">${esc(m)}</option>`;
+      }
+      html += '</optgroup>';
+    } else {
+      html += '<optgroup label="Standard OpenAI Models">';
+      ['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o3-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'].forEach(m => {
+        html += `<option value="${esc(m)}">${esc(m)}</option>`;
+      });
+      html += '</optgroup>';
+    }
+  }
+
+  html += '<option value="__custom__">+ Enter custom model name…</option>';
+  selectEl.innerHTML = html;
+
+  let target = (currentModel != null && currentModel !== '') ? currentModel : modEl.value;
+  if (!target || target === 'local-facts') {
+    target = models.length ? models[0] : (p === 'ollama' ? 'llama3' : 'gpt-4o-mini');
+  }
+
+  let found = false;
+  for (let i = 0; i < selectEl.options.length; i++) {
+    if (selectEl.options[i].value === target) {
+      selectEl.selectedIndex = i;
+      found = true;
+      break;
+    }
+  }
+
+  if (found) {
+    modEl.value = target;
+    modEl.style.display = 'none';
+  } else {
+    if (target && target !== '__custom__') {
+      const customOpt = document.createElement('option');
+      customOpt.value = target;
+      customOpt.textContent = `${target} (Configured)`;
+      selectEl.insertBefore(customOpt, selectEl.firstChild);
+      selectEl.value = target;
+      modEl.value = target;
+      modEl.style.display = 'none';
+    } else {
+      selectEl.value = '__custom__';
+      modEl.style.display = 'block';
+    }
+  }
+}
+
 async function loadAiConfigToSettings() {
   const cfg = await fetchAiConfig();
   const provEl = qs('#set-ai-provider');
   const modEl = qs('#set-ai-model');
+  const selectModEl = qs('#set-ai-model-select');
   const endEl = qs('#set-ai-endpoint');
   const keyEl = qs('#set-ai-apikey');
   if (cfg) {
     if (provEl && cfg.provider) provEl.value = cfg.provider;
     if (modEl && cfg.model) modEl.value = cfg.model;
     if (endEl && cfg.endpoint) endEl.value = cfg.endpoint;
+    await populateAiModelDropdown(cfg.provider, cfg.model, cfg.endpoint, '', cfg.availableModels);
     const pName = cfg.provider === 'ollama' ? 'Ollama' : (cfg.provider === 'openai' ? 'OpenAI' : 'Local Synthesizer');
-    const label = cfg.provider === 'local' ? 'Local Synthesizer Active' : `${pName} (${cfg.model || 'active'}) Active`;
-    updateAiSettingsDiagnostics(cfg.provider, cfg.model, label, false);
+    const label = cfg.provider === 'local' ? 'Local Synthesizer Active' : `${pName} (${modEl ? modEl.value : 'active'}) Active`;
+    updateAiSettingsDiagnostics(cfg.provider, modEl ? modEl.value : '', label, false);
   }
 
   if (provEl && !provEl.dataset.wired) {
     provEl.dataset.wired = 'true';
-    provEl.addEventListener('change', () => {
+    provEl.addEventListener('change', async () => {
       const p = provEl.value;
       if (p === 'ollama') {
-        if (modEl && (!modEl.value || modEl.value === 'local-facts')) modEl.value = 'llama3';
-        if (endEl && !endEl.value) endEl.value = 'http://localhost:11434/api/generate';
+        if (endEl && (!endEl.value || endEl.value.includes('api.openai.com'))) endEl.value = 'http://localhost:11434/api/generate';
       } else if (p === 'openai') {
-        if (modEl && (!modEl.value || modEl.value === 'local-facts')) modEl.value = 'gpt-4o-mini';
-        if (endEl && !endEl.value) endEl.value = 'https://api.openai.com/v1/chat/completions';
+        if (endEl && (!endEl.value || endEl.value.includes('localhost:11434'))) endEl.value = 'https://api.openai.com/v1/chat/completions';
       }
+      await populateAiModelDropdown(p, null, endEl ? endEl.value : '', keyEl ? keyEl.value : '');
       updateAiSettingsDiagnostics(p, modEl ? modEl.value : '');
+    });
+  }
+
+  if (selectModEl && !selectModEl.dataset.wired) {
+    selectModEl.dataset.wired = 'true';
+    selectModEl.addEventListener('change', () => {
+      if (selectModEl.value === '__custom__') {
+        if (modEl) {
+          modEl.style.display = 'block';
+          modEl.focus();
+        }
+      } else {
+        if (modEl) {
+          modEl.style.display = 'none';
+          modEl.value = selectModEl.value;
+          updateAiSettingsDiagnostics(provEl ? provEl.value : 'local', modEl.value);
+        }
+      }
+    });
+  }
+
+  const refreshModBtn = qs('#btn-refresh-ai-models');
+  if (refreshModBtn && !refreshModBtn.dataset.wired) {
+    refreshModBtn.dataset.wired = 'true';
+    refreshModBtn.addEventListener('click', async () => {
+      const p = provEl ? provEl.value : 'local';
+      refreshModBtn.disabled = true;
+      refreshModBtn.classList.add('is-spinning');
+      try {
+        await populateAiModelDropdown(p, modEl ? modEl.value : '', endEl ? endEl.value : '', keyEl ? keyEl.value : '');
+        if (typeof showToast === 'function') {
+          showToast(`Refreshed installed models for ${p === 'ollama' ? 'Ollama' : (p === 'openai' ? 'OpenAI' : 'Local')}`, 'info', 2500);
+        }
+      } finally {
+        refreshModBtn.disabled = false;
+        refreshModBtn.classList.remove('is-spinning');
+      }
     });
   }
 
@@ -22088,6 +22238,10 @@ async function loadAiConfigToSettings() {
         });
         const data = await res.json();
         const pTitle = prov === 'ollama' ? 'Ollama' : (prov === 'openai' ? 'OpenAI' : 'Local Synthesizer');
+
+        if (data.availableModels && Array.isArray(data.availableModels) && data.availableModels.length) {
+          await populateAiModelDropdown(prov, mod, endp, key, data.availableModels);
+        }
 
         if (data.ok) {
           const lat = data.latencyMs != null ? data.latencyMs : 0;

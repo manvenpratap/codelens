@@ -1420,6 +1420,8 @@ public class CodeLensServer {
         app.post("/api/ai/explain",                 this::aiExplain);
         app.get("/api/ai/config",                   this::getAiConfig);
         app.post("/api/ai/config",                  this::saveAiConfig);
+        app.get("/api/ai/models",                   this::getAiModels);
+        app.post("/api/ai/models",                  this::getAiModels);
         app.get("/api/ai/test",                     this::testAiConnection);
         app.post("/api/ai/test",                    this::testAiConnection);
 
@@ -4597,6 +4599,7 @@ public class CodeLensServer {
         cfg.put("model", aiGroundingService.getModel());
         cfg.put("endpoint", aiGroundingService.getEndpoint());
         cfg.put("hasApiKey", aiGroundingService.getApiKey() != null && !aiGroundingService.getApiKey().isBlank());
+        cfg.put("availableModels", aiGroundingService.discoverModels(aiGroundingService.getProvider(), aiGroundingService.getEndpoint(), aiGroundingService.getApiKey()));
         ctx.json(cfg);
     }
 
@@ -4625,6 +4628,28 @@ public class CodeLensServer {
         }
     }
 
+    private void getAiModels(Context ctx) {
+        try {
+            String bodyStr = ctx.body();
+            Map<?, ?> body = (bodyStr != null && !bodyStr.isBlank()) ? ctx.bodyAsClass(Map.class) : Collections.emptyMap();
+            String provider = body.get("provider") != null ? body.get("provider").toString() : ctx.queryParam("provider");
+            String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : ctx.queryParam("endpoint");
+            String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : ctx.queryParam("apiKey");
+
+            List<String> models = aiGroundingService.discoverModels(provider, endpoint, apiKey);
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("provider", provider != null ? provider : "local");
+            resp.put("models", models);
+            ctx.json(resp);
+        } catch (Exception e) {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", false);
+            resp.put("models", Collections.emptyList());
+            ctx.json(resp);
+        }
+    }
+
     private void testAiConnection(Context ctx) {
         try {
             String bodyStr = ctx.body();
@@ -4640,6 +4665,7 @@ public class CodeLensServer {
             resp.put("provider", res.provider);
             resp.put("message", res.message);
             resp.put("latencyMs", res.latencyMs);
+            resp.put("availableModels", res.availableModels);
             ctx.json(resp);
         } catch (Exception e) {
             Map<String, Object> resp = new LinkedHashMap<>();
@@ -4647,6 +4673,7 @@ public class CodeLensServer {
             resp.put("provider", "unknown");
             resp.put("message", "Connection test error: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
             resp.put("latencyMs", 0);
+            resp.put("availableModels", Collections.emptyList());
             ctx.json(resp);
         }
     }

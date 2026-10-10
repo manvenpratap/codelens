@@ -123,6 +123,19 @@ public class AiGroundingServiceTest {
         assertNotNull(unknown, "Unknown provider result must not be null");
         assertTrue(!unknown.success, "Unknown provider should fail");
         assertTrue(unknown.message.contains("Unrecognized"), "Message should mention Unrecognized provider");
+
+        // 6. Dynamic Model Discovery
+        List<String> localModels = ai.discoverModels("local", null, null);
+        assertNotNull(localModels, "Local models must not be null");
+        assertTrue(localModels.contains("local-facts"), "Local models should contain local-facts");
+
+        List<String> ollamaFallback = ai.discoverModels("ollama", "http://localhost:19999", null);
+        assertNotNull(ollamaFallback, "Ollama fallback models must not be null");
+        assertTrue(ollamaFallback.contains("llama3"), "Fallback should include llama3");
+
+        List<String> openAiDefault = ai.discoverModels("openai", null, "");
+        assertNotNull(openAiDefault, "OpenAI default models must not be null");
+        assertTrue(openAiDefault.contains("gpt-4o-mini"), "OpenAI default should include gpt-4o-mini");
     }
 
     private CodeType createType(String fqn, String simpleName, String file, int line) {

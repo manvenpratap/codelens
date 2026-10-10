@@ -11193,6 +11193,10 @@ body.theme-light .guide-badge-pill {
   color: var(--amber, #f59e0b);
 }
 
+.btn.is-spinning svg {
+  animation: spin 0.8s linear infinite;
+}
+
 .ai-status-pill .status-dot {
   width: 7px;
   height: 7px;
