@@ -19579,8 +19579,12 @@ async function openBlastRadiusExplorer(fqn, kind = 'AUTO') {
 function renderBlastRadiusView(data) {
   const emptyState = qs('#impact-empty-state');
   const scrollBody = qs('#impact-scroll-body');
+  const kpiBar = qs('#impact-kpi-bar');
+  const clearBtn = qs('#impact-target-clear-btn');
   if (emptyState) emptyState.style.display = 'none';
+  if (kpiBar) kpiBar.style.display = 'grid';
   if (scrollBody) scrollBody.style.display = 'flex';
+  if (clearBtn) clearBtn.style.display = 'inline-flex';
 
   const { target, summary, sankey, touchPoints, modules } = data;
 
@@ -20374,6 +20378,41 @@ function initBlastRadiusExplorer() {
     });
   }
 
+  // Empty state buttons
+  qs('#btn-impact-empty-explore')?.addEventListener('click', () => {
+    const firstChip = qs('#impact-sample-chips .impact-sample-chip');
+    if (firstChip) firstChip.click();
+    else if (typeof exploreFirstClass === 'function') exploreFirstClass();
+  });
+
+  qs('#btn-impact-empty-search')?.addEventListener('click', () => {
+    const input = qs('#impact-quick-search');
+    if (input) {
+      input.focus();
+      input.select();
+    } else if (typeof openCommandPalette === 'function') {
+      openCommandPalette();
+    }
+  });
+
+  qs('#btn-impact-empty-whatif')?.addEventListener('click', () => {
+    const firstChip = qs('#impact-sample-chips .impact-sample-chip');
+    const fqn = (currentBlastRadiusData && currentBlastRadiusData.target && currentBlastRadiusData.target.fqn)
+      || (firstChip && firstChip.dataset.fqn)
+      || (App && App.selectedNode && App.selectedNode.fqn);
+    if (fqn && typeof openWhatIfModal === 'function') {
+      openWhatIfModal(fqn);
+    } else if (typeof openCommandPalette === 'function') {
+      openCommandPalette();
+    }
+  });
+
+  // Target clear button
+  qs('#impact-target-clear-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetBlastRadiusView();
+  });
+
   // Populate sample chips in empty state
   if (typeof api.types === 'function') {
     api.types().then(types => {
@@ -20383,6 +20422,7 @@ function initBlastRadiusExplorer() {
       const sampleTypes = (Array.isArray(types) ? types : []).slice(0, 6);
       sampleTypes.forEach(t => {
         const chip = createElement('div', { class: 'impact-sample-chip' });
+        chip.dataset.fqn = t.fqn;
         chip.innerHTML = `<span class="impact-target-kind-pill kind-class">CLASS</span> <span>${esc(t.simpleName)}</span>`;
         chip.addEventListener('click', () => openBlastRadiusExplorer(t.fqn, 'CLASS'));
         chipsContainer.appendChild(chip);
@@ -20390,6 +20430,28 @@ function initBlastRadiusExplorer() {
     }).catch(() => {});
   }
 }
+
+function resetBlastRadiusView() {
+  currentBlastRadiusData = null;
+  const emptyState = qs('#impact-empty-state');
+  const scrollBody = qs('#impact-scroll-body');
+  const kpiBar = qs('#impact-kpi-bar');
+  const clearBtn = qs('#impact-target-clear-btn');
+  const targetName = qs('#impact-target-name');
+  const targetKind = qs('#impact-target-kind');
+  const targetMeta = qs('#impact-target-meta');
+  if (emptyState) emptyState.style.display = 'flex';
+  if (kpiBar) kpiBar.style.display = 'none';
+  if (scrollBody) scrollBody.style.display = 'none';
+  if (clearBtn) clearBtn.style.display = 'none';
+  if (targetName) targetName.textContent = 'Select an entity to explore';
+  if (targetKind) {
+    targetKind.className = 'impact-target-kind-pill kind-class';
+    targetKind.textContent = 'CLASS';
+  }
+  if (targetMeta) targetMeta.textContent = '';
+}
+window.resetBlastRadiusView = resetBlastRadiusView;
 
 // Global window helpers for debugging & integration
 window.openBlastRadiusExplorer = openBlastRadiusExplorer;

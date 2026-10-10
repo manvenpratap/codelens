@@ -1831,6 +1831,7 @@
               <div class="impact-target-chip" id="impact-target-chip" title="Active target entity">
                 <span class="impact-target-kind-pill kind-class" id="impact-target-kind">CLASS</span>
                 <span class="impact-target-name" id="impact-target-name">Select an entity to explore</span>
+                <button type="button" class="impact-target-clear-btn" id="impact-target-clear-btn" style="display:none;" title="Clear active entity">✕</button>
                 <span class="impact-target-meta" id="impact-target-meta"></span>
               </div>
             </div>
@@ -1849,7 +1850,7 @@
         </div>
 
         <!-- Impact KPI Summary Bar -->
-        <div class="impact-kpi-bar" id="impact-kpi-bar">
+        <div class="impact-kpi-bar" id="impact-kpi-bar" style="display:none;">
           <div class="impact-kpi-card" id="kpi-card-touchpoints">
             <div class="impact-kpi-label">TOTAL TOUCH POINTS</div>
             <div class="impact-kpi-val text-cyan" id="impact-kpi-total">0</div>
@@ -1880,7 +1881,7 @@
         </div>
 
         <!-- Scrollable Flow & Breakdown Body -->
-        <div class="impact-scroll-body" id="impact-scroll-body">
+        <div class="impact-scroll-body" id="impact-scroll-body" style="display:none;">
           <!-- Flow Diagram Card -->
           <div class="impact-card impact-sankey-card">
             <div class="impact-card-header">
@@ -1993,21 +1994,73 @@
           </div>
         </div>
 
-        <!-- Initial / Empty State -->
-        <div class="impact-empty-state" id="impact-empty-state">
-          <div class="impact-empty-icon">
-            <svg class="svg-icon icon-rose icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <!-- Initial / Empty State Landing Card (Knowledge Base Frosted Center Card Design) -->
+        <div class="kb-empty-container kb-empty-landing impact-empty-container impact-empty-landing" id="impact-empty-state">
+          <div class="impact-empty-icon-hero">
+            <svg class="svg-icon icon-rose icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="6"/>
+              <circle cx="12" cy="12" r="2"/>
+            </svg>
           </div>
-          <div class="impact-empty-title">Blast Radius &amp; Touch Points Explorer</div>
-          <div class="impact-empty-desc">
+          <h2 class="kb-empty-title impact-empty-title">Blast Radius &amp; Touch Points Explorer</h2>
+          <p class="kb-empty-desc impact-empty-desc">
             Visualize the full cascade of dependencies from any Field, Method, Class, or Module down to the exact line of code:
-            <br/>
-            <strong>Target Entity ➔ Inbound Modules ➔ Calling Classes ➔ Calling Methods ➔ Exact Source Line</strong>
+          </p>
+
+          <div class="impact-flow-stages-pill">
+            <span class="stage-dot dot-cyan"></span><span class="stage-name">Target Entity</span>
+            <span class="stage-arr">➔</span>
+            <span class="stage-dot dot-purple"></span><span class="stage-name">Inbound Modules</span>
+            <span class="stage-arr">➔</span>
+            <span class="stage-dot dot-amber"></span><span class="stage-name">Calling Classes</span>
+            <span class="stage-arr">➔</span>
+            <span class="stage-dot dot-emerald"></span><span class="stage-name">Calling Methods</span>
           </div>
-          <div class="impact-empty-actions">
-            <span class="impact-empty-hint">Click "🎯 Blast Radius Flow" on any Inspector panel, or pick a sample entity:</span>
+
+          <div class="kb-empty-actions impact-empty-actions">
+            <button id="btn-impact-empty-explore" class="empty-action-pill rose" type="button" title="Select and analyze high-impact entity">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <span>Explore High-Impact Target</span>
+            </button>
+            <button id="btn-impact-empty-search" class="empty-action-pill" type="button" title="Quick Search across types, methods, fields (⌘K)">
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span>Search Codebase (⌘K)</span>
+            </button>
+            <button id="btn-impact-empty-whatif" class="empty-action-pill" type="button" title="Analyze change impact with What-If prediction">
+              <svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+              <span>What-If Risk Predictor</span>
+            </button>
+          </div>
+
+          <div class="impact-empty-sample-wrap">
+            <span class="impact-empty-sample-hint">Click &ldquo;🎯 Blast Radius Flow&rdquo; on any Inspector panel, or pick a sample entity:</span>
             <div class="impact-sample-chips" id="impact-sample-chips">
               <!-- Dynamically populated sample chips from scanned codebase -->
+            </div>
+          </div>
+
+          <div class="kb-empty-features-grid impact-empty-features-grid">
+            <div class="kb-feature-chip impact-feature-chip">
+              <span class="kb-feature-icon impact-feature-icon">🌊</span>
+              <div class="kb-feature-text impact-feature-text">
+                <strong>Hierarchical Flow &amp; Sankey</strong>
+                <span>Multi-tier caller rollups and execution cascades</span>
+              </div>
+            </div>
+            <div class="kb-feature-chip impact-feature-chip">
+              <span class="kb-feature-icon impact-feature-icon">⚡</span>
+              <div class="kb-feature-text impact-feature-text">
+                <strong>Line-Level Touch Points</strong>
+                <span>Direct jump to every caller, reader, &amp; writer site</span>
+              </div>
+            </div>
+            <div class="kb-feature-chip impact-feature-chip">
+              <span class="kb-feature-icon impact-feature-icon">🎯</span>
+              <div class="kb-feature-text impact-feature-text">
+                <strong>Ripple &amp; Centrality Risk</strong>
+                <span>Bottleneck identification and cross-module blast</span>
+              </div>
             </div>
           </div>
         </div>
