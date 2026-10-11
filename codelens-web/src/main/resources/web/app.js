@@ -4617,8 +4617,11 @@ function switchTab(tabName) {
   const previousTab = App.activeTab;
   App.activeTab = tabName;
 
-  if (tabName !== 'reports' && tabName !== 'codebase') {
+  if (tabName !== 'reports' && tabName !== 'codebase' && tabName !== 'source') {
     App.lastWorkspaceTab = tabName;
+  }
+  if (previousTab && previousTab !== 'source') {
+    App.previousTabBeforeSource = previousTab;
   }
 
   // Reflect active state on global Reports header action button
@@ -4733,10 +4736,21 @@ function switchTab(tabName) {
   if (tabName === 'source') {
     if (App.currentFilePath && (App._loadedSourceFilePath !== App.currentFilePath || (App.currentLineNum && App._loadedSourceLineNum !== App.currentLineNum) || !App._loadedSourceFilePath)) {
       openSourceFile(App.currentFilePath, App.currentLineNum || null, true);
-    } else if (App.editor) {
+    } else if (App.currentFilePath && App.editor) {
+      qs('#editor-close-btn')?.style.setProperty('display', 'inline-flex');
+      qs('#editor-back-btn')?.style.setProperty('display', 'inline-flex');
+      qs('#tab-source-close')?.style.setProperty('display', 'inline-flex');
+      qs('#editor-empty-state')?.style.setProperty('display', 'none');
       setTimeout(() => {
         App.editor.layout();
       }, 20);
+    } else if (!App.currentFilePath) {
+      qs('#editor-close-btn')?.style.setProperty('display', 'none');
+      qs('#editor-back-btn')?.style.setProperty('display', 'none');
+      qs('#tab-source-close')?.style.setProperty('display', 'none');
+      qs('#editor-empty-state')?.style.setProperty('display', 'flex');
+      const saveBtn = qs('#editor-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
     }
   }
   if (tabName === 'git') {
@@ -5024,24 +5038,112 @@ function renderFallbackViewer(content, lineNum) {
   }
 }
 
+/** Unload the open source file from Monaco editor/fallback viewer, restore empty state, and optionally return to previous view. */
+function closeSourceFile(andReturnToPrevious = true) {
+  // Check for unsaved changes in Monaco
+  if (App.editor && App._loadedSourceInitialContent != null) {
+    try {
+      const currentVal = App.editor.getValue();
+      if (currentVal !== App._loadedSourceInitialContent) {
+        if (!confirm('You have unsaved changes in this source file. Close anyway?')) {
+          return false;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const closedFile = App.currentFilePath ? App.currentFilePath.split('/').pop().split('\\').pop() : '';
+
+  App.currentFilePath = null;
+  App.currentLineNum = null;
+  App._loadedSourceFilePath = null;
+  App._loadedSourceLineNum = null;
+  App._loadedSourceInitialContent = null;
+  updateReviewTargetInfo();
+
+  // Reset Monaco editor model
+  if (App.editor && window.monaco) {
+    try {
+      App.editor.setModel(null);
+    } catch (_) {}
+  }
+
+  // Remove fallback viewer if mounted
+  const fallbackWrap = qs('.fallback-code-wrap');
+  if (fallbackWrap) fallbackWrap.remove();
+
+  // Reset header UI
+  const pathLabel = qs('#editor-file-path');
+  if (pathLabel) {
+    pathLabel.innerHTML = 'No file loaded';
+  }
+  const saveBtn = qs('#editor-save-btn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Save';
+  }
+  const backBtn = qs('#editor-back-btn');
+  if (backBtn) backBtn.style.display = 'none';
+  const closeBtn = qs('#editor-close-btn');
+  if (closeBtn) closeBtn.style.display = 'none';
+
+  // Hide tab close icon on #tab-source
+  const tabCloseIcon = qs('#tab-source-close');
+  if (tabCloseIcon) tabCloseIcon.style.display = 'none';
+
+  // Restore editor empty state
+  const emptyState = qs('#editor-empty-state');
+  if (emptyState) emptyState.style.display = 'flex';
+
+  // If requested, navigate back to previous workspace view
+  if (andReturnToPrevious) {
+    const returnTab = (App.previousTabBeforeSource && App.previousTabBeforeSource !== 'source')
+      ? App.previousTabBeforeSource
+      : (App.lastWorkspaceTab && App.lastWorkspaceTab !== 'source' ? App.lastWorkspaceTab : 'graph');
+    switchTab(returnTab);
+  }
+  return true;
+}
+window.closeSourceFile = closeSourceFile;
+
 /** Fetch a source file, mount Monaco Editor (or fallback), load the code, and focus on the line. */
 async function openSourceFile(filePath, lineNum = null, skipTabSwitch = false) {
   if (!filePath) return;
 
-  App.currentFilePath = filePath;
-  App.currentLineNum = lineNum;
-  App._loadedSourceFilePath = filePath;
-  App._loadedSourceLineNum = lineNum;
-  updateReviewTargetInfo();
-  
-  const pathLabel = qs('#editor-file-path');
-  if (pathLabel) {
-    pathLabel.innerHTML = `Source: <strong>${esc(filePath.split('/').pop().split('\\').pop())}</strong> <span style="font-size:10px; color:var(--text-muted)">(${esc(filePath)})</span>`;
-  }
-
   try {
     // Fetch file content first
     const data = await api.readFile(filePath);
+    App._loadedSourceInitialContent = data.content;
+
+    if (App.activeTab && App.activeTab !== 'source') {
+      App.previousTabBeforeSource = App.activeTab;
+    }
+
+    App.currentFilePath = filePath;
+    App.currentLineNum = lineNum;
+    App._loadedSourceFilePath = filePath;
+    App._loadedSourceLineNum = lineNum;
+    updateReviewTargetInfo();
+    
+    const pathLabel = qs('#editor-file-path');
+    if (pathLabel) {
+      pathLabel.innerHTML = `Source: <strong>${esc(filePath.split('/').pop().split('\\').pop())}</strong> <span style="font-size:10px; color:var(--text-muted)">(${esc(filePath)})</span>`;
+    }
+
+    // Configure back button label
+    const backBtn = qs('#editor-back-btn');
+    const backLabel = qs('#editor-back-label');
+    if (backBtn && backLabel) {
+      const prev = (App.previousTabBeforeSource && App.previousTabBeforeSource !== 'source') ? App.previousTabBeforeSource : 'graph';
+      backLabel.textContent = 'Back to ' + prev.charAt(0).toUpperCase() + prev.slice(1);
+      backBtn.style.display = 'inline-flex';
+    }
+
+    const closeBtn = qs('#editor-close-btn');
+    if (closeBtn) closeBtn.style.display = 'inline-flex';
+
+    const tabSourceClose = qs('#tab-source-close');
+    if (tabSourceClose) tabSourceClose.style.display = 'inline-flex';
 
     // Switch to source tab
     if (!skipTabSwitch) {
@@ -10758,6 +10860,10 @@ function bindKeyboard() {
         closeMacroStudio();
         return;
       }
+      if (App.activeTab === 'source' && App.currentFilePath) {
+        closeSourceFile(true);
+        return;
+      }
       if (App.activeTab === 'reports') {
         switchTab(App.lastWorkspaceTab || 'graph');
         return;
@@ -11379,6 +11485,24 @@ async function init() {
       }
     });
   }
+
+  // Source editor Back and Close buttons
+  qs('#editor-back-btn')?.addEventListener('click', () => {
+    const returnTab = (App.previousTabBeforeSource && App.previousTabBeforeSource !== 'source')
+      ? App.previousTabBeforeSource
+      : (App.lastWorkspaceTab && App.lastWorkspaceTab !== 'source' ? App.lastWorkspaceTab : 'graph');
+    switchTab(returnTab);
+  });
+
+  qs('#editor-close-btn')?.addEventListener('click', () => {
+    closeSourceFile(true);
+  });
+
+  qs('#tab-source-close')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    closeSourceFile(App.activeTab === 'source');
+  });
 
   // Monaco Resize handling
   window.addEventListener('resize', () => {

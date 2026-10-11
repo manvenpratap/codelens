@@ -425,6 +425,7 @@
         <button class="tab level-pill" role="tab" id="tab-source" data-tab="source" draggable="true" aria-selected="false" aria-controls="source-view" title="Monaco syntax-highlighted source code editor (5)">
           <span class="tab-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
           <span class="tab-label">Source</span>
+          <span class="tab-close-icon" id="tab-source-close" title="Close open source file" style="display:none;" aria-label="Close open source file">&times;</span>
         </button>
         <!-- Blast Radius tab -->
         <button class="tab level-pill" role="tab" id="tab-impact" data-tab="impact" draggable="true" aria-selected="false" aria-controls="impact-view" title="Blast Radius &amp; Touch Points Explorer: Module ➔ Class ➔ Method ➔ Line flow (6)">
@@ -1801,8 +1802,20 @@
       tabindex="0"
     >
       <div class="editor-header">
-        <span class="editor-file-path" id="editor-file-path">No file loaded</span>
-        <button class="btn-primary editor-save-btn" id="editor-save-btn" disabled>Save</button>
+        <div class="editor-header-left">
+          <button class="editor-back-btn" id="editor-back-btn" title="Back to workspace (Esc)" aria-label="Back to workspace" style="display:none;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            <span class="editor-back-label" id="editor-back-label">Back</span>
+          </button>
+          <span class="editor-file-path" id="editor-file-path">No file loaded</span>
+        </div>
+        <div class="editor-header-actions">
+          <button class="btn-primary editor-save-btn" id="editor-save-btn" disabled>Save</button>
+          <button class="editor-close-btn" id="editor-close-btn" title="Close source file (Esc)" aria-label="Close source file" style="display:none;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <span>Close</span>
+          </button>
+        </div>
       </div>
       <div id="editor-container">
         <!-- Monaco editor will mount here -->
