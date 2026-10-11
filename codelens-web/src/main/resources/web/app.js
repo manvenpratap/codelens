@@ -21674,6 +21674,16 @@ function initCodestoryAsk() {
       }
     }
   });
+
+  // Escape key closes modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal && modal.classList.contains('open')) {
+      closeCodestoryAskModal();
+    }
+  });
+
+  // Initial config load
+  fetchAiConfig();
 }
 
 async function fetchAiConfig() {
@@ -21690,14 +21700,37 @@ async function fetchAiConfig() {
 
 function updateAiProviderBadge(cfg) {
   const badgeLabel = qs('#codestory-ask-provider-label');
+  const badge = qs('#codestory-ask-provider-badge');
   if (!badgeLabel || !cfg) return;
   const p = (cfg.provider || 'local').toLowerCase();
+
+  if (badge) {
+    badge.classList.remove('status-verified', 'status-warning', 'status-error');
+  }
+
   if (p === 'ollama') {
     badgeLabel.textContent = `Ollama (${cfg.model || 'llama3'})`;
+    if (badge) {
+      badge.title = `Active AI: Ollama running model ${cfg.model || 'llama3'}`;
+      badge.classList.add('status-verified');
+    }
   } else if (p === 'openai') {
     badgeLabel.textContent = `OpenAI (${cfg.model || 'gpt-4o-mini'})`;
+    if (badge) {
+      if (!cfg.apiKey) {
+        badge.classList.add('status-warning');
+        badge.title = 'OpenAI selected but API key is not configured';
+      } else {
+        badge.classList.add('status-verified');
+        badge.title = `Active AI: OpenAI (${cfg.model || 'gpt-4o-mini'})`;
+      }
+    }
   } else {
     badgeLabel.textContent = 'Local Synthesizer';
+    if (badge) {
+      badge.title = 'Deterministic offline synthesizer (AST & call graph evidence)';
+      badge.classList.add('status-verified');
+    }
   }
 }
 
