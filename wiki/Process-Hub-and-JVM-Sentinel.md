@@ -1,99 +1,99 @@
 # Process Hub & JVM Sentinel
 
-The **Process Hub & JVM Sentinel** is CodeLens's operational command center and runtime self-protection system. It provides live visibility into all 11 background processing engines, thread pool allocations, memory consumption, and circuit breaker states, ensuring system resilience even when analyzing massive multi-million-LOC repositories.
+The **Process Hub & JVM Sentinel** is CodeLens's operational command center and runtime self-protection system. It provides live visibility into all background processing engines, thread allocations, memory pressure, and circuit breaker states, ensuring resilience even when analyzing massive multi-million-LOC codebases.
 
-Interactive Archify HTML: [`docs/diagrams/architecture.html`](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html)  
-Lifecycle Specification: [`docs/diagrams/lifecycle.html`](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/lifecycle.html)
+![CodeLens Ingestion & Server Lifecycle](diagrams/lifecycle.svg)
+
+*Interactive Archify Diagram: [docs/diagrams/lifecycle.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/lifecycle.html)*
 
 ---
 
-## ⚙️ The 11 Background Engines
+## ⚙️ 1. The 5 Functional Stages & 18 Registered Tasks
 
-CodeLens partitions all heavy computational tasks across **11 decoupled, isolated background engines**:
+`BackgroundTaskOrchestrator` schedules background work across **5 sequential stages**, governing concurrency via **Load Tiers** (`HEAVY`, `MEDIUM`, `LIGHT`, `SENTINEL`), **Mutex Groups** (`DATABASE_EXCLUSIVE`, `ANALYSIS_EXCLUSIVE`), and **DAG Dependency Graphs**:
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion & Analysis
-        E1["1. Scanner Engine\n(Disk & Delta)"]
-        E2["2. Parser Engine\n(AST & Worker Pool)"]
-        E3["3. Indexer Engine\n(Lucene & H2)"]
-        E4["4. Graph Layout Engine\n(Sunflower & fcose)"]
-        E5["5. Metrics Engine\n(Martin & Complexity)"]
+    subgraph S1["Stage 1: Source Ingestion"]
+        T1["Source Code Scanner (Heavy 10)"]
+        T2["Delta Change Scanner (Heavy 8)"]
     end
-    subgraph Intelligence & Auditing
-        E6["6. Structural Integrity Engine\n(14 Class Rules)"]
-        E7["7. CodeStory Engine\n(Narrative Flows & Tour)"]
-        E8["8. Reports Engine\n(14 Precomputed Snapshots)"]
+    subgraph S2["Stage 2: Graph Topology"]
+        T3["Call Graph Engine (Med 4)"]
+        T4["Sunflower Layout (Med 4)"]
+        T5["Critical Path Analyzer (Med 4)"]
     end
-    subgraph Resilience & Operations
-        E9["9. Watchdog Sentinel\n(Heap & Circuit Breaker)"]
-        E10["10. GC Monitor Engine\n(STW Pause Telemetry)"]
-        E11["11. Export Engine\n(JSON, SARIF, HTML)"]
+    subgraph S3["Stage 3: Indexing & Audit"]
+        T6["Lucene Search Indexer (Med 4)"]
+        T7["Module Engine (Med 4)"]
+        T8["Inconsistency Detector (Med 3)"]
+        T9["Git Churn Analyzer (Med 4)"]
     end
+    subgraph S4["Stage 4: Semantic Intelligence & AI"]
+        T10["Storylines Generator (Med 4)"]
+        T11["PR Change Story Engine (Med 4)"]
+        T12["AI Grounding Engine (Light 2)"]
+        T13["Reports Generator (Heavy 7)"]
+    end
+    subgraph S5["Stage 5: Sentinels & Infrastructure"]
+        T14["DB Connection Watchdog (Light 1)"]
+        T15["Heap Auto-Recovery (Sentinel 0)"]
+        T16["Database Maintenance (Heavy 10)"]
+        T17["SSE Live Telemetry (Light 1)"]
+        T18["Stress Test Runner (Heavy 10)"]
+    end
+
+    S1 --> S2
+    S1 --> S3
+    S2 --> S4
+    S3 --> S4
 ```
 
-| Engine | Responsibility | Concurrency & Threading Model |
-|---|---|---|
-| **1. Scanner** | Fast file tree discovery, SHA-256 change hashing, delta manifest detection | Single-threaded I/O coordinator |
-| **2. Parser** | AST parsing with JavaParser, extracting classes, methods, annotations | Configurable CPU-bound thread pool (`Runtime.getRuntime().availableProcessors()`) |
-| **3. Indexer** | Inverted token indexing in Lucene and batch relational indexing in embedded H2 | Dedicated background disk I/O worker |
-| **4. Graph Layout** | JGraphT topology construction and Sunflower/fcose coordinate solving | Off-heap memory cached worker |
-| **5. Metrics** | Computes McCabe complexity, Halstead volume, and Martin package stability | Parallel stream analysis |
-| **6. Structural Integrity** | Evaluates 14 class-awareness rules across the AST and call graph | Dedicated rule audit thread pool |
-| **7. CodeStory** | Discovers entry points, traces sinks, and precomputes guided tours | Path-tracing worker with cycle limits |
-| **8. Reports** | Pre-renders 14 analytical snapshots and offline visual reports | Sequential report generation runner |
-| **9. Watchdog Sentinel** | Polling JVM memory, heap limits, and circuit breaker trip conditions | High-priority daemon timer (1,000ms tick) |
-| **10. GC Monitor** | Subscribes to JMX `GarbageCollectorMXBean` notifications for STW tracking | JMX notification listener thread |
-| **11. Export** | Formats and writes SARIF, JSON, CSV, SVG, and HTML bundle exports | Ad-hoc on-demand executor |
+### Detailed Task Catalog
+
+| Stage | Task ID | Name | Tier & Load | Mutex Group | Dependencies |
+|---|---|---|---|---|---|
+| **Stage 1** | `scanner` | Source Code Scanner | `HEAVY (10)` | `DATABASE_EXCLUSIVE` | None |
+| **Stage 1** | `delta-scanner` | Delta Change Scanner | `HEAVY (8)` | `DATABASE_EXCLUSIVE` | None |
+| **Stage 2** | `call-graph` | Call Graph & Topology Engine | `MEDIUM (4)` | `NONE` | `scanner` |
+| **Stage 2** | `layout-engine` | Sunflower Layout Precomputer | `MEDIUM (4)` | `NONE` | `call-graph` |
+| **Stage 2** | `critical-path-analyzer` | Critical Execution Path Analyzer | `MEDIUM (4)` | `NONE` | `call-graph` |
+| **Stage 3** | `lucene-indexer` | Lucene Full-Text Search Indexer | `MEDIUM (4)` | `NONE` | `scanner` |
+| **Stage 3** | `module-analyzer` | Module Dependency Engine | `MEDIUM (4)` | `NONE` | `scanner` |
+| **Stage 3** | `inconsistency-detector` | Structural Inconsistency Detector | `MEDIUM (3)` | `NONE` | `scanner` |
+| **Stage 3** | `git-analyzer` | Git Churn & Hotspot Analyzer | `MEDIUM (4)` | `NONE` | `scanner` |
+| **Stage 4** | `storylines-generator` | CodeStory Narrative Flows | `MEDIUM (4)` | `NONE` | `call-graph`, `scanner` |
+| **Stage 4** | `change-story-analyzer` | Git PR Change Story Engine | `MEDIUM (4)` | `NONE` | `storylines-generator`, `git-analyzer` |
+| **Stage 4** | `ai-grounding-engine` | Architectural Q&A & Semantic AI | `LIGHT (2)` | `NONE` | `storylines-generator`, `call-graph` |
+| **Stage 4** | `reports-generator` | Intelligence Reports Generator | `HEAVY (7)` | `ANALYSIS_EXCLUSIVE` | `call-graph`, `module-analyzer`, `lucene-indexer` |
+| **Stage 5** | `db-watchdog` | Database Connection Watchdog | `LIGHT (1)` | `NONE` | None |
+| **Stage 5** | `heap-watchdog` | Heap Auto-Recovery Watchdog | `SENTINEL (0)` | `NONE` | None |
+| **Stage 5** | `db-maintenance` | Database Compaction & Vacuum | `HEAVY (10)` | `DATABASE_EXCLUSIVE` | None |
+| **Stage 5** | `sse-broadcaster` | SSE Live Telemetry Broadcaster | `LIGHT (1)` | `NONE` | None |
+| **Stage 5** | `stress-test` | Scale & Stress Test Runner | `HEAVY (10)` | `DATABASE_EXCLUSIVE` | None |
 
 ---
 
-## 🛡️ JVM Sentinel & Memory Watchdog
+## 🛡️ 2. JVM Sentinel & Heap Auto-Recovery
 
-To prevent `OutOfMemoryError` (OOM) and JVM unresponsiveness during heavy codebase scans, the **JVM Sentinel** constantly monitors memory telemetry:
+To prevent `OutOfMemoryError` (OOM) during heavy codebase scans, the **JVM Sentinel** actively tracks memory pressure:
 
 ```
-0% ──────────── 75% ─────────────── 88% ───────────── 100%
+0% ──────────── 75% ─────────────── 85% ───────────── 100%
      HEALTHY          WARNING            TRIPPED
-   [  Normal  ]   [ Evict Caches ]   [ Shed Ingestion ]
+   [  Normal  ]   [ Evict Caches ]   [ Throttle Ingestion ]
                   [ Proactive GC ]   [ Circuit Breaker OPEN ]
 ```
 
-### Telemetry Thresholds
-1. **Normal State ($< 75\%$ Heap Used)**: All 11 engines operate at full parallel capacity. Layouts and AST trees remain cached in memory for sub-millisecond retrieval.
-2. **Warning State ($75\% - 88\%$ Heap Used)**:
-   * Triggers proactive eviction of soft caches (precomputed layout coordinates, intermediate AST trees).
-   * Notifies the garbage collector to reclaim ephemeral structures.
-   * UI status badge transitions to amber warning.
-3. **Tripped State ($> 88\%$ Heap Used)**:
-   * **Circuit Breakers Trip to `OPEN`**: Heavy ingestion and report tasks are paused immediately.
-   * In-flight AST workers are throttled or gracefully shed.
-   * Prevents total JVM crash; preserves read operations and UI responsiveness.
+* **Warning Threshold (75% Heap)**: Automatically evicts in-memory report JSON caches, trims H2 buffer pools, and requests cooperative garbage collection.
+* **Critical Threshold (85% Heap)**: Trips the circuit breaker, pauses non-essential background tasks, throttles active workers, and rolls back uncommitted batch chunks.
+* **Resume Threshold (80% Heap)**: Resumes throttled tasks once memory pressure drops below safe operational boundaries.
 
 ---
 
-## ⚡ Circuit Breakers & States
+## 🧵 3. Live Diagnostic Thread Dumps
 
-Every resource-intensive pipeline step is guarded by a deterministic circuit breaker:
-
-| State | Behavior |
-|---|---|
-| **`CLOSED`** | Normal execution. All operations pass through to engine worker threads. |
-| **`OPEN`** | Failed requests or critical heap alarms trip the breaker. Calls fail-fast with `503 Service Unavailable` or enter safe degradation queues instead of crashing the JVM. |
-| **`HALF_OPEN`** | Once memory stabilizes below 70% for over 5 seconds, canary requests are allowed through to verify memory recovery before closing the breaker. |
-
----
-
-## 🧰 Process Hub Web Modal & Controls
-
-The **Process Hub Modal** (<kbd>⌘P</kbd> or clicking the top-bar Sentinel status pill) provides comprehensive runtime administration:
-
-* **Tab 1: Background Tasks**: Real-time list of all active, queued, and completed jobs with elapsed time, progress bar, CPU consumption, and kill buttons.
-* **Tab 2: Database & Storage**: Embedded H2 table row counts, disk database size, cache hit ratio, and an instant **"Purge & Compact"** button.
-* **Tab 3: Engine Fleet**: Status cards for each of the 11 engines (`IDLE`, `RUNNING`, `THROTTLED`, `ERROR`) with direct pause/resume toggles.
-* **Tab 4: Server & Telemetry**: Live JVM heap gauge bar, uptime, GC pause frequency, active thread count, and system CPU load.
-
-### Emergency Recovery Actions
-* **`POST /api/process/cache/purge`**: Immediately drops all soft layout caches and runs proactive garbage collection.
-* **`POST /api/process/circuit-breaker/reset`**: Manually forces all tripped circuit breakers back to `CLOSED`.
-* **`POST /api/process/stress-test`**: Executes a 3-second synthetic stress test to calibrate engine thread pool limits against available host memory.
+The Process Hub provides instant, non-blocking JVM thread stack inspection via `GET /api/system/threads/dump`:
+* Captures thread states (`RUNNABLE`, `WAITING`, `TIMED_WAITING`, `BLOCKED`).
+* Highlights lock contention, monitor synchronizers, and thread deadlocks.
+* Offers one-click text copy and file download in the Process Hub modal.

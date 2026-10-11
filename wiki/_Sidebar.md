@@ -1,6 +1,7 @@
 ### [CodeLens Wiki](Home)
 
 * **[Home](Home)**
+* **[Getting Started & Onboarding](Getting-Started-and-Onboarding)**
 * **[Architecture & System Design](Architecture-and-System-Design)**
 * **[8-Stage Scan Pipeline & Readiness](8-Stage-Scan-Pipeline-and-Readiness)**
 * **[CodeStory & Guided Tours](CodeStory-and-Guided-Tours)**
@@ -8,6 +9,8 @@
 * **[Interactive Visualizations & 3D Studio](Interactive-Visualizations-and-3D-Studio)**
 * **[Macro Architecture Studio](Macro-Architecture-Studio)**
 * **[Process Hub & JVM Sentinel](Process-Hub-and-JVM-Sentinel)**
+* **[Intelligence Reports Guide](Intelligence-Reports-Guide)**
+* **[Deployment & Operations](Deployment-and-Operations)**
 * **[Developer CLI & Toolsuite](Developer-CLI-and-Toolsuite)**
 * **[REST & WebSocket API Reference](REST-and-WebSocket-API-Reference)**
 

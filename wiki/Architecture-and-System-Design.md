@@ -1,86 +1,98 @@
 # Architecture & System Design
 
-CodeLens is designed from first principles as an **enterprise-grade, 100% offline, air-gapped** codebase intelligence platform. It runs entirely on a standard Java 17+ JVM with **zero external cloud services, zero network egress, and zero external database servers**.
+CodeLens is designed from the ground up to be **100% offline**, zero-telemetry, and self-contained within a local JVM process. It requires zero cloud services, external databases, or root privileges.
 
-Interactive Archify HTML: [`docs/diagrams/architecture.html`](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html)  
-Specification: [`docs/diagrams/architecture.json`](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.json)
+![CodeLens System Architecture](diagrams/architecture.svg)
+
+*Interactive Archify Diagram: [docs/diagrams/architecture.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html)*
+
+---
+
+## 🏛️ 1. Multi-Module Maven Hierarchy
+
+The system is decoupled into isolated functional layers across 8 Maven modules:
 
 ```mermaid
 flowchart TD
-    User["👤 Developer / Architect\n(Web Workspace / CLI)"]
-    
-    subgraph JVMRuntime["☕ JVM Fat-JAR Boundary (Air-Gapped & Offline)"]
-        API["⚡ Javalin Server\n(Embedded Jetty :7878)"]
-        
-        Parser["🔍 JavaParser AST Engine\n(Parallel File Scanner)"]
-        Topology["🕸️ Topology Engine\n(JGraphT Call Graphs & DSM)"]
-        Integrity["🛡️ Structural Integrity\n(14 Class Rules & AST Drift)"]
-        CodeStory["📖 CodeStory Engine\n(Narrative Flows & Tour)"]
-        Reports["📊 Reports Engine\n(14 Precomputed Snapshots)"]
-        ProcessHub["⚙️ Process Hub\n(11 Engines & JVM Sentinel)"]
-        Git["📜 JGit Engine\n(Blame, Churn & PR Story)"]
-        
-        subgraph StorageCore["💾 Embedded Storage"]
-            H2[("🗄️ H2 MVStore Database\n(LZF Compressed Tables)")]
-            Lucene[("🔎 Apache Lucene Index\n(Full-Text Symbols)")]
-        end
-    end
-
-    User -->|"HTTP / SSE / WS"| API
-    API --> Parser
-    API --> Topology
-    API --> Integrity
-    API --> CodeStory
-    API --> Reports
-    API --> ProcessHub
-    API --> Git
-    Parser --> H2
-    Parser --> Lucene
-    Topology --> H2
-    Integrity --> H2
-    CodeStory --> H2
-    Reports --> H2
+    App["codelens-app\n(Fat JAR Entry Point & CLI Dispatcher)"] --> API["codelens-api\n(Javalin & Jetty REST, SSE, WS)"]
+    API --> Analysis["codelens-analysis\n(CallGraph, CodeStory, AiGroundingService, Reports)"]
+    API --> Git["codelens-git\n(JGit Blame, Diffs & PR Stories)"]
+    Analysis --> Storage["codelens-storage\n(H2 LZF MVStore & Lucene Search)"]
+    Analysis --> Parser["codelens-parser\n(JavaParser AST Visitor & Symbol Extractor)"]
+    Storage --> Core["codelens-core\n(Domain Entities & Pure Models)"]
+    Parser --> Core
+    API --> Web["codelens-web\n(Static Single-Page Application Assets)"]
 ```
+
+| Module | Purpose & Technologies | Key Components |
+|---|---|---|
+| `codelens-core` | Pure domain models, zero external dependencies | `CodeType`, `CodeRelationship`, `ScanProgress`, `CodeLensConfig` |
+| `codelens-parser` | AST compilation unit analysis using JavaParser 3.25.8 | `AstVisitor`, `JavaSourceScanner`, `SemanticGraphExtractor` |
+| `codelens-storage` | Embedded persistent storage with zero administration | `DatabaseManager`, `CodeLensDao`, `EntityDao`, `LuceneService` |
+| `codelens-analysis` | Graph topology, CodeStory flows, AI grounding, and audit metrics | `CallGraphAnalyzer`, `StoryEngine`, `AiGroundingService`, `ChangeStoryEngine` |
+| `codelens-git` | Version control annotation and churn correlation using JGit | `GitBlameService`, `GitDiffService` |
+| `codelens-api` | Asynchronous REST, Server-Sent Events, and WebSockets via Javalin | `CodeLensServer`, `BackgroundTaskOrchestrator`, `HeapAutoRecoveryManager` |
+| `codelens-web` | Modern vanilla JS frontend with Canvas, WebGL, and multi-theme styling | Single-page UI, Graphify 2D Canvas, 3D City/Galaxy, Ask CodeStory modal |
+| `codelens-app` | Shaded fat JAR packaging and terminal CLI command entry points | `Application` (CLI and daemon launcher) |
 
 ---
 
-## 📦 Modular Subsystem Architecture
+## 🔄 2. Repository Ingestion & Data Flow
 
-The codebase is structured into cohesive Maven submodules with clean directional dependencies:
+![Repository Ingestion & Data Flow](diagrams/dataflow.svg)
 
-```
-codelens/
-├── codelens-core/        Zero-dependency domain models, entities, and configuration
-├── codelens-parser/      JavaParser 3.25.8 visitor, parallel scanner, and AST extraction
-├── codelens-storage/     H2 database (MVStore LZF), HikariCP pool, and Apache Lucene index
-├── codelens-analysis/    JGraphT directed graph, DSM matrices, coupling, and 32-rule reviewer
-├── codelens-git/         JGit 6.9 engine, blame annotator, and Git PR change analyzer
-├── codelens-api/         Javalin 6.1.3 REST endpoints, SSE streams, and CodeStory synthesis
-├── codelens-web/         Zero-build static web resources (HTML5, ES6, Three.js, Monaco)
-└── codelens-app/         Shaded fat-JAR bootstrap and CLI command suite
-```
+*Interactive Archify Diagram: [docs/diagrams/dataflow.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/dataflow.html)*
 
 ---
 
-## 💾 Storage Subsystem & High-Scale Compaction
+## 💾 3. Embedded Storage Subsystem
 
-1. **Embedded H2 MVStore Database**:
-   - Stores packages, types, methods, fields, relationships, and metadata in local file `./codelens-data/codelens_db.mv.db`.
-   - Uses **LZF page compression** and single-transaction chunk commits to reduce disk usage by ~95% compared to raw relational storage.
-   - Employs automated `SHUTDOWN COMPACT` execution to eliminate dead page fragmentation.
+### Embedded H2 Relational Database
+* **MVStore with LZF Compression**: Pages are compressed on disk using LZF, minimizing memory usage while delivering sub-millisecond retrieval.
+* **Streaming JDBC Cursors**: Ingestion and call-relationship building stream entity FQNs directly through streaming cursors, avoiding large in-memory collections and preventing JVM heap spikes on 125,000+ class repositories.
+* **Two-Way DB Mutex**: Heavy operations (e.g. initial scans, database compaction) acquire exclusive DB access via `BackgroundTaskOrchestrator`, preventing lock contention and file corruption.
 
-2. **Apache Lucene 9.10 Index**:
-   - Maintains a high-speed, local inverted index of all symbol names, method signatures, field declarations, and Javadoc tokens.
-   - Powers sub-10ms global fuzzy symbol searches (<kbd>⌘K</kbd>) across millions of code entities.
-
-3. **In-Memory JGraphT Topology Core**:
-   - Builds directed call graph representations in memory for instant multi-hop BFS traversal, shortest path calculation, and Tarjan cycle detection.
-   - Caches sunflower spiral and 3D layout coordinates in `./codelens-data/graph-cache/` to guarantee instantaneous view switching without rendering lag.
+### Apache Lucene Symbol Search
+* **Inverted Token Index**: Every class, method, field, annotation, and package is indexed into an embedded Apache Lucene 9.10 directory.
+* **Fuzzy & Wildcard Queries**: Instant sub-5ms typehead symbol search, regex query evaluation, and signature lookups across massive repositories.
 
 ---
 
-## 🚀 High-Scale Performance Guarantees
+## 🤖 4. AI Grounding & Semantic Fact Engine (`AiGroundingService`)
 
-* **125,000+ Class Scale**: Quotient graph aggregations roll up multi-level package hierarchies, while Level-of-Detail (LOD) culling discards sub-pixel nodes during rendering.
-* **Non-Blocking Architecture**: Long-running ingestion, analysis, and report generation execute on background daemon pools, broadcasting live updates via Server-Sent Events (SSE).
-* **Self-Healing Memory Controls**: The Process Hub monitors heap consumption via JMX. At 85% occupancy, it sheds non-essential in-memory caches; at 92%, it trips an automated circuit breaker to prevent `OutOfMemoryError`.
+CodeLens bridges deep static analysis with AI-powered architectural reasoning while strictly adhering to air-gapped security and truthfulness constraints:
+
+```mermaid
+sequenceDiagram
+    participant User as Developer (UI / CLI)
+    participant API as Javalin Server (:7878)
+    participant Ground as AiGroundingService
+    participant Storage as Embedded Storage (H2 + Lucene)
+    participant Provider as AI Provider (Local / Ollama / OpenAI)
+
+    User->>API: POST /api/ai/ask {"query": "How does order flow work?"}
+    API->>Ground: synthesize(query, aiConfig)
+    Ground->>Storage: Retrieve Grounded Facts (AST nodes, call edges, sinks)
+    Ground->>Provider: Prompt with Strict Fact Constraints & Schema
+    Provider-->>Ground: Formatted Narrative + Inferred Relationships
+    Ground->>Ground: Verify & Reconcile Citations with AST Proof
+    Ground-->>API: Response + Verified Citations Ledger
+    API-->>User: Rendered Markdown + Interactive Citation Chips
+```
+
+### Multi-Provider Architecture
+1. **Deterministic Local Synthesizer (100% Offline)**: Generates structured, verified architectural summaries directly from AST facts, call graph hierarchies, and database sink mappings without requiring any LLM.
+2. **Local Ollama Integration**: Connects to locally running LLM engines (e.g. `qwen3-coder:latest`, `llama3`, `gemma4:latest`) at `http://localhost:11434` for private, on-premise AI synthesis.
+3. **OpenAI Cloud Integration**: Connects to OpenAI or internal corporate API gateways using configurable models (`gpt-4o-mini`, `gpt-4o`, custom).
+
+### Live Handshake Verification (`POST /api/ai/test`)
+Before marking an external provider verified:
+* **Ollama**: Performs a live TCP handshake and checks whether Ollama is actively listening on port 11434 and has models available.
+* **OpenAI**: Executes a live authenticated API handshake using the provided API key against `GET /v1/models`.
+* **Local**: Verifies that the internal static analysis fact engine is initialized.
+
+### Dynamic Model Discovery (`GET /api/ai/models`)
+Queries installed models dynamically (e.g. probing Ollama's `/api/tags` endpoint) and automatically populates the model selection dropdown in both Settings and the Ask CodeStory interface.
+
+### Verified Evidence & Citations Ledger
+Every answer synthesized by the AI grounding engine includes a **Verified Source Evidence & Citations Ledger**. Readers can click any citation chip to navigate directly to the verified class, method signature, or database mutation sink in the CodeLens explorer.

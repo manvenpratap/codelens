@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "CodeLens - 8-Stage Scan & CodeStory Sequence",
+    "title": "CodeLens - 8-Stage Scan & Grounded AI Sequence",
     "output": "sequence.html",
     "column_fit": "spread",
     "animation": "trace",
@@ -11,37 +11,41 @@
   "participants": [
     { "id": "user", "type": "external", "label": "Developer", "sublabel": "Browser / CLI" },
     { "id": "api", "type": "backend", "label": "Javalin API", "sublabel": "REST Controller" },
-    { "id": "parser", "type": "backend", "label": "Parser Engine", "sublabel": "JavaParser Worker" },
-    { "id": "storage", "type": "database", "label": "Storage Core", "sublabel": "H2 + Lucene" },
-    { "id": "codestory", "type": "backend", "label": "CodeStory Engine", "sublabel": "Flow Discovery" },
-    { "id": "ui", "type": "frontend", "label": "Workspace UI", "sublabel": "Story Player & Graph" }
+    { "id": "parser", "type": "backend", "label": "Parser", "sublabel": "JavaParser Worker" },
+    { "id": "storage", "type": "database", "label": "Storage", "sublabel": "H2 + Lucene" },
+    { "id": "codestory", "type": "backend", "label": "CodeStory", "sublabel": "Flow Discovery" },
+    { "id": "ai", "type": "backend", "label": "AI Engine", "sublabel": "Multi-Provider" },
+    { "id": "ui", "type": "frontend", "label": "Workspace", "sublabel": "Story & Ask Q&A" }
   ],
   "segments": [
-    { "from": 150, "to": 260, "label": "Scan Trigger" },
-    { "from": 270, "to": 390, "label": "8-Stage Pipeline Execution" },
-    { "from": 400, "to": 540, "label": "CodeStory & Graph Exploration" }
+    { "from": 150, "to": 270, "label": "Scan Trigger & Ingestion" },
+    { "from": 280, "to": 400, "label": "8-Stage Pipeline & Storage" },
+    { "from": 410, "to": 570, "label": "CodeStory & Grounded Q&A" }
   ],
   "messages": [
     { "id": "m1", "from": "user", "to": "api", "y": 160, "label": "POST /api/scan", "variant": "emphasis" },
     { "id": "m2", "from": "api", "to": "parser", "y": 190, "label": "Start 8-Stage Scan Walk", "variant": "emphasis" },
     { "id": "m3", "from": "parser", "to": "storage", "y": 230, "label": "Stream Entity Chunks", "variant": "emphasis" },
-    { "id": "m4", "from": "storage", "to": "api", "y": 280, "label": "Indexes Rebuilt", "variant": "return" },
+    { "id": "m4", "from": "storage", "to": "api", "y": 290, "label": "Indexes Rebuilt", "variant": "return" },
     { "id": "m5", "from": "api", "to": "codestory", "y": 320, "label": "Synthesize Storylines", "variant": "emphasis" },
     { "id": "m6", "from": "codestory", "to": "storage", "y": 350, "label": "Map Persistent Sinks", "variant": "emphasis" },
-    { "id": "m7", "from": "api", "to": "ui", "y": 380, "label": "SSE Progress 100% Ready", "variant": "return" },
-    { "id": "m8", "from": "ui", "to": "codestory", "y": 420, "label": "GET /api/storylines", "variant": "emphasis" },
-    { "id": "m9", "from": "codestory", "to": "ui", "y": 460, "label": "Return Stories & Tour Stops", "variant": "return" },
-    { "id": "m10", "from": "ui", "to": "user", "y": 500, "label": "Render Storyline Player", "variant": "return" }
+    { "id": "m7", "from": "api", "to": "ui", "y": 390, "label": "SSE Progress 100% Ready", "variant": "return" },
+    { "id": "m8", "from": "ui", "to": "api", "y": 430, "label": "POST /api/ai/ask (Query)", "variant": "emphasis" },
+    { "id": "m9", "from": "api", "to": "ai", "y": 460, "label": "Ground Fact Synthesis", "variant": "emphasis" },
+    { "id": "m10", "from": "ai", "to": "storage", "y": 490, "label": "Fetch AST & Call Graph Evidence", "variant": "emphasis" },
+    { "id": "m11", "from": "ai", "to": "ui", "y": 520, "label": "Return Answer + Citations Ledger", "variant": "return" },
+    { "id": "m12", "from": "ui", "to": "user", "y": 550, "label": "Render Grounded Narrative", "variant": "return" }
   ],
   "activations": [
-    { "participant": "api", "from": 160, "to": 390, "type": "backend" },
+    { "participant": "api", "from": 160, "to": 400, "type": "backend" },
     { "participant": "parser", "from": 190, "to": 290, "type": "backend" },
     { "participant": "storage", "from": 230, "to": 360, "type": "database" },
-    { "participant": "codestory", "from": 320, "to": 470, "type": "backend" },
-    { "participant": "ui", "from": 380, "to": 510, "type": "frontend" }
+    { "participant": "codestory", "from": 320, "to": 370, "type": "backend" },
+    { "participant": "ui", "from": 390, "to": 560, "type": "frontend" },
+    { "participant": "ai", "from": 460, "to": 530, "type": "backend" }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Asynchronous Non-Blocking Scans", "items": ["The API immediately responds with scan task ID", "Progress events stream via SSE while all 8 pipeline stages execute"] },
-    { "dot": "violet", "title": "First-Class CodeStory Synthesis", "items": ["Traces entry points to persistent database sinks before completing scan", "Provides immediate one-click navigation to the CodeStory player"] }
+    { "dot": "emerald", "title": "Asynchronous Non-Blocking Pipeline", "items": ["The API immediately responds with scan task ID", "Progress events stream via SSE across all 8 sequential stages"] },
+    { "dot": "violet", "title": "Grounded AI Intelligence & Evidence Ledger", "items": ["Multi-provider architectural synthesis: Local Synthesizer, Ollama LLM, OpenAI", "Every synthesized answer links verified AST and call graph source citations", "Live endpoint handshake verifies external connectivity before dispatching"] }
   ]
 }

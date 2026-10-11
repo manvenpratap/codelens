@@ -7,35 +7,43 @@
     "quality_profile": "showcase"
   },
   "components": [
-    { "id": "browser", "type": "frontend", "label": "Web Workspace", "sublabel": "Graphify / 3D City / Storyline Dock", "pos": [40, 260], "size": [140, 60] },
-    { "id": "api", "type": "backend", "label": "Javalin Server", "sublabel": "Embedded Jetty REST / WS", "pos": [290, 260], "size": [140, 60], "tag": ":7878" },
-    { "id": "parser", "type": "backend", "label": "AST Parser", "sublabel": "JavaParser 3.25.8 Ingestion", "pos": [530, 80], "size": [140, 60] },
-    { "id": "analyzer", "type": "backend", "label": "Topology Engine", "sublabel": "JGraphT Call Graph & DSM", "pos": [530, 200], "size": [140, 60] },
-    { "id": "integrity", "type": "backend", "label": "Structural Integrity", "sublabel": "14 Class Rules & AST Drift", "pos": [530, 320], "size": [140, 60] },
-    { "id": "codestory", "type": "backend", "label": "CodeStory Engine", "sublabel": "Storylines & Guided Tour", "pos": [530, 440], "size": [140, 60] },
-    { "id": "reports", "type": "backend", "label": "Reports Generator", "sublabel": "14 Architecture & Risk Reports", "pos": [780, 140], "size": [140, 60] },
-    { "id": "h2_store", "type": "database", "label": "H2 Database", "sublabel": "LZF MVStore Relational Core", "pos": [780, 280], "size": [140, 60] },
-    { "id": "lucene_idx", "type": "database", "label": "Lucene Search", "sublabel": "Full-Text Symbol Index", "pos": [780, 420], "size": [140, 60] }
+    { "id": "browser", "type": "frontend", "label": "Web Workspace", "sublabel": "Graphify / 3D City / Ask Q&A", "pos": [40, 220], "size": [140, 60] },
+    { "id": "cli", "type": "external", "label": "Developer CLI", "sublabel": "scan, story, ask, pr-story", "pos": [40, 360], "size": [140, 60], "tag": "CLI" },
+    { "id": "api", "type": "backend", "label": "Javalin Server", "sublabel": "Embedded Jetty REST / WS", "pos": [260, 260], "size": [140, 60], "tag": ":7878" },
+    { "id": "orchestrator", "type": "backend", "label": "Process Hub", "sublabel": "13 Background Tasks & DAG", "pos": [260, 420], "size": [140, 60] },
+    { "id": "parser", "type": "backend", "label": "AST Parser", "sublabel": "JavaParser 3.25.8 Ingestion", "pos": [490, 80], "size": [140, 60] },
+    { "id": "analyzer", "type": "backend", "label": "Topology Engine", "sublabel": "JGraphT Call Graph & DSM", "pos": [490, 200], "size": [140, 60] },
+    { "id": "integrity", "type": "backend", "label": "Structural Integrity", "sublabel": "14 Class Rules & AST Drift", "pos": [490, 320], "size": [140, 60] },
+    { "id": "codestory", "type": "backend", "label": "CodeStory Engine", "sublabel": "Storylines, Tour & PR Diff", "pos": [490, 440], "size": [140, 60] },
+    { "id": "ai_grounding", "type": "backend", "label": "AI Grounding Engine", "sublabel": "Local / Ollama / OpenAI", "pos": [490, 560], "size": [140, 60], "tag": "live handshake" },
+    { "id": "h2_store", "type": "database", "label": "H2 Database", "sublabel": "LZF MVStore Relational Core", "pos": [740, 200], "size": [140, 60] },
+    { "id": "lucene_idx", "type": "database", "label": "Lucene Search", "sublabel": "Full-Text Symbol Index", "pos": [740, 340], "size": [140, 60] },
+    { "id": "reports", "type": "backend", "label": "Reports Engine", "sublabel": "14 Architecture & Risk Reports", "pos": [740, 480], "size": [140, 60] }
   ],
   "boundaries": [
-    { "kind": "region", "label": "JVM Fat-JAR Runtime (Zero Cloud Dependencies)", "wraps": ["api", "parser", "analyzer", "integrity", "codestory", "reports", "h2_store", "lucene_idx"] },
+    { "kind": "region", "label": "JVM Fat-JAR Runtime (Zero Cloud Dependencies)", "wraps": ["api", "orchestrator", "parser", "analyzer", "integrity", "codestory", "ai_grounding", "reports", "h2_store", "lucene_idx"] },
     { "kind": "security-group", "label": "Storage Subsystem", "wraps": ["h2_store", "lucene_idx"] }
   ],
   "connections": [
-    { "id": "c1", "from": "browser", "to": "api", "label": "REST / SSE / WS", "variant": "emphasis" },
-    { "id": "c2", "from": "api", "to": "parser", "fromSide": "top", "toSide": "left", "label": "scan" },
-    { "id": "c3", "from": "api", "to": "analyzer", "fromSide": "right", "toSide": "left", "label": "topology" },
-    { "id": "c4", "from": "api", "to": "integrity", "fromSide": "right", "toSide": "left", "label": "audits" },
-    { "id": "c5", "from": "api", "to": "codestory", "fromSide": "bottom", "toSide": "left", "label": "narratives" },
-    { "id": "c6", "from": "parser", "to": "h2_store", "fromSide": "right", "toSide": "top", "label": "batch insert" },
-    { "id": "c7", "from": "parser", "to": "lucene_idx", "fromSide": "right", "toSide": "top" },
-    { "id": "c8", "from": "analyzer", "to": "h2_store", "fromSide": "right", "toSide": "left" },
-    { "id": "c9", "from": "codestory", "to": "h2_store", "fromSide": "right", "toSide": "left", "label": "sink traces" },
-    { "id": "c10", "from": "reports", "to": "h2_store", "fromSide": "bottom", "toSide": "top" }
+    { "id": "c1", "from": "browser", "to": "api", "label": "HTTP / SSE / WS", "variant": "emphasis" },
+    { "id": "c2", "from": "cli", "to": "api", "label": "commands", "variant": "default" },
+    { "id": "c3", "from": "api", "to": "orchestrator", "label": "manage", "fromSide": "bottom", "toSide": "top" },
+    { "id": "c4", "from": "api", "to": "parser", "fromSide": "top", "toSide": "left", "label": "scan" },
+    { "id": "c5", "from": "api", "to": "analyzer", "fromSide": "right", "toSide": "left", "label": "topology" },
+    { "id": "c6", "from": "api", "to": "integrity", "fromSide": "right", "toSide": "left", "label": "audits" },
+    { "id": "c7", "from": "api", "to": "codestory", "fromSide": "right", "toSide": "left", "label": "narratives" },
+    { "id": "c8", "from": "api", "to": "ai_grounding", "fromSide": "bottom", "toSide": "left", "label": "ask Q&A" },
+    { "id": "c9", "from": "parser", "to": "h2_store", "fromSide": "right", "toSide": "top", "label": "batch insert" },
+    { "id": "c10", "from": "parser", "to": "lucene_idx", "fromSide": "right", "toSide": "top" },
+    { "id": "c11", "from": "analyzer", "to": "h2_store", "fromSide": "right", "toSide": "left" },
+    { "id": "c12", "from": "integrity", "to": "h2_store", "fromSide": "right", "toSide": "left" },
+    { "id": "c13", "from": "codestory", "to": "h2_store", "fromSide": "right", "toSide": "left", "label": "sink traces" },
+    { "id": "c14", "from": "ai_grounding", "to": "h2_store", "fromSide": "right", "toSide": "bottom", "label": "evidence" },
+    { "id": "c15", "from": "reports", "to": "h2_store", "fromSide": "top", "toSide": "bottom" }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Zero Dependencies", "items": ["Runs on local JVM 17+ without external network services", "Embedded file-based H2 database and Lucene index", "100% offline local-first operational boundary"] },
-    { "dot": "violet", "title": "CodeStory & Semantic Analysis", "items": ["Automatic transaction storyline synthesis from controllers to DB sinks", "5-Stop 'Teach Me' guided tour for rapid developer onboarding", "Blast radius impact analysis with persistent target tracing"] },
-    { "dot": "cyan", "title": "High Scale Architecture", "items": ["Supports 125k+ classes with LOD culling and sparse matrices", "LZF compressed page storage with bulk chunk commits", "Sub-100ms API response times across multi-hop BFS queries"] }
+    { "dot": "emerald", "title": "Zero Cloud Dependencies", "items": ["Runs entirely in local user space on JVM 17+ without external network services", "Embedded file-based H2 database and Lucene index with LZF compression", "100% offline air-gapped security boundary by default"] },
+    { "dot": "violet", "title": "CodeStory & Grounded AI Intelligence", "items": ["Multi-provider architectural synthesis: Local Deterministic, Ollama LLM, OpenAI", "Live external handshake verification and dynamic installed model discovery", "Verified source citations ledger mapping architectural facts to AST and call graph evidence", "Git PR change story generator for CI code reviews"] },
+    { "dot": "cyan", "title": "High-Scale Robust Core", "items": ["Supports 125k+ classes with LOD culling, sparse matrices, and cursor streaming", "13 registered background processes managed via 2-way DB mutex and DAG execution", "JMX heap watchdog and auto-recovery circuit breaker preventing OutOfMemoryErrors"] }
   ]
 }

@@ -7,7 +7,7 @@
 
 ## 🏛️ System Architecture
 
-Interactive Archify HTML: [`docs/diagrams/architecture.html`](./docs/diagrams/architecture.html)  
+Interactive Archify HTML: [`docs/diagrams/architecture.html`](./docs/diagrams/architecture.html) · Vector SVG: [`docs/diagrams/architecture.svg`](./docs/diagrams/architecture.svg)  
 Specification: [`docs/diagrams/architecture.json`](./docs/diagrams/architecture.json)
 
 ```mermaid
@@ -51,7 +51,7 @@ flowchart TD
 
 ## 🔄 8-Stage Ingestion & Analysis Workflow
 
-Interactive Archify HTML: [`docs/diagrams/workflow.html`](./docs/diagrams/workflow.html)  
+Interactive Archify HTML: [`docs/diagrams/workflow.html`](./docs/diagrams/workflow.html) · Vector SVG: [`docs/diagrams/workflow.svg`](./docs/diagrams/workflow.svg)  
 Specification: [`docs/diagrams/workflow.json`](./docs/diagrams/workflow.json)
 
 ```mermaid
@@ -71,7 +71,7 @@ flowchart LR
 
 ## ⚡ 8-Stage Scan & CodeStory Execution Sequence
 
-Interactive Archify HTML: [`docs/diagrams/sequence.html`](./docs/diagrams/sequence.html)  
+Interactive Archify HTML: [`docs/diagrams/sequence.html`](./docs/diagrams/sequence.html) · Vector SVG: [`docs/diagrams/sequence.svg`](./docs/diagrams/sequence.svg)  
 Specification: [`docs/diagrams/sequence.json`](./docs/diagrams/sequence.json)
 
 ```mermaid
@@ -120,7 +120,7 @@ sequenceDiagram
 
 ## 🌊 Ingestion & CodeStory Data Flow Pipeline
 
-Interactive Archify HTML: [`docs/diagrams/dataflow.html`](./docs/diagrams/dataflow.html)  
+Interactive Archify HTML: [`docs/diagrams/dataflow.html`](./docs/diagrams/dataflow.html) · Vector SVG: [`docs/diagrams/dataflow.svg`](./docs/diagrams/dataflow.svg)  
 Specification: [`docs/diagrams/dataflow.json`](./docs/diagrams/dataflow.json)
 
 ```mermaid
@@ -161,7 +161,7 @@ flowchart LR
 
 ## ⏱️ Server & Ingestion Lifecycle
 
-Interactive Archify HTML: [`docs/diagrams/lifecycle.html`](./docs/diagrams/lifecycle.html)  
+Interactive Archify HTML: [`docs/diagrams/lifecycle.html`](./docs/diagrams/lifecycle.html) · Vector SVG: [`docs/diagrams/lifecycle.svg`](./docs/diagrams/lifecycle.svg)  
 Specification: [`docs/diagrams/lifecycle.json`](./docs/diagrams/lifecycle.json)
 
 ```mermaid

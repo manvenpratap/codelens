@@ -5350,8 +5350,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Comprehensive 8-Stage Pipeline</h3>
         </div>
         <ul>
-          <li>All 8 stages execute sequentially during full and incremental scans</li>
-          <li>Guarantees 100% readiness across Graph, Storylines, and Reports before completion</li>
+          <li>All 8 stages execute sequentially during full and incremental delta scans</li>
+          <li>Guarantees 100% readiness across Graph, Storylines, and Reports before declaring completion</li>
+          <li>13 background processes scheduled via 2-way DB mutex and downstream DAG sequencing</li>
         </ul>
       </div>
 
@@ -5363,6 +5364,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>Extracts business transaction flows from controllers to persistent database sinks</li>
           <li>Generates 5-layer guided onboarding tours with line-level source citations</li>
+          <li>Powers Git PR Change Story reporting in CI workflows</li>
         </ul>
       </div>
     </div>

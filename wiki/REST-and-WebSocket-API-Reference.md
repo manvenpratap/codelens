@@ -1,6 +1,6 @@
 # REST & WebSocket API Reference
 
-CodeLens exposes a comprehensive, deterministic HTTP REST and streaming WebSocket API. External CI/CD runners, IDE plugins, custom automation scripts, and the frontend web UI interact with the core engine through these contracts.
+CodeLens exposes a comprehensive, deterministic HTTP REST, Server-Sent Events (SSE), and streaming WebSocket API. External CI/CD runners, IDE plugins, custom automation scripts, and the frontend web UI interact with the core engine through these contracts.
 
 Base URL: `http://localhost:7878`
 
@@ -38,11 +38,25 @@ Base URL: `http://localhost:7878`
 | `GET` | `/api/codestory/flows` | Discovered business transaction storylines | `[{"id": "flow_1", "name": "Checkout", "steps": 6}]` |
 | `GET` | `/api/codestory/flows/{id}` | Detailed execution step-by-step trace | `{"id": "flow_1", "steps": [...], "sinks": [...]}` |
 | `GET` | `/api/codestory/tours` | Precomputed 5-layer guided onboarding tour | `{"modules": [...], "keyFlows": [...], "risks": [...]}` |
-| `POST` | `/api/codestory/generate-pr-story`| Generates PR impact narrative between git refs | `{"base": "main", "head": "feat/x"}` $\to$ Markdown Report |
+| `GET` | `/api/codestory/change-story`| Generates PR impact narrative between git refs | `?base=main&head=feat/x` $\to$ Markdown Summary |
+| `POST` | `/api/codestory/what-if` | Simulates blast radius of modifying a symbol | `{"symbol": "com.ex.Service.save"}` $\to$ Impact Report |
 
 ---
 
-## 🛡️ 4. Structural Integrity & Rules
+## 🤖 4. AI Grounding & Handshake APIs
+
+| Method | Endpoint | Description | Payload / Response |
+|---|---|---|---|
+| `GET` | `/api/ai/config` | Returns active AI provider, model, and status | `{"provider": "ollama", "model": "qwen3-coder:latest", "hasApiKey": false}` |
+| `POST` | `/api/ai/config` | Saves AI provider configuration | `{"provider": "ollama", "model": "...", "endpoint": "..."}` |
+| `POST` | `/api/ai/test` | Live external handshake test for selected provider | `{"provider": "ollama", ...}` $\to$ `{"ok": true, "message": "Ollama is listening on port 11434"}` |
+| `GET` | `/api/ai/models` | Discovers installed models from active provider | `{"models": ["qwen3-coder:latest", "llama3", "gemma4:latest"]}` |
+| `POST` | `/api/ai/models` | Probes ad-hoc provider endpoint for model tags | `{"provider": "ollama", "endpoint": "..."}` $\to$ `{"models": [...]}` |
+| `POST` | `/api/ai/ask` | Executes architecture-grounded Q&A query | `{"query": "..."}` $\to$ `{"answer": "...", "engine": "...", "citations": [...]}` |
+
+---
+
+## 🛡️ 5. Structural Integrity & Rules
 
 | Method | Endpoint | Description | Payload / Response |
 |---|---|---|---|
@@ -52,68 +66,20 @@ Base URL: `http://localhost:7878`
 
 ---
 
-## 🏛️ 5. Macro Architecture & Metrics
+## 🏛️ 6. Macro Architecture & Metrics
 
 | Method | Endpoint | Description | Query Parameters / Response |
 |---|---|---|---|
 | `GET` | `/api/macro/modules` | Package coupling ($C_a$, $C_e$) and instability ($I$) | `[{"package": "com.ex.service", "ca": 14, "ce": 6, "i": 0.3}]` |
 | `GET` | `/api/macro/martin` | Robert C. Martin metrics ($A, I, D$) per package | `[{"package": "...", "a": 0.4, "i": 0.6, "d": 0.0}]` |
-| `GET` | `/api/archetypes` | Classes categorized into 11 archetypes | `{"CONTROLLER": [...], "SERVICE": [...], "DTO": [...]}` |
 
 ---
 
-## ⚡ 6. Process Hub & JVM Sentinel
+## ⚙️ 7. Process Hub & System Telemetry
 
 | Method | Endpoint | Description | Payload / Response |
 |---|---|---|---|
-| `GET` | `/api/process/status` | Real-time JVM memory, GC, threads, CPU load | `{"heapUsedMb": 612, "heapMaxMb": 2048, "threads": 34}` |
-| `GET` | `/api/process/engines` | Execution states of all 11 background engines | `[{"engine": "Scanner", "state": "IDLE"}]` |
-| `POST` | `/api/process/cache/purge` | Drops soft layout caches and requests proactive GC | `{"freedMb": 184, "currentHeapMb": 428}` |
-| `POST` | `/api/process/circuit-breaker/reset` | Resets tripped circuit breakers to `CLOSED` | `{"circuitBreakersReset": 2}` |
-| `POST` | `/api/process/stress-test` | Runs 3-second memory/thread stress test | `{"status": "PASSED", "maxConcurrency": 16}` |
-
----
-
-## 📊 7. Reports Hub APIs
-
-| Method | Endpoint | Description | Supported Formats |
-|---|---|---|---|
-| `GET` | `/api/reports` | List of all 14 precomputed architecture reports | JSON metadata index |
-| `GET` | `/api/reports/{id}` | Fetches analytical payload for a specific report | JSON / Structured Data |
-| `GET` | `/api/reports/{id}/export` | Downloads pre-rendered offline report artifact | `?format=html`, `?format=sarif`, `?format=json` |
-
-Supported Report IDs:
-`system-architecture`, `package-coupling`, `module-coupling`, `critical-paths`, `structural-integrity`, `dead-code`, `circular-deps`, `complexity-hotspots`, `api-surface`, `data-flow`, `test-coverage`, `security-exposure`, `change-frequency`, `onboarding-guide`.
-
----
-
-## 🤖 8. Grounded AI Assistant APIs
-
-| Method | Endpoint | Description | Payload / Response |
-|---|---|---|---|
-| `POST` | `/api/ai/ask` | Natural language question grounded by AST | `{"prompt": "Where is payment processed?"}` $\to$ `{"answer": "...", "sources": [...]}` |
-| `POST` | `/api/ai/explain` | Structural breakdown of an entity | `{"entity": "OrderService"}` $\to$ `{"explanation": "...", "role": "SERVICE"}` |
-| `POST` | `/api/ai/suggest-refactor` | Refactoring recipe for an integrity violation | `{"violationId": "V-102"}` $\to$ `{"diff": "...", "strategy": "..."}` |
-
----
-
-## 🔌 9. WebSocket Streaming Telemetry (`/ws/telemetry`)
-
-Clients connect via WebSocket to receive sub-second telemetry streams without HTTP polling overhead:
-
-```json
-// Inbound from server every 1000ms:
-{
-  "type": "TELEMETRY_TICK",
-  "timestamp": 1791518200000,
-  "jvm": {
-    "heapUsedBytes": 641728512,
-    "heapMaxBytes": 2147483648,
-    "heapPercent": 29.8,
-    "liveThreads": 28,
-    "gcPauseMsLastMinute": 42
-  },
-  "circuitBreaker": "CLOSED",
-  "activeTasks": 0
-}
-```
+| `GET` | `/api/tasks` | Live status snapshot across all 18 background tasks | `[{"id": "scanner", "status": "RUNNING", "stage": 1}]` |
+| `POST` | `/api/tasks/{id}/cancel`| Cancels an active or queued background task | `{"success": true}` |
+| `GET` | `/api/system/threads/dump` | Live thread dump and lock monitor diagnostics | Plain text thread stack trace |
+| `GET` | `/api/system/health` | Heap usage, circuit breaker status, and memory | `{"heapPct": 34, "circuitBreaker": "CLOSED"}` |

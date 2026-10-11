@@ -38,7 +38,7 @@
     { "id": "e6", "from": "codestory_trace", "to": "reports_bake", "label": "narratives", "variant": "emphasis" }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Comprehensive 8-Stage Pipeline", "items": ["All 8 stages execute sequentially during full and incremental scans", "Guarantees 100% readiness across Graph, Storylines, and Reports before completion"] },
-    { "dot": "violet", "title": "Integrated CodeStory Synthesis", "items": ["Extracts business transaction flows from controllers to persistent database sinks", "Generates 5-layer guided onboarding tours with line-level source citations"] }
+    { "dot": "emerald", "title": "Comprehensive 8-Stage Pipeline", "items": ["All 8 stages execute sequentially during full and incremental delta scans", "Guarantees 100% readiness across Graph, Storylines, and Reports before declaring completion", "13 background processes scheduled via 2-way DB mutex and downstream DAG sequencing"] },
+    { "dot": "violet", "title": "Integrated CodeStory Synthesis", "items": ["Extracts business transaction flows from controllers to persistent database sinks", "Generates 5-layer guided onboarding tours with line-level source citations", "Powers Git PR Change Story reporting in CI workflows"] }
   ]
 }
