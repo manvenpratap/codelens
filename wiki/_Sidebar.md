@@ -18,5 +18,5 @@
 
 **Repository Resources**
 * [Project Context & System Diagrams](https://github.com/manvenpratap/codelens/blob/main/PROJECT_CONTEXT.md)
-* [Interactive Archify Diagrams](https://github.com/manvenpratap/codelens/tree/main/docs/diagrams)
+* [Architecture Diagrams (docs/diagrams)](https://github.com/manvenpratap/codelens/tree/main/docs/diagrams)
 * [GitHub Repository](https://github.com/manvenpratap/codelens)

@@ -2,9 +2,20 @@
 
 The **Process Hub & JVM Sentinel** is CodeLens's operational command center and runtime self-protection system. It provides live visibility into all background processing engines, thread allocations, memory pressure, and circuit breaker states, ensuring resilience even when analyzing massive multi-million-LOC codebases.
 
-![CodeLens Ingestion & Server Lifecycle](diagrams/lifecycle.svg)
-
-*Interactive Archify Diagram: [docs/diagrams/lifecycle.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/lifecycle.html)*
+```mermaid
+stateDiagram-v2
+    [*] --> JVM_Boot: Start Fat JAR
+    JVM_Boot --> Idle_Ready: Bind Port :7878 & Init H2
+    Idle_Ready --> Scan_Running: Trigger Ingestion Scan
+    Scan_Running --> AST_Parse: Stage 1: Parse AST
+    AST_Parse --> Index_Rebuild: Stage 2: Index Symbols
+    Index_Rebuild --> Topology_Calc: Stages 3-5: Graph & Layout
+    Topology_Calc --> Integrity_Audit: Stage 6: Integrity Audit
+    Integrity_Audit --> CodeStory_Synth: Stage 7: CodeStory & Sinks
+    CodeStory_Synth --> Reports_Gen: Stage 8: Reports Cached
+    Reports_Gen --> Complete_Ready: 100% Ready
+    Complete_Ready --> Idle_Ready: Telemetry & Inquiries
+```
 
 ---
 

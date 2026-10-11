@@ -2,9 +2,6 @@
 
 CodeLens is designed from the ground up to be **100% offline**, zero-telemetry, and self-contained within a local JVM process. It requires zero cloud services, external databases, or root privileges.
 
-![CodeLens System Architecture](diagrams/architecture.svg)
-
-*Interactive Archify Diagram: [docs/diagrams/architecture.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html)*
 
 ---
 
@@ -39,9 +36,39 @@ flowchart TD
 
 ## 🔄 2. Repository Ingestion & Data Flow
 
-![Repository Ingestion & Data Flow](diagrams/dataflow.svg)
+```mermaid
+flowchart LR
+    subgraph S1["1. Source Code"]
+        Java["📄 Java Sources\n(.java AST Walk)"]
+    end
+    subgraph S2["2. AST Parsing"]
+        AST["🔍 JavaParser AST\n(Types, Methods, Fields)"]
+    end
+    subgraph S3["3. Embedded Store"]
+        H2["🗄️ H2 MVStore\n(LZF Compressed)"]
+        Lucene["🔎 Lucene Index\n(Symbol Inverted Index)"]
+    end
+    subgraph S4["4. Analytics Core"]
+        Topo["🕸️ JGraphT Call Graph"]
+        Story["📖 CodeStory Narratives"]
+        Reports["📊 14 Audit Reports"]
+    end
+    subgraph S5["5. Workspaces"]
+        UI["💻 Graphify 2D Canvas"]
+        StoryUI["🎬 Storyline Player"]
+        AI["🤖 Ask Grounded AI"]
+    end
 
-*Interactive Archify Diagram: [docs/diagrams/dataflow.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/dataflow.html)*
+    Java --> AST
+    AST --> H2
+    AST --> Lucene
+    H2 --> Topo
+    H2 --> Story
+    Lucene --> AI
+    Topo --> UI
+    Story --> StoryUI
+    Reports --> UI
+```
 
 ---
 

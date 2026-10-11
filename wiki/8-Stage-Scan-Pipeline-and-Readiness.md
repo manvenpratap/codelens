@@ -2,9 +2,6 @@
 
 CodeLens implements a deterministic **8-Stage Scan Pipeline** that guarantees all graphical workspaces, semantic storylines, integrity audits, and analytical reports are 100% computed and verified before the scan is marked complete.
 
-![CodeLens 8-Stage Scan Workflow](diagrams/workflow.svg)
-
-*Interactive Archify Diagram: [docs/diagrams/workflow.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/workflow.html)*
 
 ---
 

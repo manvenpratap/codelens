@@ -2,9 +2,6 @@
 
 Rather than treating a codebase as an undifferentiated graph of thousands of classes, **CodeStory** transforms complex Java architectures into coherent, readable **transaction storylines**, progressive onboarding tours, and grounded AI architectural intelligence.
 
-![CodeStory Sequence Flow](diagrams/sequence.svg)
-
-*Interactive Archify Diagram: [docs/diagrams/sequence.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/sequence.html)*
 
 ---
 

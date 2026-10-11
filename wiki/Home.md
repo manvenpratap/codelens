@@ -2,9 +2,6 @@
 
 **CodeLens** is a high-performance, **100% offline**, air-gapped Java codebase intelligence and architectural exploration platform. It transforms complex, monolithic, or unfamiliar Java repositories into intuitive, navigable architectural systems, human-readable **transaction storylines**, and grounded AI-assisted architectural intelligence.
 
-![CodeLens System Architecture](diagrams/architecture.svg)
-
-*Interactive Archify Diagram: [docs/diagrams/architecture.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html)*
 
 ```mermaid
 flowchart LR
@@ -29,18 +26,6 @@ flowchart LR
 | **[7. Process Hub & JVM Sentinel](Process-Hub-and-JVM-Sentinel)** | 13 registered background task engines, 5 functional pipeline stages, 2-way DB mutex, memory circuit breakers, and self-healing heap recovery. |
 | **[8. Developer CLI & Toolsuite](Developer-CLI-and-Toolsuite)** | Headless terminal CLI manual: `scan`, `story`, `trace`, `what-if`, `ask`, `explain`, `teach-me`, `pr-story`, and `ai-test`. |
 | **[9. REST & WebSocket API Reference](REST-and-WebSocket-API-Reference)** | Complete API documentation for REST, Server-Sent Events (SSE), and WebSocket endpoints across all subsystems. |
-
----
-
-## ⚡ Interactive Archify Diagram Gallery
-
-Explore the system visually through the complete suite of verified Archify diagrams:
-
-* **System Architecture & Subsystems**: [architecture.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/architecture.html) · [architecture.svg](diagrams/architecture.svg)
-* **8-Stage Scan & Analysis Workflow**: [workflow.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/workflow.html) · [workflow.svg](diagrams/workflow.svg)
-* **8-Stage Scan & Grounded AI Sequence**: [sequence.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/sequence.html) · [sequence.svg](diagrams/sequence.svg)
-* **Repository Ingestion & Data Flow**: [dataflow.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/dataflow.html) · [dataflow.svg](diagrams/dataflow.svg)
-* **Ingestion & Server Lifecycle**: [lifecycle.html](https://github.com/manvenpratap/codelens/blob/main/docs/diagrams/lifecycle.html) · [lifecycle.svg](diagrams/lifecycle.svg)
 
 ---
 
