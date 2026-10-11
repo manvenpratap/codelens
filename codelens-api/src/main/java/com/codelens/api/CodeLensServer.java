@@ -6837,5 +6837,3 @@ public class CodeLensServer {
         }
     }
 }
-
-

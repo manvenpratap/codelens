@@ -23,7 +23,6 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class EntityDao {
 
-    @SuppressWarnings("unused")
     private static final Logger log = LoggerFactory.getLogger(EntityDao.class);
     private static final TypeReference<List<String>> TYPE_REF_STRING_LIST = new TypeReference<>() {};
     private static final TypeReference<List<MethodParam>> TYPE_REF_PARAMS = new TypeReference<>() {};

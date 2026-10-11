@@ -8,7 +8,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
-import java.util.Objects;
 
 public class ConnectionLeakAutoRecoveryTest {
 
@@ -120,7 +119,7 @@ public class ConnectionLeakAutoRecoveryTest {
             db.initialize();
             db.setLeakThresholdMs(300);
 
-            Connection conn = db.getConnection();
+            db.getConnection(); // Intentionally leaked without closing
             Thread.sleep(400);
 
             Map<String, Object> sweepResult = db.sweepConnectionLeaks();

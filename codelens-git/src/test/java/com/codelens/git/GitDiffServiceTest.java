@@ -1,15 +1,8 @@
 package com.codelens.git;
 
 import java.io.File;
-import java.util.Objects;
 
 public class GitDiffServiceTest {
-
-    private static void assertEquals(Object expected, Object actual, String message) {
-        if (!Objects.equals(expected, actual)) {
-            throw new AssertionError(message + " (expected: " + expected + ", got: " + actual + ")");
-        }
-    }
 
     private static void assertTrue(boolean condition, String message) {
         if (!condition) {

@@ -415,6 +415,7 @@ public class StressTestService {
                 }
             }
             double qTimeMs = (System.nanoTime() - q0) / 1_000_000.0;
+            log.debug("Point query benchmark matched {} callers in {} ms", callerCount, qTimeMs);
 
             // Streaming cursor benchmark (1M+ rows/sec covering index test)
             long streamStart = System.currentTimeMillis();

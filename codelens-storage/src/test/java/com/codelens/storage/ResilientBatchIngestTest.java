@@ -20,10 +20,6 @@ public class ResilientBatchIngestTest {
         if (expected != actual) throw new AssertionError(msg + " (expected: " + expected + ", got: " + actual + ")");
     }
 
-    private static void assertEquals(long expected, long actual, String msg) {
-        if (expected != actual) throw new AssertionError(msg + " (expected: " + expected + ", got: " + actual + ")");
-    }
-
     private void deleteRecursively(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();

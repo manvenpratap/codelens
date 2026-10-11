@@ -4,8 +4,6 @@ import com.codelens.core.model.CodeMethod;
 import com.codelens.core.model.CodeType;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -20,8 +18,6 @@ import java.util.*;
  * 5. Precomputed deterministic visual layout coordinates for instant canvas rendering.
  */
 public class CriticalPathAnalyzer {
-
-    private static final Logger log = LoggerFactory.getLogger(CriticalPathAnalyzer.class);
 
     private final CallGraphAnalyzer callGraphAnalyzer;
 

@@ -5,8 +5,6 @@ import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -19,8 +17,6 @@ import java.util.*;
  * - CodeStory Master Specification Section 20 & 36: Workflows to Storylines with line-level evidence grounding.
  */
 public class StoryEngine {
-
-    private static final Logger log = LoggerFactory.getLogger(StoryEngine.class);
 
     public enum StepRole {
         ENTRY("ENTRY", "Entrypoint", "#388bfd", "⚡"),

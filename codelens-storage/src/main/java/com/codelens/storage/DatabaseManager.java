@@ -1347,7 +1347,7 @@ public class DatabaseManager {
             } catch (java.lang.reflect.InvocationTargetException ite) {
                 Throwable target = ite.getTargetException();
                 if (target instanceof SQLException) {
-                    if (dbManager.isCancelOrTimeoutException((SQLException) target)) {
+                    if (DatabaseManager.isCancelOrTimeoutException((SQLException) target)) {
                         dbManager.evictIfPoisoned(rawConn, (SQLException) target);
                     }
                     throw (SQLException) target;

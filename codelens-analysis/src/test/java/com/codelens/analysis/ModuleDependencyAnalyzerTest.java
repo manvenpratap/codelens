@@ -10,10 +10,6 @@ import java.util.*;
 
 public class ModuleDependencyAnalyzerTest {
 
-    private static void assertTrue(boolean condition, String msg) {
-        if (!condition) throw new AssertionError("Assertion failed: " + msg);
-    }
-
     private static void assertEquals(int expected, int actual, String msg) {
         if (expected != actual) throw new AssertionError(msg + " (expected: " + expected + ", got: " + actual + ")");
     }

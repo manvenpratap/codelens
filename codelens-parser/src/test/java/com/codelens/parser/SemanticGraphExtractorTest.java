@@ -1,6 +1,5 @@
 package com.codelens.parser;
 
-import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ast.CompilationUnit;

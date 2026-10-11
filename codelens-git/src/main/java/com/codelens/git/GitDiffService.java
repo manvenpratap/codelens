@@ -5,7 +5,6 @@ import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.Edit;
 import org.eclipse.jgit.diff.RawTextComparator;
-import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.patch.FileHeader;
@@ -111,8 +110,8 @@ public class GitDiffService {
 
                 // Case 2: Inspect uncommitted working copy changes
                 if (entries == null || entries.isEmpty()) {
-                    try {
-                        List<DiffEntry> workingDiffs = new Git(repo).diff().call();
+                    try (Git git = new Git(repo)) {
+                        List<DiffEntry> workingDiffs = git.diff().call();
                         if (workingDiffs != null && !workingDiffs.isEmpty()) {
                             entries = workingDiffs;
                             report.baseRef = "HEAD";

@@ -248,8 +248,6 @@ public class ScaleStressTest {
             long callRelsCount = 0;
             long fieldRelsCount = 0;
 
-            Random rng = new Random(42); // deterministic seed for repeatability
-
             // Fast ID generator
             long idCounter = 1;
 

@@ -2142,12 +2142,12 @@ public class ReportService {
                     for (com.fasterxml.jackson.databind.JsonNode ruleNode : root) {
                         boolean enabled = ruleNode.path("enabled").asBoolean(true);
                         if (!enabled) continue;
-                        String label = ruleNode.path("label").asText("");
-                        String badge = ruleNode.path("badge").asText(label);
-                        String pattern = ruleNode.path("pattern").asText("");
-                        String matchType = ruleNode.path("matchType").asText("PREFIX").toUpperCase();
-                        String target = ruleNode.path("target").asText("METHOD").toUpperCase();
-                        String desc = ruleNode.path("description").asText("");
+                        String label = ruleNode.path("label").asText();
+                        String badge = ruleNode.hasNonNull("badge") ? ruleNode.get("badge").asText() : label;
+                        String pattern = ruleNode.path("pattern").asText();
+                        String matchType = (ruleNode.hasNonNull("matchType") ? ruleNode.get("matchType").asText() : "PREFIX").toUpperCase();
+                        String target = (ruleNode.hasNonNull("target") ? ruleNode.get("target").asText() : "METHOD").toUpperCase();
+                        String desc = ruleNode.path("description").asText();
                         if (pattern.isBlank()) continue;
 
                         int matchCount = 0;

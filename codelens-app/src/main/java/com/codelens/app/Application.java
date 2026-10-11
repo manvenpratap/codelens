@@ -609,7 +609,7 @@ public class Application {
                     com.fasterxml.jackson.databind.JsonNode steps = root.path("steps");
                     for (int i = 0; i < steps.size(); i++) {
                         var step = steps.get(i);
-                        String src = step.path("sourceFile").asText("");
+                        String src = step.path("sourceFile").asText();
                         String shortFile = src.contains("/") ? src.substring(src.lastIndexOf('/') + 1) : src;
                         System.out.printf("  %d. [%-14s] %s.%s (%s:%d)%n",
                             step.path("stepIndex").asInt(i + 1), step.path("roleLabel").asText(),
@@ -742,7 +742,7 @@ public class Application {
             for (int i = 0; i < citations.size(); i++) {
                 var c = citations.get(i);
                 System.out.printf("  %d. [%-12s] %s (%s:%d)%n",
-                    i + 1, c.path("role").asText("Evidence"), c.path("symbol").asText(), c.path("file").asText(), c.path("line").asInt());
+                    i + 1, textOrDefault(c.path("role"), "Evidence"), c.path("symbol").asText(), c.path("file").asText(), c.path("line").asInt());
             }
             System.out.println();
         }
@@ -794,7 +794,7 @@ public class Application {
         System.out.printf("Target: %s [%s]%n", root.path("targetFqn").asText(), root.path("role").asText());
         System.out.printf("Summary: %s%n%n", root.path("summary").asText());
         System.out.println("[Architectural Narrative]");
-        System.out.println(root.path("detailedNarrative").asText(root.path("summary").asText()));
+        System.out.println(textOrDefault(root.path("detailedNarrative"), root.path("summary").asText()));
         System.out.println();
         var callers = root.path("callers");
         System.out.printf("[Architectural Coupling]%n");
@@ -899,10 +899,10 @@ public class Application {
     private static void printSystemTourJsonCli(com.fasterxml.jackson.databind.JsonNode r) {
         System.out.println();
         System.out.println("================================================================================");
-        System.out.printf(" CodeStory System Onboarding Tour: %s%n", r.path("projectName").asText("Scanned Repository"));
+        System.out.printf(" CodeStory System Onboarding Tour: %s%n", textOrDefault(r.path("projectName"), "Scanned Repository"));
         System.out.println("================================================================================");
         System.out.println();
-        System.out.printf("[Layer 1: Executive Mission & Architecture Grade: %s]%n", r.path("architectureGrade").asText("A"));
+        System.out.printf("[Layer 1: Executive Mission & Architecture Grade: %s]%n", textOrDefault(r.path("architectureGrade"), "A"));
         System.out.printf("  Narrative: %s%n", r.path("executiveSummary").asText());
         System.out.printf("  Scale:     %d Types, %d Methods, %d Relationships%n",
             r.path("totalTypes").asInt(), r.path("totalMethods").asInt(), r.path("totalRelationships").asInt());
@@ -1045,24 +1045,24 @@ public class Application {
     private static void printPrStoryJsonCli(com.fasterxml.jackson.databind.JsonNode root) {
         System.out.println();
         System.out.println("================================================================================");
-        System.out.printf(" Git PR Change Story: %s ➔ %s%n", root.path("baseRef").asText("HEAD~1"), root.path("headRef").asText("HEAD"));
+        System.out.printf(" Git PR Change Story: %s ➔ %s%n", textOrDefault(root.path("baseRef"), "HEAD~1"), textOrDefault(root.path("headRef"), "HEAD"));
         System.out.println("================================================================================");
         System.out.printf(" Risk Level: [%s] | Changed Methods: %d | Classes: %d | Touchpoints: %d%n%n",
-            root.path("riskLevel").asText("LOW"), root.path("changedMethodsCount").asInt(),
+            textOrDefault(root.path("riskLevel"), "LOW"), root.path("changedMethodsCount").asInt(),
             root.path("changedClassesCount").asInt(), root.path("totalTouchPoints").asInt());
 
         System.out.println("[Change Summary]");
-        System.out.println(root.path("narrativeChangeSummary").asText("No changed methods detected in analyzed interval."));
+        System.out.println(textOrDefault(root.path("narrativeChangeSummary"), "No changed methods detected in analyzed interval."));
         System.out.println();
 
-        String before = root.path("narrativeBeforeChange").asText("");
+        String before = root.path("narrativeBeforeChange").asText();
         if (!before.isBlank()) {
             System.out.println("[Architectural Context (Before Change)]");
             System.out.println(before);
             System.out.println();
         }
 
-        String impact = root.path("narrativeImpact").asText("");
+        String impact = root.path("narrativeImpact").asText();
         if (!impact.isBlank()) {
             System.out.println("[Blast Radius & System Impact]");
             System.out.println(impact);
@@ -1215,7 +1215,7 @@ public class Application {
             } catch (Exception ignored) {}
         }
 
-        String risk = root.path("riskLevel").asText("LOW");
+        String risk = textOrDefault(root.path("riskLevel"), "LOW");
         if (shouldFailOnRisk(risk, failOn)) {
             System.err.printf("%n[CI GATE FAILURE] PR Change Story risk level '%s' meets or exceeds fail threshold '%s'%n", risk, failOn);
             System.exit(1);
@@ -1224,7 +1224,7 @@ public class Application {
 
     private static String formatPrStoryJsonToMarkdown(com.fasterxml.jackson.databind.JsonNode root) {
         StringBuilder sb = new StringBuilder();
-        String risk = root.path("riskLevel").asText("LOW");
+        String risk = textOrDefault(root.path("riskLevel"), "LOW");
         String badge = switch (risk.toUpperCase(java.util.Locale.ROOT)) {
             case "CRITICAL" -> "🚨 CRITICAL";
             case "HIGH" -> "🔴 HIGH";
@@ -1233,20 +1233,20 @@ public class Application {
         };
 
         sb.append(String.format("## 📖 CodeStory PR Change Story: `%s` ➔ `%s`%n%n",
-            root.path("baseRef").asText("HEAD~1"), root.path("headRef").asText("HEAD")));
+            textOrDefault(root.path("baseRef"), "HEAD~1"), textOrDefault(root.path("headRef"), "HEAD")));
 
         sb.append(String.format("> **Risk Level:** %s &nbsp;|&nbsp; **Changed Methods:** %d &nbsp;|&nbsp; **Classes:** %d &nbsp;|&nbsp; **Blast Radius Touchpoints:** %d%n%n",
             badge, root.path("changedMethodsCount").asInt(), root.path("changedClassesCount").asInt(), root.path("totalTouchPoints").asInt()));
 
         sb.append("### 📝 Change Summary\n");
-        sb.append(root.path("narrativeChangeSummary").asText("No changed methods detected in analyzed interval.")).append("\n\n");
+        sb.append(textOrDefault(root.path("narrativeChangeSummary"), "No changed methods detected in analyzed interval.")).append("\n\n");
 
-        String before = root.path("narrativeBeforeChange").asText("");
+        String before = root.path("narrativeBeforeChange").asText();
         if (!before.isBlank()) {
             sb.append("### 🏛️ Architectural Context (Before Change)\n").append(before).append("\n\n");
         }
 
-        String impact = root.path("narrativeImpact").asText("");
+        String impact = root.path("narrativeImpact").asText();
         if (!impact.isBlank()) {
             sb.append("### 💥 Blast Radius & System Impact\n").append(impact).append("\n\n");
         }
@@ -1328,5 +1328,9 @@ public class Application {
 
         sb.append("---\n*Generated by [CodeStory](https://github.com/codelens/codelens) — Architectural Intelligence & Impact Story Engine*\n");
         return sb.toString();
+    }
+
+    private static String textOrDefault(com.fasterxml.jackson.databind.JsonNode node, String defVal) {
+        return (node != null && !node.isMissingNode() && !node.isNull()) ? node.asText() : defVal;
     }
 }

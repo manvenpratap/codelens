@@ -372,7 +372,6 @@ public class ModuleDependencyAnalyzer {
                                 .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                             cus.touchPointCount++;
                             increment(cus.kinds, kind);
-                            if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
                             cus.touchPoints.add(sharedDetail);
                         }
                     }
@@ -403,7 +402,6 @@ public class ModuleDependencyAnalyzer {
                             .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                         cus.touchPointCount++;
                         increment(cus.kinds, kind);
-                        if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
                         cus.touchPoints.add(sharedDetail);
                     }
                 }
@@ -745,40 +743,6 @@ public class ModuleDependencyAnalyzer {
                 }
             }
             return (bestPkg != null) ? packageToModule.get(bestPkg) : null;
-        }
-
-        String resolveTargetModule(String query) {
-            if (query == null || query.isBlank()) return null;
-            String trimmed = query.trim();
-
-            // 1. Direct match on module name
-            for (String mod : allModules) {
-                if (mod.equalsIgnoreCase(trimmed)) return mod;
-            }
-
-            // 2. Direct match on package FQN
-            if (packageToModule.containsKey(trimmed)) {
-                return packageToModule.get(trimmed);
-            }
-
-            // 3. Prefix match against packageToModule
-            String prefixMod = findModuleByPackagePrefix(trimmed);
-            if (prefixMod != null) return prefixMod;
-
-            // 4. Leaf package segment match
-            for (Map.Entry<String, String> entry : packageToModule.entrySet()) {
-                String pkg = entry.getKey();
-                if (pkg.equalsIgnoreCase(trimmed) || pkg.endsWith("." + trimmed)) {
-                    return entry.getValue();
-                }
-            }
-
-            // 5. Fallback: extractModuleName
-            String mod = CallGraphAnalyzer.extractModuleName(trimmed);
-            for (String m : allModules) {
-                if (m.equalsIgnoreCase(mod)) return m;
-            }
-            return mod;
         }
 
         // Memoization caches for fast high-throughput edge traversal
