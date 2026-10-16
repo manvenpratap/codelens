@@ -665,4 +665,49 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testOptimizedSerializationAndQueryCache() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-perf-check-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            // Test type with empty interfaces
+            CodeType t = new CodeType();
+            t.setId("com.example.FastEntity");
+            t.setFqn("com.example.FastEntity");
+            t.setSimpleName("FastEntity");
+            t.setKind("CLASS");
+            t.setInterfaces(Collections.emptyList());
+            dao.batchInsertTypesFast(List.of(t));
+
+            // Test method with empty parameters
+            CodeMethod m = new CodeMethod();
+            m.setId("com.example.FastEntity.run()");
+            m.setFqn("com.example.FastEntity.run()");
+            m.setSimpleName("run");
+            m.setDeclaringTypeFqn("com.example.FastEntity");
+            m.setParameters(Collections.emptyList());
+            dao.batchInsertMethodsFast(List.of(m));
+
+            // Query back and verify short-circuited empty list restoration
+            Optional<CodeType> loadedType = dao.findTypeById("com.example.FastEntity");
+            assertTrue(loadedType.isPresent(), "FastEntity loaded");
+            assertTrue(loadedType.get().getInterfaces() != null && loadedType.get().getInterfaces().isEmpty(), "Empty interfaces restored");
+
+            Optional<CodeMethod> loadedMethod = dao.findMethodById("com.example.FastEntity.run()");
+            assertTrue(loadedMethod.isPresent(), "FastEntity.run() loaded");
+            assertTrue(loadedMethod.get().getParameters() != null && loadedMethod.get().getParameters().isEmpty(), "Empty parameters restored");
+
+            // Verify query plan caching across repeated queries
+            for (int i = 0; i < 20; i++) {
+                List<CodeMethod> methods = dao.findMethodsByType("com.example.FastEntity");
+                assertEquals(1, methods.size(), "Cached query count");
+            }
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

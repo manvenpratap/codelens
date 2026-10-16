@@ -72,7 +72,7 @@ public class DatabaseManager {
         int defaultCacheKb = calculateDefaultCacheSizeKb();
         cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
                      + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=120000;CACHE_SIZE=" + defaultCacheKb
-                     + ";PAGE_SIZE=4096;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=45000;TRACE_LEVEL_FILE=0");
+                     + ";PAGE_SIZE=4096;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=45000;QUERY_CACHE_SIZE=256;TRACE_LEVEL_FILE=0");
         cfg.setUsername("sa");
         cfg.setPassword("");
         cfg.setMaximumPoolSize(32);
@@ -80,6 +80,10 @@ public class DatabaseManager {
         cfg.setConnectionTimeout(120_000);
         cfg.setValidationTimeout(5_000);
         cfg.setMaxLifetime(1800_000);
+        // High-performance prepared statement caching
+        cfg.addDataSourceProperty("cachePrepStmts", "true");
+        cfg.addDataSourceProperty("prepStmtCacheSize", "250");
+        cfg.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
         // Disable HikariCP's blind fixed-timer ProxyLeakTask (0 = disabled); CodeLens uses active-execution-aware ConnectionLease watchdog instead
         cfg.setLeakDetectionThreshold(0);
         cfg.setPoolName("CodeLens-H2");

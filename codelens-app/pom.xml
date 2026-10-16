@@ -10,6 +10,10 @@
        distribution than jlink or platform installers for a developer tool. -->
   <dependencies>
     <dependency><groupId>com.codelens</groupId><artifactId>codelens-core</artifactId></dependency>
+    <dependency><groupId>com.codelens</groupId><artifactId>codelens-parser</artifactId></dependency>
+    <dependency><groupId>com.codelens</groupId><artifactId>codelens-analysis</artifactId></dependency>
+    <dependency><groupId>com.codelens</groupId><artifactId>codelens-storage</artifactId></dependency>
+    <dependency><groupId>com.codelens</groupId><artifactId>codelens-git</artifactId></dependency>
     <dependency><groupId>com.codelens</groupId><artifactId>codelens-api</artifactId></dependency>
     <dependency><groupId>com.codelens</groupId><artifactId>codelens-web</artifactId></dependency>
     <dependency><groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId></dependency>

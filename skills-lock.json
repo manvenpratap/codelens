@@ -7,6 +7,12 @@
       "skillPath": "skills/animate/SKILL.md",
       "computedHash": "7598d33e7f60dd5c24531eaaa897621cc3bdb48e8050324211627973bc59c4ce"
     },
+    "code-review-skill": {
+      "source": "awesome-skills/code-review-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "4850184dfd7765ea7b3c5c4e9b6cf8e0815ee7cb"
+    },
     "animate-expo": {
       "source": "emilkowalski/skills",
       "sourceType": "github",

@@ -448,8 +448,13 @@ public class JavaSourceScanner {
                         AstVisitor.VisitContext ctx = new AstVisitor.VisitContext();
                         ctx.sourceFile = javaFile.toAbsolutePath().toString();
 
-                        long lastMod = Files.exists(javaFile) ? Files.getLastModifiedTime(javaFile).toMillis() : System.currentTimeMillis();
-                        long size = Files.exists(javaFile) ? Files.size(javaFile) : 0;
+                        long lastMod = System.currentTimeMillis();
+                        long size = 0L;
+                        try {
+                            BasicFileAttributes attrs = Files.readAttributes(javaFile, BasicFileAttributes.class);
+                            lastMod = attrs.lastModifiedTime().toMillis();
+                            size = attrs.size();
+                        } catch (IOException ignored) {}
 
                         ParseResult<CompilationUnit> parseResult = parser.parse(javaFile);
 

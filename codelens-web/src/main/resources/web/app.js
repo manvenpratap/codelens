@@ -10488,10 +10488,19 @@ function updateScanSummaryUI(s) {
 
 function toggleScanSummaryPopover(force) {
   const popover = qs('#scan-summary-popover');
+  const backdrop = qs('#scan-summary-backdrop');
+  const pill = qs('#project-pill');
   if (!popover) return;
   const isVisible = popover.style.display !== 'none';
   const show = typeof force === 'boolean' ? force : !isVisible;
   popover.style.display = show ? 'flex' : 'none';
+  if (backdrop) {
+    backdrop.style.display = show ? 'block' : 'none';
+  }
+  if (pill) {
+    pill.classList.toggle('active', show);
+    pill.setAttribute('aria-expanded', show ? 'true' : 'false');
+  }
   if (show) {
     checkCodebaseChanges();
   }
@@ -11117,12 +11126,27 @@ async function init() {
   }
 
 
-  // Close scan popover on outside click
+  // Close scan popover on backdrop click or outside click
+  qs('#scan-summary-backdrop')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleScanSummaryPopover(false);
+  });
+
   document.addEventListener('click', (e) => {
     const popover = qs('#scan-summary-popover');
     if (popover && popover.style.display !== 'none') {
       if (!popover.contains(e.target) && !e.target.closest('#scan-status-badge') && !e.target.closest('#project-pill')) {
-        popover.style.display = 'none';
+        toggleScanSummaryPopover(false);
+      }
+    }
+  });
+
+  // Close scan popover on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const popover = qs('#scan-summary-popover');
+      if (popover && popover.style.display !== 'none') {
+        toggleScanSummaryPopover(false);
       }
     }
   });

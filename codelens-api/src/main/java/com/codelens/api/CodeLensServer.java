@@ -120,6 +120,8 @@ public class CodeLensServer {
 
     // ── Graph Layout Cache & Disk Persistence (SoftReference backed for automatic JVM GC cooperative eviction) ──
     private final Map<String, java.lang.ref.SoftReference<CallGraphAnalyzer.GraphView>> layoutCache = new ConcurrentHashMap<>();
+    private final Map<String, java.lang.ref.SoftReference<CallGraphAnalyzer.TreemapNode>> treemapCache = new ConcurrentHashMap<>();
+    private volatile List<CriticalPathAnalyzer.PersistentClassSummary> cachedPersistentClasses = null;
     private final ModuleDependencyAnalyzer moduleDependencyAnalyzer;
     private volatile ModuleDependencyAnalyzer.FullModuleDependencyResult precomputedModuleResult = null;
     private final Map<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> precomputedModuleInsights = new ConcurrentHashMap<>();
@@ -289,6 +291,8 @@ public class CodeLensServer {
 
     public void invalidateGraphCache() {
         layoutCache.clear();
+        treemapCache.clear();
+        cachedPersistentClasses = null;
         precomputedModuleResult = null;
         precomputedModuleInsights.clear();
         cachedReportsJson.clear();
@@ -1244,6 +1248,8 @@ public class CodeLensServer {
             int layouts = layoutCache.size();
             int modules = precomputedModuleInsights.size();
             layoutCache.clear();
+            treemapCache.clear();
+            cachedPersistentClasses = null;
             precomputedModuleInsights.clear();
             precomputedModuleResult = null;
             clearTransientScanSnapshot();
@@ -1300,11 +1306,22 @@ public class CodeLensServer {
             // Serve static frontend files (live from disk in dev workspace, fallback to JAR classpath)
             java.io.File localWeb = new java.io.File("codelens-web/src/main/resources/web");
             if (localWeb.isDirectory()) {
-                cfg.staticFiles.add(localWeb.getAbsolutePath(), Location.EXTERNAL);
+                cfg.staticFiles.add(staticFiles -> {
+                    staticFiles.hostedPath = "/";
+                    staticFiles.directory = localWeb.getAbsolutePath();
+                    staticFiles.location = Location.EXTERNAL;
+                    staticFiles.headers = Map.of("Cache-Control", "no-cache, must-revalidate");
+                });
             } else {
-                cfg.staticFiles.add("/web", Location.CLASSPATH);
+                cfg.staticFiles.add(staticFiles -> {
+                    staticFiles.hostedPath = "/";
+                    staticFiles.directory = "/web";
+                    staticFiles.location = Location.CLASSPATH;
+                    staticFiles.headers = Map.of("Cache-Control", "no-cache, must-revalidate");
+                });
             }
-            cfg.jsonMapper(new JavalinJackson());
+            jsonMapper.setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
+            cfg.jsonMapper(new JavalinJackson(jsonMapper, true));
             cfg.http.gzipOnlyCompression();
             // Allow all origins during local use (no cross-origin issues)
             cfg.bundledPlugins.enableCors(cors ->
@@ -4201,6 +4218,11 @@ public class CodeLensServer {
         String scope  = ctx.queryParam("scope");
         String filter = ctx.queryParam("filter");
         String format = ctx.queryParam("format");
+        String key = "dsm:" + (scope != null ? scope : "auto") + ":" + (filter != null ? filter : "none") + ":" + (format != null ? format : "json");
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
+        ctx.header("Cache-Control", "private, max-age=60");
         CallGraphAnalyzer.DSMPayload dsm = callGraph.dsmView(scope, filter);
 
         if ("csv".equalsIgnoreCase(format)) {
@@ -4235,30 +4257,49 @@ public class CodeLensServer {
         if (handleConditionalETag(ctx, key)) {
             return;
         }
+
+        java.lang.ref.SoftReference<CallGraphAnalyzer.TreemapNode> ref = treemapCache.get(key);
+        CallGraphAnalyzer.TreemapNode cachedNode = (ref != null) ? ref.get() : null;
+        if (cachedNode != null) {
+            ctx.header("Cache-Control", "private, max-age=60");
+            ctx.json(cachedNode);
+            return;
+        }
+
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
 
-        List<CallGraphAnalyzer.TreemapTypeRecord> typeRecs = new java.util.ArrayList<>();
+        List<CallGraphAnalyzer.TreemapTypeRecord> typeRecs = new java.util.ArrayList<>(types.size());
         for (CodeType t : types) {
             typeRecs.add(new CallGraphAnalyzer.TreemapTypeRecord(
                 t.getFqn(), t.getSimpleName(), t.getPackageFqn(), t.getKind(), t.getLineCount()));
         }
 
-        List<CallGraphAnalyzer.TreemapMethodRecord> methodRecs = new java.util.ArrayList<>();
+        List<CallGraphAnalyzer.TreemapMethodRecord> methodRecs = new java.util.ArrayList<>(methods.size());
         for (CodeMethod m : methods) {
             methodRecs.add(new CallGraphAnalyzer.TreemapMethodRecord(
                 m.getFqn(), m.getSimpleName(), m.getDeclaringTypeFqn(),
                 m.getStartLine(), m.getEndLine(), m.getCyclomaticComplexity()));
         }
 
-        ctx.json(CallGraphAnalyzer.treemapView(typeRecs, methodRecs, scope, filter));
+        CallGraphAnalyzer.TreemapNode node = CallGraphAnalyzer.treemapView(typeRecs, methodRecs, scope, filter);
+        treemapCache.put(key, new java.lang.ref.SoftReference<>(node));
+        ctx.header("Cache-Control", "private, max-age=60");
+        ctx.json(node);
     }
 
     private void getPersistentClasses(Context ctx) throws Exception {
+        ctx.header("Cache-Control", "private, max-age=60");
+        List<CriticalPathAnalyzer.PersistentClassSummary> cached = cachedPersistentClasses;
+        if (cached != null) {
+            ctx.json(cached);
+            return;
+        }
         List<CodeType> types = dao.findAllTypes();
         List<CodeMethod> methods = dao.findAllMethods();
         List<CriticalPathAnalyzer.PersistentClassSummary> summaries =
             criticalPathAnalyzer.findPersistentClasses(types, methods);
+        cachedPersistentClasses = summaries;
         ctx.json(summaries);
     }
 
@@ -4355,6 +4396,7 @@ public class CodeLensServer {
             List<CodeMethod> methods = dao.findAllMethods();
             List<CriticalPathAnalyzer.PersistentClassSummary> summaries =
                 criticalPathAnalyzer.findPersistentClasses(types, methods);
+            this.cachedPersistentClasses = summaries;
             int count = (summaries != null) ? summaries.size() : 0;
             cachedCriticalPathsCount.set(count);
             criticalPathPhase.set(String.format("Critical Paths Ready (%,d persistent targets)", count));

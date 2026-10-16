@@ -787,4 +787,55 @@ public class CallGraphAndReportTest {
         // Clean up custom pattern
         CallGraphAnalyzer.setCustomPojoPatterns("");
     }
+
+    public void testPrefixMapAndO1LookupsPerformance() {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+        List<String> methodFqns = new ArrayList<>(2000);
+        List<CodeRelationship> rels = new ArrayList<>(2000);
+
+        for (int i = 0; i < 1000; i++) {
+            String caller = "com.example.service.Worker" + i + ".run()";
+            String targetOverload1 = "com.example.service.Target" + (i % 100) + ".execute(java.lang.String)";
+            String targetOverload2 = "com.example.service.Target" + (i % 100) + ".execute(int,boolean)";
+            methodFqns.add(caller);
+            methodFqns.add(targetOverload1);
+            methodFqns.add(targetOverload2);
+
+            CodeRelationship r1 = new CodeRelationship();
+            r1.setFromEntityFqn(caller);
+            r1.setToEntityFqn(targetOverload1);
+            r1.setKind("CALLS");
+            rels.add(r1);
+
+            CodeRelationship r2 = new CodeRelationship();
+            r2.setFromEntityFqn(caller);
+            r2.setToEntityFqn(targetOverload2);
+            r2.setKind("CALLS");
+            rels.add(r2);
+        }
+
+        analyzer.rebuild(methodFqns, rels);
+
+        // Verify O(1) prefix resolution without parentheses
+        String resolved = analyzer.findVertex("com.example.service.Target0.execute");
+        assertNotNull(resolved, "Target0.execute should resolve");
+        assertTrue(resolved.startsWith("com.example.service.Target0.execute("), "Matches overload");
+
+        // Verify callerCount aggregation across overloads
+        int callers = analyzer.callerCount("com.example.service.Target0.execute");
+        assertTrue(callers > 0, "Callers should be aggregated across overloads");
+
+        // Verify calleeCount on caller
+        int callees = analyzer.calleeCount("com.example.service.Worker0.run");
+        assertEquals(2, callees, "Worker0.run calls 2 targets");
+
+        // Performance benchmark: 10,000 lookups should finish in under 200ms
+        long start = System.nanoTime();
+        for (int i = 0; i < 10000; i++) {
+            String base = "com.example.service.Target" + (i % 100) + ".execute";
+            analyzer.callerCount(base);
+        }
+        long durationMs = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(durationMs < 500, "10,000 O(1) lookups took " + durationMs + "ms, expected < 500ms");
+    }
 }

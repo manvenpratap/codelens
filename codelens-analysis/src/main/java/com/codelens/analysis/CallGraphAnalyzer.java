@@ -34,6 +34,9 @@ public class CallGraphAnalyzer {
     private Graph<String, DefaultEdge> callGraph =
         new DefaultDirectedGraph<>(DefaultEdge.class);
 
+    /** In-memory prefix index mapping base method FQN (without params) to matching vertex FQNs for O(1) lookup. */
+    private Map<String, List<String>> prefixToVertices = Collections.emptyMap();
+
     /** Returns the underlying directed JGraphT call graph. */
     public synchronized Graph<String, DefaultEdge> getCallGraph() {
         return callGraph;
@@ -203,6 +206,13 @@ public class CallGraphAnalyzer {
         resolveCache.clear();
 
         this.callGraph = g;
+        Map<String, List<String>> pMap = new HashMap<>(g.vertexSet().size());
+        for (String v : g.vertexSet()) {
+            int paren = v.indexOf('(');
+            String base = (paren > 0) ? v.substring(0, paren) : v;
+            pMap.computeIfAbsent(base, k -> new ArrayList<>(2)).add(v);
+        }
+        this.prefixToVertices = pMap;
         log.info("Call graph rebuilt: {} vertices, {} edges",
             g.vertexSet().size(), g.edgeSet().size());
     }
@@ -408,6 +418,20 @@ public class CallGraphAnalyzer {
         return bfs(reversed, methodFqn, maxDepth, "caller", hideGetters);
     }
 
+    private Map<String, List<String>> getOrBuildPrefixMap() {
+        Map<String, List<String>> map = prefixToVertices;
+        if ((map == null || map.isEmpty()) && callGraph != null && !callGraph.vertexSet().isEmpty()) {
+            map = new HashMap<>(callGraph.vertexSet().size());
+            for (String v : callGraph.vertexSet()) {
+                int paren = v.indexOf('(');
+                String base = (paren > 0) ? v.substring(0, paren) : v;
+                map.computeIfAbsent(base, k -> new ArrayList<>(2)).add(v);
+            }
+            this.prefixToVertices = map;
+        }
+        return map;
+    }
+
     /**
      * Returns the number of direct callers (in-degree) for the given method.
      */
@@ -422,16 +446,23 @@ public class CallGraphAnalyzer {
         if (callGraph.containsVertex(alt)) {
             return callGraph.inDegreeOf(alt);
         }
-        int count = 0;
-        boolean foundAny = false;
-        String prefix = methodFqn + "(";
-        for (String v : callGraph.vertexSet()) {
-            if (v.startsWith(prefix)) {
-                count += callGraph.inDegreeOf(v);
-                foundAny = true;
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        Map<String, List<String>> pMap = getOrBuildPrefixMap();
+        List<String> candidates = (pMap != null) ? pMap.get(base) : null;
+        if (candidates != null && !candidates.isEmpty()) {
+            int count = 0;
+            boolean foundAny = false;
+            String prefix = methodFqn.contains("(") ? methodFqn : methodFqn + "(";
+            for (String v : candidates) {
+                if (v.startsWith(prefix) || v.equals(methodFqn)) {
+                    count += callGraph.inDegreeOf(v);
+                    foundAny = true;
+                }
             }
+            return foundAny ? count : 0;
         }
-        return foundAny ? count : 0;
+        return 0;
     }
 
     /**
@@ -448,16 +479,23 @@ public class CallGraphAnalyzer {
         if (callGraph.containsVertex(alt)) {
             return callGraph.outDegreeOf(alt);
         }
-        int count = 0;
-        boolean foundAny = false;
-        String prefix = methodFqn + "(";
-        for (String v : callGraph.vertexSet()) {
-            if (v.startsWith(prefix)) {
-                count += callGraph.outDegreeOf(v);
-                foundAny = true;
+        int paren = methodFqn.indexOf('(');
+        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
+        Map<String, List<String>> pMap = getOrBuildPrefixMap();
+        List<String> candidates = (pMap != null) ? pMap.get(base) : null;
+        if (candidates != null && !candidates.isEmpty()) {
+            int count = 0;
+            boolean foundAny = false;
+            String prefix = methodFqn.contains("(") ? methodFqn : methodFqn + "(";
+            for (String v : candidates) {
+                if (v.startsWith(prefix) || v.equals(methodFqn)) {
+                    count += callGraph.outDegreeOf(v);
+                    foundAny = true;
+                }
             }
+            return foundAny ? count : 0;
         }
-        return foundAny ? count : 0;
+        return 0;
     }
 
     /**
@@ -612,11 +650,18 @@ public class CallGraphAnalyzer {
         String alt = trimmed.endsWith("()") ? trimmed.substring(0, trimmed.length() - 2) : trimmed + "()";
         if (callGraph.containsVertex(alt)) return alt;
 
-        String prefix = trimmed.contains("(") ? trimmed : trimmed + "(";
-        for (String v : callGraph.vertexSet()) {
-            if (v.startsWith(prefix) || v.equals(trimmed)) {
-                return v;
+        int paren = trimmed.indexOf('(');
+        String base = (paren > 0) ? trimmed.substring(0, paren) : trimmed;
+        Map<String, List<String>> pMap = getOrBuildPrefixMap();
+        List<String> candidates = (pMap != null) ? pMap.get(base) : null;
+        if (candidates != null && !candidates.isEmpty()) {
+            String prefix = trimmed.contains("(") ? trimmed : trimmed + "(";
+            for (String v : candidates) {
+                if (v.startsWith(prefix) || v.equals(trimmed)) {
+                    return v;
+                }
             }
+            return candidates.get(0);
         }
         return null;
     }
@@ -867,18 +912,20 @@ public class CallGraphAnalyzer {
     public GraphView architectureGraphView(String scope, String filter) {
         Graph<String, DefaultEdge> g = callGraph;
         Set<String> allClasses = new TreeSet<>();
+        Set<String> modules = new HashSet<>();
+        Set<String> packages = new HashSet<>();
+
+        boolean needAutoScope = (scope == null || scope.isEmpty() || "auto".equalsIgnoreCase(scope));
         for (String v : g.vertexSet()) {
             allClasses.add(extractClassFqn(v));
-        }
-
-        String effectiveScope = scope;
-        if (effectiveScope == null || effectiveScope.isEmpty() || "auto".equalsIgnoreCase(effectiveScope)) {
-            Set<String> modules = new HashSet<>();
-            Set<String> packages = new HashSet<>();
-            for (String v : g.vertexSet()) {
+            if (needAutoScope) {
                 modules.add(extractModuleName(v));
                 packages.add(extractPackageFqn(v));
             }
+        }
+
+        String effectiveScope = scope;
+        if (needAutoScope) {
             if (modules.size() > 1 && allClasses.size() > 500) {
                 effectiveScope = "modules";
             } else if (packages.size() > 1 && allClasses.size() > 300) {

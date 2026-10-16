@@ -838,7 +838,7 @@ public class EntityDao {
     }
 
     public List<CodeField> findFieldsByType(String typeFqn) throws SQLException {
-        List<CodeField> list = new ArrayList<>();
+        List<CodeField> list = new ArrayList<>(16);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
                  "SELECT * FROM fields WHERE declaring_type_fqn=? ORDER BY start_line")) {
@@ -862,7 +862,7 @@ public class EntityDao {
     }
 
     public List<CodeField> findAllFields() throws SQLException {
-        List<CodeField> list = new ArrayList<>();
+        List<CodeField> list = new ArrayList<>(512);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT * FROM fields")) {
             ps.setQueryTimeout(120);
@@ -927,7 +927,7 @@ public class EntityDao {
     }
 
     public List<CodeMethod> findMethodsByType(String typeFqn) throws SQLException {
-        List<CodeMethod> list = new ArrayList<>();
+        List<CodeMethod> list = new ArrayList<>(32);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
                  "SELECT * FROM methods WHERE declaring_type_fqn=? ORDER BY start_line")) {
@@ -951,7 +951,7 @@ public class EntityDao {
     }
 
     public List<CodeMethod> findAllMethods() throws SQLException {
-        List<CodeMethod> list = new ArrayList<>();
+        List<CodeMethod> list = new ArrayList<>(1024);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT * FROM methods")) {
             ps.setQueryTimeout(120);
@@ -1059,7 +1059,7 @@ public class EntityDao {
     }
 
     public List<CodeRelationship> findAllRelationships() throws SQLException {
-        List<CodeRelationship> list = new ArrayList<>();
+        List<CodeRelationship> list = new ArrayList<>(1024);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT * FROM relationships")) {
             ps.setQueryTimeout(120);
@@ -1754,10 +1754,12 @@ public class EntityDao {
         t.setFieldCount(rs.getInt("field_count"));
         t.setMethodCount(rs.getInt("method_count"));
         String ifaces = rs.getString("interfaces");
-        if (ifaces != null) {
+        if (ifaces != null && !ifaces.isBlank() && !ifaces.equals("[]")) {
             try {
                 t.setInterfaces(json.readValue(ifaces, TYPE_REF_STRING_LIST));
-            } catch (Exception e) { /* leave empty */ }
+            } catch (Exception e) { t.setInterfaces(Collections.emptyList()); }
+        } else {
+            t.setInterfaces(Collections.emptyList());
         }
         return t;
     }
@@ -1788,10 +1790,12 @@ public class EntityDao {
         m.setCyclomaticComplexity(rs.getInt("cyclomatic_complexity"));
         m.setBodyHash(rs.getString("body_hash"));
         String params = rs.getString("parameters");
-        if (params != null) {
+        if (params != null && !params.isBlank() && !params.equals("[]")) {
             try {
                 m.setParameters(json.readValue(params, TYPE_REF_PARAMS));
-            } catch (Exception e) { /* leave empty */ }
+            } catch (Exception e) { m.setParameters(Collections.emptyList()); }
+        } else {
+            m.setParameters(Collections.emptyList());
         }
         return m;
     }
@@ -2135,13 +2139,18 @@ public class EntityDao {
     // Helpers
     // =========================================================================
 
+    private static final String EMPTY_ARRAY_JSON = "[]";
+
     private String toJson(Object obj) {
+        if (obj == null) return EMPTY_ARRAY_JSON;
+        if (obj instanceof Collection<?> c && c.isEmpty()) return EMPTY_ARRAY_JSON;
+        if (obj instanceof Map<?, ?> m && m.isEmpty()) return "{}";
         try { return json.writeValueAsString(obj); }
-        catch (Exception e) { return "[]"; }
+        catch (Exception e) { return EMPTY_ARRAY_JSON; }
     }
 
     private List<CodeType> queryTypes(String sql) throws SQLException {
-        List<CodeType> list = new ArrayList<>();
+        List<CodeType> list = new ArrayList<>(256);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setQueryTimeout(120);
@@ -2154,7 +2163,7 @@ public class EntityDao {
     }
 
     private List<CodeType> queryTypesParam(String sql, String... params) throws SQLException {
-        List<CodeType> list = new ArrayList<>();
+        List<CodeType> list = new ArrayList<>(128);
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setQueryTimeout(120);
