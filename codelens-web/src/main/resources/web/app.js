@@ -7886,6 +7886,7 @@ function ensureGraph() {
     applyAllSettings(loadSettings());
 
     App.graph.onNodeClick = async node => {
+      updateCartographyTelemetry(null, null, node);
       if (App.activeGraphMode === 'criticalPath') {
         if (currentActivePath && currentActivePath.nodes) {
           const stepNode = currentActivePath.nodes.find(n => n.id === node.id);
@@ -7942,6 +7943,57 @@ function ensureGraph() {
     };
   }
 }
+
+/**
+ * Architectural Cartography HUD telemetry updater.
+ */
+function updateCartographyTelemetry(nodes, edges, focusNode = null) {
+  const densityEl = qs('#carto-density-val');
+  const sinksEl = qs('#carto-sinks-val');
+  const barycenterEl = qs('#carto-barycenter-val');
+  if (!densityEl || !sinksEl || !barycenterEl) return;
+
+  const nList = nodes || (App.graph ? App.graph._nodes : []) || [];
+  const eList = edges || (App.graph ? App.graph._edges : []) || [];
+
+  if (!nList || nList.length === 0) {
+    densityEl.textContent = '—';
+    sinksEl.textContent = '—';
+    barycenterEl.textContent = 'Ready';
+    return;
+  }
+
+  // Density = |E| / |V|
+  const density = (eList.length / Math.max(1, nList.length)).toFixed(2);
+  densityEl.textContent = density;
+
+  // Sinks = nodes with outDegree === 0
+  let sinks = 0;
+  for (let i = 0; i < nList.length; i++) {
+    if ((nList[i].outDegree || 0) === 0) sinks++;
+  }
+  sinksEl.textContent = String(sinks);
+
+  // Barycenter / active cluster
+  if (focusNode) {
+    const pkg = focusNode.package || focusNode.communityLabel || focusNode.packageFqn || '';
+    const parts = pkg ? pkg.split('.') : [];
+    barycenterEl.textContent = parts.length > 0 ? parts[parts.length - 1] : 'Focus';
+  } else {
+    const counts = {};
+    for (let i = 0; i < nList.length; i++) {
+      const p = nList[i].package || nList[i].communityLabel || 'Default';
+      counts[p] = (counts[p] || 0) + 1;
+    }
+    let top = 'Ready', max = 0;
+    for (const [k, v] of Object.entries(counts)) {
+      if (v > max) { max = v; top = k; }
+    }
+    const parts = top.split('.');
+    barycenterEl.textContent = parts[parts.length - 1] || top;
+  }
+}
+window.updateCartographyTelemetry = updateCartographyTelemetry;
 
 /** Load the whole codebase graph (either high-level Architecture or detailed Method call graph). */
 async function loadWholeCodebaseGraph(level, granularity) {
@@ -10862,6 +10914,32 @@ function closeHelpModal() {
 }
 
 function bindKeyboard() {
+  // Physical mechanical keycap depression feedback (Pillar 6)
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable) return;
+    const pressed = (e.key === ' ' ? 'SPACE' : e.key).toUpperCase();
+    document.querySelectorAll('kbd').forEach(k => {
+      const text = k.textContent.trim().toUpperCase();
+      if (text === pressed || (pressed === 'ESCAPE' && text === 'ESC') || (pressed === 'ENTER' && (text === '↵' || text === 'ENTER'))) {
+        k.classList.add('key-active');
+      }
+    });
+  });
+
+  document.addEventListener('keyup', e => {
+    const pressed = (e.key === ' ' ? 'SPACE' : e.key).toUpperCase();
+    document.querySelectorAll('kbd.key-active').forEach(k => {
+      const text = k.textContent.trim().toUpperCase();
+      if (text === pressed || (pressed === 'ESCAPE' && text === 'ESC') || (pressed === 'ENTER' && (text === '↵' || text === 'ENTER'))) {
+        k.classList.remove('key-active');
+      }
+    });
+  });
+
+  window.addEventListener('blur', () => {
+    document.querySelectorAll('kbd.key-active').forEach(k => k.classList.remove('key-active'));
+  });
+
   document.addEventListener('keydown', e => {
     // Escape → close modal or exit studio mode or close reports or clear search
     if (e.key === 'Escape') {
@@ -14188,7 +14266,8 @@ const THEMES = {
       '--primary-subtle': 'rgba(16,185,129,0.12)', '--primary-glow': 'rgba(16,185,129,0.16)',
       '--primary-border': 'rgba(52,211,153,0.40)',
       '--cyan-bright': '#34d399', '--emerald': '#10b981', '--amber': '#f59e0b', '--red': '#ef4444',
-      '--text-primary': '#f8fafc', '--text-secondary': '#cbd5e1', '--text-muted': '#94a3b8',
+      '--text-primary': '#f4f4f5', '--text-secondary': '#cbd5e1', '--text-muted': '#94a3b8',
+      '--edge-highlight': 'inset 0 1px 0 0 rgba(255,255,255,0.08)',
     },
     graph: {
       bg: '#000000', grid: 'rgba(255,255,255,0.03)',
@@ -14229,6 +14308,7 @@ const THEMES = {
       '--shadow-sm': '0 1px 2px rgba(0,0,0,0.5)',
       '--shadow-md': '0 4px 12px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)',
       '--shadow-lg': '0 16px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.12)',
+      '--edge-highlight': 'none',
     },
     graph: {
       bg: '#0f0f10', grid: 'rgba(255,255,255,0.05)',
@@ -14264,6 +14344,7 @@ const THEMES = {
       '--emerald': '#059669', '--amber': '#d97706', '--red': '#dc2626', '--purple': '#7c3aed',
       '--text-primary': '#0f172a', '--text-secondary': '#334155', '--text-muted': '#475569',
       '--radius-xs': '6px', '--radius-sm': '8px', '--radius-md': '12px', '--radius-lg': '16px',
+      '--edge-highlight': 'inset 0 1px 0 0 rgba(255,255,255,0.7)',
     },
     graph: {
       bg: '#f1f5f9', grid: 'rgba(0,0,0,0.06)',

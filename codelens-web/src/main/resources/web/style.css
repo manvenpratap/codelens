@@ -29,6 +29,10 @@
   --border-light: rgba(255, 255, 255, 0.18);
   --border-focus: #10b981;
 
+  /* Specular Highlight & Ambient Occlusion Depth Tokens */
+  --edge-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  --shadow-ambient: 0 4px 20px -2px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+
   /* Curated Accent Scales - Calm, Non-Fluorescent Developer Tokens */
   --primary:        #10b981;  /* Balanced emerald */
   --primary-bg:     #059669;  /* Vibrant emerald active surface */
@@ -68,7 +72,7 @@
   --purple-border: rgba(124, 58, 237, 0.45);
 
   /* Text hierarchy - Calibrated WCAG AAA High Contrast */
-  --text-primary:   #ffffff;
+  --text-primary:   #f4f4f5;
   --text-secondary: #cbd5e1;
   --text-muted:     #94a3b8;
   --text-code:      #6ee7b7;
@@ -179,8 +183,10 @@ h1, h2, h3, h4, h5, h6 {
 
 .stat-count, .stat-pill, .nc-val, .nc-badge, .hud-pill, .status-indicator,
 .settings-val, .footer-meta-pill, .chip-count, .badge, .counter,
-.tree-member-item, .git-blame-line, .review-issue-line, kbd {
-  font-variant-numeric: tabular-nums;
+.tree-member-item, .git-blame-line, .review-issue-line, kbd, .carto-val,
+.stat-card-num, .cp-metric-item strong, .hub-count-badge {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
 /* ── Global Tactile Interactivity & Focus States ───────────────────────── */
@@ -2898,8 +2904,104 @@ body.theme-light .module-breakup-row:hover {
 .header-actions-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+/* ── Consolidated Header Control Deck Capsules ───────────────────────────── */
+.control-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 2px;
+  box-shadow: var(--edge-highlight);
+  flex-shrink: 0;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.control-capsule:hover {
+  border-color: var(--border-hover);
+}
+
+.control-capsule .header-action-btn,
+.control-capsule .tab-studio-launch-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  height: 26px;
+  border-radius: var(--radius-xs, 6px);
+}
+
+.control-capsule .header-action-btn:hover,
+.control-capsule .tab-studio-launch-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  transform: none;
+  box-shadow: none;
+}
+
+.control-capsule .header-action-btn.active {
+  background: var(--primary-subtle);
+  border-color: var(--primary-border);
+  color: var(--text-primary);
+}
+
+.control-capsule .tab-studio-launch-btn {
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.control-capsule .tab-studio-launch-btn .studio-btn-shortcut kbd {
+  font-size: 9.5px;
+  padding: 0 3px;
+  margin-left: 3px;
+}
+
+.control-capsule .theme-dropdown-wrap {
+  display: inline-flex;
+}
+
+.control-capsule .theme-dropdown-wrap .theme-toggle-btn {
+  height: 26px;
+  width: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.control-capsule .theme-dropdown-wrap .theme-toggle-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+}
+
+body.theme-light .control-capsule {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  box-shadow: var(--edge-highlight);
+}
+
+body.theme-light .control-capsule .header-action-btn:hover,
+body.theme-light .control-capsule .tab-studio-launch-btn:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+body.theme-swiss .control-capsule {
+  background: #161617;
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+body.theme-swiss .control-capsule .header-action-btn,
+body.theme-swiss .control-capsule .tab-studio-launch-btn {
+  border-radius: 0;
 }
 
 .header-action-btn,
@@ -3787,14 +3889,17 @@ body.theme-light .tab-bar {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: var(--bg-surface);
+  background: rgba(8, 12, 20, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-full, 9999px);
-  padding: 2px;
+  padding: 3px;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
   flex-wrap: nowrap;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .tab-nav-segment.graph-level-pills::-webkit-scrollbar {
   display: none;
@@ -3802,13 +3907,20 @@ body.theme-light .tab-bar {
 body.theme-light .tab-nav-segment.graph-level-pills {
   background: #f1f5f9;
   border-color: #cbd5e1;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+body.theme-swiss .tab-nav-segment.graph-level-pills {
+  background: #161617;
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tab,
 .tab.level-pill {
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 3px 8px;
   height: 26px;
   background: transparent;
   border: 1px solid transparent;
@@ -3817,8 +3929,8 @@ body.theme-light .tab-nav-segment.graph-level-pills {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+  gap: 5px;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
   white-space: nowrap;
   user-select: none;
   position: relative;
@@ -3826,7 +3938,7 @@ body.theme-light .tab-nav-segment.graph-level-pills {
 }
 .tab.level-pill:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 body.theme-light .tab.level-pill {
   color: #475569;
@@ -3834,6 +3946,9 @@ body.theme-light .tab.level-pill {
 body.theme-light .tab.level-pill:hover {
   color: #0f172a;
   background: rgba(0, 0, 0, 0.05);
+}
+body.theme-swiss .tab.level-pill {
+  border-radius: 0;
 }
 .tab.level-pill:active { cursor: grabbing; }
 
@@ -3870,19 +3985,32 @@ body.theme-light .tab.level-pill:hover {
 }
 
 .tab.level-pill.active {
-  background: #059669;
-  border-color: #10b981;
-  color: #ffffff;
-  box-shadow: 0 1px 6px rgba(16, 185, 129, 0.45);
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), var(--edge-highlight);
   font-weight: 700;
 }
-body.theme-light .tab.level-pill.active {
-  background: #059669;
-  border-color: #047857;
-  color: #ffffff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-}
 .tab.level-pill.active .tab-icon svg {
+  stroke: var(--primary);
+}
+body.theme-light .tab.level-pill.active {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1), var(--edge-highlight);
+}
+body.theme-light .tab.level-pill.active .tab-icon svg {
+  stroke: var(--primary);
+}
+body.theme-swiss .tab.level-pill.active {
+  background: #eb0028;
+  border-color: #eb0028;
+  color: #ffffff;
+  border-radius: 0;
+  box-shadow: none;
+}
+body.theme-swiss .tab.level-pill.active .tab-icon svg {
   stroke: #ffffff;
 }
 
@@ -4142,7 +4270,20 @@ body.theme-light .reports-back-btn .back-arrow {
   position: relative;
   flex: 1;
   overflow: hidden;
+  background-color: var(--bg-canvas, #090d16);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
+body.theme-light #graph-view {
+  background-color: var(--bg-canvas, #f8fafc);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+}
+body.theme-swiss #graph-view {
+  background-color: var(--bg-base, #0f0f10);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
 #graph-canvas {
   width: 100%;
   height: 100%;
@@ -4150,6 +4291,203 @@ body.theme-light .reports-back-btn .back-arrow {
   cursor: grab;
 }
 #graph-canvas:active { cursor: grabbing; }
+
+/* ── Architectural Cartography HUD (Signature Anchor) ───────────────────── */
+.cartography-hud {
+  position: absolute;
+  bottom: 60px;
+  left: 14px;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: rgba(10, 13, 18, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  box-shadow: var(--shadow-ambient), var(--edge-highlight);
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--text-secondary);
+  pointer-events: auto;
+  user-select: none;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.cartography-hud:hover {
+  background: rgba(14, 18, 26, 0.92);
+  border-color: var(--border-hover);
+}
+
+.carto-telemetry-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  border-right: 1px solid var(--border-light);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-size: 9.5px;
+}
+
+.carto-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--emerald, #10b981);
+  box-shadow: 0 0 8px var(--emerald, #10b981);
+  animation: cartoTelemetryPulse 2.4s infinite ease-in-out;
+}
+
+@keyframes cartoTelemetryPulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+    box-shadow: 0 0 10px var(--emerald, #10b981);
+  }
+}
+
+.carto-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.carto-metric-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.carto-lbl {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.carto-val {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+body.theme-light .cartography-hud {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), var(--edge-highlight);
+  color: #334155;
+}
+body.theme-light .carto-lbl {
+  color: #64748b;
+}
+body.theme-light .carto-val {
+  color: #0f172a;
+}
+body.theme-light .carto-telemetry-status {
+  border-right-color: #e2e8f0;
+  color: #475569;
+}
+
+body.theme-swiss .cartography-hud {
+  background: #161617;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  box-shadow: none;
+}
+body.theme-swiss .carto-pulse-dot {
+  background: #eb0028;
+  box-shadow: none;
+  animation: none;
+}
+body.theme-swiss .carto-val {
+  font-family: var(--font-ui);
+}
+
+@media (max-width: 900px) {
+  .cartography-hud {
+    display: none !important;
+  }
+}
+
+/* ── Mechanical Keycap Tactility (Pillar 6) ─────────────────────────────── */
+kbd, .kbd-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 18px;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 70ms var(--ease-out), border-color 70ms var(--ease-out), background-color 70ms var(--ease-out), color 70ms var(--ease-out);
+  user-select: none;
+  vertical-align: middle;
+}
+
+kbd.key-active, .kbd-key.key-active {
+  transform: translateY(1.5px);
+  border-bottom-width: 1px;
+  background: var(--primary-subtle);
+  color: var(--primary);
+  border-color: var(--primary-border);
+  box-shadow: 0 0 6px var(--primary-glow);
+}
+
+body.theme-light kbd,
+body.theme-light .kbd-key {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-bottom: 2px solid #94a3b8;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light kbd.key-active,
+body.theme-light .kbd-key.key-active {
+  border-bottom-width: 1px;
+  background: rgba(5, 150, 105, 0.12);
+  color: #059669;
+  border-color: #059669;
+}
+
+body.theme-swiss kbd,
+body.theme-swiss .kbd-key {
+  background: #1d1d1f;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+body.theme-swiss kbd.key-active,
+body.theme-swiss .kbd-key.key-active {
+  border-bottom-width: 1px;
+  background: #eb0028;
+  color: #ffffff;
+  border-color: #eb0028;
+}
 
 /* Empty / placeholder state for graph - Apple Design Frosted Ambient Card */
 .graph-empty {

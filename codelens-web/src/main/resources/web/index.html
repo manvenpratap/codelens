@@ -451,47 +451,51 @@
       </div>
     </div>
 
-    <!-- Right Actions: 3D Studio launch + theme/settings -->
+    <!-- Right Actions: Consolidated Control Deck (3 Optical Capsules) -->
     <div class="header-right-actions">
-      <button
-        class="tab-studio-launch-btn header-studio-btn"
-        id="btn-open-macro-studio"
-        aria-label="Launch 3D &amp; Macro Visualizer Studio"
-        title="Launch 3D &amp; Macro Visualizer Studio (Shortcut: M)"
-      >
-        <span class="studio-btn-icon" aria-hidden="true"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg></span>
-        <span class="studio-btn-text">3D Studio</span>
-        <span class="studio-btn-shortcut" aria-hidden="true">M</span>
-      </button>
-
-      <!-- Top-Right Actions Group (Theme Toggle, Settings) -->
+      <!-- Top-Right Actions Group (Semantic Deck Capsules) -->
       <div id="header-actions" class="header-actions-group" role="toolbar" aria-label="Quick Actions">
-        <button id="btn-command-palette" class="header-action-btn cmdk-action-btn" aria-label="Command Palette (Cmd+K)" title="Command Palette (Shortcut: ⌘K or Ctrl+K)">
-          <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <span class="action-btn-text">⌘K</span>
-        </button>
+        <!-- Capsule 1: Navigation & Studio -->
+        <div class="control-capsule nav-capsule" role="group" aria-label="Navigation & Search">
+          <button
+            class="tab-studio-launch-btn header-studio-btn"
+            id="btn-open-macro-studio"
+            aria-label="Launch 3D &amp; Macro Visualizer Studio"
+            title="Launch 3D &amp; Macro Visualizer Studio (Shortcut: M)"
+          >
+            <span class="studio-btn-icon" aria-hidden="true"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/><line x1="12" y1="14.5" x2="12" y2="23.5"/></svg></span>
+            <span class="studio-btn-text">3D Studio</span>
+            <span class="studio-btn-shortcut" aria-hidden="true"><kbd>M</kbd></span>
+          </button>
+          <button id="btn-command-palette" class="header-action-btn cmdk-action-btn" aria-label="Command Palette (Cmd+K)" title="Command Palette (Shortcut: ⌘K or Ctrl+K)">
+            <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+            <span class="action-btn-text"><kbd>⌘K</kbd></span>
+          </button>
+        </div>
 
-        <span class="header-action-divider" aria-hidden="true"></span>
+        <!-- Capsule 2: Architecture Intelligence & Operations -->
+        <div class="control-capsule intel-capsule" role="group" aria-label="Intelligence & Tasks">
+          <button id="btn-process-hub" class="header-action-btn process-hub-btn" aria-label="Open Background Process Hub" title="Background Processes &amp; Task Manager">
+            <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
+            <span class="action-btn-text">Tasks</span>
+            <span class="process-hub-badge-pulse" id="process-hub-pulse" style="display:none;"></span>
+          </button>
+          <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Open Reports &amp; Export Hub" title="Codebase Intelligence Reports &amp; Export Hub (Shortcut: R)">
+            <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+            <span class="action-btn-text">Reports</span>
+          </button>
+          <button id="btn-codestory-ask" class="header-action-btn codestory-ask-btn" aria-label="Ask CodeStory Architectural Q&A" title="Ask CodeStory: Grounded Architectural Q&A (Shortcut: ?)">
+            <span class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg></span>
+            <span class="action-btn-text">Ask</span>
+          </button>
+          <button id="btn-codestory-teachme" class="header-action-btn codestory-teachme-btn" aria-label="Teach Me: System Onboarding Tour" title="Teach Me: 5-Layer System Onboarding Tour (Shortcut: T)">
+            <span class="action-btn-icon"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+            <span class="action-btn-text">Tour</span>
+          </button>
+        </div>
 
-        <button id="btn-process-hub" class="header-action-btn process-hub-btn" aria-label="Open Background Process Hub" title="Background Processes &amp; Task Manager">
-          <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M6 8h.01"/><path d="M10 8h4"/></svg></span>
-          <span class="action-btn-text">Tasks</span>
-          <span class="process-hub-badge-pulse" id="process-hub-pulse" style="display:none;"></span>
-        </button>
-        <button id="export-btn" class="header-action-btn export-action-btn" aria-label="Open Reports &amp; Export Hub" title="Codebase Intelligence Reports &amp; Export Hub (Shortcut: R)">
-          <span class="action-btn-icon"><svg class="svg-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
-          <span class="action-btn-text">Reports</span>
-        </button>
-        <button id="btn-codestory-ask" class="header-action-btn codestory-ask-btn" aria-label="Ask CodeStory Architectural Q&A" title="Ask CodeStory: Grounded Architectural Q&A (Shortcut: ?)">
-          <span class="action-btn-icon"><svg class="svg-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v3"/><path d="M12 13h.01"/></svg></span>
-          <span class="action-btn-text">Ask</span>
-        </button>
-        <button id="btn-codestory-teachme" class="header-action-btn codestory-teachme-btn" aria-label="Teach Me: System Onboarding Tour" title="Teach Me: 5-Layer System Onboarding Tour (Shortcut: T)">
-          <span class="action-btn-icon"><svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
-          <span class="action-btn-text">Tour</span>
-        </button>
-
-        <span class="header-action-divider" aria-hidden="true"></span>
+        <!-- Capsule 3: System & Preferences -->
+        <div class="control-capsule sys-capsule" role="group" aria-label="System Settings">
 
         <div class="theme-dropdown-wrap" id="theme-dropdown-wrap">
           <button id="theme-toggle-btn" class="header-action-btn theme-toggle-btn" aria-label="Current theme: Dark. Click to choose theme." title="Theme: Dark · Click to change" aria-haspopup="true" aria-expanded="false">
@@ -602,7 +606,8 @@
           <span class="action-btn-icon"><svg class="svg-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
           <span class="action-btn-text">Guide</span>
         </button>
-      </div>
+        </div><!-- /.sys-capsule -->
+      </div><!-- /#header-actions -->
     </div>
 
 
@@ -1017,6 +1022,27 @@
 
       </div>
 
+      <!-- Architectural Cartography HUD (Signature Anchor) -->
+      <div id="cartography-hud" class="cartography-hud" aria-label="Architectural Cartography Telemetry">
+        <div class="carto-telemetry-status">
+          <span class="carto-pulse-dot" id="carto-pulse-dot"></span>
+          <span>Topology</span>
+        </div>
+        <div class="carto-metrics">
+          <div class="carto-metric-item" title="Coupling Density (Edges / Nodes)">
+            <span class="carto-lbl">Density:</span>
+            <span class="carto-val" id="carto-density-val">—</span>
+          </div>
+          <div class="carto-metric-item" title="Terminal Sinks (Leaf Nodes with 0 outgoing calls)">
+            <span class="carto-lbl">Sinks:</span>
+            <span class="carto-val" id="carto-sinks-val">—</span>
+          </div>
+          <div class="carto-metric-item" title="Barycenter / Active Focus Package">
+            <span class="carto-lbl">Cluster:</span>
+            <span class="carto-val" id="carto-barycenter-val">Ready</span>
+          </div>
+        </div>
+      </div>
 
       <!-- Graphify Community / Package Legend HUD (Top Right) -->
       <div id="graph-community-legend" class="graph-community-legend" style="display:none">

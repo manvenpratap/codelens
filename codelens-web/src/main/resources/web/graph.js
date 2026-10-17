@@ -1061,6 +1061,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       this._hideNodeCard();
       this._markDirty();
       this.requestRender();
+      if (typeof window.updateCartographyTelemetry === 'function') {
+        window.updateCartographyTelemetry(this._nodes, this._edges);
+      }
       return;
     }
 
@@ -1295,6 +1298,9 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     this._syncWorker();
     this.fitToScreen();
     this._hideNodeCard();
+    if (typeof window.updateCartographyTelemetry === 'function') {
+      window.updateCartographyTelemetry(this._nodes, this._edges);
+    }
   }
 
   setHeatData(heatMap) {
