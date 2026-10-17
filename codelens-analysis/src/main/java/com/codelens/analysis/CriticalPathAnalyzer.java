@@ -274,17 +274,24 @@ public class CriticalPathAnalyzer {
             return report;
         }
 
-        // 1. Collect target class methods present in the graph
-        List<String> targetMethods = new ArrayList<>();
-        for (String v : graph.vertexSet()) {
-            if (v.startsWith(classFqn + ".") || v.startsWith(classFqn + "(")) {
-                targetMethods.add(v);
-                String simpleM = extractSimpleMethodName(v);
-                if (isPersistentMethod(simpleM)) {
-                    if (!report.persistentMethods.contains(simpleM)) {
-                        report.persistentMethods.add(simpleM);
-                    }
+        // 1. Collect target class methods present in the graph (O(1) lookup when analyzer is present)
+        List<String> targetMethods;
+        if (callGraphAnalyzer != null) {
+            targetMethods = new ArrayList<>(callGraphAnalyzer.findMethodsForClass(classFqn));
+        } else {
+            targetMethods = new ArrayList<>();
+        }
+        if (targetMethods.isEmpty()) {
+            for (String v : graph.vertexSet()) {
+                if (v.startsWith(classFqn + ".") || v.startsWith(classFqn + "(")) {
+                    targetMethods.add(v);
                 }
+            }
+        }
+        for (String v : targetMethods) {
+            String simpleM = extractSimpleMethodName(v);
+            if (isPersistentMethod(simpleM) && !report.persistentMethods.contains(simpleM)) {
+                report.persistentMethods.add(simpleM);
             }
         }
         report.isPersistent = report.persistentMethods.size() >= 2 || targetMethods.stream().anyMatch(m -> isPersistentMethod(extractSimpleMethodName(m)));

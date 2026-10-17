@@ -129,6 +129,9 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_types_fqn   ON types(fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_fqn ON methods(fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_fqn  ON fields(fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type_line ON methods(declaring_type_fqn, start_line)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type_line  ON fields(declaring_type_fqn, start_line)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to_kind      ON relationships(to_entity_fqn, kind)");
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'RELATIONSHIPS' AND INDEX_NAME = 'IDX_RELS_CALLS_COVERING'")) {
                 if (rs.next() && rs.getInt(1) == 0) {
                     stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_calls_covering ON relationships(kind, id, from_entity_fqn, to_entity_fqn)");
@@ -410,7 +413,8 @@ public class DatabaseManager {
         java.util.List<String> expectedIndexes = java.util.List.of(
             "idx_types_pkg", "idx_types_kind", "idx_types_pkg_kind", "idx_fields_type",
             "idx_methods_type", "idx_methods_name", "idx_rels_from", "idx_rels_to",
-            "idx_rels_kind", "idx_rels_calls_covering", "idx_rels_fields_covering", "idx_pkgs_parent"
+            "idx_rels_kind", "idx_rels_calls_covering", "idx_rels_fields_covering", "idx_pkgs_parent",
+            "idx_methods_type_line", "idx_fields_type_line", "idx_rels_to_kind"
         );
         java.util.List<String> missingIndexes = new java.util.ArrayList<>();
         if (!bulkLoadInProgress) {
@@ -697,6 +701,9 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_notes_ent      ON analyst_notes(entity_fqn)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_excluded_fqn   ON excluded_scopes(fqn)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_methods_type_line ON methods(declaring_type_fqn, start_line)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_fields_type_line  ON fields(declaring_type_fqn, start_line)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_rels_to_kind      ON relationships(to_entity_fqn, kind)");
         }
     }
 
@@ -743,6 +750,9 @@ public class DatabaseManager {
             stmt.execute("DROP INDEX IF EXISTS idx_rels_calls_covering");
             stmt.execute("DROP INDEX IF EXISTS idx_rels_fields_covering");
             stmt.execute("DROP INDEX IF EXISTS idx_pkgs_parent");
+            stmt.execute("DROP INDEX IF EXISTS idx_methods_type_line");
+            stmt.execute("DROP INDEX IF EXISTS idx_fields_type_line");
+            stmt.execute("DROP INDEX IF EXISTS idx_rels_to_kind");
             log.info("H2 configured for high-speed bulk ingestion (secondary indexes dropped, write delay 2000ms)");
         }
     }
@@ -805,6 +815,12 @@ public class DatabaseManager {
                           "idx_rels_fields_covering", "relationships", "Covering index for field impact analysis on relationships(kind, id, to_entity_fqn, from_entity_fqn)"),
             new IndexTask("CREATE INDEX IF NOT EXISTS idx_pkgs_parent    ON packages(parent_fqn)",
                           "idx_pkgs_parent", "packages", "Package hierarchy tree index on packages(parent_fqn)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_methods_type_line ON methods(declaring_type_fqn, start_line)",
+                          "idx_methods_type_line", "methods", "Sorted declaring class index on methods(declaring_type_fqn, start_line)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_fields_type_line ON fields(declaring_type_fqn, start_line)",
+                          "idx_fields_type_line", "fields", "Sorted declaring class index on fields(declaring_type_fqn, start_line)"),
+            new IndexTask("CREATE INDEX IF NOT EXISTS idx_rels_to_kind ON relationships(to_entity_fqn, kind)",
+                          "idx_rels_to_kind", "relationships", "Target and kind composite index on relationships(to_entity_fqn, kind)"),
             new IndexTask("ANALYZE",
                           "ANALYZE", "all tables", "Computing cost-based query optimizer table statistics"),
             new IndexTask("SET WRITE_DELAY 500",

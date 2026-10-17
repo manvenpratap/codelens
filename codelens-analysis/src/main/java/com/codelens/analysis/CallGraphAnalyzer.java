@@ -37,6 +37,9 @@ public class CallGraphAnalyzer {
     /** In-memory prefix index mapping base method FQN (without params) to matching vertex FQNs for O(1) lookup. */
     private Map<String, List<String>> prefixToVertices = Collections.emptyMap();
 
+    /** In-memory class index mapping declaring class FQN to member method vertex FQNs for O(1) lookup. */
+    private Map<String, List<String>> classToVertices = Collections.emptyMap();
+
     /** Returns the underlying directed JGraphT call graph. */
     public synchronized Graph<String, DefaultEdge> getCallGraph() {
         return callGraph;
@@ -207,12 +210,18 @@ public class CallGraphAnalyzer {
 
         this.callGraph = g;
         Map<String, List<String>> pMap = new HashMap<>(g.vertexSet().size());
+        Map<String, List<String>> cMap = new HashMap<>(Math.max(16, g.vertexSet().size() / 5));
         for (String v : g.vertexSet()) {
             int paren = v.indexOf('(');
             String base = (paren > 0) ? v.substring(0, paren) : v;
             pMap.computeIfAbsent(base, k -> new ArrayList<>(2)).add(v);
+            String cls = extractClassFqn(v);
+            if (cls != null && !cls.isEmpty()) {
+                cMap.computeIfAbsent(cls, k -> new ArrayList<>(4)).add(v);
+            }
         }
         this.prefixToVertices = pMap;
+        this.classToVertices = cMap;
         log.info("Call graph rebuilt: {} vertices, {} edges",
             g.vertexSet().size(), g.edgeSet().size());
     }
@@ -422,14 +431,30 @@ public class CallGraphAnalyzer {
         Map<String, List<String>> map = prefixToVertices;
         if ((map == null || map.isEmpty()) && callGraph != null && !callGraph.vertexSet().isEmpty()) {
             map = new HashMap<>(callGraph.vertexSet().size());
+            Map<String, List<String>> cMap = new HashMap<>(Math.max(16, callGraph.vertexSet().size() / 5));
             for (String v : callGraph.vertexSet()) {
                 int paren = v.indexOf('(');
                 String base = (paren > 0) ? v.substring(0, paren) : v;
                 map.computeIfAbsent(base, k -> new ArrayList<>(2)).add(v);
+                String cls = extractClassFqn(v);
+                if (cls != null && !cls.isEmpty()) {
+                    cMap.computeIfAbsent(cls, k -> new ArrayList<>(4)).add(v);
+                }
             }
             this.prefixToVertices = map;
+            this.classToVertices = cMap;
         }
         return map;
+    }
+
+    /**
+     * Returns all indexed method vertices belonging to the given class FQN in O(1) time.
+     */
+    public synchronized List<String> findMethodsForClass(String classFqn) {
+        if (classFqn == null) return Collections.emptyList();
+        getOrBuildPrefixMap();
+        List<String> list = classToVertices.get(classFqn);
+        return list != null ? list : Collections.emptyList();
     }
 
     /**
@@ -761,12 +786,7 @@ public class CallGraphAnalyzer {
      * Hub Explorer view for class-level aggregation: aggregates callers and callees across all methods of the class.
      */
     private synchronized HubExplorerView hubExplorerClassView(String classFqn, String direction) {
-        List<String> classMethods = new ArrayList<>();
-        for (String v : callGraph.vertexSet()) {
-            if (classFqn.equals(extractClassFqn(v))) {
-                classMethods.add(v);
-            }
-        }
+        List<String> classMethods = findMethodsForClass(classFqn);
 
         if (classMethods.isEmpty()) {
             GraphNode emptyNode = new GraphNode(classFqn, classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : classFqn, "root", "CLASS");

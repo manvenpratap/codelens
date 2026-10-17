@@ -129,6 +129,8 @@ public class CodeLensServer {
     private final java.util.concurrent.atomic.AtomicBoolean modulePrecomputeRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final AtomicLong scanRevision = new AtomicLong(System.currentTimeMillis());
+    private volatile Map<String, Object> cachedStats = null;
+    private volatile long cachedStatsRevision = -1L;
     private final java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
     private final ApiTracker apiTracker = new ApiTracker();
     private final Set<SseClient> sseClients = ConcurrentHashMap.newKeySet();
@@ -298,6 +300,8 @@ public class CodeLensServer {
         cachedReportsJson.clear();
         cachedReportArtifacts.clear();
         clearTransientScanSnapshot();
+        cachedStats = null;
+        cachedStatsRevision = -1L;
         scanRevision.incrementAndGet();
         try {
             File dir = getGraphCacheDir();
@@ -3928,8 +3932,15 @@ public class CodeLensServer {
             ctx.json(liveStats);
             return;
         }
+        long currentRev = scanRevision.get();
+        Map<String, Object> cached = cachedStats;
+        if (cached != null && cachedStatsRevision == currentRev) {
+            ctx.json(cached);
+            return;
+        }
+
         Map<String, Object> stats = dao.getStats();
-        int totalPackages = dao.findAllPackages().size();
+        int totalPackages = stats.containsKey("packages") ? ((Number) stats.get("packages")).intValue() : dao.findAllPackages().size();
         int modCount = (precomputedModuleResult != null && precomputedModuleResult.overview != null && precomputedModuleResult.overview.modules != null && precomputedModuleResult.overview.modules.size() > 1)
             ? precomputedModuleResult.overview.modules.size()
             : (stats.containsKey("modules") && ((Number) stats.get("modules")).intValue() > 1
@@ -3944,6 +3955,9 @@ public class CodeLensServer {
         stats.put("methodsList", dao.findMethodSignatures());
         stats.put("typesList", dao.findTypeSignatures());
         stats.put("persistentClasses", dao.findPersistentClassFqns());
+
+        cachedStats = stats;
+        cachedStatsRevision = currentRev;
         ctx.json(stats);
     }
 
@@ -4128,13 +4142,23 @@ public class CodeLensServer {
     private void getCallers(Context ctx) throws Exception {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 4);
-        ctx.json(callGraph.callersView(id, depth));
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        String key = "callers:" + id + ":" + depth + ":" + hideGetters;
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
+        ctx.json(getOrComputeLayout(key, () -> callGraph.callersView(id, depth, hideGetters)));
     }
 
     private void getCallees(Context ctx) throws Exception {
         String id    = decode(ctx.pathParam("id"));
         int    depth = intParam(ctx, "depth", 4);
-        ctx.json(callGraph.calleesView(id, depth));
+        boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
+        String key = "callees:" + id + ":" + depth + ":" + hideGetters;
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
+        ctx.json(getOrComputeLayout(key, () -> callGraph.calleesView(id, depth, hideGetters)));
     }
 
     private void getHubExplorer(Context ctx) throws Exception {
@@ -4152,6 +4176,9 @@ public class CodeLensServer {
         int    depth = intParam(ctx, "depth", 3);
         boolean hideGetters = Boolean.parseBoolean(ctx.queryParam("hideGetters"));
         String key = "hierarchy:" + id + ":" + depth + ":" + hideGetters;
+        if (handleConditionalETag(ctx, key)) {
+            return;
+        }
         ctx.json(getOrComputeLayout(key, () -> callGraph.callHierarchyView(id, depth, hideGetters)));
     }
 
