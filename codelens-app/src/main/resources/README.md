@@ -371,7 +371,7 @@ graph.defaultDepth=3                        # Initial traversal hop depth (1–1
 graph.autoFit=true                          # Auto-center and fit on load
 
 # ── Macro 3D & 2D Studio ──
-macro.defaultLevel=city3d                   # city3d | galaxy3d | treemap | sunburst | dsm | chord
+macro.defaultLevel=graph2d                  # graph2d | city3d | galaxy3d | treemap | sunburst | dsm | chord
 macro.defaultGranularity=arch               # arch | methods
 macro.brightness=1.0                        # Scene illumination
 macro.showArcs=true                         # Three.js 3D bezier call arcs

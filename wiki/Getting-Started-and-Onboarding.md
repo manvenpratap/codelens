@@ -109,7 +109,7 @@ Once connected to `http://localhost:7878`:
    - `Git Analytics (4)`: Commit heat, author leaderboards, and code churn correlation.
    - `Source Editor (5)`: Integrated Microsoft Monaco code editor with syntax highlighting and direct disk-save capabilities.
 3. **Top Action Buttons**:
-   - `3D Studio (M)`: WebGL Software City & 3D Force Galaxy.
+   - `Studio (M)`: 2D Blooming Tree Whole Codebase Graph, WebGL Software City & 3D Force Galaxy.
    - `Tasks`: Background process manager displaying all 11 active subsystems.
    - `Reports (R)`: 13-category intelligence reports hub with CSV, HTML, Markdown, and PDF exports.
    - `⌘K`: Global full-text search across all packages, classes, and methods.

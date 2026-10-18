@@ -41,7 +41,7 @@ public class CodeLensConfig {
     private boolean autoFit = true;
 
     // ── Macro 3D & 2D Studio ──
-    private String defaultMacroLevel = "city3d";
+    private String defaultMacroLevel = "graph2d";
     private String defaultMacroGranularity = "arch";
     private double macroBrightness = 1.0;
     private boolean macroShowArcs = true;
@@ -145,7 +145,7 @@ public class CodeLensConfig {
     public void setAutoFit(boolean autoFit) { this.autoFit = autoFit; }
 
     public String getDefaultMacroLevel() { return defaultMacroLevel; }
-    public void setDefaultMacroLevel(String defaultMacroLevel) { this.defaultMacroLevel = defaultMacroLevel != null ? defaultMacroLevel : "city3d"; }
+    public void setDefaultMacroLevel(String defaultMacroLevel) { this.defaultMacroLevel = defaultMacroLevel != null ? defaultMacroLevel : "graph2d"; }
 
     public String getDefaultMacroGranularity() { return defaultMacroGranularity; }
     public void setDefaultMacroGranularity(String defaultMacroGranularity) { this.defaultMacroGranularity = defaultMacroGranularity != null ? defaultMacroGranularity : "arch"; }

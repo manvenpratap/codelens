@@ -54,6 +54,8 @@ const App = {
   activeAltRenderer: null,
   // Current codebase graph level
   codebaseGraphLevel: 'arch',
+  // Current codebase macro level in Studio mode ('graph2d' | 'city3d' | 'galaxy3d' | 'treemap' | 'sunburst' | 'dsm' | 'chord')
+  codebaseMacroLevel: 'graph2d',
   // Server-Sent Events (SSE) state
   liveEventSource: null,
   sseConnected: false,
@@ -4579,9 +4581,7 @@ function openMacroStudio(level, granularity) {
     App.lastGranularTab = App.activeTab;
   }
   document.body.classList.add('macro-studio-mode');
-  if (level) {
-    App.codebaseMacroLevel = level;
-  }
+  App.codebaseMacroLevel = level || App.codebaseMacroLevel || 'graph2d';
   if (granularity) {
     App.codebaseGranularity = granularity;
   }
@@ -4591,7 +4591,7 @@ function openMacroStudio(level, granularity) {
   } finally {
     App._suppressTabLoad = false;
   }
-  loadWholeCodebaseGraph(level || App.codebaseMacroLevel || 'city3d', granularity || App.codebaseGranularity || 'arch');
+  loadWholeCodebaseGraph(App.codebaseMacroLevel, granularity || App.codebaseGranularity || 'arch');
   requestAnimationFrame(() => triggerRelayout());
 }
 
@@ -4703,7 +4703,7 @@ function switchTab(tabName) {
     updateReviewTargetInfo();
   }
   if (tabName === 'codebase' && !App._suppressTabLoad) {
-    const macroLevel = App.codebaseMacroLevel || 'city3d';
+    const macroLevel = App.codebaseMacroLevel || 'graph2d';
     if (App.activeAltRenderer &&
         App.activeAltRenderer._currentLevel === macroLevel &&
         App.activeAltRenderer._currentGranularity === (App.codebaseGranularity || 'arch') &&
@@ -10832,7 +10832,9 @@ function initGuideModalEnhancements() {
       if (jumpTab) {
         switchTab(jumpTab);
       } else if (jumpAction) {
-        if (jumpAction === 'studio' || jumpAction === 'studio-city') {
+        if (jumpAction === 'studio' || jumpAction === 'graph2d') {
+          openMacroStudio('graph2d');
+        } else if (jumpAction === 'studio-city') {
           openMacroStudio('city3d');
         } else if (jumpAction === 'studio-galaxy') {
           openMacroStudio('galaxy3d');
@@ -11781,7 +11783,7 @@ async function init() {
       const gran = btn.dataset.granularity;
       if (gran) {
         App.codebaseGranularity = gran;
-        loadWholeCodebaseGraph(App.codebaseMacroLevel || 'city3d', gran);
+        loadWholeCodebaseGraph(App.codebaseMacroLevel || 'graph2d', gran);
       }
     });
   });
@@ -12812,7 +12814,7 @@ async function refreshActiveViewsAfterScopeChange(affectedFqn) {
 
     if (App.activeTab === 'codebase') {
       if (typeof loadWholeCodebaseGraph === 'function') {
-        await loadWholeCodebaseGraph(App.codebaseMacroLevel || 'city3d', App.codebaseGranularity || 'arch');
+        await loadWholeCodebaseGraph(App.codebaseMacroLevel || 'graph2d', App.codebaseGranularity || 'arch');
       }
     } else if (App.activeTab === 'reports' && typeof loadActiveReport === 'function') {
       loadActiveReport();
@@ -15615,7 +15617,7 @@ function buildFullConfigObject() {
     showHulls: s.showHulls !== undefined ? s.showHulls : true,
     defaultDepth: s.defaultDepth || 3,
     autoFit: s.autoFit !== undefined ? s.autoFit : true,
-    defaultMacroLevel: App.codebaseMacroLevel || 'city3d',
+    defaultMacroLevel: App.codebaseMacroLevel || 'graph2d',
     defaultMacroGranularity: App.codebaseGranularity || 'arch',
     macroBrightness: App.activeAltRenderer?._exposure || 1.0,
     macroShowArcs: true,
@@ -15732,6 +15734,12 @@ function applyImportedConfig(cfg) {
   if (cfg.defaultDepth || cfg['graph.defaultDepth']) s.defaultDepth = parseInt(cfg.defaultDepth || cfg['graph.defaultDepth']);
   if (cfg.autoFit !== undefined || cfg['graph.autoFit'] !== undefined) s.autoFit = String(cfg.autoFit ?? cfg['graph.autoFit']) === 'true';
   if (cfg.excludePatterns || cfg['scan.excludePatterns']) s.excludePatterns = cfg.excludePatterns || cfg['scan.excludePatterns'];
+  if (cfg.defaultMacroLevel || cfg['macro.defaultLevel']) {
+    App.codebaseMacroLevel = cfg.defaultMacroLevel || cfg['macro.defaultLevel'];
+  }
+  if (cfg.defaultMacroGranularity || cfg['macro.defaultGranularity']) {
+    App.codebaseGranularity = cfg.defaultMacroGranularity || cfg['macro.defaultGranularity'];
+  }
 
   saveSettings(s);
   applyAllSettings(s);
@@ -15810,6 +15818,12 @@ async function syncSettingsFromServer() {
     if (res.ok) {
       const serverConfig = await res.json();
       if (serverConfig) {
+        if (serverConfig.defaultMacroLevel || serverConfig['macro.defaultLevel']) {
+          App.codebaseMacroLevel = serverConfig.defaultMacroLevel || serverConfig['macro.defaultLevel'];
+        }
+        if (serverConfig.defaultMacroGranularity || serverConfig['macro.defaultGranularity']) {
+          App.codebaseGranularity = serverConfig.defaultMacroGranularity || serverConfig['macro.defaultGranularity'];
+        }
         const local = localStorage.getItem(SETTINGS_STORAGE_KEY);
         if (!local) {
           applyImportedConfig(serverConfig);
