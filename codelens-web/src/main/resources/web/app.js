@@ -20769,8 +20769,8 @@ function initCommandPalette() {
     },
     {
       id: 'nav-studio',
-      title: 'Launch 3D Macro Visualizer Studio',
-      subtitle: '3D software city and galaxy cluster view',
+      title: 'Launch Studio',
+      subtitle: '2D & 3D visualizers: Software City, Galaxy, Treemap, Sunburst, DSM, Chord',
       group: 'Navigation',
       shortcut: 'M',
       icon: '<svg class="svg-icon icon-mint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.12 6.4-6.05-4.06a2 2 0 0 0-2.17-.05L2.9 8.24A2 2 0 0 0 2 9.92v6.16a2 2 0 0 0 .96 1.72l9.97 5.92a2 2 0 0 0 2.14 0l6.05-3.62A2 2 0 0 0 22 18.38V8.12a2 2 0 0 0-.88-1.72Z"/><polyline points="2.5 8.5 12 14.5 21.5 8.5"/></svg>',

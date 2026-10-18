@@ -513,7 +513,7 @@ CodeLens provides fine-grained, interactive boundary management so engineers can
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ⬡ CodeLens  [ /path/to/source/dir         ] [ Browse… ] [ Scan ▼ ] [ 3D Studio ] [ Reports Hub ] [ ⚙ ] [ ❓ ]│
+│ ⬡ CodeLens  [ /path/to/source/dir         ] [ Browse… ] [ Scan ▼ ] [ Studio ] [ Reports Hub ] [ ⚙ ] [ ❓ ]   │
 │             [ 124 types ] [ 890 methods ] [ 430 fields ] [ 2,140 rels ]                                     │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -521,7 +521,7 @@ CodeLens provides fine-grained, interactive boundary management so engineers can
 - **Source Path Input**: Accepts absolute filesystem paths to Java source trees.
 - **Browse… Button**: Native directory chooser with automatic Git repository discovery.
 - **Scan / Rescan Dropdown**: One-click triggers for Full Scan and Incremental Delta Scan.
-- **3D Studio Button (<kbd>M</kbd>)**: Opens the dedicated Macro 3D Codebase Studio featuring 3D Software City and 3D Star Galaxy.
+- **Studio Button (<kbd>M</kbd>)**: Opens the dedicated Macro Visualizer Studio featuring 2D and 3D views (3D Software City, 3D Star Galaxy, Treemap, Sunburst, DSM, and Chord).
 - **Reports Hub Button (<kbd>R</kbd>)**: Opens the comprehensive compliance & quality reports hub with 11 downloadable reports.
 - **⚙ Settings Modal**: Configure Dark/Light themes, exclusion patterns, package display modes, physics parameters, archetype rules, and graceful server shutdown.
 - **❓ User Guide Button (<kbd>?</kbd>)**: Opens the interactive 5-tab in-app Feature & User Guide.
@@ -553,7 +553,7 @@ CodeLens provides fine-grained, interactive boundary management so engineers can
 
 ### 3. Interactive Center Workspace Views
 
-CodeLens organizes primary codebase intelligence into 5 dedicated workspace screens, accompanied by top-level 3D Studio and Reports Hub:
+CodeLens organizes primary codebase intelligence into 5 dedicated workspace screens, accompanied by top-level Studio and Reports Hub:
 
 #### 1. Graph Canvas (Graphify Knowledge Graph & Verlet Physics)
 - **Verlet Physics Simulation**: Real-time multi-body force simulation calculating Coulomb repulsion, Hooke spring tension, package clustering, and anti-collision.
@@ -591,9 +591,9 @@ CodeLens organizes primary codebase intelligence into 5 dedicated workspace scre
 
 ---
 
-### 4. 3D Codebase Studio & 2D Architectural Macro Views
+### 4. Macro Visualizer Studio (2D & 3D Architectural Views)
 
-Accessible anytime via the **3D Studio** header button (<kbd>M</kbd>) or Visualizations menu:
+Accessible anytime via the **Studio** header button (<kbd>M</kbd>) or Visualizations menu:
 
 - 🏙️ **3D Software City**: Interactive Three.js WebGL urban layout mapping packages to city blocks, classes to skyscrapers, LOC to building height, and complexity or churn to roof colors. Includes Bloom post-processing, camera fly-throughs, and Thermal Heat Mode.
 - 🌌 **3D Galaxy**: Orbital gravitational star system rendering classes as stars orbiting central module suns.

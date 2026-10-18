@@ -944,7 +944,7 @@ body[data-theme="light"] #header {
    Guarantees zero clipping or overlap across all screen widths down to 360px
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* Viewports <= 1380px: Remove 3D Studio keyboard shortcut badge */
+/* Viewports <= 1380px: Remove Studio keyboard shortcut badge */
 @media (max-width: 1380px) {
   .tab-studio-launch-btn .studio-btn-shortcut {
     display: none !important;
@@ -952,7 +952,7 @@ body[data-theme="light"] #header {
 }
 
 /* Viewports <= 1260px:
-   - Collapse 3D Studio to icon-only button
+   - Collapse Studio to icon-only button
    - Truncate project pill name slightly
    - Hide non-active tab labels (active tab stays prominent with icon + label)
    Saves ~320px immediately, giving spacious layout on standard laptops
@@ -1122,7 +1122,7 @@ body[data-theme="light"] #header {
    - Streamlined mobile header height (50px)
    - Logo icon scaled to 22px
    - Hide switch project folder button (accessible in project drawer & ⌘K)
-   - Hide 3D Studio button (desktop-only 3D visualizer)
+   - Hide Studio button (desktop visualizer)
    - Essential right actions: ⌘K, Process Hub (Tasks), Theme Toggle, Settings
    - Ultra compact center tab icons
    - Stats grid in project drawer reflows to 3 columns
@@ -24821,7 +24821,7 @@ body.theme-swiss .cp-step-card.active {
   background: rgba(235, 0, 40, 0.06);
 }
 
-/* ── Swiss: Architecture 3D Studio & City Map ───────────────────── */
+/* ── Swiss: Architecture Studio & City Map ────────────────────────── */
 body.theme-swiss .studio-3d-toolbar,
 body.theme-swiss .city-3d-controls {
   background: #161617;
