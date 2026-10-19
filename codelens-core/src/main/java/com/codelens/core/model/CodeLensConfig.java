@@ -432,6 +432,13 @@ public class CodeLensConfig {
             file.getParentFile().mkdirs();
         }
         Files.writeString(file.toPath(), toConfString(), StandardCharsets.UTF_8);
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view =
+                Files.getFileAttributeView(file.toPath(), java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view != null) {
+                Files.setPosixFilePermissions(file.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static String escapeVal(String val) {

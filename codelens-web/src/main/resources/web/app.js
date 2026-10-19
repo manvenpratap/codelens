@@ -201,7 +201,7 @@ const api = {
     });
   },
   type:               (id)        => api.get(`/types/${enc(id)}`),
-  types:              (kind)      => api.get('/types' + (kind ? `?kind=${enc(kind)}` : '')),
+  types:              (kind, limit) => api.get('/types?' + [kind ? `kind=${enc(kind)}` : '', limit ? `limit=${limit}` : ''].filter(Boolean).join('&')),
   method:             (id)        => api.get(`/methods/${enc(id)}`),
   callers:            async (id, d=4) => {
     const key = `graph:callers:${id}:${d}`;
@@ -7166,11 +7166,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <tbody></tbody>
     `;
     const tbody = table.querySelector('tbody');
-    const MAX_RENDER_ROWS = 250;
-    const renderItems = filtered.length > MAX_RENDER_ROWS ? filtered.slice(0, MAX_RENDER_ROWS) : filtered;
-    const cuFrag = document.createDocumentFragment();
-
-    for (const cu of renderItems) {
+    function createClassUsageRow(cu) {
       const tr = createElement('tr');
       const dirCls = cu.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = cu.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
@@ -7294,19 +7290,53 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         }
       });
 
-      cuFrag.appendChild(tr);
+      return tr;
     }
 
-    tbody.appendChild(cuFrag);
+    const renderItems = filtered;
+    let renderedCount = 0;
+    const CHUNK_SIZE = 100;
+    let sentinelTr = null;
+    let observer = null;
 
-    if (filtered.length > MAX_RENDER_ROWS) {
-      const noticeTr = createElement('tr', { class: 'table-limit-notice-row' });
-      noticeTr.innerHTML = `
-        <td colspan="7" style="text-align:center;padding:10px;font-size:11px;color:var(--text-muted);background:var(--bg-surface);border-top:1px dashed var(--border);">
-          Showing first ${MAX_RENDER_ROWS} of ${filtered.length} class usage pairs. Use the search or kind filter above to narrow down results.
-        </td>
-      `;
-      tbody.appendChild(noticeTr);
+    function renderNextChunk() {
+      const chunk = renderItems.slice(renderedCount, renderedCount + CHUNK_SIZE);
+      const frag = document.createDocumentFragment();
+      for (const cu of chunk) {
+        frag.appendChild(createClassUsageRow(cu));
+      }
+      renderedCount += chunk.length;
+      if (sentinelTr && sentinelTr.parentNode) {
+        tbody.insertBefore(frag, sentinelTr);
+      } else {
+        tbody.appendChild(frag);
+      }
+
+      if (renderedCount >= renderItems.length) {
+        if (observer) { observer.disconnect(); observer = null; }
+        if (sentinelTr) { sentinelTr.remove(); sentinelTr = null; }
+      } else if (sentinelTr) {
+        const countSpan = sentinelTr.querySelector('.shown-count');
+        if (countSpan) countSpan.textContent = renderedCount;
+      }
+    }
+
+    renderNextChunk();
+
+    if (renderedCount < renderItems.length) {
+      sentinelTr = createElement('tr', { class: 'table-sentinel-row' });
+      sentinelTr.innerHTML = `<td colspan="7" style="text-align:center;padding:10px;color:var(--text-muted);cursor:pointer;font-size:11px;">Showing <span class="shown-count">${renderedCount}</span> of ${renderItems.length} (scroll or click to load more)</td>`;
+      sentinelTr.addEventListener('click', () => renderNextChunk());
+      tbody.appendChild(sentinelTr);
+
+      if (typeof IntersectionObserver !== 'undefined') {
+        observer = new IntersectionObserver((entries) => {
+          if (entries[0] && entries[0].isIntersecting) {
+            renderNextChunk();
+          }
+        }, { root: tableWrap, rootMargin: '200px' });
+        observer.observe(sentinelTr);
+      }
     }
 
     tableWrap.appendChild(table);
@@ -7368,11 +7398,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
       <tbody></tbody>
     `;
     const tbody = table.querySelector('tbody');
-    const MAX_RENDER_ROWS = 250;
-    const renderItems = filtered.length > MAX_RENDER_ROWS ? filtered.slice(0, MAX_RENDER_ROWS) : filtered;
-    const fcFrag = document.createDocumentFragment();
-
-    for (const fc of renderItems) {
+    function createFunctionCallRow(fc) {
       const tr = createElement('tr');
       const dirCls = fc.direction === 'OUTBOUND' ? 'outbound' : 'inbound';
       const dirLabel = fc.direction === 'OUTBOUND' ? '➔ OUT' : '⬅ IN';
@@ -7400,19 +7426,53 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         if (fc.toType) selectType(fc.toType);
       });
 
-      fcFrag.appendChild(tr);
+      return tr;
     }
 
-    tbody.appendChild(fcFrag);
+    const renderItems = filtered;
+    let renderedCount = 0;
+    const CHUNK_SIZE = 100;
+    let sentinelTr = null;
+    let observer = null;
 
-    if (filtered.length > MAX_RENDER_ROWS) {
-      const noticeTr = createElement('tr', { class: 'table-limit-notice-row' });
-      noticeTr.innerHTML = `
-        <td colspan="6" style="text-align:center;padding:10px;font-size:11px;color:var(--text-muted);background:var(--bg-surface);border-top:1px dashed var(--border);">
-          Showing first ${MAX_RENDER_ROWS} of ${filtered.length} function calls. Use the search filter above to narrow down results.
-        </td>
-      `;
-      tbody.appendChild(noticeTr);
+    function renderNextChunk() {
+      const chunk = renderItems.slice(renderedCount, renderedCount + CHUNK_SIZE);
+      const frag = document.createDocumentFragment();
+      for (const fc of chunk) {
+        frag.appendChild(createFunctionCallRow(fc));
+      }
+      renderedCount += chunk.length;
+      if (sentinelTr && sentinelTr.parentNode) {
+        tbody.insertBefore(frag, sentinelTr);
+      } else {
+        tbody.appendChild(frag);
+      }
+
+      if (renderedCount >= renderItems.length) {
+        if (observer) { observer.disconnect(); observer = null; }
+        if (sentinelTr) { sentinelTr.remove(); sentinelTr = null; }
+      } else if (sentinelTr) {
+        const countSpan = sentinelTr.querySelector('.shown-count');
+        if (countSpan) countSpan.textContent = renderedCount;
+      }
+    }
+
+    renderNextChunk();
+
+    if (renderedCount < renderItems.length) {
+      sentinelTr = createElement('tr', { class: 'table-sentinel-row' });
+      sentinelTr.innerHTML = `<td colspan="6" style="text-align:center;padding:10px;color:var(--text-muted);cursor:pointer;font-size:11px;">Showing <span class="shown-count">${renderedCount}</span> of ${renderItems.length} (scroll or click to load more)</td>`;
+      sentinelTr.addEventListener('click', () => renderNextChunk());
+      tbody.appendChild(sentinelTr);
+
+      if (typeof IntersectionObserver !== 'undefined') {
+        observer = new IntersectionObserver((entries) => {
+          if (entries[0] && entries[0].isIntersecting) {
+            renderNextChunk();
+          }
+        }, { root: tableWrap, rootMargin: '200px' });
+        observer.observe(sentinelTr);
+      }
     }
 
     tableWrap.appendChild(table);
@@ -10596,7 +10656,7 @@ async function checkCodebaseChanges() {
           const name = it.path.replace(/[\\\/]+$/, '').split(/[\\\/]/).pop() || it.path;
           row.title = it.path;
           row.innerHTML = `
-            <span class="scan-change-name">${escapeHtml(name)}</span>
+            <span class="scan-change-name">${esc(name)}</span>
             <span class="scan-change-badge ${it.badgeClass}">${it.label}</span>
           `;
           changesList.appendChild(row);
@@ -12832,6 +12892,7 @@ async function refreshActiveViewsAfterScopeChange(affectedFqn) {
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+window.escapeHtml = esc;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SCOPE MANAGEMENT (Exclusion, Restoration, Context Menu)
@@ -19762,7 +19823,7 @@ let activeBlastRadiusNodeFilter = null;
 let activeBlastRadiusKindFilter = 'ALL';
 let blastRadiusSearchQuery = '';
 let blastRadiusDepth = 3; // 1: Modules Only, 2: Modules & Classes, 3: All Stages
-let blastRadiusShowAll = false; // false: Compact Top-K view, true: Stretched view showing all nodes with scroll
+let blastRadiusShowAll = true; // true: Full comprehensive view showing all nodes
 let blastRadiusVisibleCount = 50;
 const BLAST_RADIUS_PAGE_STEP = 50;
 
@@ -20658,7 +20719,7 @@ function initBlastRadiusExplorer() {
 
   // Populate sample chips in empty state
   if (typeof api.types === 'function') {
-    api.types().then(types => {
+    api.types(null, 10).then(types => {
       const chipsContainer = qs('#impact-sample-chips');
       if (!chipsContainer) return;
       chipsContainer.innerHTML = '';

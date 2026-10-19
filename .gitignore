@@ -30,3 +30,6 @@ __pycache__/
 *.pyc
 e2e-tests/screenshots/
 
+
+# Graphify knowledge graph outputs
+graphify-out/

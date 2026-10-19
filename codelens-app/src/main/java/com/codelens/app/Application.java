@@ -8,6 +8,7 @@ import java.awt.Desktop;
 import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -54,72 +55,255 @@ public class Application {
             configFile = new File("./codelens.conf");
         }
 
-        // ── CLI Scan mode: java -jar codelens-app.jar scan [sourcePath] ────────
-        if (args.length > 0 && "scan".equalsIgnoreCase(args[0])) {
-            String targetPath = args.length > 1 ? args[1] : (config.getDefaultScanPath() != null && !config.getDefaultScanPath().isBlank() ? config.getDefaultScanPath() : "./sample-project/src/main/java");
-            System.out.printf("Starting CLI scan for %s...%n", targetPath);
+        // ── CLI Scan mode: java -jar codelens-app.jar scan [--incremental] [--polyglot] [sourcePath] ──
+        if (args.length > 0 && ("scan".equalsIgnoreCase(args[0]) || "incremental-scan".equalsIgnoreCase(args[0]))) {
+            boolean isIncremental = "incremental-scan".equalsIgnoreCase(args[0]);
+            boolean isPolyglot = false;
+            String targetPath = null;
+
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if ("--incremental".equalsIgnoreCase(a)) isIncremental = true;
+                else if ("--polyglot".equalsIgnoreCase(a)) isPolyglot = true;
+                else if (!a.startsWith("--")) targetPath = a;
+            }
+            if (targetPath == null || targetPath.isBlank()) {
+                targetPath = (config.getDefaultScanPath() != null && !config.getDefaultScanPath().isBlank())
+                    ? config.getDefaultScanPath() : "./sample-project/src/main/java";
+            }
+
             DatabaseManager db = new DatabaseManager(dataDir);
             db.initialize();
-            db.clearAll();
             LuceneService lucene = new LuceneService(dataDir);
             lucene.initialize();
             com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
-
             com.codelens.parser.JavaSourceScanner scanner = new com.codelens.parser.JavaSourceScanner();
-            db.prepareForBulkLoad();
-            lucene.prepareIndexRebuild();
 
-            com.codelens.core.model.ScanProgress progress = new com.codelens.core.model.ScanProgress(com.codelens.core.model.ScanProgress.Status.SCANNING);
-            progress.setSourcePath(targetPath);
-            progress.setStartTime(System.currentTimeMillis());
+            long startTime = System.currentTimeMillis();
+            java.nio.file.Path rootPath = java.nio.file.Paths.get(targetPath);
 
-            com.codelens.parser.JavaSourceScanner.ScanResult result = scanner.scan(
-                targetPath,
-                java.util.Collections.emptyList(),
-                (pkgs, types, fields, methods, rels, fileMetas) -> {
-                    dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
-                    lucene.addBatch(types, methods, fields);
-                },
-                (done, total, file) -> {
-                    if (done % 100 == 0 || done == total) {
-                        System.out.printf("  Processed %d/%d files...%n", done, total);
-                    }
-                },
-                () -> false
-            );
+            if (isIncremental && dao.countAllTypes() > 0) {
+                System.out.printf("Starting incremental CLI delta scan for %s...%n", targetPath);
+                java.util.Map<String, com.codelens.core.model.FileMeta> existingMeta = dao.getAllFileMeta();
+                com.codelens.core.model.ScanChanges changes = scanner.detectDiskChanges(rootPath, existingMeta, java.util.Collections.emptyList());
 
-            lucene.finishIndexRebuild();
-            db.finishBulkLoad();
+                if (!changes.isHasChanges()) {
+                    System.out.println("No disk changes detected — Codebase index is fully up to date.");
+                    lucene.close();
+                    db.close();
+                    return;
+                }
 
-            // Invalidate disk graph cache so subsequent runs don't serve stale layouts
+                System.out.printf("  Detected %d new, %d modified, %d deleted files%n",
+                    changes.getNewFiles().size(), changes.getModifiedFiles().size(), changes.getDeletedFiles().size());
+
+                List<String> toDelete = new ArrayList<>();
+                toDelete.addAll(changes.getModifiedFiles());
+                toDelete.addAll(changes.getDeletedFiles());
+                dao.deleteBySourceFiles(toDelete);
+
+                List<java.nio.file.Path> toParse = new ArrayList<>();
+                for (String p : changes.getNewFiles()) toParse.add(java.nio.file.Paths.get(p));
+                for (String p : changes.getModifiedFiles()) toParse.add(java.nio.file.Paths.get(p));
+
+                scanner.scanFiles(
+                    rootPath,
+                    toParse,
+                    (pkgs, types, fields, methods, rels, fileMetas) -> {
+                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
+                        lucene.addBatch(types, methods, fields);
+                    },
+                    (done, total, file) -> {
+                        if (done % 50 == 0 || done == total) {
+                            System.out.printf("  Processed delta %d/%d files...%n", done, total);
+                        }
+                    },
+                    () -> false
+                );
+                System.out.printf("Incremental scan complete in %.2fs%n", (System.currentTimeMillis() - startTime) / 1000.0);
+            } else {
+                System.out.printf("Starting full CLI scan for %s...%n", targetPath);
+                db.clearAll();
+                db.prepareForBulkLoad();
+                lucene.prepareIndexRebuild();
+
+                com.codelens.core.model.ScanProgress progress = new com.codelens.core.model.ScanProgress(com.codelens.core.model.ScanProgress.Status.SCANNING);
+                progress.setSourcePath(targetPath);
+                progress.setStartTime(startTime);
+
+                com.codelens.parser.JavaSourceScanner.ScanResult result = scanner.scan(
+                    targetPath,
+                    java.util.Collections.emptyList(),
+                    (pkgs, types, fields, methods, rels, fileMetas) -> {
+                        dao.batchInsertChunkFast(pkgs, types, fields, methods, rels, fileMetas);
+                        lucene.addBatch(types, methods, fields);
+                    },
+                    (done, total, file) -> {
+                        if (done % 100 == 0 || done == total) {
+                            System.out.printf("  Processed %d/%d files...%n", done, total);
+                        }
+                    },
+                    () -> false
+                );
+
+                lucene.finishIndexRebuild();
+                db.finishBulkLoad();
+
+                progress.setTotalFiles(result.totalFiles);
+                progress.setProcessedFiles(result.totalFiles);
+                progress.setParsedFiles(result.parsedFiles);
+                progress.setTypesFound(result.typesFound);
+                progress.setMethodsFound(result.methodsFound);
+                progress.setFieldsFound(result.fieldsFound);
+                progress.setRelationshipsFound(result.relationshipsFound);
+                progress.setStatus(com.codelens.core.model.ScanProgress.Status.COMPLETE);
+                progress.setCurrentPhase("Complete");
+                progress.setCurrentDetail("Ready");
+                progress.setEndTime(System.currentTimeMillis());
+                dao.saveScanMeta(progress);
+
+                System.out.printf("CLI scan complete: %d files, %d types, %d methods, %d relationships in %.2fs%n",
+                    result.parsedFiles, result.typesFound, result.methodsFound, result.relationshipsFound,
+                    (System.currentTimeMillis() - startTime) / 1000.0);
+            }
+
+            // Invalidate disk graph cache
             File graphCacheDir = new File(dataDir, "graph-cache");
             if (graphCacheDir.exists()) {
                 File[] cacheFiles = graphCacheDir.listFiles((d, name) -> name.endsWith(".json"));
                 if (cacheFiles != null) {
-                    for (File f : cacheFiles) {
-                        f.delete();
-                    }
+                    for (File f : cacheFiles) f.delete();
                 }
             }
 
-            progress.setTotalFiles(result.totalFiles);
-            progress.setProcessedFiles(result.totalFiles);
-            progress.setParsedFiles(result.parsedFiles);
-            progress.setTypesFound(result.typesFound);
-            progress.setMethodsFound(result.methodsFound);
-            progress.setFieldsFound(result.fieldsFound);
-            progress.setRelationshipsFound(result.relationshipsFound);
-            progress.setStatus(com.codelens.core.model.ScanProgress.Status.COMPLETE);
-            progress.setCurrentPhase("Complete");
-            progress.setCurrentDetail("Ready");
-            progress.setEndTime(System.currentTimeMillis());
-            dao.saveScanMeta(progress);
+            if (isPolyglot) {
+                System.out.printf("Running polyglot ingestion for %s...%n", targetPath);
+                try {
+                    com.codelens.parser.PolyglotSourceScanner polyScanner = new com.codelens.parser.PolyglotSourceScanner();
+                    com.codelens.parser.PolyglotSourceScanner.PolyglotScanResult polyResult =
+                        polyScanner.scanDirectory(rootPath, java.util.Collections.emptyList());
+                    if (!polyResult.types.isEmpty() || !polyResult.relationships.isEmpty()) {
+                        dao.batchInsertChunkFast(polyResult.packages, polyResult.types,
+                            java.util.Collections.emptyList(), polyResult.methods, polyResult.relationships, polyResult.fileMetas);
+                        System.out.printf("  Polyglot ingestion linked %d types and %d cross-boundary calls.%n",
+                            polyResult.types.size(), polyResult.relationships.size());
+                    }
+                } catch (Exception e) {
+                    System.err.printf("  Warning: Polyglot ingestion encountered error: %s%n", e.getMessage());
+                }
+            }
 
             lucene.close();
             db.close();
-            System.out.printf("CLI scan complete: %d files, %d types, %d methods, %d relationships in %.2fs%n",
-                result.parsedFiles, result.typesFound, result.methodsFound, result.relationshipsFound,
-                (System.currentTimeMillis() - progress.getStartTime()) / 1000.0);
+            return;
+        }
+
+        // ── CLI CI Gate / Guardrails mode: java -jar codelens-app.jar ci-gate [options] ──
+        if (args.length > 0 && ("ci-gate".equalsIgnoreCase(args[0]) || "gate".equalsIgnoreCase(args[0]) || "guardrails".equalsIgnoreCase(args[0]))) {
+            String baseRef = null;
+            String headRef = null;
+            String outputFile = null;
+            String branchName = null;
+            String customDataDir = null;
+            boolean failOnViolations = false;
+            int maxBlast = 50;
+            String targetPath = null;
+
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if ("--help".equalsIgnoreCase(a) || "-h".equalsIgnoreCase(a)) {
+                    System.out.println("CodeLens Architecture & CI Quality Gate");
+                    System.out.println("Usage: java -jar codelens-app.jar ci-gate [options] [path]");
+                    System.out.println();
+                    System.out.println("Options:");
+                    System.out.println("  --base=<git-ref>        Base git commit/branch (e.g. origin/main)");
+                    System.out.println("  --head=<git-ref>        Head git commit/branch (default: HEAD)");
+                    System.out.println("  --branch=<name>         Isolate database storage for this branch/PR");
+                    System.out.println("  --data=<path>           Custom database data directory");
+                    System.out.println("  --max-blast=<int>       Maximum allowed method caller blast radius (default: 50)");
+                    System.out.println("  --fail-on-violations    Exit with code 1 if any blocker violations detected");
+                    System.out.println("  --output=<path>         Path to write markdown PR report");
+                    System.out.println("  --help, -h              Display this help message");
+                    return;
+                }
+                if (a.startsWith("--base=")) baseRef = a.substring(7);
+                else if (a.startsWith("--head=")) headRef = a.substring(7);
+                else if (a.startsWith("--output=")) outputFile = a.substring(9);
+                else if (a.startsWith("--branch=")) branchName = a.substring(9);
+                else if (a.startsWith("--data=")) customDataDir = a.substring(7);
+                else if (a.startsWith("--max-blast=")) maxBlast = Integer.parseInt(a.substring(12));
+                else if ("--fail-on-violations".equalsIgnoreCase(a)) failOnViolations = true;
+                else if (!a.startsWith("--")) targetPath = a;
+            }
+
+            String effectiveDataDir = (customDataDir != null && !customDataDir.isBlank()) ? customDataDir : dataDir;
+            DatabaseManager db = (branchName != null && !branchName.isBlank())
+                ? DatabaseManager.forBranch(effectiveDataDir, branchName)
+                : new DatabaseManager(effectiveDataDir);
+            db.initialize();
+            com.codelens.storage.EntityDao dao = new com.codelens.storage.EntityDao(db);
+
+            List<com.codelens.core.model.CodeType> types = dao.findAllTypes();
+            List<com.codelens.core.model.CodeMethod> methods = dao.findAllMethods();
+
+            if (types.isEmpty()) {
+                String scanPath = (targetPath != null && !targetPath.isBlank()) ? targetPath : (config.getDefaultScanPath() != null ? config.getDefaultScanPath() : ".");
+                System.out.printf("No existing index found. Running scan for %s...%n", scanPath);
+                com.codelens.parser.JavaSourceScanner scanner = new com.codelens.parser.JavaSourceScanner();
+                scanner.scan(scanPath, Collections.emptyList(), (pkgs, tList, fList, mList, rList, metas) -> {
+                    dao.batchInsertChunkFast(pkgs, tList, fList, mList, rList, metas);
+                }, (done, total, file) -> {});
+                types = dao.findAllTypes();
+                methods = dao.findAllMethods();
+            }
+
+            List<com.codelens.core.model.CodeRelationship> rels = dao.findAllRelationships();
+            com.codelens.analysis.CallGraphAnalyzer callGraph = new com.codelens.analysis.CallGraphAnalyzer();
+            List<String> mFqns = new java.util.ArrayList<>(methods.size());
+            for (com.codelens.core.model.CodeMethod m : methods) mFqns.add(m.getFqn());
+            callGraph.rebuild(mFqns, dao::streamCallRelationships);
+
+            List<String> changedMethods = new ArrayList<>();
+            try {
+                com.codelens.git.GitDiffService gitDiff = new com.codelens.git.GitDiffService();
+                com.codelens.git.GitDiffService.GitDiffReport diffReport = gitDiff.computeDiff(new File("."), baseRef, headRef);
+                if (diffReport != null && !diffReport.changedFiles.isEmpty()) {
+                    for (com.codelens.git.GitDiffService.FileDiffRange fdr : diffReport.changedFiles) {
+                        for (com.codelens.core.model.CodeMethod m : methods) {
+                            com.codelens.core.model.CodeType t = dao.findTypeByFqn(m.getDeclaringTypeFqn()).orElse(null);
+                            if (t != null && t.getSourceFile() != null && t.getSourceFile().endsWith(fdr.relativePath)) {
+                                if (fdr.intersects(m.getStartLine(), m.getEndLine())) {
+                                    changedMethods.add(m.getFqn());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            com.codelens.analysis.ArchitectureGuardrailEngine.GuardrailConfig gCfg =
+                new com.codelens.analysis.ArchitectureGuardrailEngine.GuardrailConfig();
+            gCfg.maxBlastRadius = maxBlast;
+            com.codelens.analysis.ArchitectureGuardrailEngine engine =
+                new com.codelens.analysis.ArchitectureGuardrailEngine(gCfg);
+
+            com.codelens.analysis.ArchitectureGuardrailEngine.GuardrailReport report =
+                engine.evaluate(types, methods, rels, callGraph, changedMethods);
+
+            String md = report.toMarkdown();
+            System.out.println(md);
+
+            if (outputFile != null && !outputFile.isBlank()) {
+                java.nio.file.Files.writeString(java.nio.file.Paths.get(outputFile), md);
+                System.out.printf("Wrote guardrail report to %s%n", outputFile);
+            }
+
+            db.close();
+
+            if (failOnViolations && !report.passed) {
+                System.err.println("CI Gate Failed: Architectural blocker violations detected.");
+                System.exit(1);
+            }
             return;
         }
 

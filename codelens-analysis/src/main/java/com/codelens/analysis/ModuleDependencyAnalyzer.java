@@ -47,6 +47,10 @@ public class ModuleDependencyAnalyzer {
         }
     }
 
+    // ponytail: sample cap — counts are exact, only the sample list is bounded.
+    // Upgrade path: stream touchPoints from disk on demand if full detail needed.
+    static final int TOUCHPOINT_SAMPLE_LIMIT = 500;
+
     public static class ClassUsageSummary {
         public String sourceClassFqn;
         public String sourceClassSimpleName;
@@ -63,6 +67,10 @@ public class ModuleDependencyAnalyzer {
             this.sourceClassSimpleName = extractSimple(sourceClassFqn);
             this.targetClassFqn = targetClassFqn;
             this.targetClassSimpleName = extractSimple(targetClassFqn);
+        }
+
+        void addTouchPoint(TouchPointDetail d) {
+            if (touchPoints.size() < TOUCHPOINT_SAMPLE_LIMIT) touchPoints.add(d);
         }
     }
 
@@ -82,6 +90,10 @@ public class ModuleDependencyAnalyzer {
         public ConnectedModule(String moduleName, String packageFqn) {
             this.moduleName = moduleName;
             this.packageFqn = packageFqn;
+        }
+
+        void addTouchPoint(TouchPointDetail d) {
+            if (touchPoints.size() < TOUCHPOINT_SAMPLE_LIMIT) touchPoints.add(d);
         }
     }
 
@@ -140,12 +152,14 @@ public class ModuleDependencyAnalyzer {
     public static class FullModuleDependencyResult {
         public ModuleOverviewPayload overview;
         public Map<String, ModuleDependencyInsights> insightsByModule;
-        public Map<String, ModuleDependencyInsights> insightsByPackage;
+        public transient Map<String, ModuleDependencyInsights> insightsByPackage;
+        public Map<String, String> packageToModuleMap;
 
         public FullModuleDependencyResult() {
             this.overview = new ModuleOverviewPayload();
             this.insightsByModule = new LinkedHashMap<>();
             this.insightsByPackage = new LinkedHashMap<>();
+            this.packageToModuleMap = new LinkedHashMap<>();
         }
 
         public FullModuleDependencyResult(ModuleOverviewPayload overview,
@@ -153,7 +167,15 @@ public class ModuleDependencyAnalyzer {
                                           Map<String, ModuleDependencyInsights> insightsByPackage) {
             this.overview = overview != null ? overview : new ModuleOverviewPayload();
             this.insightsByModule = insightsByModule != null ? insightsByModule : Collections.emptyMap();
-            this.insightsByPackage = insightsByPackage != null ? insightsByPackage : Collections.emptyMap();
+            this.insightsByPackage = insightsByPackage != null ? insightsByPackage : new LinkedHashMap<>();
+            this.packageToModuleMap = new LinkedHashMap<>();
+            if (insightsByPackage != null) {
+                for (Map.Entry<String, ModuleDependencyInsights> e : insightsByPackage.entrySet()) {
+                    if (e.getValue() != null && e.getValue().moduleName != null) {
+                        this.packageToModuleMap.put(e.getKey(), e.getValue().moduleName);
+                    }
+                }
+            }
         }
     }
 
@@ -350,7 +372,7 @@ public class ModuleDependencyAnalyzer {
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
                         if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
-                        cm.touchPoints.add(sharedDetail);
+                        cm.addTouchPoint(sharedDetail);
                     } else {
                         miSrc.totalOutboundTouchPoints++;
                         miSrc.totalTouchPoints++;
@@ -363,7 +385,7 @@ public class ModuleDependencyAnalyzer {
                         if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                         increment(cm.kinds, kind);
                         if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
-                        cm.touchPoints.add(sharedDetail);
+                        cm.addTouchPoint(sharedDetail);
 
                         if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                             String classPairKey = srcType + "->" + tgtType;
@@ -372,7 +394,7 @@ public class ModuleDependencyAnalyzer {
                                 .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                             cus.touchPointCount++;
                             increment(cus.kinds, kind);
-                            cus.touchPoints.add(sharedDetail);
+                            cus.addTouchPoint(sharedDetail);
                         }
                     }
                 }
@@ -393,7 +415,7 @@ public class ModuleDependencyAnalyzer {
                     if ("CALLS".equalsIgnoreCase(kind)) cm.functionCallCount++;
                     increment(cm.kinds, kind);
                     if (sharedDetail == null) sharedDetail = new TouchPointDetail(srcFqn, tgtFqn, srcType, tgtType, canonicalKind, line);
-                    cm.touchPoints.add(sharedDetail);
+                    cm.addTouchPoint(sharedDetail);
 
                     if (srcType != null && tgtType != null && !srcType.equals(tgtType)) {
                         String classPairKey = srcType + "->" + tgtType;
@@ -402,7 +424,7 @@ public class ModuleDependencyAnalyzer {
                             .computeIfAbsent(classPairKey, k -> new ClassUsageSummary(srcType, tgtType));
                         cus.touchPointCount++;
                         increment(cus.kinds, kind);
-                        cus.touchPoints.add(sharedDetail);
+                        cus.addTouchPoint(sharedDetail);
                     }
                 }
             }
@@ -649,20 +671,20 @@ public class ModuleDependencyAnalyzer {
 
         if (methods != null) {
             for (CodeMethod m : methods) {
-                if (m == null || m.getFqn() == null) continue;
+                if (m == null || m.getFqn() == null || m.getDeclaringTypeFqn() == null) continue;
                 try {
-                    ctx.methodToType.put(m.getFqn(), m.getDeclaringTypeFqn());
-                    ctx.methodToType.put(m.getFqn().toLowerCase(), m.getDeclaringTypeFqn());
-                    int paren = m.getFqn().indexOf('(');
-                    if (paren > 0) {
-                        String noParams = m.getFqn().substring(0, paren);
-                        ctx.methodToType.put(noParams, m.getDeclaringTypeFqn());
-                        ctx.methodToType.put(noParams.toLowerCase(), m.getDeclaringTypeFqn());
+                    String fqn = m.getFqn();
+                    int paren = fqn.indexOf('(');
+                    String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
+                    int dot = base.lastIndexOf('.');
+                    String prefix = (dot > 0) ? base.substring(0, dot) : null;
+                    if (!m.getDeclaringTypeFqn().equals(prefix)) {
+                        ctx.methodToType.put(fqn, m.getDeclaringTypeFqn());
+                        if (paren > 0) ctx.methodToType.put(base, m.getDeclaringTypeFqn());
                     }
-                    if (m.getSimpleName() != null && !m.getSimpleName().isBlank() && m.getDeclaringTypeFqn() != null) {
+                    if (m.getSimpleName() != null && !m.getSimpleName().isBlank()) {
                         String simpleClass = extractSimple(m.getDeclaringTypeFqn());
-                        ctx.methodToType.put(simpleClass + "." + m.getSimpleName(), m.getDeclaringTypeFqn());
-                        ctx.methodToType.put((simpleClass + "." + m.getSimpleName()).toLowerCase(), m.getDeclaringTypeFqn());
+                        ctx.methodToType.putIfAbsent(simpleClass + "." + m.getSimpleName(), m.getDeclaringTypeFqn());
                     }
                 } catch (Throwable err) {
                     log.warn("Skipping malformed method in module context: {}", err.getMessage());
@@ -672,14 +694,17 @@ public class ModuleDependencyAnalyzer {
 
         if (fields != null) {
             for (CodeField f : fields) {
-                if (f == null || f.getFqn() == null) continue;
+                if (f == null || f.getFqn() == null || f.getDeclaringTypeFqn() == null) continue;
                 try {
-                    ctx.fieldToType.put(f.getFqn(), f.getDeclaringTypeFqn());
-                    ctx.fieldToType.put(f.getFqn().toLowerCase(), f.getDeclaringTypeFqn());
-                    if (f.getSimpleName() != null && !f.getSimpleName().isBlank() && f.getDeclaringTypeFqn() != null) {
+                    String fqn = f.getFqn();
+                    int dot = fqn.lastIndexOf('.');
+                    String prefix = (dot > 0) ? fqn.substring(0, dot) : null;
+                    if (!f.getDeclaringTypeFqn().equals(prefix)) {
+                        ctx.fieldToType.put(fqn, f.getDeclaringTypeFqn());
+                    }
+                    if (f.getSimpleName() != null && !f.getSimpleName().isBlank()) {
                         String simpleClass = extractSimple(f.getDeclaringTypeFqn());
-                        ctx.fieldToType.put(simpleClass + "." + f.getSimpleName(), f.getDeclaringTypeFqn());
-                        ctx.fieldToType.put((simpleClass + "." + f.getSimpleName()).toLowerCase(), f.getDeclaringTypeFqn());
+                        ctx.fieldToType.putIfAbsent(simpleClass + "." + f.getSimpleName(), f.getDeclaringTypeFqn());
                     }
                 } catch (Throwable err) {
                     log.warn("Skipping malformed field in module context: {}", err.getMessage());

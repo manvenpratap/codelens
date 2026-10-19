@@ -1,0 +1,17 @@
+# Third-party dependencies & builds
+node_modules/
+dist/
+build/
+target/
+.git/
+.venv/
+venv/
+__pycache__/
+*.min.js
+*.min.css
+*.xapk
+*.apk
+*.zip
+*.jar
+*.tar.gz
+graphify-out/

@@ -710,4 +710,52 @@ public class StoragePerformanceTest {
             deleteRecursively(tempDir.toFile());
         }
     }
+
+    public void testFindTypesByPackageSubqueryAndLimit() throws Exception {
+        Path tempDir = Files.createTempDirectory("codelens-types-subquery-test-");
+        DatabaseManager db = new DatabaseManager(tempDir.toString());
+        try {
+            db.initialize();
+            EntityDao dao = new EntityDao(db);
+
+            List<CodeType> types = new ArrayList<>();
+            List<CodeMethod> methods = new ArrayList<>();
+            for (int i = 1; i <= 5; i++) {
+                CodeType t = new CodeType();
+                t.setId("com.pkg.Type" + i);
+                t.setFqn("com.pkg.Type" + i);
+                t.setSimpleName("Type" + i);
+                t.setPackageFqn("com.pkg");
+                t.setKind("CLASS");
+                types.add(t);
+
+                CodeMethod m = new CodeMethod();
+                m.setId("com.pkg.Type" + i + ".doAction()");
+                m.setFqn("com.pkg.Type" + i + ".doAction()");
+                m.setSimpleName("doAction");
+                m.setDeclaringTypeFqn("com.pkg.Type" + i);
+                methods.add(m);
+            }
+            dao.batchInsertTypesFast(types);
+            dao.batchInsertMethodsFast(methods);
+
+            // 1. Verify findTypesByPackage uses subquery and correctly binds methods
+            List<CodeType> pkgTypes = dao.findTypesByPackage("com.pkg");
+            assertEquals(5, pkgTypes.size(), "Should return all 5 types in package");
+            for (CodeType pt : pkgTypes) {
+                assertTrue(pt.getMethods() != null && !pt.getMethods().isEmpty(), "Methods should be populated via subquery");
+                assertEquals(1, pt.getMethods().size(), "Each type has 1 method");
+                assertEquals("doAction", pt.getMethods().get(0), "Method name matches");
+            }
+
+            // 2. Verify findTypes with limit
+            List<CodeType> limited = dao.findTypes(2);
+            assertEquals(2, limited.size(), "findTypes(2) should return exactly 2 types");
+            List<CodeType> all = dao.findTypes(0);
+            assertEquals(5, all.size(), "findTypes(0) should return all 5 types");
+        } finally {
+            db.close();
+            deleteRecursively(tempDir.toFile());
+        }
+    }
 }

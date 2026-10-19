@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class GitBlameService {
 
     private static final Logger log = LoggerFactory.getLogger(GitBlameService.class);
-    private static final int MAX_COMMITS_FOR_CHURN = 3000;
+    private static final int MAX_COMMITS_FOR_CHURN = Integer.MAX_VALUE;
 
     @FunctionalInterface
     public interface ProgressCallback {

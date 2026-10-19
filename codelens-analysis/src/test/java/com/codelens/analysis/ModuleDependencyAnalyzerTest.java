@@ -34,6 +34,10 @@ public class ModuleDependencyAnalyzerTest {
         if (obj == null) throw new AssertionError("Assertion failed (expected non-null): " + msg);
     }
 
+    private static void assertTrue(boolean condition, String msg) {
+        if (!condition) throw new AssertionError("Assertion failed: " + msg);
+    }
+
     public void testAnalyzeModuleDependenciesForAM() {
         ModuleDependencyAnalyzer analyzer = new ModuleDependencyAnalyzer();
         List<CodePackage> packages = new ArrayList<>();
@@ -489,5 +493,37 @@ public class ModuleDependencyAnalyzerTest {
         ModuleDependencyAnalyzer.ConnectedModule inModA = insightsB.incomingModules.get(0);
         assertEquals(TOTAL_CALLS, inModA.totalTouchPoints, "Inbound total touch points count should be 75");
         assertEquals(TOTAL_CALLS, inModA.touchPoints.size(), "Inbound touch points list must not be capped at 50; expected 75 items");
+    }
+
+    public void testPackageToModuleMapReconstruction() {
+        ModuleDependencyAnalyzer analyzer = new ModuleDependencyAnalyzer();
+        List<CodePackage> packages = new ArrayList<>();
+        CodePackage p1 = new CodePackage("com.acme.billing");
+        p1.setName("billing");
+        packages.add(p1);
+
+        List<CodeType> types = new ArrayList<>();
+        CodeType t1 = new CodeType();
+        t1.setFqn("com.acme.billing.InvoiceService");
+        t1.setPackageFqn("com.acme.billing");
+        types.add(t1);
+
+        ModuleDependencyAnalyzer.FullModuleDependencyResult result =
+            analyzer.analyzeAllModules(packages, types, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), null);
+
+        assertNotNull(result, "Result should not be null");
+        assertNotNull(result.packageToModuleMap, "packageToModuleMap should not be null");
+        assertTrue(result.packageToModuleMap.containsKey("com.acme.billing"), "Package mapped to module");
+        assertEquals("billing", result.packageToModuleMap.get("com.acme.billing"), "Mapped to billing module");
+        assertTrue(result.insightsByPackage.containsKey("com.acme.billing"), "In-memory insightsByPackage exists");
+
+        // Simulate disk cache reload: reconstruct insightsByPackage using packageToModuleMap
+        Map<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> reloaded = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : result.packageToModuleMap.entrySet()) {
+            ModuleDependencyAnalyzer.ModuleDependencyInsights mi = result.insightsByModule.get(e.getValue().toLowerCase());
+            if (mi != null) reloaded.put(e.getKey(), mi);
+        }
+        assertTrue(reloaded.containsKey("com.acme.billing"), "Successfully re-linked from packageToModuleMap");
+        assertEquals("billing", reloaded.get("com.acme.billing").moduleName, "Re-linked module matches");
     }
 }

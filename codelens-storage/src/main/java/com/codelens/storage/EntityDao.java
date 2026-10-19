@@ -703,6 +703,22 @@ public class EntityDao {
         return queryTypes("SELECT * FROM types");
     }
 
+    public List<CodeType> findTypes(int limit) throws SQLException {
+        return (limit <= 0) ? findAllTypes() : queryTypesParam("SELECT * FROM types ORDER BY simple_name LIMIT ?", String.valueOf(limit));
+    }
+
+    public int countAllTypes() throws SQLException {
+        try (Connection c = db.getConnection();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM types")) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    public Optional<CodeType> findTypeByFqn(String fqn) throws SQLException {
+        return findTypeById(fqn);
+    }
+
     public int countZeroLineTypes() throws SQLException {
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
@@ -755,11 +771,8 @@ public class EntityDao {
         if (!list.isEmpty()) {
             try (Connection c = db.getConnection();
                  PreparedStatement ps = c.prepareStatement(
-                     "SELECT declaring_type_fqn, simple_name FROM methods WHERE declaring_type_fqn IN (" +
-                     String.join(",", Collections.nCopies(list.size(), "?")) + ")")) {
-                for (int i = 0; i < list.size(); i++) {
-                    ps.setString(i + 1, list.get(i).getFqn());
-                }
+                     "SELECT declaring_type_fqn, simple_name FROM methods WHERE declaring_type_fqn IN (SELECT fqn FROM types WHERE package_fqn=?)")) {
+                ps.setString(1, packageFqn);
                 Map<String, List<String>> typeMethods = new HashMap<>();
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
@@ -1482,7 +1495,7 @@ public class EntityDao {
         List<InconsistencyReport> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT * FROM inconsistencies ORDER BY similarity_score DESC LIMIT 200");
+                 "SELECT * FROM inconsistencies ORDER BY similarity_score DESC");
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 InconsistencyReport r = new InconsistencyReport();
@@ -1665,7 +1678,7 @@ public class EntityDao {
         List<Map<String, String>> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, declaring_type_fqn FROM methods LIMIT 10000")) {
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, declaring_type_fqn FROM methods")) {
             while (rs.next()) {
                 Map<String, String> m = new HashMap<>(3);
                 m.put("name", rs.getString(1));
@@ -1681,7 +1694,7 @@ public class EntityDao {
         List<Map<String, String>> list = new ArrayList<>();
         try (Connection c = db.getConnection();
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, package_fqn, kind FROM types LIMIT 10000")) {
+             ResultSet rs = s.executeQuery("SELECT simple_name, fqn, package_fqn, kind FROM types")) {
             while (rs.next()) {
                 Map<String, String> m = new HashMap<>(4);
                 m.put("name", rs.getString(1));
@@ -2526,6 +2539,19 @@ public class EntityDao {
             }
         }
         return toDelete.size();
+    }
+
+    public boolean isKnownSourceFile(String filePath) throws SQLException {
+        if (filePath == null || filePath.isBlank()) return false;
+        String sql = "SELECT 1 FROM file_meta WHERE file_path = ? UNION SELECT 1 FROM types WHERE source_file = ? LIMIT 1";
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, filePath);
+            ps.setString(2, filePath);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 }
 

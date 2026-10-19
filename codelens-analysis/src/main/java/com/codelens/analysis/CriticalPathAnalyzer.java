@@ -113,6 +113,7 @@ public class CriticalPathAnalyzer {
         public List<String> persistentMethods = new ArrayList<>();
         public CriticalPath primaryPath;
         public List<CriticalPath> candidatePaths = new ArrayList<>();
+        public int totalDiscoveredPaths;
         public List<CallGraphAnalyzer.GraphNode> graphNodes = new ArrayList<>();
         public List<CallGraphAnalyzer.GraphEdge> graphEdges = new ArrayList<>();
     }
@@ -335,6 +336,8 @@ public class CriticalPathAnalyzer {
             scoredPaths.add(sp);
         }
 
+        report.totalDiscoveredPaths = scoredPaths.size();
+
         if (scoredPaths.isEmpty()) {
             return report;
         }
@@ -434,16 +437,18 @@ public class CriticalPathAnalyzer {
                                    Graph<String, DefaultEdge> graph,
                                    List<List<String>> results,
                                    int maxDepth) {
+        final int maxExpansions = 25_000;
+        int expansions = 0;
+
         Queue<List<String>> queue = new LinkedList<>();
         queue.add(Collections.singletonList(targetNode));
 
-        int pathLimit = 60;
-
-        while (!queue.isEmpty() && results.size() < pathLimit) {
+        while (!queue.isEmpty() && expansions++ < maxExpansions) {
             List<String> current = queue.poll();
             String head = current.get(0);
 
-            Set<DefaultEdge> incoming = graph.incomingEdgesOf(head);
+            Set<DefaultEdge> incoming = graph.containsVertex(head)
+                ? graph.incomingEdgesOf(head) : Collections.emptySet();
             boolean isEntry = isEntryPoint(head, incoming.isEmpty());
 
             if (isEntry || current.size() >= maxDepth || incoming.isEmpty()) {

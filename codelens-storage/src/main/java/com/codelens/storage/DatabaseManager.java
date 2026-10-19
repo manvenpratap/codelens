@@ -41,6 +41,16 @@ public class DatabaseManager {
         this.dataDir = dataDir;
     }
 
+    public static DatabaseManager forBranch(String baseDataDir, String branchName) {
+        String cleanBranch = (branchName == null || branchName.isBlank()) ? "default" : branchName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String branchDir = baseDataDir + "/branches/" + cleanBranch;
+        return new DatabaseManager(branchDir);
+    }
+
+    public String getDataDir() {
+        return dataDir;
+    }
+
     public boolean isBulkLoadInProgress() {
         return bulkLoadInProgress;
     }
@@ -70,7 +80,8 @@ public class DatabaseManager {
         // Note: DEFRAG_ALWAYS=TRUE is intentionally omitted because it forces full-file disk rewrite on checkpoints, stalling bulk scans.
         // LOCK_TIMEOUT=120000: 120s timeout to handle heavy bulk indexing gracefully without SQLState 57014.
         int defaultCacheKb = calculateDefaultCacheSizeKb();
-        cfg.setJdbcUrl("jdbc:h2:file:" + dataDir + "/codelens_db"
+        String absPath = new java.io.File(dataDir).getAbsolutePath().replace('\\', '/');
+        cfg.setJdbcUrl("jdbc:h2:file:" + absPath + "/codelens_db"
                      + ";AUTO_SERVER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=120000;CACHE_SIZE=" + defaultCacheKb
                      + ";PAGE_SIZE=4096;COMPRESS=TRUE;AUTO_COMPACT_FILL_RATE=90;RETENTION_TIME=45000;QUERY_CACHE_SIZE=256;TRACE_LEVEL_FILE=0");
         cfg.setUsername("sa");

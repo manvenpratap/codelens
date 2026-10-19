@@ -31,14 +31,22 @@ public class CallGraphAnalyzer {
     public static final int DSM_SPARSE_THRESHOLD = 1000;
 
     /** Directed graph: edge from → to means "from calls to". */
-    private Graph<String, DefaultEdge> callGraph =
+    private volatile Graph<String, DefaultEdge> callGraph =
         new DefaultDirectedGraph<>(DefaultEdge.class);
 
     /** In-memory prefix index mapping base method FQN (without params) to matching vertex FQNs for O(1) lookup. */
-    private Map<String, List<String>> prefixToVertices = Collections.emptyMap();
+    private volatile Map<String, List<String>> prefixToVertices = Collections.emptyMap();
 
     /** In-memory class index mapping declaring class FQN to member method vertex FQNs for O(1) lookup. */
-    private Map<String, List<String>> classToVertices = Collections.emptyMap();
+    private volatile Map<String, List<String>> classToVertices = Collections.emptyMap();
+
+    /** High-performance integer primitive CSR graph index. */
+    private volatile CompactIntGraph compactGraph = new CompactIntGraph();
+
+    /** Returns the compact primitive integer graph index. */
+    public CompactIntGraph getCompactGraph() {
+        return compactGraph;
+    }
 
     /** Returns the underlying directed JGraphT call graph. */
     public synchronized Graph<String, DefaultEdge> getCallGraph() {
@@ -88,6 +96,7 @@ public class CallGraphAnalyzer {
      */
     public synchronized void rebuild(MethodStreamer methodStreamer, int totalMethods, EdgeStreamer edgeStreamer, ProgressListener listener) throws Exception {
         Graph<String, DefaultEdge> g = new DefaultDirectedGraph<>(DefaultEdge.class);
+        CompactIntGraph newCompact = new CompactIntGraph();
         Map<String, List<String>> byName = new HashMap<>();
         Map<String, List<String>> byClassAndMethod = new HashMap<>();
         Map<String, List<String>> byClassFqnAndMethod = new HashMap<>();
@@ -103,6 +112,7 @@ public class CallGraphAnalyzer {
                 if (fqn == null || fqn.isBlank()) return;
                 String interned = dedup(dedupPool, fqn);
                 g.addVertex(interned);
+                newCompact.getDictionary().getOrRegister(interned);
                 String simpleName = dedup(dedupPool, simpleMethodName(interned));
                 byName.computeIfAbsent(simpleName, k -> new ArrayList<>(2)).add(interned);
 
@@ -183,6 +193,7 @@ public class CallGraphAnalyzer {
 
                     if (!g.containsEdge(from, to)) {
                         g.addEdge(from, to);
+                        newCompact.addEdge(from, to);
                     }
 
                     edgeCount[0]++;
@@ -209,6 +220,7 @@ public class CallGraphAnalyzer {
         resolveCache.clear();
 
         this.callGraph = g;
+        this.compactGraph = newCompact;
         Map<String, List<String>> pMap = new HashMap<>(g.vertexSet().size());
         Map<String, List<String>> cMap = new HashMap<>(Math.max(16, g.vertexSet().size() / 5));
         for (String v : g.vertexSet()) {
@@ -427,7 +439,7 @@ public class CallGraphAnalyzer {
         return bfs(reversed, methodFqn, maxDepth, "caller", hideGetters);
     }
 
-    private Map<String, List<String>> getOrBuildPrefixMap() {
+    private synchronized Map<String, List<String>> getOrBuildPrefixMap() {
         Map<String, List<String>> map = prefixToVertices;
         if ((map == null || map.isEmpty()) && callGraph != null && !callGraph.vertexSet().isEmpty()) {
             map = new HashMap<>(callGraph.vertexSet().size());
@@ -888,13 +900,19 @@ public class CallGraphAnalyzer {
         return fullGraphView(false);
     }
 
+    // ponytail: full-graph node cap — anything >50K methods is an architecture view problem, use architectureGraphView.
+    // Upgrade path: stream paginated subgraph by package/module filter when >MAX_FULL_GRAPH_NODES.
+    private static final int MAX_FULL_GRAPH_NODES = 50_000;
+
     public GraphView fullGraphView(boolean hideGetters) {
         Graph<String, DefaultEdge> g = callGraph;
-        List<GraphNode> allNodes = new ArrayList<>();
+        Set<String> vertexSet = g.vertexSet();
+        List<GraphNode> allNodes = new ArrayList<>(Math.min(vertexSet.size(), MAX_FULL_GRAPH_NODES));
         List<GraphEdge> edges    = new ArrayList<>();
         Set<String> includedVertices = new HashSet<>();
 
-        for (String v : g.vertexSet()) {
+        for (String v : vertexSet) {
+            if (includedVertices.size() >= MAX_FULL_GRAPH_NODES) break;
             if (hideGetters && isPojoOrAccessor(v)) continue;
             includedVertices.add(v);
             int inDeg  = g.inDegreeOf(v);
@@ -904,8 +922,6 @@ public class CallGraphAnalyzer {
                 role = "root";
             } else if (inDeg > 0 && outDeg == 0) {
                 role = "callee";
-            } else if (inDeg > 0 && outDeg == 0) {
-                role = "propagator";
             } else {
                 role = "default";
             }
@@ -1220,7 +1236,9 @@ public class CallGraphAnalyzer {
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static final int MAX_BFS_SUBGRAPH_NODES = 1500;
+    // ponytail: BFS node cap — rendering >2000 nodes is a browser problem, not ours.
+    // Upgrade path: paginate by depth level if full callee tree ever needed.
+    private static final int MAX_BFS_NODES = 2_000;
 
     private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
                                  int maxDepth, String role, boolean hideGetters) {
@@ -1230,7 +1248,7 @@ public class CallGraphAnalyzer {
         BreadthFirstIterator<String, DefaultEdge> it =
             new BreadthFirstIterator<>(g, start);
 
-        while (it.hasNext() && result.size() < MAX_BFS_SUBGRAPH_NODES) {
+        while (it.hasNext() && result.size() < MAX_BFS_NODES) {
             String v    = it.next();
             int    depth = it.getDepth(v);
             if (v.equals(start)) continue;        // skip root itself
@@ -2141,21 +2159,7 @@ public class CallGraphAnalyzer {
             }
         }
 
-        List<String> methodList;
-        if ((filter == null || filter.isEmpty()) && allMethods.size() > 200) {
-            Map<String, Integer> degrees = new HashMap<>();
-            for (String m : allMethods) {
-                int deg = g.inDegreeOf(m) + g.outDegreeOf(m);
-                degrees.put(m, deg);
-            }
-            methodList = allMethods.stream()
-                .sorted(Comparator.comparingInt((String m) -> degrees.getOrDefault(m, 0)).reversed())
-                .limit(200)
-                .sorted()
-                .collect(Collectors.toList());
-        } else {
-            methodList = new ArrayList<>(allMethods);
-        }
+        List<String> methodList = new ArrayList<>(allMethods);
 
         Map<String, Integer> indexMap = new HashMap<>();
         for (int i = 0; i < methodList.size(); i++) indexMap.put(methodList.get(i), i);

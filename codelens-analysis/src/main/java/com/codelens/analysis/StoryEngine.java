@@ -192,9 +192,6 @@ public class StoryEngine {
         for (String entryFqn : entryCandidates) {
             CodeMethod entryM = methodMap.get(entryFqn);
             String declType = entryM != null ? entryM.getDeclaringTypeFqn() : "";
-            if (seenEntryClasses.contains(declType) && storylines.size() >= 30) {
-                continue;
-            }
 
             List<String> path = traceSignificantPath(entryFqn, graph, methodMap);
             if (path != null && path.size() >= 2) {
@@ -203,10 +200,6 @@ public class StoryEngine {
                     storylines.add(story);
                     seenEntryClasses.add(declType);
                 }
-            }
-
-            if (storylines.size() >= 40) {
-                break;
             }
         }
 
@@ -324,7 +317,6 @@ public class StoryEngine {
             if (!combined.contains(z)) {
                 combined.add(z);
             }
-            if (combined.size() >= 100) break;
         }
 
         return combined;

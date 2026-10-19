@@ -258,4 +258,55 @@ public class CriticalPathAnalyzerTest {
         r.setKind("CALLS");
         return r;
     }
+
+    public void testCombinatorialUpstreamPathBudget() {
+        CallGraphAnalyzer callGraph = new CallGraphAnalyzer();
+        CriticalPathAnalyzer analyzer = new CriticalPathAnalyzer(callGraph);
+
+        Map<String, CodeType> typeMap = new HashMap<>();
+        CodeType targetType = new CodeType();
+        targetType.setFqn("com.bank.TargetEntity");
+        targetType.setPackageFqn("com.bank");
+        targetType.setKind("CLASS");
+        typeMap.put(targetType.getFqn(), targetType);
+
+        Map<String, CodeMethod> methodMap = new HashMap<>();
+        List<String> methodFqns = new ArrayList<>();
+        String targetMethod = "com.bank.TargetEntity.Get(String)";
+        CodeMethod tm = createMethod(targetMethod, "Get", "com.bank.TargetEntity", 3);
+        methodMap.put(targetMethod, tm);
+        methodFqns.add(targetMethod);
+
+        List<CodeRelationship> rels = new ArrayList<>();
+        // Create 50 intermediate callers, each called by 20 root callers (50 * 20 = 1000 combinations)
+        for (int i = 1; i <= 50; i++) {
+            String midMethod = "com.bank.MidService" + i + ".process()";
+            methodMap.put(midMethod, createMethod(midMethod, "process", "com.bank.MidService" + i, 2));
+            methodFqns.add(midMethod);
+            rels.add(createRel(midMethod, targetMethod));
+
+            for (int j = 1; j <= 20; j++) {
+                String rootMethod = "com.bank.RootService" + i + "_" + j + ".run()";
+                methodMap.put(rootMethod, createMethod(rootMethod, "run", "com.bank.RootService" + i + "_" + j, 1));
+                methodFqns.add(rootMethod);
+                rels.add(createRel(rootMethod, midMethod));
+            }
+        }
+
+        callGraph.rebuild(methodFqns, rels);
+
+        long start = System.currentTimeMillis();
+        CriticalPathAnalyzer.CriticalPathReport report = analyzer.analyzeCriticalPaths(
+            "com.bank.TargetEntity",
+            callGraph.getCallGraph(),
+            methodMap,
+            typeMap,
+            true
+        );
+        long elapsed = System.currentTimeMillis() - start;
+
+        assertNotNull(report, "Report should not be null");
+        assertTrue(elapsed < 2000, "Combinatorial search should be bounded by expansion budget (<2s)");
+        assertTrue(report.totalDiscoveredPaths > 0, "Should discover upstream paths");
+    }
 }

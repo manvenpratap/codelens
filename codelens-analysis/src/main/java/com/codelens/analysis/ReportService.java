@@ -235,8 +235,6 @@ public class ReportService {
         return data;
     }
 
-    private static final int MAX_REPORTED_CYCLES = 25;
-
     private static List<List<String>> findCycles(Map<String, Set<String>> graph) {
         if (graph == null || graph.isEmpty()) return Collections.emptyList();
         org.jgrapht.Graph<String, org.jgrapht.graph.DefaultEdge> g =
@@ -248,8 +246,7 @@ public class ReportService {
                 g.addEdge(entry.getKey(), target);
             }
         }
-        List<List<String>> cycles = new org.jgrapht.alg.cycle.TarjanSimpleCycles<>(g).findSimpleCycles();
-        return cycles.size() > MAX_REPORTED_CYCLES ? cycles.subList(0, MAX_REPORTED_CYCLES) : cycles;
+        return new org.jgrapht.alg.cycle.TarjanSimpleCycles<>(g).findSimpleCycles();
     }
 
     public String renderArchitectureMarkdown(ArchitectureReportData d) {
@@ -423,7 +420,6 @@ public class ReportService {
             .collect(Collectors.toSet());
 
         data.totalFilesReviewed = sourceFiles.size();
-        final int MAX_RETAINED_FINDINGS = 1000;
         int processedFiles = 0;
 
         for (String file : sourceFiles) {
@@ -440,17 +436,7 @@ public class ReportService {
                     String cat = f.getCategory() != null ? f.getCategory() : "Other";
                     data.categoryCounts.put(cat, data.categoryCounts.getOrDefault(cat, 0) + 1);
 
-                    if (data.findings.size() < MAX_RETAINED_FINDINGS) {
-                        data.findings.add(f);
-                    } else if ("CRITICAL".equals(sev)) {
-                        for (int i = data.findings.size() - 1; i >= 0; i--) {
-                            String curSev = data.findings.get(i).getSeverity();
-                            if ("INFO".equalsIgnoreCase(curSev) || "WARNING".equalsIgnoreCase(curSev)) {
-                                data.findings.set(i, f);
-                                break;
-                            }
-                        }
-                    }
+                    data.findings.add(f);
                 }
             } catch (Exception e) {
                 log.warn("Error reviewing {}: {}", file, e.getMessage());

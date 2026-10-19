@@ -519,36 +519,27 @@ public class CodeLensServer {
             long start = System.currentTimeMillis();
             try {
                 log.info("Auto-triggering background precomputation of module dependencies...");
-                boolean isHuge = (callGraph != null && callGraph.vertexCount() > 25_000);
                 List<CodePackage> packages;
                 List<CodeType> types;
-                List<CodeMethod> methods;
-                List<CodeField> fields;
+                List<CodeMethod> methods = Collections.emptyList();
+                List<CodeField> fields = Collections.emptyList();
                 List<CodeRelationship> relationships;
 
                 ScanEntitySnapshot snapshot = this.transientScanSnapshot;
                 if (snapshot != null && snapshot.types != null && !snapshot.types.isEmpty()) {
                     packages = (snapshot.packages != null && !snapshot.packages.isEmpty()) ? snapshot.packages : dao.findAllPackages();
                     types = snapshot.types;
-                    methods = isHuge ? Collections.emptyList() : ((snapshot.methods != null && !snapshot.methods.isEmpty()) ? snapshot.methods : dao.findAllMethods());
-                    fields = isHuge ? Collections.emptyList() : ((snapshot.fields != null && !snapshot.fields.isEmpty()) ? snapshot.fields : dao.findAllFields());
                     relationships = (callGraph != null && callGraph.getCallGraph() != null)
-                        ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
+                        ? dao.findStructuralRelationships()
                         : ((snapshot.relationships != null && !snapshot.relationships.isEmpty()) ? snapshot.relationships : dao.findAllRelationships());
-                    log.info("Module dependency analyzer reused transient entity snapshot ({} types, {} methods, {} fields)",
-                        types.size(), methods.size(), fields.size());
+                    log.info("Module dependency analyzer reused transient entity snapshot ({} types, {} rels)",
+                        types.size(), relationships.size());
                 } else {
                     packages = dao.findAllPackages();
                     types = dao.findAllTypes();
-                    methods = isHuge ? Collections.emptyList() : dao.findAllMethods();
-                    fields = isHuge ? Collections.emptyList() : dao.findAllFields();
                     relationships = (callGraph != null && callGraph.getCallGraph() != null)
-                        ? (isHuge ? dao.findStructuralRelationships() : dao.findNonCallRelationships())
+                        ? dao.findStructuralRelationships()
                         : dao.findAllRelationships();
-                    if (!isHuge && types.size() <= 100_000) {
-                        this.transientScanSnapshot = new ScanEntitySnapshot(packages, types, methods, fields,
-                            (relationships != null && !(callGraph != null && callGraph.getCallGraph() != null)) ? relationships : null, null);
-                    }
                 }
 
                 if (progress != null) {
@@ -610,11 +601,15 @@ public class CodeLensServer {
                 log.info("Finished background precomputation of module dependencies in {} ms ({} modules indexed)",
                     System.currentTimeMillis() - start, precomputedModuleInsights.size());
                 return result;
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                if (e instanceof OutOfMemoryError) {
+                    heapWatchdog.handleTrappedOOM("precomputeModuleDependencies", e);
+                }
                 log.error("Failed precomputing module dependencies: {}", e.getMessage(), e);
                 return null;
             } finally {
                 modulePrecomputeRunning.set(false);
+                clearTransientScanSnapshot();
             }
         }
     }
@@ -635,7 +630,18 @@ public class CodeLensServer {
                 }
             }
         }
-        if (result.insightsByPackage != null) {
+        if (result.packageToModuleMap != null && result.insightsByModule != null) {
+            if (result.insightsByPackage == null) {
+                result.insightsByPackage = new LinkedHashMap<>();
+            }
+            for (Map.Entry<String, String> entry : result.packageToModuleMap.entrySet()) {
+                ModuleDependencyAnalyzer.ModuleDependencyInsights mi = result.insightsByModule.get(entry.getValue().toLowerCase());
+                if (mi != null) {
+                    precomputedModuleInsights.put(entry.getKey().toLowerCase(), mi);
+                    result.insightsByPackage.put(entry.getKey().toLowerCase(), mi);
+                }
+            }
+        } else if (result.insightsByPackage != null) {
             for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : result.insightsByPackage.entrySet()) {
                 precomputedModuleInsights.put(entry.getKey().toLowerCase(), entry.getValue());
             }
@@ -3970,7 +3976,12 @@ public class CodeLensServer {
 
     private void typesByPackage(Context ctx) throws Exception {
         String fqn = ctx.pathParam("fqn");
-        ctx.json(dao.findTypesByPackage(fqn));
+        try {
+            ctx.json(dao.findTypesByPackage(fqn));
+        } catch (OutOfMemoryError oom) {
+            HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.handleTrappedOOM("HTTP: typesByPackage " + fqn, oom);
+            ctx.status(503).json(Map.of("error", "OutOfMemoryError", "message", "Heap space exhausted while loading package types", "reclaimedMb", inc.reclaimedMb));
+        }
     }
 
     private void getModuleDependencies(Context ctx) throws Exception {
@@ -3989,72 +4000,81 @@ public class CodeLensServer {
             return;
         }
 
-        ctx.header("Cache-Control", "private, max-age=60");
-        String cacheKey = query.trim().toLowerCase();
+        try {
+            ctx.header("Cache-Control", "private, max-age=60");
+            String cacheKey = query.trim().toLowerCase();
 
-        // 1. Direct O(1) in-memory cache hit (precomputed, strong-referenced)
-        ModuleDependencyAnalyzer.ModuleDependencyInsights cached = precomputedModuleInsights.get(cacheKey);
-        if (cached != null) {
-            ctx.json(cached);
-            return;
-        }
-
-        // 2. Exact or closest package/module lookup across precomputed insights
-        ModuleDependencyAnalyzer.ModuleDependencyInsights bestMatch = null;
-        int bestMatchLength = 0;
-        for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : precomputedModuleInsights.entrySet()) {
-            String k = entry.getKey();
-            if (k.equalsIgnoreCase(cacheKey)) {
-                bestMatch = entry.getValue();
-                break;
-            }
-            if ((cacheKey.startsWith(k + ".") || k.startsWith(cacheKey + ".")) && k.length() > bestMatchLength) {
-                bestMatch = entry.getValue();
-                bestMatchLength = k.length();
-            }
-        }
-        if (bestMatch != null) {
-            precomputedModuleInsights.put(cacheKey, bestMatch);
-            ctx.json(bestMatch);
-            return;
-        }
-
-        // 3. If precomputed cache has not run yet, load from disk cache or auto-trigger background precompute
-        if (precomputedModuleResult == null) {
-            ScanProgress sp = scanState.get();
-            if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
-                ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency analysis pending"));
-                return;
-            }
-
-            precomputeModuleDependencies(null);
-            cached = precomputedModuleInsights.get(cacheKey);
+            // 1. Direct O(1) in-memory cache hit (precomputed, strong-referenced)
+            ModuleDependencyAnalyzer.ModuleDependencyInsights cached = precomputedModuleInsights.get(cacheKey);
             if (cached != null) {
                 ctx.json(cached);
                 return;
             }
+
+            // 2. Exact or closest package/module lookup across precomputed insights
+            ModuleDependencyAnalyzer.ModuleDependencyInsights bestMatch = null;
+            int bestMatchLength = 0;
             for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : precomputedModuleInsights.entrySet()) {
                 String k = entry.getKey();
-                if (k.equalsIgnoreCase(cacheKey) || (cacheKey.startsWith(k + ".") || k.startsWith(cacheKey + "."))) {
-                    precomputedModuleInsights.put(cacheKey, entry.getValue());
-                    ctx.json(entry.getValue());
-                    return;
+                if (k.equalsIgnoreCase(cacheKey)) {
+                    bestMatch = entry.getValue();
+                    break;
+                }
+                if ((cacheKey.startsWith(k + ".") || k.startsWith(cacheKey + ".")) && k.length() > bestMatchLength) {
+                    bestMatch = entry.getValue();
+                    bestMatchLength = k.length();
                 }
             }
-        }
+            if (bestMatch != null) {
+                precomputedModuleInsights.put(cacheKey, bestMatch);
+                ctx.json(bestMatch);
+                return;
+            }
 
-        // 4. Guaranteed complete fallback: Return a valid empty ModuleDependencyInsights rather than 404
-        ModuleDependencyAnalyzer.ModuleDependencyInsights emptyInsights = new ModuleDependencyAnalyzer.ModuleDependencyInsights();
-        String simpleName = query.contains(".") ? query.substring(query.lastIndexOf('.') + 1) : query;
-        emptyInsights.moduleName = simpleName;
-        emptyInsights.packageFqn = query;
-        emptyInsights.stabilityRating = "Independent";
-        emptyInsights.instability = 0.0;
-        emptyInsights.totalTouchPoints = 0;
-        emptyInsights.totalInboundTouchPoints = 0;
-        emptyInsights.totalOutboundTouchPoints = 0;
-        precomputedModuleInsights.put(cacheKey, emptyInsights);
-        ctx.json(emptyInsights);
+            // 3. If precomputed cache has not run yet, load from disk cache or auto-trigger background precompute
+            if (precomputedModuleResult == null) {
+                ScanProgress sp = scanState.get();
+                if (sp != null && sp.getStatus() == ScanProgress.Status.SCANNING) {
+                    ctx.status(202).json(Map.of("status", "scanning", "message", "Scan in progress, module dependency analysis pending"));
+                    return;
+                }
+
+                precomputeModuleDependencies(null);
+                cached = precomputedModuleInsights.get(cacheKey);
+                if (cached != null) {
+                    ctx.json(cached);
+                    return;
+                }
+                for (Map.Entry<String, ModuleDependencyAnalyzer.ModuleDependencyInsights> entry : precomputedModuleInsights.entrySet()) {
+                    String k = entry.getKey();
+                    if (k.equalsIgnoreCase(cacheKey) || (cacheKey.startsWith(k + ".") || k.startsWith(cacheKey + "."))) {
+                        precomputedModuleInsights.put(cacheKey, entry.getValue());
+                        ctx.json(entry.getValue());
+                        return;
+                    }
+                }
+            }
+
+            // 4. Guaranteed complete fallback: Return a valid empty ModuleDependencyInsights rather than 404
+            ModuleDependencyAnalyzer.ModuleDependencyInsights emptyInsights = new ModuleDependencyAnalyzer.ModuleDependencyInsights();
+            String simpleName = query.contains(".") ? query.substring(query.lastIndexOf('.') + 1) : query;
+            emptyInsights.moduleName = simpleName;
+            emptyInsights.packageFqn = query;
+            emptyInsights.stabilityRating = "Independent";
+            emptyInsights.instability = 0.0;
+            emptyInsights.totalTouchPoints = 0;
+            emptyInsights.totalInboundTouchPoints = 0;
+            emptyInsights.totalOutboundTouchPoints = 0;
+            precomputedModuleInsights.put(cacheKey, emptyInsights);
+            ctx.json(emptyInsights);
+        } catch (OutOfMemoryError oom) {
+            HeapAutoRecoveryManager.AutoRecoveryIncident inc = heapWatchdog.handleTrappedOOM("HTTP: serveModuleDependencies " + query, oom);
+            ctx.status(503).json(Map.of(
+                "error", "OutOfMemoryError",
+                "message", "Java heap space exhausted while serving module dependencies",
+                "reclaimedMb", inc.reclaimedMb
+            ));
+        }
     }
 
     private void getAllModuleInsights(Context ctx) throws Exception {
@@ -4098,6 +4118,14 @@ public class CodeLensServer {
         if (q != null && !q.isBlank()) {
             ctx.json(dao.searchTypes(q));
         } else {
+            String limitStr = ctx.queryParam("limit");
+            if (limitStr != null && !limitStr.isBlank()) {
+                try {
+                    int limit = Integer.parseInt(limitStr);
+                    ctx.json(dao.findTypes(limit));
+                    return;
+                } catch (NumberFormatException ignored) {}
+            }
             ctx.json(dao.findAllTypes());
         }
     }
@@ -4672,6 +4700,27 @@ public class CodeLensServer {
         ctx.json(cfg);
     }
 
+    public static boolean isValidAiEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) return true;
+        try {
+            java.net.URI uri = java.net.URI.create(endpoint.trim());
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return false;
+            String host = uri.getHost();
+            if (host == null || host.isBlank()) return false;
+            String lowerHost = host.toLowerCase(Locale.ROOT);
+            if (lowerHost.equals("localhost") || lowerHost.equals("127.0.0.1") || lowerHost.equals("::1")) {
+                return true;
+            }
+            java.net.InetAddress addr = java.net.InetAddress.getByName(host);
+            if (addr.isLoopbackAddress()) return true;
+            if (addr.isLinkLocalAddress() || addr.isAnyLocalAddress()) return false;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void saveAiConfig(Context ctx) {
         try {
             Map<?, ?> body = ctx.bodyAsClass(Map.class);
@@ -4679,6 +4728,11 @@ public class CodeLensServer {
             String model = body.get("model") != null ? body.get("model").toString() : null;
             String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : null;
             String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : null;
+
+            if (endpoint != null && !isValidAiEndpoint(endpoint)) {
+                ctx.status(400).json(Map.of("error", "Invalid or disallowed AI endpoint URL"));
+                return;
+            }
 
             aiGroundingService.configure(provider, model, endpoint, apiKey);
 
@@ -4705,6 +4759,11 @@ public class CodeLensServer {
             String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : ctx.queryParam("endpoint");
             String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : ctx.queryParam("apiKey");
 
+            if (endpoint != null && !isValidAiEndpoint(endpoint)) {
+                ctx.status(400).json(Map.of("error", "Invalid or disallowed AI endpoint URL"));
+                return;
+            }
+
             List<String> models = aiGroundingService.discoverModels(provider, endpoint, apiKey);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("ok", true);
@@ -4727,6 +4786,17 @@ public class CodeLensServer {
             String model = body.get("model") != null ? body.get("model").toString() : ctx.queryParam("model");
             String endpoint = body.get("endpoint") != null ? body.get("endpoint").toString() : ctx.queryParam("endpoint");
             String apiKey = body.get("apiKey") != null ? body.get("apiKey").toString() : ctx.queryParam("apiKey");
+
+            if (endpoint != null && !isValidAiEndpoint(endpoint)) {
+                Map<String, Object> resp = new LinkedHashMap<>();
+                resp.put("ok", false);
+                resp.put("provider", provider != null ? provider : "unknown");
+                resp.put("message", "Disallowed or invalid AI endpoint URL");
+                resp.put("latencyMs", 0);
+                resp.put("availableModels", Collections.emptyList());
+                ctx.status(400).json(resp);
+                return;
+            }
 
             AiGroundingService.ConnectionTestResult res = aiGroundingService.testConnection(provider, model, endpoint, apiKey);
             Map<String, Object> resp = new LinkedHashMap<>();
@@ -5154,8 +5224,8 @@ public class CodeLensServer {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("target", targetMeta);
-        response.put("summary", summary);
-        response.put("sankey", reqExpandAll ? sankeyAll : sankeyCompact);
+        boolean reqCompact = "true".equalsIgnoreCase(ctx.queryParam("compact"));
+        response.put("sankey", reqCompact ? sankeyCompact : sankeyAll);
         response.put("sankeyCompact", sankeyCompact);
         response.put("sankeyAll", sankeyAll);
         response.put("touchPoints", touchPoints);
@@ -5793,6 +5863,35 @@ public class CodeLensServer {
         ctx.future(() -> future.thenAccept(path -> ctx.json(Map.of("path", path != null ? path : ""))));
     }
 
+    private boolean isPathWithinAllowedRoots(Path targetPath) {
+        if (targetPath == null) return false;
+        Path normalizedTarget = targetPath.toAbsolutePath().normalize();
+
+        // 1. Current scanned source path
+        String sourcePath = resolveCurrentSourcePath();
+        if (sourcePath != null && !sourcePath.isBlank()) {
+            Path root = Paths.get(sourcePath).toAbsolutePath().normalize();
+            if (normalizedTarget.startsWith(root)) {
+                return true;
+            }
+        }
+
+        // 2. Local workspace working directory
+        Path currentDir = Paths.get(".").toAbsolutePath().normalize();
+        if (normalizedTarget.startsWith(currentDir)) {
+            return true;
+        }
+
+        // 3. Known indexed source file in database
+        try {
+            if (dao.isKnownSourceFile(normalizedTarget.toString())) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+
+        return false;
+    }
+
     private void openFolder(Context ctx) throws Exception {
         Map<?, ?> body = ctx.bodyAsClass(Map.class);
         String path = (String) body.get("path");
@@ -5804,6 +5903,12 @@ public class CodeLensServer {
         File file = new File(path.trim());
         if (!file.exists()) {
             ctx.status(404).json(Map.of("error", "File or folder not found"));
+            return;
+        }
+
+        Path target = file.toPath().toAbsolutePath().normalize();
+        if (!isPathWithinAllowedRoots(target)) {
+            ctx.status(403).json(Map.of("error", "Access denied: path is outside active project boundary"));
             return;
         }
 
@@ -5834,14 +5939,19 @@ public class CodeLensServer {
             return;
         }
 
-        File file = new File(path.trim());
-        if (!file.exists() || !file.isFile()) {
+        Path target = Paths.get(path.trim()).toAbsolutePath().normalize();
+        if (!isPathWithinAllowedRoots(target)) {
+            ctx.status(403).json(Map.of("error", "Access denied: requested path is outside active project boundary"));
+            return;
+        }
+
+        if (!Files.exists(target) || !Files.isRegularFile(target)) {
             ctx.status(404).json(Map.of("error", "File not found: " + path));
             return;
         }
 
         try {
-            String content = java.nio.file.Files.readString(file.toPath());
+            String content = java.nio.file.Files.readString(target, StandardCharsets.UTF_8);
             ctx.json(Map.of("path", path, "content", content));
         } catch (Exception e) {
             ctx.status(500).json(Map.of("error", "Failed to read file: " + e.getMessage()));
@@ -5858,14 +5968,19 @@ public class CodeLensServer {
             return;
         }
 
-        File file = new File(path.trim());
-        if (!file.exists()) {
+        Path target = Paths.get(path.trim()).toAbsolutePath().normalize();
+        if (!isPathWithinAllowedRoots(target)) {
+            ctx.status(403).json(Map.of("error", "Access denied: write path is outside active project boundary"));
+            return;
+        }
+
+        if (!Files.exists(target) || !Files.isRegularFile(target)) {
             ctx.status(404).json(Map.of("error", "File not found: " + path));
             return;
         }
 
         try {
-            java.nio.file.Files.writeString(file.toPath(), content);
+            java.nio.file.Files.writeString(target, content, StandardCharsets.UTF_8);
             ctx.json(Map.of("success", true, "path", path));
         } catch (Exception e) {
             ctx.status(500).json(Map.of("error", "Failed to write file: " + e.getMessage()));

@@ -58,9 +58,6 @@ public class CodeReviewEngine {
         "Optional", Set.of("map", "flatMap", "filter", "orElse", "orElseGet")
     );
 
-    // Source lines cache for snippet extraction
-    private String[] sourceLines;
-
     // ─────────────────────────────────────────────────────────────────────────
     // Public entry points
     // ─────────────────────────────────────────────────────────────────────────
@@ -115,7 +112,7 @@ public class CodeReviewEngine {
                                               CallGraphAnalyzer callGraph,
                                               FieldImpactAnalyzer fieldImpact) {
         List<ReviewFinding> findings = new ArrayList<>();
-        sourceLines = source.split("\n");
+        String[] lines = source.split("\n");
 
         try {
             JavaParser parser = new JavaParser();
@@ -130,7 +127,7 @@ public class CodeReviewEngine {
                 .map(pd -> pd.getNameAsString()).orElse("");
 
             // Run all checks
-            cu.accept(new ReviewVisitor(findings, packageName, callGraph, fieldImpact), null);
+            cu.accept(new ReviewVisitor(findings, packageName, callGraph, fieldImpact, lines), null);
 
             // Sort by severity: CRITICAL first, then WARNING, then INFO
             findings.sort(Comparator.comparingInt(f -> severityOrder(f.getSeverity())));
@@ -152,13 +149,13 @@ public class CodeReviewEngine {
         };
     }
 
-    private String extractSnippet(int line) {
-        if (sourceLines == null || line <= 0) return "";
+    private static String extractSnippet(String[] lines, int line) {
+        if (lines == null || line <= 0) return "";
         int start = Math.max(0, line - 2);
-        int end   = Math.min(sourceLines.length, line + 2);
+        int end   = Math.min(lines.length, line + 2);
         StringBuilder sb = new StringBuilder();
         for (int i = start; i < end; i++) {
-            sb.append(String.format("%4d │ %s\n", i + 1, sourceLines[i]));
+            sb.append(String.format("%4d │ %s\n", i + 1, lines[i]));
         }
         return sb.toString();
     }
@@ -173,6 +170,7 @@ public class CodeReviewEngine {
         private final String packageName;
         private final CallGraphAnalyzer callGraph;
         private final FieldImpactAnalyzer fieldImpact;
+        private final String[] sourceLines;
 
         // Per-type state
         private String currentTypeFqn = "";
@@ -185,11 +183,13 @@ public class CodeReviewEngine {
         private int fieldCount = 0;
 
         ReviewVisitor(List<ReviewFinding> findings, String packageName,
-                      CallGraphAnalyzer callGraph, FieldImpactAnalyzer fieldImpact) {
+                      CallGraphAnalyzer callGraph, FieldImpactAnalyzer fieldImpact,
+                      String[] sourceLines) {
             this.findings    = findings;
             this.packageName = packageName;
             this.callGraph   = callGraph;
             this.fieldImpact = fieldImpact;
+            this.sourceLines = sourceLines;
         }
 
         // ── Type-level checks ────────────────────────────────────────────────
@@ -885,26 +885,22 @@ public class CodeReviewEngine {
             }
             return maxDepth;
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Finding factory
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private ReviewFinding finding(String category, String severity, String checkName,
-                                   String entityFqn, String entityKind,
-                                   String message, String suggestion, int line) {
-        ReviewFinding f = new ReviewFinding();
-        f.setId(UUID.randomUUID().toString());
-        f.setCategory(category);
-        f.setSeverity(severity);
-        f.setCheckName(checkName);
-        f.setEntityFqn(entityFqn);
-        f.setEntityKind(entityKind);
-        f.setMessage(message);
-        f.setSuggestion(suggestion);
-        f.setLine(line);
-        f.setSourceSnippet(extractSnippet(line));
-        return f;
+        private ReviewFinding finding(String category, String severity, String checkName,
+                                       String entityFqn, String entityKind,
+                                       String message, String suggestion, int line) {
+            ReviewFinding f = new ReviewFinding();
+            f.setId(UUID.randomUUID().toString());
+            f.setCategory(category);
+            f.setSeverity(severity);
+            f.setCheckName(checkName);
+            f.setEntityFqn(entityFqn);
+            f.setEntityKind(entityKind);
+            f.setMessage(message);
+            f.setSuggestion(suggestion);
+            f.setLine(line);
+            f.setSourceSnippet(extractSnippet(this.sourceLines, line));
+            return f;
+        }
     }
 }

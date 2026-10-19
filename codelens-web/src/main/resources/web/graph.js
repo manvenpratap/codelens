@@ -3415,9 +3415,13 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         row.className = 'graph-search-item';
         row.innerHTML = `
           <span class="gsi-dot" style="width:7px;height:7px;border-radius:50%;background:${n.communityColor};display:inline-block;margin-right:8px;flex-shrink:0;"></span>
-          <span class="gsi-label">${n.label}</span>
-          <span class="gsi-pkg">${n.package}</span>
+          <span class="gsi-label"></span>
+          <span class="gsi-pkg"></span>
         `;
+        const labelEl = row.querySelector('.gsi-label');
+        if (labelEl) labelEl.textContent = n.label || '';
+        const pkgEl = row.querySelector('.gsi-pkg');
+        if (pkgEl) pkgEl.textContent = n.package || '';
         row.onclick = () => {
           this.focusNode(n.id, 1.4);
           searchResults.style.display = 'none';
