@@ -123,3 +123,40 @@ Queries installed models dynamically (e.g. probing Ollama's `/api/tags` endpoint
 
 ### Verified Evidence & Citations Ledger
 Every answer synthesized by the AI grounding engine includes a **Verified Source Evidence & Citations Ledger**. Readers can click any citation chip to navigate directly to the verified class, method signature, or database mutation sink in the CodeLens explorer.
+
+---
+
+## 🔄 5. 8-Stage Ingestion & Analysis Workflow
+
+```mermaid
+flowchart LR
+    A["Scan Trigger\n(CLI / Web UI)"] --> B["1. Parse AST\n(JavaParser walk)"]
+    B --> C["2. Index\n(Lucene & H2)"]
+    C --> D["3. Topology\n(JGraphT call graph)"]
+    D --> E["4. Layouts\n(Sunflower 2D/3D)"]
+    E --> F["5. Modules\n(Coupling & stability)"]
+    F --> G["6. Integrity\n(14 class rules)"]
+    G --> H["7. CodeStory\n(Storylines & tour)"]
+    H --> I["8. Reports\n(14 precomputed)"]
+    I --> J["Complete & Ready\n(100% features live)"]
+```
+
+---
+
+## ⏱️ 6. Server & Ingestion Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> JVM_Boot: Start JAR
+    JVM_Boot --> Idle_Ready: Bind Port :7878 & Init H2
+    Idle_Ready --> AST_Parse: Trigger Scan (Stage 1)
+    AST_Parse --> Index_Rebuild: AST Parsed (Stage 2)
+    Index_Rebuild --> Topology_Calc: Symbols Indexed (Stages 3-5)
+    Topology_Calc --> Integrity_Audit: Matrices Cached (Stage 6)
+    Integrity_Audit --> CodeStory_Synth: 14 Rules Verified (Stage 7)
+    CodeStory_Synth --> Reports_Precompute: Storylines Mapped (Stage 8)
+    Reports_Precompute --> Workspace_Live: All 8 Stages 100% Ready
+    AST_Parse --> Scan_Interrupted: Fatal Abort / Error
+    Scan_Interrupted --> [*]
+    Workspace_Live --> Process_Hub: Process Telemetry & Sentinel
+```
