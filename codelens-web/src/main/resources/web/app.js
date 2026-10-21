@@ -1448,6 +1448,19 @@ function renderDatabasePanel(db) {
     badgeEl.className = 'hub-db-status-badge ' + (st === 'HEALTHY' ? 'status-healthy' : (st === 'DEGRADED' ? 'status-degraded' : (st === 'LOCKED' ? 'status-locked' : 'status-corrupted')));
   }
 
+  // Orphan references metric
+  const orphansEl = qs('#hub-db-orphans-val');
+  if (orphansEl) {
+    const oc = db.orphanCount ?? 0;
+    if (oc > 0) {
+      orphansEl.textContent = `${oc.toLocaleString()} Found`;
+      orphansEl.className = 'hub-db-metric-val text-amber';
+    } else {
+      orphansEl.textContent = '0 Clean';
+      orphansEl.className = 'hub-db-metric-val text-emerald';
+    }
+  }
+
   // If locked or SQLState 57014 detected and alert not currently visible, show prompt
   if (db.sqlState57014 || (db.status && db.status.toUpperCase() === 'LOCKED')) {
     const alertEl = qs('#hub-db-recovery-alert');
@@ -1461,11 +1474,23 @@ function renderDatabasePanel(db) {
     }
   }
 
-  // Table counts
+  // Table counts across all database entities
   const tables = db.tables || {};
   for (const [tbl, count] of Object.entries(tables)) {
     const el = qs(`#hub-tbl-${tbl}`);
     if (el) el.textContent = count >= 0 ? count.toLocaleString() : '-';
+  }
+  // Alias mappings for composite/renamed tables
+  const gitEl = qs('#hub-tbl-git_commits');
+  if (gitEl && (tables.git_meta != null || tables.git_commits != null)) {
+    const c = tables.git_meta ?? tables.git_commits ?? 0;
+    gitEl.textContent = c >= 0 ? c.toLocaleString() : '-';
+  }
+  const fileEl = qs('#hub-tbl-file_meta');
+  if (fileEl) {
+    const fm = tables.file_meta ?? 0;
+    const es = tables.excluded_scopes ?? 0;
+    fileEl.textContent = es > 0 ? `${fm.toLocaleString()} · ${es} rules` : `${fm.toLocaleString()} files`;
   }
 
   // Pool details
@@ -2347,15 +2372,24 @@ function renderJvmPanel(system) {
   if (osCoresEl) osCoresEl.textContent = `${cores} Cores`;
   const procCpuEl = qs('#jvm-proc-cpu');
   if (procCpuEl) procCpuEl.textContent = procCpu;
+  const sysCpuEl = qs('#jvm-sys-cpu');
+  if (sysCpuEl) sysCpuEl.textContent = os.systemCpuPercent != null ? `${os.systemCpuPercent}%` : '-';
   const sysLoadEl = qs('#jvm-sys-load');
   if (sysLoadEl) sysLoadEl.textContent = String(sysLoad);
   const uptimeEl = qs('#jvm-uptime');
   if (uptimeEl) uptimeEl.textContent = uptimeStr;
+  const hostRamEl = qs('#jvm-host-ram');
+  if (hostRamEl && os.totalPhysicalMemMb) {
+    const totGb = (os.totalPhysicalMemMb / 1024).toFixed(0);
+    const freeGb = (os.freePhysicalMemMb / 1024).toFixed(1);
+    hostRamEl.textContent = `${totGb} GB (${freeGb} GB free)`;
+    hostRamEl.title = `Total RAM: ${os.totalPhysicalMemMb.toLocaleString()} MB · Free: ${os.freePhysicalMemMb.toLocaleString()} MB · Committed VMem: ${(os.committedVirtualMemoryBytes ? (os.committedVirtualMemoryBytes / (1024*1024*1024)).toFixed(1) : 0)} GB`;
+  }
   const vmVersionEl = qs('#jvm-vm-version');
   if (vmVersionEl) {
     const vmStr = `${rt.vmName || 'Java HotSpot'} (${rt.vmVersion || '17'})`;
     vmVersionEl.textContent = vmStr;
-    vmVersionEl.title = vmStr;
+    vmVersionEl.title = `${vmStr} · ${os.name || 'OS'} (${os.arch || 'x64'})`;
   }
 
   // 5. Memory Pools Detail
@@ -2393,6 +2427,12 @@ function renderJvmPanel(system) {
 
   const thTot = qs('#jvm-th-total');
   if (thTot) thTot.textContent = liveCount;
+  const thPeak = qs('#jvm-th-peak');
+  if (thPeak) thPeak.textContent = th.peakCount ?? '-';
+  const thDaemon = qs('#jvm-th-daemon');
+  if (thDaemon) thDaemon.textContent = th.daemonCount ?? '-';
+  const thStarted = qs('#jvm-th-started');
+  if (thStarted) thStarted.textContent = th.totalStarted ? th.totalStarted.toLocaleString() : '-';
   const thRun = qs('#jvm-th-runnable');
   if (thRun) thRun.textContent = runnable;
   const thWait = qs('#jvm-th-waiting');
@@ -2529,6 +2569,24 @@ async function loadProcessHubData() {
         hudTasksSub.textContent = `(${loadUnits}/${maxUnits} load · ${queuedCount} queued)`;
       } else {
         hudTasksSub.textContent = `(${loadUnits}/${maxUnits} load)`;
+      }
+    }
+
+    const orchBanner = qs('#hub-orch-banner');
+    if (orchBanner) {
+      const orch = data.orchestrator || {};
+      if (orch.isMemoryThrottled) {
+        orchBanner.style.display = 'flex';
+        orchBanner.className = 'hub-orch-banner alert-warning';
+        orchBanner.innerHTML = `<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span><strong>Memory Sentinel Active:</strong> Background workers throttled to protect JVM heap. Tasks in queue will automatically resume once memory pressure drops.</span>`;
+      } else if (orch.queuedCount > 0) {
+        orchBanner.style.display = 'flex';
+        orchBanner.className = 'hub-orch-banner alert-info';
+        orchBanner.innerHTML = `<svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span><strong>Orchestrator Queue:</strong> ${orch.queuedCount} task(s) awaiting worker slot (${orch.activeLoadUnits}/${orch.maxLoadUnits} load capacity utilized).</span>`;
+      } else {
+        orchBanner.style.display = 'none';
       }
     }
 
@@ -2792,7 +2850,9 @@ function renderTasksPanel(procs) {
       }
 
       let rawDetail = p.currentDetail || '';
-      if (!rawDetail) {
+      if (p.id === 'scanner' && p.processedFiles > 0) {
+        rawDetail = `${p.processedFiles.toLocaleString()} files scanned · ${(p.typesFound || 0).toLocaleString()} classes · ${(p.methodsFound || 0).toLocaleString()} methods · ${(p.fieldsFound || 0).toLocaleString()} fields`;
+      } else if (!rawDetail) {
         if (p.id === 'delta-scanner') rawDetail = 'Watching workspace for file modifications';
         else if (p.id === 'git-analyzer') rawDetail = 'Git commit history and churn correlator';
         else if (p.id === 'db-watchdog') rawDetail = 'HikariCP leak detector and auto-recovery';
@@ -2816,7 +2876,13 @@ function renderTasksPanel(procs) {
           }
         }
         else if (cat === 'idle') rawDetail = 'Idle · Waiting for trigger';
-        else if (cat === 'complete') rawDetail = 'Execution complete · Ready';
+        else if (cat === 'complete') {
+          if (p.id === 'scanner' && p.processedFiles > 0) {
+            rawDetail = `${p.processedFiles.toLocaleString()} files scanned · ${(p.typesFound || 0).toLocaleString()} classes · ${(p.methodsFound || 0).toLocaleString()} methods`;
+          } else {
+            rawDetail = 'Execution complete · Ready';
+          }
+        }
         else if (cat === 'error') rawDetail = 'Task encountered an error';
         else rawDetail = 'Ready';
       } else if (isQueued) {

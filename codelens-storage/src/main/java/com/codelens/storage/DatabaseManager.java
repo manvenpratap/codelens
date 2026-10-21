@@ -369,13 +369,22 @@ public class DatabaseManager {
                 if (rs.next()) h2Version = rs.getString(1);
             }
 
-            // Fast table counts (fixed GIT_META table name)
-            String[] tableNames = {"PACKAGES", "TYPES", "METHODS", "FIELDS", "RELATIONSHIPS", "INCONSISTENCIES", "SCAN_META", "GIT_META", "ANALYST_NOTES"};
+            // Fast table counts across all relational entities
+            String[] tableNames = {"PACKAGES", "TYPES", "METHODS", "FIELDS", "RELATIONSHIPS", "INCONSISTENCIES", "SCAN_META", "GIT_META", "FILE_META", "EXCLUDED_SCOPES", "ANALYST_NOTES"};
             for (String tbl : tableNames) {
                 try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tbl)) {
-                    if (rs.next()) tables.put(tbl.toLowerCase(), rs.getInt(1));
+                    if (rs.next()) {
+                        int cnt = rs.getInt(1);
+                        tables.put(tbl.toLowerCase(), cnt);
+                        if ("GIT_META".equals(tbl)) {
+                            tables.put("git_commits", cnt);
+                        }
+                    }
                 } catch (Exception e) {
                     tables.put(tbl.toLowerCase(), 0);
+                    if ("GIT_META".equals(tbl)) {
+                        tables.put("git_commits", 0);
+                    }
                     if (e instanceof SQLException && isCancelOrTimeoutException((SQLException) e)) {
                         isTimeout = true;
                     }

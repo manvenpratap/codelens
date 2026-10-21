@@ -4004,6 +4004,9 @@
           </div>
         </div>
 
+        <!-- Orchestrator Concurrency & Throttle Alert Banner -->
+        <div class="hub-orch-banner" id="hub-orch-banner" style="display:none;" role="status"></div>
+
         <!-- Processing Pipeline Order & Stage Stepper -->
         <div class="hub-pipeline-stepper" id="hub-pipeline-stepper" role="region" aria-label="Processing Pipeline Stages">
           <button class="pipeline-step-item active" data-stage="all" title="View all pipeline stages in sequence">
@@ -4092,6 +4095,10 @@
               <span class="hub-db-metric-lbl">Ping Latency</span>
               <span class="hub-db-metric-val text-emerald" id="hub-db-ping-val">0.0 ms</span>
             </div>
+            <div class="hub-db-metric-chip" title="Orphan methods or unreferenced entities">
+              <span class="hub-db-metric-lbl">Orphans</span>
+              <span class="hub-db-metric-val text-emerald" id="hub-db-orphans-val">0 Clean</span>
+            </div>
             <div class="hub-db-metric-chip">
               <span class="hub-db-metric-lbl">Health Status</span>
               <span class="hub-db-status-badge status-healthy" id="hub-db-status-badge">HEALTHY</span>
@@ -4168,9 +4175,19 @@
             <div class="hub-table-desc">Calls, reads, writes, extends</div>
           </div>
           <div class="hub-table-card">
+            <div class="hub-table-name">INCONSISTENCIES</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-inconsistencies">-</div>
+            <div class="hub-table-desc">Structural divergences &amp; anomalies</div>
+          </div>
+          <div class="hub-table-card">
             <div class="hub-table-name">GIT COMMITS</div>
             <div class="hub-table-count font-mono" id="hub-tbl-git_commits">-</div>
             <div class="hub-table-desc">Commit history &amp; churn</div>
+          </div>
+          <div class="hub-table-card">
+            <div class="hub-table-name">FILES &amp; SCOPES</div>
+            <div class="hub-table-count font-mono" id="hub-tbl-file_meta">-</div>
+            <div class="hub-table-desc">Tracked files &amp; scope rules</div>
           </div>
           <div class="hub-table-card">
             <div class="hub-table-name">ANALYST NOTES</div>
@@ -4521,12 +4538,20 @@
                 <span class="jvm-stat-val font-mono text-cyan" id="jvm-proc-cpu">0.0%</span>
               </div>
               <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">System CPU</span>
+                <span class="jvm-stat-val font-mono" id="jvm-sys-cpu">0.0%</span>
+              </div>
+              <div class="jvm-stat-item">
                 <span class="jvm-stat-lbl">System Load Avg</span>
                 <span class="jvm-stat-val font-mono" id="jvm-sys-load">0.0</span>
               </div>
               <div class="jvm-stat-item">
                 <span class="jvm-stat-lbl">Process Uptime</span>
                 <span class="jvm-stat-val font-mono" id="jvm-uptime">0m 0s</span>
+              </div>
+              <div class="jvm-stat-item">
+                <span class="jvm-stat-lbl">Host Physical RAM</span>
+                <span class="jvm-stat-val font-mono" id="jvm-host-ram">-</span>
               </div>
               <div class="jvm-stat-item">
                 <span class="jvm-stat-lbl">Java Runtime</span>
@@ -4728,6 +4753,9 @@
               </span>
               <div class="hub-jvm-thread-pills" id="hub-jvm-thread-pills">
                 <span class="thread-stat-pill">Total: <strong id="jvm-th-total">0</strong></span>
+                <span class="thread-stat-pill">Peak: <strong id="jvm-th-peak">0</strong></span>
+                <span class="thread-stat-pill">Daemon: <strong id="jvm-th-daemon">0</strong></span>
+                <span class="thread-stat-pill">Started: <strong id="jvm-th-started">0</strong></span>
                 <span class="thread-stat-pill pill-runnable">Runnable: <strong id="jvm-th-runnable">0</strong></span>
                 <span class="thread-stat-pill pill-waiting">Waiting: <strong id="jvm-th-waiting">0</strong></span>
                 <span class="thread-stat-pill pill-timed">Timed Waiting: <strong id="jvm-th-timed">0</strong></span>
