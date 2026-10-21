@@ -1173,7 +1173,7 @@
 
         // Default state: luminous, atmospheric cosmic threads
         const arcCol = cross ? 0x38bdf8 : src.colorHex;
-        const arcOp  = cross ? 0.28 : 0.18;
+        const arcOp  = cross ? 0.16 : 0.08;
 
         const lineMat = new THREE.LineBasicMaterial({
           color: arcCol,
