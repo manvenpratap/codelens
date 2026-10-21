@@ -1,15 +1,13 @@
 ---
 trigger: always_on
-description: Always consult the graphify knowledge graph at graphify-out/ before answering codebase or architecture questions.
+description: Mandatory Graphify consultation and mandatory git check-in rules.
 ---
 
-## graphify
+## Mandatory Knowledge Base & Git Check-in Rules
 
-This project has a graphify knowledge graph at graphify-out/.
+This project has an active graphify knowledge graph at `graphify-out/` and automated git lifecycle hooks.
 
 Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- If the graphify MCP server is active, utilize tools like `query_graph`, `get_node`, and `shortest_path` for precise architecture navigation instead of falling back to `grep`
-- If the MCP server is not active, the CLI equivalents are `graphify query "<question>"`, `graphify path "<A>" "<B>"`, and `graphify explain "<concept>"` - prefer these over grep for cross-module questions
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+1. **Mandatory Graphify Consultation**: Before answering architecture or codebase questions, read `graphify-out/GRAPH_REPORT.md` for god nodes and community structure. Use `graphify query "<question>"`, `graphify path "<A>" "<B>"`, and `graphify explain "<concept>"` instead of reading entire files into context.
+2. **Mandatory Git Check-ins**: At the conclusion of every task, bugfix, feature, or refactor, verify and commit all changes to git using a clear conventional commit message (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`). Never leave the repository with an uncommitted or dirty working tree.
+3. **Automated Graph Sync**: All git check-ins trigger the `.git/hooks/post-commit` hook to automatically update `graphify-out/`. If editing outside of git, run `graphify update .` to ensure the AST graph remains in parity.
