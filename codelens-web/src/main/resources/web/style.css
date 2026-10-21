@@ -5335,6 +5335,23 @@ body.theme-light .level-pill.active {
 .legend-pkg-row.dimmed {
   opacity: 0.35;
 }
+.legend-focus-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  border-radius: var(--radius-xs, 4px);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: all var(--dur-fast) var(--ease);
+}
+.legend-focus-btn:hover {
+  opacity: 1;
+  color: var(--primary, #34d399);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+}
 .legend-chevron {
   display: inline-flex;
   align-items: center;

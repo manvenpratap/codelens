@@ -64,6 +64,10 @@
       this._edgeMap         = new Map();   // nodeId → Line[]
       this._planeMeshes     = [];
       this._nebulaGroups    = [];
+      this._labelSprites    = [];          // billboard sprites for packages & top hubs
+      this._showLabels      = true;
+      this._pkgMeta         = new Map();   // pkgName → { cx, cy, cz, diskR, colorStr, colorHex }
+      this._isTopDown       = false;
 
       this._showPlanes      = true;
       this._showArcs        = true;
@@ -84,7 +88,9 @@
       this._mouse           = null;
       this._hoveredMesh     = null;
       this._highlightEdges  = [];
+      this._dimmedEdges     = [];
       this._highlightNeighbors = [];
+      this._dimmedNodes     = [];
       this._tooltip         = null;
       this._toolbar         = null;
       this._resizeObserver  = null;
@@ -143,11 +149,52 @@
       this._applyFilters();
     }
 
-    flyToNode(mesh) {
-      if (!mesh || !this._camera || !this._controls) return;
+    flyToNode(meshOrId) {
+      if (!meshOrId || !this._camera || !this._controls) return;
+      let mesh = meshOrId;
+      if (typeof meshOrId === 'string') {
+        mesh = this._nodeMeshes.find(m => m.userData.node && m.userData.node.id === meshOrId);
+      }
+      if (!mesh) return;
       const t = mesh.position.clone();
       this._targetCtrlTgt = t.clone();
-      this._targetCamPos  = new THREE.Vector3(t.x + 55, t.y + 35, t.z + 65);
+      this._targetCamPos  = new THREE.Vector3(t.x + 35, t.y + 22, t.z + 45);
+    }
+
+    flyToPackage(pkgName) {
+      if (!pkgName || !this._camera || !this._controls) return;
+      let meta = this._pkgMeta.get(pkgName);
+      if (!meta) {
+        for (const [k, v] of this._pkgMeta.entries()) {
+          if (k.toLowerCase() === pkgName.toLowerCase() || k.endsWith('.' + pkgName) || pkgName.endsWith('.' + k)) {
+            meta = v;
+            break;
+          }
+        }
+      }
+      if (!meta) return;
+      const { cx, cy, cz, diskR } = meta;
+      this._targetCtrlTgt = new THREE.Vector3(cx, cy, cz);
+      this._targetCamPos = new THREE.Vector3(cx + diskR * 0.85, cy + diskR * 0.70 + 35, cz + diskR * 1.05);
+    }
+
+    toggleLabels(v) {
+      if (v !== undefined) this._showLabels = Boolean(v);
+      else this._showLabels = !this._showLabels;
+      this._applyFilters();
+      return this._showLabels;
+    }
+
+    toggleTopDown() {
+      this._isTopDown = !this._isTopDown;
+      if (this._isTopDown) {
+        this._targetCamPos = new THREE.Vector3(0, 750, 0.01);
+        this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
+      } else {
+        this._targetCamPos = new THREE.Vector3(0, 200, 550);
+        this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
+      }
+      return this._isTopDown;
     }
 
     togglePlanes(v) {
@@ -387,6 +434,76 @@
 
     /* ─────────────────── Galaxy Data Layout ────────────────── */
 
+    _createLabelSprite(text, colorStr, isPackage = true) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      const fontSize = isPackage ? 26 : 20;
+      const font = `600 ${fontSize}px Sora, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = font;
+
+      const metrics = ctx.measureText(text);
+      const textWidth = Math.ceil(metrics.width);
+      const textHeight = Math.ceil(fontSize * 1.3);
+
+      const padX = isPackage ? 14 : 10;
+      const padY = isPackage ? 7 : 5;
+      const w = textWidth + padX * 2;
+      const h = textHeight + padY * 2;
+
+      // Retina 2x supersampling for crisp in-world text
+      const scale = 2;
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      ctx.scale(scale, scale);
+
+      // Pill background
+      const r = isPackage ? 8 : 6;
+      ctx.fillStyle = isPackage ? 'rgba(5, 9, 20, 0.82)' : 'rgba(10, 15, 29, 0.78)';
+      ctx.strokeStyle = colorStr || (isPackage ? '#38bdf8' : '#94a3b8');
+      ctx.lineWidth = isPackage ? 1.8 : 1.2;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(1, 1, w - 2, h - 2, r);
+      } else {
+        ctx.rect(1, 1, w - 2, h - 2);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      // Accent dot
+      const dotR = isPackage ? 3.5 : 2.5;
+      ctx.fillStyle = colorStr || '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(padX + dotR, h / 2, dotR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Text
+      ctx.font = font;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(text, padX + dotR * 2 + 6, h / 2 + 1);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+
+      const mat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      const worldHeight = isPackage ? 7.5 : 5.0;
+      const aspect = w / h;
+      sprite.scale.set(worldHeight * aspect, worldHeight, 1);
+      return sprite;
+    }
+
     _buildGalaxy() {
       if (!this._data || !this._scene) return;
 
@@ -394,12 +511,23 @@
       const rawEdges = this._data.edges || [];
       if (!rawNodes.length) return;
 
-      this._nodeMeshes  = [];
-      this._edgeLines   = [];
-      this._edgeMap     = new Map();
-      this._particles   = [];
-      this._planeMeshes = [];
+      this._nodeMeshes   = [];
+      this._edgeLines    = [];
+      this._edgeMap      = new Map();
+      this._particles    = [];
+      this._planeMeshes  = [];
       this._nebulaGroups = [];
+      this._labelSprites = [];
+      this._pkgMeta      = new Map();
+
+      // Pre-calculate node degree (in-degree + out-degree) for sizing & hierarchy
+      const degreeMap = new Map();
+      rawEdges.forEach(e => {
+        const s = e.source || e.caller;
+        const t = e.target || e.callee;
+        if (s) degreeMap.set(s, (degreeMap.get(s) || 0) + 1);
+        if (t) degreeMap.set(t, (degreeMap.get(t) || 0) + 1);
+      });
 
       const nodeMap = new Map();  // id → nodeObj { id, x,y,z, pkg, colorHex, colorStr, isMethod, raw }
 
@@ -440,11 +568,11 @@
         if (!isCore || totalPkgs <= 1) {
           const armIdx  = pIdx % ARM_OFFSETS.length;
           const armStep = Math.floor(pIdx / ARM_OFFSETS.length) + 1;
-          const theta   = ARM_OFFSETS[armIdx] + armStep * 1.2;  // was 0.85 — wider steps
+          const theta   = ARM_OFFSETS[armIdx] + armStep * 1.2;
           const r       = SPIRAL_A * Math.exp(SPIRAL_B * theta);
           cx = r * Math.cos(theta);
           cz = r * Math.sin(theta);
-          cy = (armIdx % 2 === 0 ? 1 : -1) * armStep * 8;  // was 5 — more vertical spread
+          cy = (armIdx % 2 === 0 ? 1 : -1) * armStep * 8;
         }
 
         /* Separate classes and methods */
@@ -452,13 +580,12 @@
         const methodNodes = pkgNodes.filter(n => n.type === 'METHOD'  || n.kind === 'METHOD'  || n.id.includes('('));
 
         /* Place class "star" nodes in a fan ring around the package centre */
-        // All classes in the module share the exact same package module color
-        const ringR = Math.max(40, 22 * Math.sqrt(classNodes.length));
+        const ringR = Math.max(38, 20 * Math.sqrt(classNodes.length));
         classNodes.forEach((n, ci) => {
           const angle = (ci / Math.max(1, classNodes.length)) * Math.PI * 2;
           const r     = ringR + (ci % 3) * 12;
           const px    = cx + r * Math.cos(angle);
-          const py    = cy + (ci % 2 === 0 ? 9 : -9);
+          const py    = cy + (ci % 2 === 0 ? 8 : -8);
           const pz    = cz + r * Math.sin(angle);
 
           const obj = { id: n.id, label: n.label || n.simpleName || n.id.split('.').pop(), raw: n,
@@ -468,7 +595,6 @@
         });
 
         /* Place method "planet" nodes: group by parent class and share the module/class color */
-        // Group method nodes by parent class FQN
         const classGroups = new Map();
         methodNodes.forEach(n => {
           const parentClass = n.className || (n.id.includes('.')
@@ -500,13 +626,12 @@
           }
 
           grpMethods.forEach((n, mi) => {
-            const orbitR = 18 + Math.floor(mi / 6) * 12;
+            const orbitR = 15 + Math.floor(mi / 6) * 10;
             const orbitA = ((mi % 6) / 6) * Math.PI * 2 + Math.floor(mi / 6) * 0.7;
             const px = subCx + orbitR * Math.cos(orbitA);
-            const py = subCy + 6 * Math.sin(orbitA * 0.5);
+            const py = subCy + 5 * Math.sin(orbitA * 0.5);
             const pz = subCz + orbitR * Math.sin(orbitA);
 
-            // Methods take the exact color of their module/class
             const obj = { id: n.id, label: (n.label || n.simpleName || n.id.split('(')[0].split('.').pop()) + '()',
                           raw: n, x: px, y: py, z: pz, pkg: pkgName, parentClass: clsKey,
                           colorStr: colorStr, colorHex: colorHex, isMethod: true };
@@ -515,67 +640,149 @@
           });
         });
 
-        /* Package orbital disc + rim torus */
+        /* Package ethereal boundary rings */
         const pkgAll  = pkgNodes.map(n => nodeMap.get(n.id)).filter(Boolean);
         let diskR = 30;
         pkgAll.forEach(no => {
           const d = Math.sqrt((no.x - cx) ** 2 + (no.z - cz) ** 2);
-          if (d + 14 > diskR) diskR = d + 14;
+          if (d + 16 > diskR) diskR = d + 16;
         });
 
-        const diskGeo = new THREE.CylinderGeometry(diskR, diskR, 1.0, 40);
-        const diskMat = new THREE.MeshStandardMaterial({
-          color: colorHex, transparent: true, opacity: 0.09,
-          roughness: 0.9, metalness: 0, side: THREE.DoubleSide, depthWrite: false,
+        // Store package metadata for camera navigation
+        this._pkgMeta.set(pkgName, { cx, cy, cz, diskR, colorStr, colorHex });
+
+        // Outer ethereal orbital boundary ring
+        const ringGeo = new THREE.RingGeometry(diskR - 0.6, diskR, 80);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.22,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
         });
-        const disk = new THREE.Mesh(diskGeo, diskMat);
-        disk.position.set(cx, cy, cz);
-        disk.userData = { pkg: pkgName };
-        this._scene.add(disk);
-        this._planeMeshes.push(disk);
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(cx, cy - 2, cz);
+        ring.userData = { pkg: pkgName };
+        this._scene.add(ring);
+        this._planeMeshes.push(ring);
 
-        const rimGeo = new THREE.TorusGeometry(diskR, 0.9, 8, 64);
-        const rimMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.38, depthWrite: false });
-        const rim    = new THREE.Mesh(rimGeo, rimMat);
-        rim.rotation.x = Math.PI / 2;
-        rim.position.set(cx, cy, cz);
-        rim.userData = { pkg: pkgName };
-        this._scene.add(rim);
-        this._planeMeshes.push(rim);
+        // Inner concentric orbit guide ring
+        const innerGeo = new THREE.RingGeometry(diskR * 0.52 - 0.4, diskR * 0.52, 64);
+        const innerMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.09,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const innerRing = new THREE.Mesh(innerGeo, innerMat);
+        innerRing.rotation.x = Math.PI / 2;
+        innerRing.position.set(cx, cy - 2, cz);
+        innerRing.userData = { pkg: pkgName };
+        this._scene.add(innerRing);
+        this._planeMeshes.push(innerRing);
 
-        /* Nebula dust cloud (additive blending) */
+        // Faint translucent floor glow circle
+        const glowGeo = new THREE.CircleGeometry(diskR, 64);
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.024,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const glowDisc = new THREE.Mesh(glowGeo, glowMat);
+        glowDisc.rotation.x = Math.PI / 2;
+        glowDisc.position.set(cx, cy - 2.1, cz);
+        glowDisc.userData = { pkg: pkgName };
+        this._scene.add(glowDisc);
+        this._planeMeshes.push(glowDisc);
+
+        // Nebula dust cloud (additive cosmic dust)
         this._buildNebulaCloud(cx, cy, cz, diskR, colorHex, pkgName);
+
+        // Floating 3D in-world package billboard sprite
+        const displayPkg = (typeof formatPackageDisplayName === 'function')
+          ? formatPackageDisplayName(pkgName)
+          : (pkgName.split('.').pop() || pkgName);
+        const pkgSprite = this._createLabelSprite(displayPkg, colorStr, true);
+        pkgSprite.position.set(cx, cy + 14, cz);
+        pkgSprite.userData = { pkg: pkgName, isPackageLabel: true };
+        this._scene.add(pkgSprite);
+        this._labelSprites.push(pkgSprite);
       });
 
       /* ── 3. Build node sphere meshes ─────────────────────── */
+      const nodeMeshMap = new Map();
       this._nodes.forEach(n => {
         const isMeth = n.isMethod;
-        const radius = isMeth ? 3.5 : 6.0;
+        const deg    = degreeMap.get(n.id) || 0;
+        // Tasteful celestial scale: major classes 1.4-3.0, methods 0.45-0.75
+        const radius = isMeth
+          ? Math.max(0.45, Math.min(0.85, 0.45 + (deg > 3 ? 0.2 : 0)))
+          : Math.max(1.4, Math.min(3.0, 1.4 + Math.sqrt(deg) * 0.26));
         const hex    = n.colorHex;
 
+        // Radiant celestial star: self-luminous, soft starlight core
         const mat = new THREE.MeshStandardMaterial({
-          color: hex, emissive: hex,
-          emissiveIntensity: isMeth ? 0.45 : 0.55,
-          roughness: 0.15, metalness: 0.20,
+          color: hex,
+          emissive: hex,
+          emissiveIntensity: isMeth ? 0.75 : 1.15,
+          roughness: 0.82,
+          metalness: 0.05,
         });
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 20, 20), mat);
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, isMeth ? 12 : 24, isMeth ? 12 : 24), mat);
         mesh.position.set(n.x, n.y, n.z);
 
         let haloMesh = null;
-        // Class stars get a corona halo
+        // Major class stars get a soft ethereal starlight corona
         if (!isMeth) {
-          const hMat = new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.055, side: THREE.BackSide, depthWrite: false });
-          haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.7, 16, 16), hMat);
+          const hMat = new THREE.MeshBasicMaterial({
+            color: hex,
+            transparent: true,
+            opacity: 0.08,
+            side: THREE.BackSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          });
+          haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.2, 16, 16), hMat);
           haloMesh.position.copy(mesh.position);
           this._scene.add(haloMesh);
         }
 
-        mesh.userData = { node: n, colorStr: n.colorStr, pkg: n.pkg, isMethod: isMeth, haloMesh: haloMesh };
+        mesh.userData = {
+          node: n,
+          colorStr: n.colorStr,
+          pkg: n.pkg,
+          isMethod: isMeth,
+          haloMesh: haloMesh,
+          deg: deg,
+          baseRadius: radius,
+        };
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
+        nodeMeshMap.set(n.id, mesh);
       });
 
-      /* ── 4. Build bezier edge arcs ───────────────────────── */
+      // Top hub superstar labels (top 8 classes by degree for immediate architectural orientation)
+      const classStars = this._nodes.filter(n => !n.isMethod);
+      classStars.sort((a, b) => (degreeMap.get(b.id) || 0) - (degreeMap.get(a.id) || 0));
+      const topSuperstars = classStars.slice(0, 8).filter(n => (degreeMap.get(n.id) || 0) >= 2);
+
+      topSuperstars.forEach(sn => {
+        const simpleName = sn.label || sn.simpleName || (sn.id.includes('.') ? sn.id.split('.').pop() : sn.id);
+        const starSprite = this._createLabelSprite(simpleName, sn.colorStr, false);
+        const mesh = nodeMeshMap.get(sn.id);
+        const r = mesh ? mesh.userData.baseRadius : 2.0;
+        starSprite.position.set(sn.x, sn.y + r + 4.2, sn.z);
+        starSprite.userData = { pkg: sn.pkg, nodeId: sn.id, isClassLabel: true };
+        this._scene.add(starSprite);
+        this._labelSprites.push(starSprite);
+      });
+
+      /* ── 4. Build bezier edge arcs (Constellation Mode) ──── */
       rawEdges.forEach(e => {
         const src = nodeMap.get(e.source || e.caller);
         const tgt = nodeMap.get(e.target || e.callee);
@@ -588,18 +795,26 @@
 
         const cross   = src.pkg !== tgt.pkg;
         mid.y        += cross ? dist * 0.38 + 22 : dist * 0.18 + 8;
-        mid.x        += (Math.random() - 0.5) * 10;
-        mid.z        += (Math.random() - 0.5) * 10;
+        mid.x        += (Math.random() - 0.5) * 8;
+        mid.z        += (Math.random() - 0.5) * 8;
 
         const curve  = new THREE.QuadraticBezierCurve3(p1, mid, p2);
-        const pts    = curve.getPoints(28);
+        const pts    = curve.getPoints(24);
         const geo    = new THREE.BufferGeometry().setFromPoints(pts);
-        const arcCol = cross ? 0x6ee7b7 : src.colorHex;
-        const arcOp  = cross ? 0.55 : 0.35;
 
-        const lineMat = new THREE.LineBasicMaterial({ color: arcCol, transparent: true, opacity: arcOp });
+        // Default state: subtle, atmospheric cosmic threads
+        const arcCol = cross ? 0x38bdf8 : src.colorHex;
+        const arcOp  = cross ? 0.085 : 0.055;
+
+        const lineMat = new THREE.LineBasicMaterial({
+          color: arcCol,
+          transparent: true,
+          opacity: arcOp,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
         const line    = new THREE.Line(geo, lineMat);
-        line.userData = { src: src.id, tgt: tgt.id, origColor: arcCol, origOpacity: arcOp };
+        line.userData = { src: src.id, tgt: tgt.id, origColor: arcCol, origOpacity: arcOp, cross: cross };
         this._scene.add(line);
         this._edgeLines.push(line);
 
@@ -658,10 +873,10 @@
       const headPos = new Float32Array(N * 3);
       headGeo.setAttribute('position', new THREE.BufferAttribute(headPos, 3));
       const headMat = new THREE.PointsMaterial({
-        color: 0x6ee7b7, size: 5.5, transparent: true, opacity: 0.95,
+        color: 0x6ee7b7, size: 3.2, transparent: true, opacity: 0.95,
         depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
       });
-      this._cometGroup    = new THREE.Points(headGeo, headMat);
+      this._cometGroup     = new THREE.Points(headGeo, headMat);
       this._cometPositions = headPos;
       this._scene.add(this._cometGroup);
 
@@ -673,7 +888,7 @@
         tGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
         const tMat = new THREE.PointsMaterial({
           color: 0x34d399,
-          size: Math.max(1.0, 5.5 - t * 0.85),
+          size: Math.max(0.8, 3.2 - t * 0.45),
           transparent: true,
           opacity: 0.70 * Math.pow(0.52, t),
           depthWrite: false,
@@ -694,7 +909,14 @@
       this._toolbar.className = 'galaxy3d-hud-overlay';
       Object.assign(this._toolbar.style, {
         position: 'absolute', bottom: '16px', left: '16px',
-        display: 'flex', alignItems: 'center', gap: '8px', zIndex: '120',
+        display: 'flex', alignItems: 'center', gap: '6px', zIndex: '120',
+        background: 'rgba(5, 8, 16, 0.78)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255, 255, 255, 0.10)',
+        borderRadius: '9999px',
+        padding: '5px 10px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.55)',
       });
 
       const search = document.createElement('input');
@@ -702,27 +924,78 @@
       search.placeholder = 'Filter nodes...';
       search.className   = 'city3d-search-box';
       search.value       = this._filterQuery;
-      search.style.width = '130px';
+      search.style.width = '115px';
+      search.style.height = '24px';
+      search.style.fontSize = '11px';
+      search.style.borderRadius = '9999px';
+      search.style.padding = '0 10px';
       search.addEventListener('input', e => this.setFilter(e.target.value));
       this._toolbar.appendChild(search);
 
       const orbitBtn = document.createElement('button');
       orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
       orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
+      orbitBtn.title = 'Toggle Galactic Orbit rotation';
       orbitBtn.addEventListener('click', () => {
         this.toggleAutoRotate();
         orbitBtn.classList.toggle('active', this._autoRotate);
       });
       this._toolbar.appendChild(orbitBtn);
 
-      const planeBtn = document.createElement('button');
-      planeBtn.className = 'hud-btn' + (this._showPlanes ? ' active' : '');
-      planeBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Cluster Planes</span>';
-      planeBtn.addEventListener('click', () => {
-        this.togglePlanes();
-        planeBtn.classList.toggle('active', this._showPlanes);
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'hud-btn' + (this._isTopDown ? ' active' : '');
+      viewBtn.innerHTML = '<span class="hud-btn-icon">◎</span> <span class="hud-btn-text">' + (this._isTopDown ? '3D View' : 'Top-Down') + '</span>';
+      viewBtn.title = 'Switch between Top-Down map and 3D Celestial view';
+      viewBtn.addEventListener('click', () => {
+        const isTop = this.toggleTopDown();
+        viewBtn.classList.toggle('active', isTop);
+        viewBtn.querySelector('.hud-btn-text').textContent = isTop ? '3D View' : 'Top-Down';
       });
-      this._toolbar.appendChild(planeBtn);
+      this._toolbar.appendChild(viewBtn);
+
+      const labelBtn = document.createElement('button');
+      labelBtn.className = 'hud-btn' + (this._showLabels ? ' active' : '');
+      labelBtn.innerHTML = '<span class="hud-btn-icon">Aa</span> <span class="hud-btn-text">Labels</span>';
+      labelBtn.title = 'Toggle 3D Floating Package & Hub Labels';
+      labelBtn.addEventListener('click', () => {
+        const on = this.toggleLabels();
+        labelBtn.classList.toggle('active', on);
+      });
+      this._toolbar.appendChild(labelBtn);
+
+      const ringsBtn = document.createElement('button');
+      ringsBtn.className = 'hud-btn' + (this._showPlanes ? ' active' : '');
+      ringsBtn.innerHTML = '<span class="hud-btn-icon">◯</span> <span class="hud-btn-text">Rings</span>';
+      ringsBtn.title = 'Toggle Ethereal Orbital Boundary Rings';
+      ringsBtn.addEventListener('click', () => {
+        this.togglePlanes();
+        ringsBtn.classList.toggle('active', this._showPlanes);
+      });
+      this._toolbar.appendChild(ringsBtn);
+
+      const arcsBtn = document.createElement('button');
+      arcsBtn.className = 'hud-btn' + (this._showArcs ? ' active' : '');
+      arcsBtn.innerHTML = '<span class="hud-btn-icon">⤹</span> <span class="hud-btn-text">Arcs</span>';
+      arcsBtn.title = 'Toggle Call Arcs';
+      arcsBtn.addEventListener('click', () => {
+        const on = this.toggleArcs();
+        arcsBtn.classList.toggle('active', on);
+      });
+      this._toolbar.appendChild(arcsBtn);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'hud-btn';
+      resetBtn.innerHTML = '<span class="hud-btn-icon">⌖</span> <span class="hud-btn-text">Reset</span>';
+      resetBtn.title = 'Reset Camera to Galactic Overview';
+      resetBtn.addEventListener('click', () => {
+        this.resetView();
+        if (this._isTopDown) {
+          this._isTopDown = false;
+          viewBtn.classList.remove('active');
+          viewBtn.querySelector('.hud-btn-text').textContent = 'Top-Down';
+        }
+      });
+      this._toolbar.appendChild(resetBtn);
 
       this._el.appendChild(this._toolbar);
     }
@@ -804,6 +1077,12 @@
 
       this._nebulaGroups.forEach(ng => {
         ng.visible = !ng.userData || !this._hiddenPackages.has(ng.userData.pkg);
+      });
+
+      this._labelSprites.forEach(s => {
+        const pkgOk = !this._hiddenPackages.has(s.userData.pkg);
+        const entityOk = !s.userData.nodeId || visible.has(s.userData.nodeId);
+        s.visible = this._showLabels && pkgOk && entityOk;
       });
 
       this._updatePojoButton(hiddenPojoCount);
@@ -898,20 +1177,41 @@
       const id  = hitMesh.userData.node ? hitMesh.userData.node.id : null;
       if (!id) return;
       const neighbors = new Set();
+      const connectedLines = this._edgeMap.get(id) || [];
+      const connectedSet = new Set(connectedLines);
 
-      (this._edgeMap.get(id) || []).forEach(line => {
-        line.material.color.setHex(0xf0fdf4);
-        line.material.opacity = 0.92;
-        this._highlightEdges.push(line);
-        [line.userData.src, line.userData.tgt].forEach(nid => { if (nid !== id) neighbors.add(nid); });
+      // Light up incident lines with direction colors and dim all other lines
+      this._edgeLines.forEach(line => {
+        if (!line.visible) return;
+        if (connectedSet.has(line)) {
+          const isCaller = (line.userData.tgt === id);
+          if (isCaller) {
+            line.material.color.setHex(0xfbbf24);  // Warm gold for incoming callers
+            line.material.opacity = 0.95;
+          } else {
+            line.material.color.setHex(0x38bdf8);  // Electric cyber cyan for outgoing callees
+            line.material.opacity = 0.95;
+          }
+          this._highlightEdges.push(line);
+          [line.userData.src, line.userData.tgt].forEach(nid => { if (nid !== id) neighbors.add(nid); });
+        } else {
+          // Dim non-incident lines to faint whisper
+          line.material.opacity = 0.012;
+          this._dimmedEdges.push(line);
+        }
       });
 
+      // Brighten neighbors, dim unrelated nodes
       this._nodeMeshes.forEach(m => {
+        if (!m.visible || m === hitMesh) return;
         const nid = m.userData.node ? m.userData.node.id : null;
         if (nid && neighbors.has(nid)) {
-          m.scale.set(1.20, 1.20, 1.20);
-          m.material.emissiveIntensity = Math.min(3.5, m.material.emissiveIntensity * 1.8);
+          m.scale.set(1.25, 1.25, 1.25);
+          m.material.emissiveIntensity = 2.4;
           this._highlightNeighbors.push(m);
+        } else {
+          m.material.emissiveIntensity = 0.20;
+          this._dimmedNodes.push(m);
         }
       });
     }
@@ -919,28 +1219,62 @@
     _resetHover() {
       if (this._hoveredMesh) {
         const isMeth = this._hoveredMesh.userData.isMethod;
-        this._hoveredMesh.material.emissiveIntensity = isMeth ? 0.45 : 0.55;  // matches default
+        this._hoveredMesh.material.emissiveIntensity = isMeth ? 0.75 : 1.15;
         this._hoveredMesh.scale.set(1, 1, 1);
         this._hoveredMesh = null;
       }
       this._highlightEdges.forEach(l => {
-        l.material.color.setHex(l.userData.origColor || 0x6ee7b7);
-        l.material.opacity = l.userData.origOpacity || 0.35;
+        l.material.color.setHex(l.userData.origColor);
+        l.material.opacity = l.userData.origOpacity;
       });
       this._highlightEdges = [];
+      this._dimmedEdges.forEach(l => {
+        l.material.color.setHex(l.userData.origColor);
+        l.material.opacity = l.userData.origOpacity;
+      });
+      this._dimmedEdges = [];
+
       this._highlightNeighbors.forEach(m => {
         m.scale.set(1, 1, 1);
-        m.material.emissiveIntensity = m.userData.isMethod ? 0.45 : 0.55;
+        m.material.emissiveIntensity = m.userData.isMethod ? 0.75 : 1.15;
       });
       this._highlightNeighbors = [];
+
+      this._dimmedNodes.forEach(m => {
+        m.material.emissiveIntensity = m.userData.isMethod ? 0.75 : 1.15;
+      });
+      this._dimmedNodes = [];
     }
 
-    _onClick() {
-      if (!this._hoveredMesh) return;
-      const entity = this._hoveredMesh.userData.node.raw;
-      this.flyToNode(this._hoveredMesh);
-      if (entity && this._onSelectEntity) this._onSelectEntity(entity.id || entity.fqn);
-      else if (entity && window.selectEntity) window.selectEntity(entity.id || entity.fqn);
+    _onClick(ev) {
+      if (!this._el || !this._camera) return;
+      const rect    = this._el.getBoundingClientRect();
+      this._mouse.x =  ((ev.clientX - rect.left) / rect.width)  * 2 - 1;
+      this._mouse.y = -((ev.clientY - rect.top)  / rect.height) * 2 + 1;
+
+      this._raycaster.setFromCamera(this._mouse, this._camera);
+
+      // Check node meshes first
+      const nodeHits = this._raycaster.intersectObjects(this._nodeMeshes.filter(m => m.visible));
+      if (nodeHits.length > 0) {
+        const hit = nodeHits[0].object;
+        const entity = hit.userData.node ? hit.userData.node.raw : null;
+        this.flyToNode(hit);
+        if (entity && this._onSelectEntity) this._onSelectEntity(entity.id || entity.fqn);
+        else if (entity && window.selectEntity) window.selectEntity(entity.id || entity.fqn);
+        return;
+      }
+
+      // Check label sprites (clicking package label flies to package, clicking star label flies to star)
+      const labelHits = this._raycaster.intersectObjects(this._labelSprites.filter(s => s.visible));
+      if (labelHits.length > 0) {
+        const hitLabel = labelHits[0].object;
+        if (hitLabel.userData.isPackageLabel && hitLabel.userData.pkg) {
+          this.flyToPackage(hitLabel.userData.pkg);
+        } else if (hitLabel.userData.nodeId) {
+          this.flyToNode(hitLabel.userData.nodeId);
+        }
+      }
     }
 
     /* ─────────────────── Resize ─────────────────────────────── */
@@ -1114,7 +1448,16 @@
       this._nodeMeshes = []; this._edgeLines = []; this._particles = [];
       this._cometTails = []; this._nebulaGroups = [];
       this._planeMeshes = []; this._edgeMap = new Map();
-      this._highlightEdges = []; this._highlightNeighbors = [];
+      this._highlightEdges = []; this._dimmedEdges = [];
+      this._highlightNeighbors = []; this._dimmedNodes = [];
+      if (this._labelSprites) {
+        this._labelSprites.forEach(s => {
+          if (s.material && s.material.map) s.material.map.dispose();
+          if (s.material) s.material.dispose();
+        });
+        this._labelSprites = [];
+      }
+      if (this._pkgMeta) this._pkgMeta.clear();
     }
   }
 

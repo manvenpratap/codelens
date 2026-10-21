@@ -116,7 +116,7 @@ async function ensure3DStudioDependencies() {
   ]);
   await Promise.all([
     loadScript('/city3d.js?v=1.0.6'),
-    loadScript('/galaxy3d.js?v=1.0.6')
+    loadScript('/galaxy3d.js?v=1.0.7')
   ]);
 }
 
@@ -8814,6 +8814,7 @@ function renderCodebaseLegend(nodesOrTreeData) {
           <span class="legend-chevron" data-target="${safePkgId}" title="Expand / collapse classes"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
           <div class="legend-dot" style="background:${color}"></div>
           <span class="legend-label" title="${pkg}">${displayLabel}</span>
+          <span class="legend-focus-btn" data-pkg="${pkg}" title="Fly to package in 3D Galaxy" style="cursor:pointer;opacity:0.45;margin-left:auto;margin-right:4px;display:inline-flex;align-items:center;padding:2px 3px;border-radius:4px;"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></span>
           <span class="legend-count">${totalCount}</span>
         </div>
         <div class="legend-class-list" id="${safePkgId}">
@@ -8834,10 +8835,30 @@ function renderCodebaseLegend(nodesOrTreeData) {
     };
   });
 
+  // Wire package focus button (fly-to in 3D / Graph)
+  legendList.querySelectorAll('.legend-focus-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pkg = btn.dataset.pkg;
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.flyToPackage === 'function') {
+        App.activeAltRenderer.flyToPackage(pkg);
+      } else if (App.graph && typeof App.graph.focusPackage === 'function') {
+        App.graph.focusPackage(pkg);
+      }
+    };
+  });
+
   // Wire package toggle
   legendList.querySelectorAll('.legend-pkg-row').forEach(row => {
+    row.ondblclick = (e) => {
+      e.stopPropagation();
+      const pkg = row.dataset.pkg;
+      if (App.activeAltRenderer && typeof App.activeAltRenderer.flyToPackage === 'function') {
+        App.activeAltRenderer.flyToPackage(pkg);
+      }
+    };
     row.onclick = (e) => {
-      if (e.target.classList.contains('legend-chevron')) return;
+      if (e.target.classList.contains('legend-chevron') || e.target.closest('.legend-focus-btn')) return;
       const pkg = row.dataset.pkg;
       row.classList.toggle('dimmed');
       const isDimmed = row.classList.contains('dimmed');
