@@ -19,14 +19,14 @@ public class UnconstrainedScopeTest {
         if (expected != actual) throw new AssertionError(msg + " (expected: " + expected + ", got: " + actual + ")");
     }
 
-    public void testBfsDoesNotTruncateAt1500Nodes() {
+    public void testBfsDoesNotTruncateAt2500Nodes() {
         CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
         String root = "com.product.core.RootService.execute()";
         List<String> methodFqns = new ArrayList<>();
         methodFqns.add(root);
 
         List<CodeRelationship> rels = new ArrayList<>();
-        int nodeCount = 1600;
+        int nodeCount = 2500;
         for (int i = 0; i < nodeCount; i++) {
             String callee = "com.product.core.Worker" + i + ".doWork()";
             methodFqns.add(callee);
@@ -41,7 +41,51 @@ public class UnconstrainedScopeTest {
         analyzer.rebuild(methodFqns, rels);
 
         List<CallGraphAnalyzer.GraphNode> callees = analyzer.callees(root, 1);
-        assertEquals(nodeCount, callees.size(), "BFS must not truncate at 1500 nodes");
+        assertEquals(nodeCount, callees.size(), "BFS must not truncate at 2500 nodes");
+    }
+
+    public void testTouchPointsNotTruncatedAbove500() {
+        ModuleDependencyAnalyzer analyzer = new ModuleDependencyAnalyzer();
+        List<com.codelens.core.model.CodePackage> packages = new ArrayList<>();
+        List<com.codelens.core.model.CodeType> types = new ArrayList<>();
+        List<com.codelens.core.model.CodeMethod> methods = new ArrayList<>();
+        List<com.codelens.core.model.CodeField> fields = new ArrayList<>();
+        List<com.codelens.core.model.CodeRelationship> rels = new ArrayList<>();
+
+        com.codelens.core.model.CodePackage p1 = new com.codelens.core.model.CodePackage("com.alpha");
+        p1.setName("alpha");
+        packages.add(p1);
+        com.codelens.core.model.CodePackage p2 = new com.codelens.core.model.CodePackage("com.beta");
+        p2.setName("beta");
+        packages.add(p2);
+
+        com.codelens.core.model.CodeType t1 = new com.codelens.core.model.CodeType();
+        t1.setFqn("com.alpha.AlphaService");
+        t1.setSimpleName("AlphaService");
+        t1.setPackageFqn("com.alpha");
+        types.add(t1);
+
+        com.codelens.core.model.CodeType t2 = new com.codelens.core.model.CodeType();
+        t2.setFqn("com.beta.BetaService");
+        t2.setSimpleName("BetaService");
+        t2.setPackageFqn("com.beta");
+        types.add(t2);
+
+        int count = 650;
+        for (int i = 0; i < count; i++) {
+            CodeRelationship r = new CodeRelationship();
+            r.setFromEntityFqn("com.alpha.AlphaService.send" + i + "()");
+            r.setToEntityFqn("com.beta.BetaService.recv" + i + "()");
+            r.setKind("CALLS");
+            r.setSourceLine(i + 1);
+            rels.add(r);
+        }
+
+        ModuleDependencyAnalyzer.ModuleDependencyInsights insights =
+            analyzer.analyzeModule("alpha", packages, types, methods, fields, rels);
+        assertEquals(count, insights.totalTouchPoints, "Total touchpoints must match full 650");
+        assertEquals(1, insights.outgoingModules.size(), "Should have 1 outgoing module");
+        assertEquals(count, insights.outgoingModules.get(0).touchPoints.size(), "Sample list must not cap at 500");
     }
 
     public void testCriticalPathDoesNotTruncateUpstreamPaths() {

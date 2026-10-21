@@ -518,6 +518,10 @@ class ForceGraph {
     this._rawEdges    = [];
     this._worker      = null;
 
+    // Graphify-style Performance & LOD features
+    this._hideEdgesOnDrag = true;
+    this._maxDegree   = 1;
+
     // Public click callback
     this.onNodeClick = null;
 
@@ -551,6 +555,18 @@ class ForceGraph {
             }
           }
           this._ticks = msg.tick || this._ticks;
+          this._hullsDirty = true;
+          this._minimapDirty = true;
+          this._dirty = true;
+          this.requestFrame();
+        } else if (msg.type === 'completed') {
+          // Physics simulation finished & stabilized! Freeze physics to conserve 100% CPU
+          this._ticks = msg.tick || PHYSICS.maxTicks;
+          this._physicsEnabled = false;
+          ['btn-toggle-physics', 'btn-codebase-toggle-physics'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.remove('active');
+          });
           this._hullsDirty = true;
           this._minimapDirty = true;
           this._dirty = true;
@@ -1020,6 +1036,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       }
 
       this._nodes = allProcessedNodes;
+      this._maxDegree = Math.max(1, ...allProcessedNodes.map(n => n.degree || 1));
       this._nodeIndex = new Map();
       for (let i = 0; i < allProcessedNodes.length; i++) {
         this._nodeIndex.set(allProcessedNodes[i].id, i);
@@ -1262,6 +1279,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     });
 
     this._nodes = allProcessedNodes;
+    this._maxDegree = Math.max(1, ...allProcessedNodes.map(n => n.degree || 1));
     this._nodeIndex = new Map();
     for (let i = 0; i < allProcessedNodes.length; i++) {
       this._nodeIndex.set(allProcessedNodes[i].id, i);
@@ -1579,7 +1597,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     return node;
   }
 
-  focusNode(nodeId, scale = 1.35) {
+  focusNode(nodeId, targetScale = 1.35, duration = 300) {
     const node = this._findNodeByFqn(nodeId);
     if (!node) return;
 
@@ -1588,13 +1606,45 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const W = this._canvas.width / dpr;
     const H = this._canvas.height / dpr;
 
-    this._sc = scale;
-    this._tx = W / 2 - node.x * scale;
-    this._ty = H / 2 - node.y * scale;
+    const startTx = this._tx;
+    const startTy = this._ty;
+    const startSc = this._sc;
 
-    this._showNodeCard(node);
-    this._markDirty();
-    this.requestRender();
+    const endSc = targetScale;
+    const endTx = W / 2 - node.x * endSc;
+    const endTy = H / 2 - node.y * endSc;
+
+    const startTime = performance.now();
+    const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+    const animateCamera = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const ease = easeOutCubic(progress);
+
+      this._sc = startSc + (endSc - startSc) * ease;
+      this._tx = startTx + (endTx - startTx) * ease;
+      this._ty = startTy + (endTy - startTy) * ease;
+      this._markDirty();
+      this.requestFrame();
+
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera);
+      } else {
+        this._showNodeCard(node);
+      }
+    };
+
+    if (duration > 0 && (Math.abs(endTx - startTx) > 4 || Math.abs(endTy - startTy) > 4 || Math.abs(endSc - startSc) > 0.05)) {
+      requestAnimationFrame(animateCamera);
+    } else {
+      this._sc = endSc;
+      this._tx = endTx;
+      this._ty = endTy;
+      this._showNodeCard(node);
+      this._markDirty();
+      this.requestRender();
+    }
   }
 
   setCriticalPath(criticalPath) {
@@ -2121,6 +2171,13 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     this._hullsDirty = true;
     this._minimapDirty = true;
     this._ticks++;
+    if (this._ticks >= (PHYSICS.maxTicks || 180)) {
+      this._physicsEnabled = false;
+      ['btn-toggle-physics', 'btn-codebase-toggle-physics'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+      });
+    }
   }
 
 
@@ -2603,10 +2660,12 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
   /* ── 2. Curved Directed Edges & Flow Particles ───────────────────────────── */
 
   _drawEdges(ctx) {
-    const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isInteracting = this._isPanning || this._isDragging;
+    const isDense = this._edges.length > 75;
+    const reducedMotion = isInteracting || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const now = Date.now();
-    // Spawn energy particles only if user interacted recently (<2.5s) or physics is still active
-    const isUserActive = (now - this._lastInteractionTime < 2500) || (this._physicsEnabled && this._ticks < (PHYSICS.maxTicks || 180));
+    // Spawn energy particles only if user interacted recently (<2.5s) or physics is still active, but not while actively dragging/panning
+    const isUserActive = !isInteracting && ((now - this._lastInteractionTime < 2500) || (this._physicsEnabled && this._ticks < (PHYSICS.maxTicks || 180)));
     if (this._showParticles && !reducedMotion && isUserActive && now - this._lastParticleSpawn > 320 && this._edges.length > 0 && this._particles.length < 40) {
       this._lastParticleSpawn = now;
       const edgeIdx = Math.floor(Math.random() * this._edges.length);
@@ -2631,6 +2690,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const vyMin = (0 - this._ty) / this._sc - 80;
     const vxMax = (canvasW - this._tx) / this._sc + 80;
     const vyMax = (canvasH - this._ty) / this._sc + 80;
+
+    // Fast path: if actively panning/dragging on a dense graph and hideEdgesOnDrag is enabled
+    // Only draw incident or critical edges while moving to guarantee 60 FPS
+    const hideNonIncident = isInteracting && isDense && this._hideEdgesOnDrag;
 
     // Index active particles by edgeIdx once per frame (O(P) instead of O(E * P))
     const particlesByEdge = new Map();
@@ -2662,13 +2725,21 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       const cpEdge = (this._criticalPath && this._criticalPathEdges) ? this._criticalPathEdges.get(edgeKey) : null;
       const isCriticalEdge = !!cpEdge;
 
-      // Focus opacity logic
+      // Hide edges on drag fast-path (skip non-incident background edges while moving)
+      if (hideNonIncident) {
+        const isIncident = activeNode && (src.id === activeNode.id || tgt.id === activeNode.id);
+        if (!isIncident && !isCriticalEdge) {
+          continue;
+        }
+      }
+
+      // Focus opacity logic (enhanced Graphify contrast)
       let opacity = 0.65;
       if (this._criticalPath) {
         opacity = isCriticalEdge ? 1.0 : 0.08;
       } else if (activeNode) {
         const isIncident = (src.id === activeNode.id || tgt.id === activeNode.id);
-        opacity = isIncident ? 1.0 : 0.12;
+        opacity = isIncident ? 1.0 : 0.06;
       }
 
       const edgeParticles = particlesByEdge.get(i) || null;
@@ -2807,19 +2878,22 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       } else if (activeNode) {
         const isSelf = (node.id === activeNode.id);
         const isNeighbor = connectedSet && connectedSet.has(node.id);
-        opacity = (isSelf || isNeighbor) ? 1.0 : 0.18;
+        opacity = (isSelf || isNeighbor) ? 1.0 : 0.08;
       }
 
       const isHovered = (node === this._hoveredNode);
       const isSelected = (node === this._selectedNode);
       const isConnected = connectedSet && connectedSet.has(node.id);
 
-      // Semantic LOD: when zoomed out (zoom < 0.6), hide labels unless active/hovered or on critical path
+      // Graphify-style Adaptive LOD:
       let shouldDrawLabel = this._showLabels && !isZoomedOutLOD;
-      if (isCriticalNode) {
+      if (isCriticalNode || isHovered || isSelected || isConnected) {
         shouldDrawLabel = true;
       } else if (this._showLabels && isDenseGraph && !isZoomedIn) {
-        shouldDrawLabel = isHovered || isSelected || isConnected || node.role === 'root' || node.role === 'class' || (node.degree >= 5);
+        // Show labels only for structural hubs (top degree nodes) and roots
+        const maxDeg = this._maxDegree || 10;
+        const isHub = (node.degree >= Math.max(3, maxDeg * 0.15)) || (node.isBranchCore);
+        shouldDrawLabel = (node.role === 'root') || isHub;
       }
 
       this._drawSingleNode(ctx, node, opacity, isHovered, isSelected, shouldDrawLabel, isCriticalNode);

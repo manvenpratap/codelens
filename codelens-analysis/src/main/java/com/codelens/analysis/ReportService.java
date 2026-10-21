@@ -1414,32 +1414,110 @@ public class ReportService {
         Map<String, Integer> methodCallees = new HashMap<>();
         Map<String, Set<String>> classCallers = new HashMap<>();
 
+        Set<String> knownTypes = new HashSet<>(types.size() * 2);
+        Map<String, String> simpleToType = new HashMap<>(types.size() * 2);
+        Map<String, List<String>> typeToMethods = new HashMap<>(types.size());
+
         for (CodeType t : types) {
-            classCallers.put(t.getFqn(), new HashSet<>());
+            String fqn = t.getFqn();
+            classCallers.put(fqn, new HashSet<>());
+            knownTypes.add(fqn);
+            if (t.getSimpleName() != null) {
+                simpleToType.put(t.getSimpleName(), fqn);
+                simpleToType.put(t.getSimpleName().toLowerCase(Locale.ROOT), fqn);
+            }
         }
 
         Set<String> accessedFields = new HashSet<>();
 
-        Map<String, String> methodToClass = new HashMap<>(methods.size());
+        Map<String, String> methodToClass = new HashMap<>(methods.size() * 2);
         for (CodeMethod m : methods) {
-            methodToClass.put(m.getFqn(), m.getDeclaringTypeFqn());
+            String dType = m.getDeclaringTypeFqn();
+            methodToClass.put(m.getFqn(), dType);
+            if (dType != null) {
+                typeToMethods.computeIfAbsent(dType, k -> new ArrayList<>()).add(m.getFqn());
+                if (m.getSimpleName() != null) {
+                    methodToClass.put(dType + "." + m.getSimpleName(), dType);
+                }
+            }
         }
+
+        Map<String, String> fieldToClass = new HashMap<>(fields.size() * 2);
+        for (CodeField f : fields) {
+            String dType = f.getDeclaringTypeFqn();
+            fieldToClass.put(f.getFqn(), dType);
+            if (dType != null && f.getSimpleName() != null) {
+                fieldToClass.put(dType + "." + f.getSimpleName(), dType);
+            }
+        }
+
+        java.util.function.Function<String, String> resolveClass = (entityFqn) -> {
+            if (entityFqn == null || entityFqn.isEmpty()) return null;
+            if (knownTypes.contains(entityFqn)) return entityFqn;
+            if (methodToClass.containsKey(entityFqn)) return methodToClass.get(entityFqn);
+            if (fieldToClass.containsKey(entityFqn)) return fieldToClass.get(entityFqn);
+
+            String raw = entityFqn.startsWith("~") ? entityFqn.substring(1) : entityFqn;
+            if (knownTypes.contains(raw)) return raw;
+            if (simpleToType.containsKey(raw)) return simpleToType.get(raw);
+
+            String cls = extractClassFromFqn(raw);
+            if (cls != null && !cls.isEmpty()) {
+                if (knownTypes.contains(cls)) return cls;
+                if (simpleToType.containsKey(cls)) return simpleToType.get(cls);
+                String low = cls.toLowerCase(Locale.ROOT);
+                if (simpleToType.containsKey(low)) return simpleToType.get(low);
+                return cls;
+            }
+            return null;
+        };
 
         for (CodeRelationship r : relationships) {
             String kind = r.getKind();
+            String src = r.getFromEntityFqn();
+            String tgt = r.getToEntityFqn();
+
             if ("CALLS".equals(kind)) {
-                String src = r.getFromEntityFqn();
-                String tgt = r.getToEntityFqn();
                 methodCallees.put(src, methodCallees.getOrDefault(src, 0) + 1);
                 methodCallers.put(tgt, methodCallers.getOrDefault(tgt, 0) + 1);
 
-                String srcClass = methodToClass.getOrDefault(src, extractClassFromFqn(src));
-                String tgtClass = methodToClass.getOrDefault(tgt, extractClassFromFqn(tgt));
-                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)) {
+                String srcClass = resolveClass.apply(src);
+                String tgtClass = resolveClass.apply(tgt);
+                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)
+                    && !srcClass.startsWith(tgtClass + "$") && !tgtClass.startsWith(srcClass + "$")) {
                     classCallers.computeIfAbsent(tgtClass, k -> new HashSet<>()).add(srcClass);
                 }
             } else if ("READS_FIELD".equals(kind) || "WRITES_FIELD".equals(kind)) {
-                accessedFields.add(r.getToEntityFqn());
+                accessedFields.add(tgt);
+                String srcClass = resolveClass.apply(src);
+                String fieldClass = resolveClass.apply(tgt);
+                if (fieldClass != null) {
+                    int dot = tgt.lastIndexOf('.');
+                    if (dot >= 0) {
+                        accessedFields.add(fieldClass + "." + tgt.substring(dot + 1));
+                    }
+                }
+                if (srcClass != null && fieldClass != null && !srcClass.equals(fieldClass)
+                    && !srcClass.startsWith(fieldClass + "$") && !fieldClass.startsWith(srcClass + "$")) {
+                    classCallers.computeIfAbsent(fieldClass, k -> new HashSet<>()).add(srcClass);
+                }
+            } else {
+                // Type references, inheritance, instantiation, etc.
+                String srcClass = resolveClass.apply(src);
+                String tgtClass = resolveClass.apply(tgt);
+                if (srcClass != null && tgtClass != null && !srcClass.equals(tgtClass)
+                    && !srcClass.startsWith(tgtClass + "$") && !tgtClass.startsWith(srcClass + "$")) {
+                    classCallers.computeIfAbsent(tgtClass, k -> new HashSet<>()).add(srcClass);
+                }
+            }
+        }
+
+        if (callGraph != null) {
+            for (CodeType t : types) {
+                Set<String> externalCallers = callGraph.getExternalCallersForClass(t.getFqn(), typeToMethods.get(t.getFqn()));
+                if (!externalCallers.isEmpty()) {
+                    classCallers.computeIfAbsent(t.getFqn(), k -> new HashSet<>()).addAll(externalCallers);
+                }
             }
         }
 
@@ -1485,6 +1563,18 @@ public class ReportService {
             if (callers.isEmpty()) {
                 String simple = t.getSimpleName();
                 if (isMainOrFrameworkClass(simple)) continue;
+
+                List<String> declaredMethods = typeToMethods.get(t.getFqn());
+                boolean hasMain = false;
+                if (declaredMethods != null) {
+                    for (String dm : declaredMethods) {
+                        if (dm.contains(".main(") || dm.endsWith(".main")) {
+                            hasMain = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasMain) continue;
 
                 OrphanedClassItem cItem = new OrphanedClassItem();
                 cItem.classFqn = t.getFqn();

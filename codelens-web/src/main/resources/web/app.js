@@ -273,6 +273,7 @@ const api = {
   scanChanges:        (sourcePath) => api.get(`/scan/changes${sourcePath ? '?sourcePath=' + encodeURIComponent(sourcePath) : ''}`),
   startScan:          (sourcePath, excludePatterns) => api.post('/scan', { sourcePath, excludePatterns }),
   startIncrementalScan: (sourcePath, excludePatterns) => api.post('/scan/incremental', { sourcePath, excludePatterns }),
+  cancelScan:         ()          => api.post('/scan/cancel', {}),
   processes:          ()          => api.get('/processes'),
   killProcess:        (id)        => api.post(`/processes/${enc(id)}/kill`, {}),
   restartProcess:     (id)        => api.post(`/processes/${enc(id)}/restart`, {}),
@@ -601,6 +602,12 @@ function initLiveEventBus() {
             App.scanPollHandle = null;
           }
           onScanComplete(s);
+        } else if (s.status === 'CANCELLED') {
+          if (App.scanPollHandle) {
+            clearInterval(App.scanPollHandle);
+            App.scanPollHandle = null;
+          }
+          onScanCancelled(s);
         } else if (s.status === 'ERROR') {
           if (App.scanPollHandle) {
             clearInterval(App.scanPollHandle);
@@ -647,6 +654,10 @@ function pollScanStatus() {
         clearInterval(App.scanPollHandle);
         App.scanPollHandle = null;
         onScanComplete(s);
+      } else if (s.status === 'CANCELLED') {
+        clearInterval(App.scanPollHandle);
+        App.scanPollHandle = null;
+        onScanCancelled(s);
       } else if (s.status === 'ERROR') {
         clearInterval(App.scanPollHandle);
         App.scanPollHandle = null;
@@ -3467,16 +3478,42 @@ function renderScanProgress(s) {
   const spinnerRing = qs('.scan-spinner-ring');
   if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
     if (headingEl) headingEl.textContent = 'Analysis Complete';
-    if (modalCard) modalCard.classList.add('is-complete');
+    if (modalCard) {
+      modalCard.classList.remove('is-cancelled', 'is-error');
+      modalCard.classList.add('is-complete');
+    }
     if (spinnerRing && !spinnerRing.classList.contains('is-complete')) {
+      spinnerRing.classList.remove('is-cancelled', 'is-error');
       spinnerRing.classList.add('is-complete');
       spinnerRing.innerHTML = '<svg class="svg-icon icon-sm icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
     }
+  } else if (s.status === 'CANCELLED') {
+    if (headingEl) headingEl.textContent = 'Scan Cancelled';
+    if (modalCard) {
+      modalCard.classList.remove('is-complete', 'is-error');
+      modalCard.classList.add('is-cancelled');
+    }
+    if (spinnerRing) {
+      spinnerRing.classList.remove('is-complete', 'is-error');
+      spinnerRing.classList.add('is-cancelled');
+      spinnerRing.innerHTML = '<svg class="svg-icon icon-sm" style="color:var(--text-muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    }
+  } else if (s.status === 'ERROR' || s.status === 'FAILED') {
+    if (headingEl) headingEl.textContent = 'Scan Failed';
+    if (modalCard) {
+      modalCard.classList.remove('is-complete', 'is-cancelled');
+      modalCard.classList.add('is-error');
+    }
+    if (spinnerRing) {
+      spinnerRing.classList.remove('is-complete', 'is-cancelled');
+      spinnerRing.classList.add('is-error');
+      spinnerRing.innerHTML = '<svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
   } else {
     if (headingEl) headingEl.textContent = 'Analyzing Codebase';
-    if (modalCard) modalCard.classList.remove('is-complete');
-    if (spinnerRing && spinnerRing.classList.contains('is-complete')) {
-      spinnerRing.classList.remove('is-complete');
+    if (modalCard) modalCard.classList.remove('is-complete', 'is-cancelled', 'is-error');
+    if (spinnerRing) {
+      spinnerRing.classList.remove('is-complete', 'is-cancelled', 'is-error');
       spinnerRing.innerHTML = '<div class="scan-spinner-core"></div>';
     }
   }
@@ -3486,6 +3523,10 @@ function renderScanProgress(s) {
   if (statusText) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       statusText.textContent = 'Codebase analysis complete';
+    } else if (s.status === 'CANCELLED') {
+      statusText.textContent = 'Scan was cancelled by user';
+    } else if (s.status === 'ERROR' || s.status === 'FAILED') {
+      statusText.textContent = s.error || s.message || 'Scan failed';
     } else if (stage === 'REPORTS' || (s.currentPhase && s.currentPhase.includes('Reports'))) {
       statusText.textContent = s.message || 'Generating codebase intelligence reports…';
     } else if (stage === 'CODESTORY' || (s.currentPhase && s.currentPhase.includes('Story'))) {
@@ -3511,6 +3552,8 @@ function renderScanProgress(s) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       const pData = getPhaseMetricsData(App.selectedScanPhase || 'PARSE', s);
       detailText.innerHTML = `<span style="color:var(--emerald); font-weight:600;">✓ ${esc(pData.detailText)}</span>`;
+    } else if (s.status === 'CANCELLED') {
+      detailText.innerHTML = `<span style="color:var(--text-muted); font-weight:500;">Analysis cancelled at ${pct}% · Engine returned to standby</span>`;
     } else if (s.currentDetail && (s.currentDetail.includes('/') || s.currentDetail.includes('\\'))) {
       const slash = s.currentDetail.includes('/') ? '/' : '\\';
       const parts = s.currentDetail.split(slash);
@@ -3531,6 +3574,9 @@ function renderScanProgress(s) {
     if (s.status === 'COMPLETE' || currentStepNum > stepNum) {
       stepEl.classList.add('step-complete');
       if (dot) dot.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (s.status === 'CANCELLED' || s.status === 'ERROR') {
+      stepEl.classList.add('step-pending');
+      if (dot) dot.innerHTML = `<span class="step-dot-num">${stepNum}</span>`;
     } else if (currentStepNum === stepNum) {
       stepEl.classList.add('step-active');
       if (dot) dot.innerHTML = `<span class="step-dot-num">${stepNum}</span>`;
@@ -3792,6 +3838,14 @@ function renderScanProgress(s) {
         fPill.style.display = 'inline-flex';
         fPill.textContent = 'READY';
         fPill.className = 'footer-scan-pill footer-scan-pill-complete';
+      } else if (s.status === 'CANCELLED') {
+        fPill.style.display = 'inline-flex';
+        fPill.textContent = 'CANCELLED';
+        fPill.className = 'footer-scan-pill footer-scan-pill-muted';
+      } else if (s.status === 'ERROR' || s.status === 'FAILED') {
+        fPill.style.display = 'inline-flex';
+        fPill.textContent = 'FAILED';
+        fPill.className = 'footer-scan-pill footer-scan-pill-error';
       } else {
         fPill.style.display = 'none';
       }
@@ -3805,15 +3859,29 @@ function renderScanProgress(s) {
   }
 
   if (fText) {
-    const detailSnippet = s.currentDetail ? ` · ${s.currentDetail}` : '';
-    const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''}${detailSnippet} (${pct}%)`;
-    fText.textContent = txt;
-    fText.title = txt + ' (Click to view scan dialog)';
+    if (s.status === 'CANCELLED') {
+      fText.textContent = `[CANCELLED] Scan cancelled at ${pct}%`;
+      fText.title = 'Scan was cancelled by user';
+    } else if (s.status === 'ERROR' || s.status === 'FAILED') {
+      fText.textContent = `[FAILED] ${s.error || s.message || 'Scan failed'}`;
+      fText.title = 'Scan failed (Click to view dialog)';
+    } else {
+      const detailSnippet = s.currentDetail ? ` · ${s.currentDetail}` : '';
+      const txt = `[${s.currentPhase || 'SCAN'}] ${s.message || ''}${detailSnippet} (${pct}%)`;
+      fText.textContent = txt;
+      fText.title = txt + ' (Click to view scan dialog)';
+    }
   }
   if (fInd) {
     if (s.status === 'COMPLETE' || stage === 'COMPLETE') {
       fInd.className = 'status-indicator live';
       fInd.title = 'Codebase analysis complete · Engine ready (Click to view scan dialog)';
+    } else if (s.status === 'CANCELLED') {
+      fInd.className = 'status-indicator standby';
+      fInd.title = 'Scan cancelled · Engine standby';
+    } else if (s.status === 'ERROR' || s.status === 'FAILED') {
+      fInd.className = 'status-indicator error';
+      fInd.title = 'Scan failed (Click to view scan dialog)';
     } else {
       fInd.className = 'status-indicator busy';
       fInd.title = 'Active scan running (Click to view scan dialog)';
@@ -3830,12 +3898,28 @@ function renderScanProgress(s) {
   if (s.status === 'COMPLETE') {
     if (btnBg) btnBg.style.display = 'none';
     if (btnCancel) btnCancel.style.display = 'none';
-    if (btnDismiss) btnDismiss.style.display = 'inline-flex';
+    if (btnDismiss) {
+      btnDismiss.style.display = 'inline-flex';
+      btnDismiss.textContent = 'Close';
+    }
     if (btnExploreCodestory) btnExploreCodestory.style.display = 'inline-flex';
     if (btnExplore) btnExplore.style.display = 'inline-flex';
+  } else if (s.status === 'ERROR' || s.status === 'FAILED' || s.status === 'CANCELLED') {
+    if (btnBg) btnBg.style.display = 'none';
+    if (btnCancel) btnCancel.style.display = 'none';
+    if (btnDismiss) {
+      btnDismiss.style.display = 'inline-flex';
+      btnDismiss.textContent = 'Dismiss';
+    }
+    if (btnExploreCodestory) btnExploreCodestory.style.display = 'none';
+    if (btnExplore) btnExplore.style.display = 'none';
   } else {
     if (btnBg) btnBg.style.display = 'inline-flex';
-    if (btnCancel) btnCancel.style.display = 'inline-flex';
+    if (btnCancel) {
+      btnCancel.style.display = 'inline-flex';
+      btnCancel.disabled = false;
+      btnCancel.textContent = 'Cancel Scan';
+    }
     if (btnDismiss) btnDismiss.style.display = 'none';
     if (btnExploreCodestory) btnExploreCodestory.style.display = 'none';
     if (btnExplore) btnExplore.style.display = 'none';
@@ -3965,6 +4049,44 @@ async function onScanComplete(s) {
   updateFooterGitBranch();
 
   showBanner(`Scan complete - ${s.typesFound} types · ${s.methodsFound} methods · ${s.fieldsFound} fields · All graph views ready`);
+}
+
+/** Called when active scan is cancelled. Immediately stops all spinners, progress bars, and animations. */
+function onScanCancelled(s) {
+  if (App.scanPollHandle) {
+    clearInterval(App.scanPollHandle);
+    App.scanPollHandle = null;
+  }
+  setScanUI('idle');
+  const progressBar = qs('#scan-progress-bar');
+  if (progressBar) progressBar.style.width = '0%';
+
+  const sObj = s || { status: 'CANCELLED', percentage: App.lastScanProgress?.percentage || 0 };
+  updateScanProgress(sObj);
+  updateScanSummaryUI(sObj);
+
+  const fText = qs('#footer-status-text');
+  const fInd = qs('.status-indicator');
+  const fPill = qs('#footer-scan-pill');
+  const fTrack = qs('#footer-scan-mini-track');
+  const fContainer = qs('#footer-status-container');
+  if (fPill) {
+    fPill.style.display = 'inline-flex';
+    fPill.textContent = 'CANCELLED';
+    fPill.className = 'footer-scan-pill footer-scan-pill-muted';
+  }
+  if (fTrack) fTrack.style.display = 'none';
+  if (fContainer) fContainer.classList.remove('footer-status-scanning');
+  if (fText) {
+    fText.textContent = 'Scan cancelled';
+    fText.title = 'Scan was cancelled by user';
+  }
+  if (fInd) {
+    fInd.className = 'status-indicator standby';
+    fInd.title = 'Scan cancelled · Engine standby';
+  }
+
+  showBanner('Scan cancelled.');
 }
 
 
@@ -4625,7 +4747,12 @@ function switchTab(tabName) {
   }
 
   // Reflect active state on global Reports header action button
-  qs('#export-btn')?.classList.toggle('active', tabName === 'reports');
+  const isReports = (tabName === 'reports');
+  const exportBtn = qs('#export-btn');
+  if (exportBtn) {
+    exportBtn.classList.toggle('active', isReports);
+    exportBtn.setAttribute('aria-pressed', isReports ? 'true' : 'false');
+  }
 
   if (tabName === 'codebase') {
     document.body.classList.add('macro-studio-mode');
@@ -5587,7 +5714,7 @@ function renderMethodRow(m, type) {
 }
 
 /** Load and render all types for a given package in the KB tab. */
-async function loadKnowledgeBase(pkgFqn, initialTab = null) {
+async function loadKnowledgeBase(pkgFqn, initialTab = null, targetSubView = null) {
   const view = qs('#knowledge-view');
   if (!view) return;
 
@@ -5720,10 +5847,10 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
         if (filterEl) filterEl.textContent = 'DEPENDENCIES';
         if (moduleDepData) {
           if (showingEl) showingEl.textContent = ((moduleDepData.outgoingModules?.length || 0) + (moduleDepData.incomingModules?.length || 0)) + ' modules';
-          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, moduleDepData);
+          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, moduleDepData, targetSubView);
         } else {
           // Guaranteed fallback without hanging
-          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, { outgoingModules: [], incomingModules: [], totalTouchPoints: 0, moduleName: pkgFqn.split('.').pop() });
+          renderKnowledgeBaseDependenciesView(pkgFqn, contentContainer, { outgoingModules: [], incomingModules: [], totalTouchPoints: 0, moduleName: pkgFqn.split('.').pop() }, targetSubView);
         }
         return;
       }
@@ -5825,7 +5952,7 @@ async function loadKnowledgeBase(pkgFqn, initialTab = null) {
 
 /** Render comprehensive Module Dependencies, Touch Points, Class Usages, and Function Calls in Knowledge Base */
 /** Render comprehensive Module Dependencies, Touch Points, Class Usages, and Function Calls in Knowledge Base */
-function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
+function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData, targetSubView = null) {
   if (!depData) {
     container.innerHTML = `
       <div class="kb-empty-container fade-in">
@@ -6545,7 +6672,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
 
   // 2. KPI Architecture & Instability Banner with Direction Filters
   let currentDirectionFilter = 'ALL'; // 'ALL' | 'INBOUND' | 'OUTBOUND'
-  let currentSubView = 'modules'; // 'modules' | 'class-usage' | 'function-calls' | 'external'
+  let currentSubView = targetSubView || 'modules'; // 'modules' | 'class-usage' | 'function-calls' | 'external'
   let currentKindFilter = 'ALL';
   let currentSearchQuery = '';
   let currentSortMode = 'pts-desc';
@@ -6673,10 +6800,10 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   const controlsBar = createElement('div', { class: 'mod-dep-controls-bar' });
   controlsBar.innerHTML = `
     <div class="mod-dep-subtabs" role="tablist">
-      <button class="mod-dep-subtab active" data-subview="modules">Connected Modules (${depData.outgoingModules.length + depData.incomingModules.length})</button>
-      <button class="mod-dep-subtab" data-subview="class-usage">Intermodular Class Usage (${allClassUsages.length})</button>
-      <button class="mod-dep-subtab" data-subview="function-calls">Intermodular Function Calls (${allFunctionCalls.length})</button>
-      ${depData.externalDependencies && depData.externalDependencies.length > 0 ? `<button class="mod-dep-subtab" data-subview="external">External (${depData.externalDependencies.length})</button>` : ''}
+      <button class="mod-dep-subtab ${currentSubView === 'modules' ? 'active' : ''}" data-subview="modules">Connected Modules (${depData.outgoingModules.length + depData.incomingModules.length})</button>
+      <button class="mod-dep-subtab ${currentSubView === 'class-usage' ? 'active' : ''}" data-subview="class-usage">Intermodular Class Usage (${allClassUsages.length})</button>
+      <button class="mod-dep-subtab ${currentSubView === 'function-calls' ? 'active' : ''}" data-subview="function-calls">Intermodular Function Calls (${allFunctionCalls.length})</button>
+      ${depData.externalDependencies && depData.externalDependencies.length > 0 ? `<button class="mod-dep-subtab ${currentSubView === 'external' ? 'active' : ''}" data-subview="external">External (${depData.externalDependencies.length})</button>` : ''}
     </div>
     <div class="mod-dep-controls-right">
       <div class="mod-dep-sort-group">
@@ -6755,6 +6882,144 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
     } else if (currentSubView === 'external') {
       renderExternalSubView();
     }
+  }
+
+  // Progressive batch renderer for large touchpoint / call lists (prevents browser lockup while preserving 100% data access)
+  function renderProgressiveTouchpoints(container, tps, onSelectType) {
+    if (!tps || tps.length === 0) {
+      container.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text-muted);">No specific function calls recorded.</div>';
+      return;
+    }
+    let rendered = 0;
+    const BATCH = 50;
+    const listEl = createElement('div', { class: 'mod-dep-calls-list' });
+    const footerEl = createElement('div', { class: 'mod-dep-calls-footer', style: 'padding:8px 12px; display:flex; align-items:center; justify-content:space-between; background:var(--bg-card); border-top:1px solid var(--border-color);' });
+    container.innerHTML = '';
+    container.appendChild(listEl);
+    container.appendChild(footerEl);
+
+    function appendNext() {
+      const chunk = tps.slice(rendered, rendered + BATCH);
+      for (const tp of chunk) {
+        const row = createElement('div', { class: 'mod-dep-call-row' });
+        row.innerHTML = `
+          <div class="mod-dep-call-chain">
+            <span class="rel-dot ${esc(tp.kind || '')}"></span>
+            <span class="class-kind-pill ${esc(tp.kind || '')}">${esc(tp.kind || '')}</span>
+            <span class="mod-dep-call-caller" title="${esc(tp.fromEntity || '')}">${formatSignatureHtml(tp.fromEntity || '')}</span>
+            <span class="mod-dep-call-arrow">➔</span>
+            <span class="mod-dep-call-callee" title="${esc(tp.toEntity || '')}">${formatSignatureHtml(tp.toEntity || '')}</span>
+          </div>
+          <div class="mod-dep-call-meta">
+            ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line">Line ${tp.sourceLine}</span>` : ''}
+          </div>
+        `;
+        if (onSelectType) {
+          row.querySelector('.mod-dep-call-caller')?.addEventListener('click', () => {
+            if (tp.fromType) onSelectType(tp.fromType);
+          });
+          row.querySelector('.mod-dep-call-callee')?.addEventListener('click', () => {
+            if (tp.toType) onSelectType(tp.toType);
+          });
+        }
+        listEl.appendChild(row);
+      }
+      rendered += chunk.length;
+      footerEl.innerHTML = '';
+      if (rendered < tps.length) {
+        const remaining = tps.length - rendered;
+        footerEl.style.display = 'flex';
+        footerEl.innerHTML = `
+          <span style="font-size:11px; color:var(--text-muted);">Showing <strong>${rendered}</strong> of <strong>${tps.length}</strong> touchpoints</span>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-xs btn-ghost btn-load-more" style="font-size:11px;">
+              Show next ${Math.min(remaining, BATCH)}
+            </button>
+            <button class="btn btn-xs btn-secondary btn-load-all" style="font-size:11px;">
+              Show all (${remaining} remaining)
+            </button>
+          </div>
+        `;
+        footerEl.querySelector('.btn-load-more')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          appendNext();
+        });
+        footerEl.querySelector('.btn-load-all')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          while (rendered < tps.length) {
+            appendNext();
+          }
+        });
+      } else {
+        if (tps.length > BATCH) {
+          footerEl.style.display = 'flex';
+          footerEl.innerHTML = `<span style="font-size:11px; color:var(--text-muted); width:100%; text-align:center;">All <strong>${tps.length}</strong> touchpoints loaded</span>`;
+        } else {
+          footerEl.style.display = 'none';
+        }
+      }
+    }
+
+    appendNext();
+  }
+
+  function renderProgressiveCalls(container, calls, title) {
+    if (!calls || calls.length === 0) {
+      container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>';
+      return;
+    }
+    let rendered = 0;
+    const BATCH = 30;
+    container.innerHTML = `
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">
+        ${title || 'Intermodular Calls'} (${calls.length})
+      </div>
+      <div class="calls-batch-container"></div>
+      <div class="calls-batch-footer" style="padding:4px 0; display:flex; align-items:center; justify-content:space-between;"></div>
+    `;
+    const batchList = container.querySelector('.calls-batch-container');
+    const batchFooter = container.querySelector('.calls-batch-footer');
+
+    function appendNextCalls() {
+      const chunk = calls.slice(rendered, rendered + BATCH);
+      const html = chunk.map(tp => `
+        <div class="class-pair-call-item">
+          <div class="call-item-main">
+            <span class="class-kind-pill ${esc(tp.kind || '')}">${esc(tp.kind || '')}</span>
+            <div class="call-sig-from" title="${esc(tp.fromEntity || '')}">${formatSignatureHtml(tp.fromEntity || '')}</div>
+            <span class="call-sig-arrow">➔</span>
+            <div class="call-sig-to" title="${esc(tp.toEntity || '')}">${formatSignatureHtml(tp.toEntity || '')}</div>
+          </div>
+          ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
+        </div>
+      `).join('');
+      batchList.insertAdjacentHTML('beforeend', html);
+      rendered += chunk.length;
+
+      batchFooter.innerHTML = '';
+      if (rendered < calls.length) {
+        const remaining = calls.length - rendered;
+        batchFooter.innerHTML = `
+          <span style="font-size:9.5px; color:var(--text-muted);">${rendered}/${calls.length}</span>
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-xs btn-ghost btn-more-calls" style="font-size:10px; padding:2px 6px;">+${Math.min(remaining, BATCH)} more</button>
+            <button class="btn btn-xs btn-ghost btn-all-calls" style="font-size:10px; padding:2px 6px;">All (${remaining})</button>
+          </div>
+        `;
+        batchFooter.querySelector('.btn-more-calls')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          appendNextCalls();
+        });
+        batchFooter.querySelector('.btn-all-calls')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          while (rendered < calls.length) {
+            appendNextCalls();
+          }
+        });
+      }
+    }
+
+    appendNextCalls();
   }
 
   // --- SUBVIEW 1: CONNECTED MODULES ---
@@ -7014,26 +7279,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                     return srcMatch && tgtMatch;
                   });
 
-              if (matchingCalls.length === 0) {
-                drawer.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>';
-              } else {
-                drawer.innerHTML = `
-                  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">
-                    Intermodular Calls (${matchingCalls.length})
-                  </div>
-                  ${matchingCalls.map(tp => `
-                    <div class="class-pair-call-item">
-                      <div class="call-item-main">
-                        <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                        <div class="call-sig-from" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</div>
-                        <span class="call-sig-arrow">➔</span>
-                        <div class="call-sig-to" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</div>
-                      </div>
-                      ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
-                    </div>
-                  `).join('')}
-                `;
-              }
+              renderProgressiveCalls(drawer, matchingCalls, 'Intermodular Calls');
               drawerLoaded = true;
             }
           });
@@ -7053,32 +7299,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
         card.querySelector('.acc-chevron').textContent = isHidden ? '▲' : '▼';
         if (isHidden && !hydratedCalls) {
           const tps = m.touchPoints || [];
-          if (tps.length === 0) {
-            accBody.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text-muted);">No specific function calls recorded.</div>';
-          } else {
-            for (const tp of tps) {
-              const row = createElement('div', { class: 'mod-dep-call-row' });
-              row.innerHTML = `
-                <div class="mod-dep-call-chain">
-                  <span class="rel-dot ${tp.kind}"></span>
-                  <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                  <span class="mod-dep-call-caller" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</span>
-                  <span class="mod-dep-call-arrow">➔</span>
-                  <span class="mod-dep-call-callee" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</span>
-                </div>
-                <div class="mod-dep-call-meta">
-                  ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line">Line ${tp.sourceLine}</span>` : ''}
-                </div>
-              `;
-              row.querySelector('.mod-dep-call-caller')?.addEventListener('click', () => {
-                if (tp.fromType) selectType(tp.fromType);
-              });
-              row.querySelector('.mod-dep-call-callee')?.addEventListener('click', () => {
-                if (tp.toType) selectType(tp.toType);
-              });
-              accBody.appendChild(row);
-            }
-          }
+          renderProgressiveTouchpoints(accBody, tps, (fqn) => selectType(fqn));
           hydratedCalls = true;
         }
       };
@@ -7262,30 +7483,14 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
                 return srcMatch && tgtMatch;
               });
 
-          const callsHtml = matchingCalls.length === 0
-            ? '<div style="font-size:10.5px;color:var(--text-muted);padding:4px 0;">No individual method calls found in touch points index for this pair.</div>'
-            : matchingCalls.map(tp => `
-                <div class="class-pair-call-item">
-                  <div class="call-item-main">
-                    <span class="class-kind-pill ${tp.kind}">${tp.kind}</span>
-                    <div class="call-sig-from" title="${esc(tp.fromEntity)}">${formatSignatureHtml(tp.fromEntity)}</div>
-                    <span class="call-sig-arrow">➔</span>
-                    <div class="call-sig-to" title="${esc(tp.toEntity)}">${formatSignatureHtml(tp.toEntity)}</div>
-                  </div>
-                  ${tp.sourceLine > 0 ? `<span class="mod-dep-call-line" style="font-size:9.5px;color:var(--text-muted);flex-shrink:0;">L: ${tp.sourceLine}</span>` : ''}
-                </div>
-              `).join('');
-
           detailTr.innerHTML = `
             <td colspan="7" class="table-drawer-cell">
-              <div class="class-pair-drawer" style="max-height:200px;">
-                <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">
-                  Intermodular Calls (${matchingCalls.length})
-                </div>
-                ${callsHtml}
+              <div class="class-pair-drawer" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column;">
               </div>
             </td>
           `;
+          const drawerEl = detailTr.querySelector('.class-pair-drawer');
+          renderProgressiveCalls(drawerEl, matchingCalls, 'Intermodular Calls');
           tr.after(detailTr);
         }
       });
@@ -7587,6 +7792,12 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData) {
   updateSubView();
 
   container.appendChild(viewEl);
+
+  if (targetSubView) {
+    setTimeout(() => {
+      controlsBar?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }
 }
 
 function cleanEntityDisplay(entityFqn) {
@@ -9681,29 +9892,67 @@ function renderPackageDetail(pkg) {
     ['Parent',    pkg.parentFqn || '(root)'],
   ]));
 
-  body.appendChild(actionRow([
+  const isAlreadyOnDeps = (App.activeTab === 'knowledge') &&
+    (qs('#kb-tab-dependencies')?.classList.contains('active')) &&
+    (qs('.kb-hero-name')?.textContent === pkg.fqn);
+
+  const headerActions = [
     {
       label: '🎯 Blast Radius Flow',
       title: 'Trace complete blast radius & touch points flow for this module',
       action: () => openBlastRadiusExplorer(pkg.fqn || pkg.name, 'PACKAGE')
-    },
-    {
+    }
+  ];
+
+  if (isAlreadyOnDeps) {
+    // When already viewing this package's dependencies in Knowledge Base, replace redundant View Dependencies with context-aware actions
+    headerActions.push({
+      label: 'Open in Graph',
+      title: 'Visualize package in 2D/3D Architecture Graph',
+      action: () => {
+        switchTab('graph');
+        if (typeof focusGraphNode === 'function') focusGraphNode(pkg.fqn);
+      }
+    });
+    headerActions.push({
+      label: 'Export JSON',
+      title: 'Export this module\'s coupling & touch points to JSON',
+      action: () => {
+        const cached = GraphDataCache.get('mod:dep:' + (pkg.fqn || '').toLowerCase());
+        const exportObj = cached || { moduleName: pkg.name || pkg.fqn, packageFqn: pkg.fqn };
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(pkg.name || 'module').toLowerCase()}-dependencies.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (typeof showToast === 'function') showToast(`Exported ${pkg.name || 'module'} dependencies JSON`);
+      }
+    });
+  } else {
+    // When viewing from Graph, Explorer, Storylines, or Type list
+    headerActions.push({
       label: 'Open in Knowledge Base',
       title: 'Open this package in Knowledge Base',
       action: () => {
         switchTab('knowledge');
         loadKnowledgeBase(pkg.fqn);
       }
-    },
-    {
-      label: 'View Dependencies',
-      title: 'Open Module Dependencies & Touch Points in Knowledge Base',
+    });
+    headerActions.push({
+      label: 'Open in Graph',
+      title: 'Visualize package in 2D/3D Architecture Graph',
       action: () => {
-        switchTab('knowledge');
-        loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES');
+        switchTab('graph');
+        if (typeof focusGraphNode === 'function') focusGraphNode(pkg.fqn);
       }
-    }
-  ]));
+    });
+  }
+
+  body.appendChild(actionRow(headerActions));
 
   // Module Dependency & Touch Points Section in Right Panel
   const depSec = createElement('div', { class: 'module-dep-inspector-sec' });
@@ -9748,12 +9997,12 @@ function renderPackageDetail(pkg) {
             const tierCls = pts >= 50 ? 'tier-hot' : (pts >= 15 ? 'tier-warm' : (pts >= 5 ? 'tier-mid' : 'tier-low'));
             return `
               <div class="module-dep-rp-module-item" data-fqn="${esc(m.packageFqn)}" style="border-left:3px solid ${modColor};" title="Inspect ${esc(m.moduleName)} (${pts} touch points)">
-                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-                  <div style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;">
-                    <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55;">[MOD]</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;min-width:0;gap:8px;">
+                  <div style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;flex:1;">
+                    <span class="flow-node-mod-badge" style="background:${modColor}22; color:${modColor}; border:1px solid ${modColor}55; flex-shrink:0;">[MOD]</span>
                     <span style="font-weight:600;color:var(--text-primary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(m.moduleName)}</span>
                   </div>
-                  <span class="class-pair-pts-badge ${tierCls}" style="font-size:9px;">${pts} pts</span>
+                  <span class="class-pair-pts-badge ${tierCls}" style="font-size:9px;flex-shrink:0;">${pts} pts</span>
                 </div>
                 <div class="mod-rp-meter-wrap">
                   <div class="mod-rp-meter-fill ${meterTier}" style="width:${pct}%;"></div>
@@ -9767,11 +10016,11 @@ function renderPackageDetail(pkg) {
 
     depSec.innerHTML = `
       <div class="module-dep-inspector-title">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <div class="module-dep-inspector-title-left">
+          <svg class="svg-icon icon-cyan icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           <span>Module Touch Points</span>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;">
+        <div class="module-dep-inspector-title-badges">
           ${rolePill}
           <span class="stability-rating-pill ${stabilityCls}">${esc(deps.stabilityRating || 'Balanced')}</span>
         </div>
@@ -9797,7 +10046,7 @@ function renderPackageDetail(pkg) {
       ${kindsBadges ? `<div class="module-dep-rp-kinds">${kindsBadges}</div>` : ''}
       ${topModsHtml}
       <button class="btn-primary btn-sm btn-open-deps" style="width:100%;margin-top:6px;font-size:11px;padding:6px 10px;display:flex;align-items:center;justify-content:center;gap:6px;">
-        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;flex-shrink:0;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         <span>Inspect All Touch Points & Calls</span>
       </button>
     `;
@@ -9809,8 +10058,20 @@ function renderPackageDetail(pkg) {
     });
 
     depSec.querySelector('.btn-open-deps')?.addEventListener('click', () => {
-      switchTab('knowledge');
-      loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES');
+      const isAlreadyOnDepsForThisPkg = (App.activeTab === 'knowledge') &&
+        (qs('.kb-hero-name')?.textContent === pkg.fqn) &&
+        (qs('#kb-tab-dependencies')?.classList.contains('active'));
+
+      if (isAlreadyOnDepsForThisPkg) {
+        const fnSubTab = qs('.mod-dep-subtab[data-subview="function-calls"]');
+        if (fnSubTab) {
+          fnSubTab.click();
+          qs('.mod-dep-controls-bar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } else {
+        switchTab('knowledge');
+        loadKnowledgeBase(pkg.fqn, 'DEPENDENCIES', 'function-calls');
+      }
     });
   };
 
@@ -10456,6 +10717,10 @@ function updateScanSummaryUI(s) {
       badge.classList.add('status-scanning');
       badgeText.textContent = `${pct}%`;
       badge.title = `Scan in progress: ${pct}% · [${s.currentPhase || 'Analysis'}] ${s.message || ''} (Click to view)`;
+    } else if (s.status === 'CANCELLED') {
+      badge.classList.add('status-cancelled');
+      badgeText.textContent = 'Cancelled';
+      badge.title = 'Scan cancelled. Click to view breakdown or rescan.';
     } else if (s.status === 'ERROR') {
       badge.classList.add('status-error');
       badgeText.textContent = 'Failed';
@@ -10479,6 +10744,9 @@ function updateScanSummaryUI(s) {
     if (s.status === 'SCANNING') {
       popoverBadge.classList.add('badge-warning');
       popoverBadge.textContent = 'In Progress';
+    } else if (s.status === 'CANCELLED') {
+      popoverBadge.classList.add('badge-muted');
+      popoverBadge.textContent = 'Cancelled';
     } else if (s.status === 'ERROR') {
       popoverBadge.classList.add('badge-error');
       popoverBadge.textContent = 'Failed';
@@ -11294,6 +11562,11 @@ async function init() {
   // Wire live scan cancellation button on floating status bar
   qs('#btn-cancel-scan')?.addEventListener('click', async (e) => {
     e.stopPropagation();
+    const s = App.lastScanState;
+    if (s && (s.status === 'ERROR' || s.status === 'FAILED' || s.status === 'CANCELLED' || s.status === 'COMPLETE')) {
+      minimizeScanModal();
+      return;
+    }
     const btn = qs('#btn-cancel-scan');
     if (btn) {
       btn.disabled = true;
@@ -11301,7 +11574,12 @@ async function init() {
     }
     try {
       await api.cancelScan();
-      showBanner('Scan cancellation requested…');
+      const cancelledState = {
+        ...(App.lastScanProgress || App.lastScanState || {}),
+        status: 'CANCELLED',
+        message: 'Scan cancelled by user'
+      };
+      onScanCancelled(cancelledState);
     } catch (err) {
       showError('Failed to cancel scan: ' + err.message);
       if (btn) {
@@ -13309,18 +13587,24 @@ function renderEntityHeader(kind, name, fqn, entityNode) {
     }
   }
 
+  const isDuplicateFqn = Boolean(name && fqn && name.trim() === fqn.trim());
+  const fqnRow = isDuplicateFqn ? '' : `
+    <div class="entity-fqn" title="Click to copy fully qualified name" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+      <span>${esc(fqn)}</span>
+      <span class="copy-hint-icon" style="opacity:0.6; display:inline-flex; align-items:center;" title="Copy to clipboard"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>
+    </div>`;
+
+  const copyIconInline = isDuplicateFqn ? ` <span class="copy-hint-icon" style="opacity:0.5; display:inline-flex; align-items:center; vertical-align:middle; cursor:pointer;" title="Click to copy name"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>` : '';
+
   header.innerHTML = `
     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:4px;">
       <div class="entity-kind-badge ${kind}">${kind}</div>
       ${archBadge}
     </div>
-    <div class="entity-name">${esc(name)}</div>
-    <div class="entity-fqn" title="Click to copy fully qualified name" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
-      <span>${esc(fqn)}</span>
-      <span class="copy-hint-icon" style="opacity:0.6; display:inline-flex; align-items:center;" title="Copy to clipboard"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>
-    </div>`;
+    <div class="entity-name" ${isDuplicateFqn ? 'title="Click to copy" style="cursor:pointer;"' : ''}>${esc(name)}${copyIconInline}</div>
+    ${fqnRow}`;
   header.style.display = '';
-  const fqnEl = header.querySelector('.entity-fqn');
+  const fqnEl = header.querySelector('.entity-fqn') || (isDuplicateFqn ? header.querySelector('.entity-name') : null);
   if (fqnEl) {
     fqnEl.onclick = () => {
       navigator.clipboard.writeText(fqn).then(() => {
@@ -19890,7 +20174,16 @@ function renderBlastRadiusView(data) {
   if (scrollBody) scrollBody.style.display = 'flex';
   if (clearBtn) clearBtn.style.display = 'inline-flex';
 
-  const { target, summary, sankey, touchPoints, modules } = data;
+  const target = data?.target || {};
+  const touchPoints = data?.touchPoints || [];
+  const modules = data?.modules || [];
+  const summary = data?.summary || {
+    totalTouchPoints: touchPoints.length,
+    moduleCount: modules.length,
+    classCount: 0,
+    methodCount: 0,
+    byKind: {}
+  };
 
   // 1. Update Target Chip
   const targetName = qs('#impact-target-name');

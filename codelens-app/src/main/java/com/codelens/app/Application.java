@@ -614,12 +614,25 @@ public class Application {
                               "  java -Xms512m -Xmx2g -XX:+UseG1GC -jar codelens-app.jar%n%n", maxMem / (1024 * 1024));
         }
 
+        String serverBranch = null;
+        for (String a : args) {
+            if (a.startsWith("--branch=")) {
+                serverBranch = a.substring(9);
+            }
+        }
+
         // ── Initialise storage layer ──────────────────────────────────────────
-        DatabaseManager db = new DatabaseManager(dataDir);
+        DatabaseManager db = (serverBranch != null && !serverBranch.isBlank())
+            ? DatabaseManager.forBranch(dataDir, serverBranch)
+            : new DatabaseManager(dataDir);
         db.initialize();
 
-        LuceneService lucene = new LuceneService(dataDir);
+        LuceneService lucene = new LuceneService(db.getDataDir());
         lucene.initialize();
+
+        if (serverBranch != null && !serverBranch.isBlank()) {
+            System.out.printf("  Storage isolated for branch: %s (dir: %s)%n", serverBranch, db.getDataDir());
+        }
 
         // ── Start HTTP server ─────────────────────────────────────────────────
         CodeLensServer server = new CodeLensServer(db, lucene, port);

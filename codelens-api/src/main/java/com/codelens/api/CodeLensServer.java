@@ -1315,10 +1315,17 @@ public class CodeLensServer {
         app = Javalin.create(cfg -> {
             // Serve static frontend files (live from disk in dev workspace, fallback to JAR classpath)
             java.io.File localWeb = new java.io.File("codelens-web/src/main/resources/web");
+            if (!localWeb.isDirectory()) {
+                localWeb = new java.io.File("../codelens-web/src/main/resources/web");
+            }
+            if (!localWeb.isDirectory()) {
+                localWeb = new java.io.File("../../codelens-web/src/main/resources/web");
+            }
             if (localWeb.isDirectory()) {
+                final String webDir = localWeb.getAbsolutePath();
                 cfg.staticFiles.add(staticFiles -> {
                     staticFiles.hostedPath = "/";
-                    staticFiles.directory = localWeb.getAbsolutePath();
+                    staticFiles.directory = webDir;
                     staticFiles.location = Location.EXTERNAL;
                     staticFiles.headers = Map.of("Cache-Control", "no-cache, must-revalidate");
                 });
@@ -5224,6 +5231,7 @@ public class CodeLensServer {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("target", targetMeta);
+        response.put("summary", summary);
         boolean reqCompact = "true".equalsIgnoreCase(ctx.queryParam("compact"));
         response.put("sankey", reqCompact ? sankeyCompact : sankeyAll);
         response.put("sankeyCompact", sankeyCompact);

@@ -470,6 +470,44 @@ public class CallGraphAnalyzer {
     }
 
     /**
+     * Returns the set of external classes that call any method in the given class.
+     * Internal calls (from the same class or inner classes) are excluded.
+     */
+    public synchronized Set<String> getExternalCallersForClass(String classFqn) {
+        return getExternalCallersForClass(classFqn, Collections.emptyList());
+    }
+
+    /**
+     * Returns the set of external classes that call any method in the given class or provided methods.
+     * Internal calls (from the same class or inner classes) are excluded.
+     */
+    public synchronized Set<String> getExternalCallersForClass(String classFqn, Collection<String> additionalMethods) {
+        if (classFqn == null || callGraph == null) return Collections.emptySet();
+        Set<String> allMethods = new HashSet<>(findMethodsForClass(classFqn));
+        if (additionalMethods != null) {
+            allMethods.addAll(additionalMethods);
+        }
+        if (allMethods.isEmpty()) return Collections.emptySet();
+        Set<String> callers = new HashSet<>();
+        for (String m : allMethods) {
+            if (!callGraph.containsVertex(m)) continue;
+            for (DefaultEdge e : callGraph.incomingEdgesOf(m)) {
+                String src = callGraph.getEdgeSource(e);
+                if (!allMethods.contains(src)) {
+                    String callerClass = extractClassFqn(src);
+                    if (callerClass != null && !callerClass.isEmpty()
+                        && !callerClass.equals(classFqn)
+                        && !callerClass.startsWith(classFqn + "$")
+                        && !classFqn.startsWith(callerClass + "$")) {
+                        callers.add(callerClass);
+                    }
+                }
+            }
+        }
+        return callers;
+    }
+
+    /**
      * Returns the number of direct callers (in-degree) for the given method.
      */
     public synchronized int callerCount(String methodFqn) {
@@ -900,19 +938,14 @@ public class CallGraphAnalyzer {
         return fullGraphView(false);
     }
 
-    // ponytail: full-graph node cap — anything >50K methods is an architecture view problem, use architectureGraphView.
-    // Upgrade path: stream paginated subgraph by package/module filter when >MAX_FULL_GRAPH_NODES.
-    private static final int MAX_FULL_GRAPH_NODES = 50_000;
-
     public GraphView fullGraphView(boolean hideGetters) {
         Graph<String, DefaultEdge> g = callGraph;
         Set<String> vertexSet = g.vertexSet();
-        List<GraphNode> allNodes = new ArrayList<>(Math.min(vertexSet.size(), MAX_FULL_GRAPH_NODES));
+        List<GraphNode> allNodes = new ArrayList<>(vertexSet.size());
         List<GraphEdge> edges    = new ArrayList<>();
-        Set<String> includedVertices = new HashSet<>();
+        Set<String> includedVertices = new HashSet<>(vertexSet.size());
 
         for (String v : vertexSet) {
-            if (includedVertices.size() >= MAX_FULL_GRAPH_NODES) break;
             if (hideGetters && isPojoOrAccessor(v)) continue;
             includedVertices.add(v);
             int inDeg  = g.inDegreeOf(v);
@@ -1236,10 +1269,6 @@ public class CallGraphAnalyzer {
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    // ponytail: BFS node cap — rendering >2000 nodes is a browser problem, not ours.
-    // Upgrade path: paginate by depth level if full callee tree ever needed.
-    private static final int MAX_BFS_NODES = 2_000;
-
     private List<GraphNode> bfs(Graph<String, DefaultEdge> g, String start,
                                  int maxDepth, String role, boolean hideGetters) {
         if (!g.containsVertex(start)) return Collections.emptyList();
@@ -1248,7 +1277,7 @@ public class CallGraphAnalyzer {
         BreadthFirstIterator<String, DefaultEdge> it =
             new BreadthFirstIterator<>(g, start);
 
-        while (it.hasNext() && result.size() < MAX_BFS_NODES) {
+        while (it.hasNext()) {
             String v    = it.next();
             int    depth = it.getDepth(v);
             if (v.equals(start)) continue;        // skip root itself

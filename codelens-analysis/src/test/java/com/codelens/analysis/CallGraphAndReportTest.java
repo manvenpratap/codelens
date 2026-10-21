@@ -460,6 +460,95 @@ public class CallGraphAndReportTest {
         assertFalse(orderIsDead, "OrderService.execute should NOT be dead code since it has a caller");
     }
 
+    public void testOrphanedClassesIdentification() throws Exception {
+        CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
+        ReportService reportService = new ReportService(analyzer, new FieldImpactAnalyzer(), new CodeReviewEngine());
+
+        // Types
+        CodeType accountType = new CodeType();
+        accountType.setFqn("com.tcs.bancs.AM.Account");
+        accountType.setSimpleName("Account");
+        accountType.setLineCount(150);
+
+        CodeType serviceType = new CodeType();
+        serviceType.setFqn("com.tcs.bancs.AM.AccountService");
+        serviceType.setSimpleName("AccountService");
+        serviceType.setLineCount(200);
+
+        CodeType deadType = new CodeType();
+        deadType.setFqn("com.tcs.bancs.AM.DeadClass");
+        deadType.setSimpleName("DeadClass");
+        deadType.setLineCount(80);
+
+        CodeType fieldHolderType = new CodeType();
+        fieldHolderType.setFqn("com.tcs.bancs.AM.ConfigData");
+        fieldHolderType.setSimpleName("ConfigData");
+        fieldHolderType.setLineCount(40);
+
+        List<CodeType> types = List.of(accountType, serviceType, deadType, fieldHolderType);
+
+        // Methods
+        CodeMethod mAcc = new CodeMethod();
+        mAcc.setFqn("com.tcs.bancs.AM.Account.getBalance()");
+        mAcc.setSimpleName("getBalance");
+        mAcc.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
+
+        CodeMethod mSvc = new CodeMethod();
+        mSvc.setFqn("com.tcs.bancs.AM.AccountService.checkAccount()");
+        mSvc.setSimpleName("checkAccount");
+        mSvc.setDeclaringTypeFqn("com.tcs.bancs.AM.AccountService");
+
+        CodeMethod mDead = new CodeMethod();
+        mDead.setFqn("com.tcs.bancs.AM.DeadClass.unused()");
+        mDead.setSimpleName("unused");
+        mDead.setDeclaringTypeFqn("com.tcs.bancs.AM.DeadClass");
+
+        List<CodeMethod> methods = List.of(mAcc, mSvc, mDead);
+
+        // Field on ConfigData accessed by AccountService
+        CodeField cfgField = new CodeField();
+        cfgField.setFqn("com.tcs.bancs.AM.ConfigData.timeoutMs");
+        cfgField.setSimpleName("timeoutMs");
+        cfgField.setDeclaringTypeFqn("com.tcs.bancs.AM.ConfigData");
+
+        List<CodeField> fields = List.of(cfgField);
+
+        // Relationships:
+        // 1. AccountService calls Account.getBalance (method call via shorthand target)
+        // 2. AccountService reads ConfigData.timeoutMs (field access)
+        // 3. DeadClass has no external incoming calls or field accesses
+        List<CodeRelationship> rels = new ArrayList<>();
+        CodeRelationship rCall = new CodeRelationship();
+        rCall.setFromEntityFqn("com.tcs.bancs.AM.AccountService.checkAccount()");
+        rCall.setToEntityFqn("~Account.getBalance");
+        rCall.setKind("CALLS");
+        rels.add(rCall);
+
+        CodeRelationship rField = new CodeRelationship();
+        rField.setFromEntityFqn("com.tcs.bancs.AM.AccountService.checkAccount()");
+        rField.setToEntityFqn("com.tcs.bancs.AM.ConfigData.timeoutMs");
+        rField.setKind("READS_FIELD");
+        rels.add(rField);
+
+        analyzer.rebuild(List.of(mAcc.getFqn(), mSvc.getFqn(), mDead.getFqn()), List.of(
+            new CodeRelationship("1", mSvc.getFqn(), mAcc.getFqn(), "CALLS", 1)
+        ));
+
+        ReportService.DeadCodeReportData data = reportService.buildDeadCodeData(types, methods, fields, rels);
+
+        // Account has external caller -> NOT orphan
+        assertFalse(data.orphanedClasses.stream().anyMatch(c -> "Account".equals(c.simpleName)),
+            "Account should NOT be an orphan class because it is called externally");
+
+        // ConfigData has external field read -> NOT orphan
+        assertFalse(data.orphanedClasses.stream().anyMatch(c -> "ConfigData".equals(c.simpleName)),
+            "ConfigData should NOT be an orphan class because its field is accessed externally");
+
+        // DeadClass has no external callers or field accesses -> IS orphan
+        assertTrue(data.orphanedClasses.stream().anyMatch(c -> "DeadClass".equals(c.simpleName)),
+            "DeadClass should be flagged as an orphan class");
+    }
+
     public void testWriteInteractiveHtmlSnapshotStreamingAndEscaping() throws Exception {
         ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
         java.io.StringWriter sw = new java.io.StringWriter();

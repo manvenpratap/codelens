@@ -47,10 +47,6 @@ public class ModuleDependencyAnalyzer {
         }
     }
 
-    // ponytail: sample cap — counts are exact, only the sample list is bounded.
-    // Upgrade path: stream touchPoints from disk on demand if full detail needed.
-    static final int TOUCHPOINT_SAMPLE_LIMIT = 500;
-
     public static class ClassUsageSummary {
         public String sourceClassFqn;
         public String sourceClassSimpleName;
@@ -70,7 +66,7 @@ public class ModuleDependencyAnalyzer {
         }
 
         void addTouchPoint(TouchPointDetail d) {
-            if (touchPoints.size() < TOUCHPOINT_SAMPLE_LIMIT) touchPoints.add(d);
+            touchPoints.add(d);
         }
     }
 
@@ -93,7 +89,7 @@ public class ModuleDependencyAnalyzer {
         }
 
         void addTouchPoint(TouchPointDetail d) {
-            if (touchPoints.size() < TOUCHPOINT_SAMPLE_LIMIT) touchPoints.add(d);
+            touchPoints.add(d);
         }
     }
 

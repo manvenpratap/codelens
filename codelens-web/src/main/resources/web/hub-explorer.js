@@ -1289,7 +1289,9 @@
 
     _isAngleBetween(target, a, b) {
       const twoPi = Math.PI * 2;
-      let diff = (b - a) % twoPi;
+      const span = b - a;
+      if (span >= twoPi - 1e-4) return true; // Full circle coverage (e.g. single package arc)
+      let diff = span % twoPi;
       if (diff < 0) diff += twoPi;
       let targetDiff = (target - a) % twoPi;
       if (targetDiff < 0) targetDiff += twoPi;
