@@ -892,7 +892,7 @@
         let count = 0;
         for (const b of this._buildings) {
           if (b.visible) {
-            box.expandByObject(b);
+            box.expandByPoint(b.position);
             count++;
           }
         }
@@ -901,10 +901,17 @@
           box.getCenter(center);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const maxDim = Math.max(size.x, size.y, size.z, 80);
-          const fov = (this._camera.fov || 60) * (Math.PI / 180);
-          let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.45;
-          cameraDistance = Math.max(cameraDistance, 120);
+          const aspect = (this._camera && this._camera.aspect) ? this._camera.aspect : (this._el ? this._el.clientWidth / this._el.clientHeight : 1.77);
+          const vFov = (this._camera.fov || 50) * (Math.PI / 180);
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+          const distHorizontal = (Math.max(size.x, 80) / 2) / Math.tan(hFov / 2);
+          const projectedHeight = Math.max(size.y * 0.85 + size.z * 0.52, size.y, 60);
+          const distVertical = (projectedHeight / 2) / Math.tan(vFov / 2);
+
+          let cameraDistance = Math.max(distHorizontal, distVertical) * 1.10;
+          cameraDistance = Math.max(140, Math.min(cameraDistance, 900));
+
           const dir = new THREE.Vector3(1, 1.1, 1.4).normalize();
           this._targetCameraPos = center.clone().add(dir.multiplyScalar(cameraDistance));
           this._targetControlsTarget = center;
