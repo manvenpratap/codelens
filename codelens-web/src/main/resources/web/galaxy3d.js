@@ -982,7 +982,7 @@
         const ringMat = new THREE.MeshBasicMaterial({
           color: colorHex,
           transparent: true,
-          opacity: 0.22,
+          opacity: 0.32,
           side: THREE.DoubleSide,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
@@ -999,7 +999,7 @@
         const innerMat = new THREE.MeshBasicMaterial({
           color: colorHex,
           transparent: true,
-          opacity: 0.09,
+          opacity: 0.16,
           side: THREE.DoubleSide,
           depthWrite: false,
         });
@@ -1015,7 +1015,7 @@
         const glowMat = new THREE.MeshBasicMaterial({
           color: colorHex,
           transparent: true,
-          opacity: 0.024,
+          opacity: 0.055,
           side: THREE.DoubleSide,
           depthWrite: false,
         });
