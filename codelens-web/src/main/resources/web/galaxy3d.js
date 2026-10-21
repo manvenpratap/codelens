@@ -1160,9 +1160,9 @@
         const pts    = curve.getPoints(24);
         const geo    = new THREE.BufferGeometry().setFromPoints(pts);
 
-        // Default state: subtle, atmospheric cosmic threads
+        // Default state: luminous, atmospheric cosmic threads
         const arcCol = cross ? 0x38bdf8 : src.colorHex;
-        const arcOp  = cross ? 0.085 : 0.055;
+        const arcOp  = cross ? 0.28 : 0.18;
 
         const lineMat = new THREE.LineBasicMaterial({
           color: arcCol,
@@ -1192,6 +1192,9 @@
 
       /* ── 7. Apply initial filters (e.g. POJO default) ───── */
       this._applyFilters();
+
+      /* ── 8. Automatically frame galaxy comfortably in viewport */
+      setTimeout(() => { this.fitToScreen(); }, 20);
     }
 
     /* ─────────────────── Nebula Cloud ──────────────────────── */
@@ -1210,8 +1213,8 @@
       }
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       const mat = new THREE.PointsMaterial({
-        color: colorHex, size: 15 + Math.random() * 10,
-        transparent: true, opacity: 0.055,
+        color: colorHex, size: 24 + Math.random() * 14,
+        transparent: true, opacity: 0.14,
         depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
       });
       const cloud = new THREE.Points(geo, mat);
