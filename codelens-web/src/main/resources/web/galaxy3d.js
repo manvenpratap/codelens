@@ -1787,7 +1787,7 @@
         let count = 0;
         for (const m of this._nodeMeshes) {
           if (m.visible) {
-            box.expandByObject(m);
+            box.expandByPoint(m.position);
             count++;
           }
         }
@@ -1796,27 +1796,43 @@
           box.getCenter(center);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const maxDim = Math.max(size.x, size.y, size.z, 100);
-          const fov = (this._camera.fov || 60) * (Math.PI / 180);
-          let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.4;
-          cameraDistance = Math.max(cameraDistance, 150);
-          const dir = new THREE.Vector3(0, 0.45, 1).normalize();
+
+          const aspect = (this._camera && this._camera.aspect) ? this._camera.aspect : (this._el ? this._el.clientWidth / this._el.clientHeight : 1.77);
+          const vFov = (this._camera.fov || 45) * (Math.PI / 180);
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+          // Horizontal distance required to frame width comfortably
+          const distHorizontal = (Math.max(size.x, 80) / 2) / Math.tan(hFov / 2);
+
+          // Vertical distance required to frame elevation-projected height
+          const projectedHeight = Math.max(size.y * 0.91 + size.z * 0.42, size.y, 60);
+          const distVertical = (projectedHeight / 2) / Math.tan(vFov / 2);
+
+          // Snug, rich framing filling ~82% of the viewport (was over-padded by 1.4x on maxDim)
+          let cameraDistance = Math.max(distHorizontal, distVertical) * 1.08;
+          cameraDistance = Math.max(160, Math.min(cameraDistance, 880));
+
+          const dir = new THREE.Vector3(0, 0.42, 0.98).normalize();
           this._targetCamPos = center.clone().add(dir.multiplyScalar(cameraDistance));
           this._targetCtrlTgt = center;
           if (this._controls) this._controls.update();
           return;
         }
       }
-      this._targetCamPos = new THREE.Vector3(0, 200, 550);
+      this._targetCamPos = new THREE.Vector3(0, 180, 480);
       this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
       if (this._controls) this._controls.update();
     }
 
     resetView() {
       if (!this._camera || !this._controls) return;
-      this._targetCamPos = new THREE.Vector3(0, 200, 550);
-      this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
-      if (this._controls) this._controls.update();
+      if (this._nodeMeshes && this._nodeMeshes.length > 0) {
+        this.fitToScreen();
+      } else {
+        this._targetCamPos = new THREE.Vector3(0, 180, 480);
+        this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
+        if (this._controls) this._controls.update();
+      }
     }
 
     /* ─────────────────── Destroy / Cleanup ─────────────────── */
