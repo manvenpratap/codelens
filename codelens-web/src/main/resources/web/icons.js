@@ -31,7 +31,10 @@
     galaxy3d: '<path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/>',
     graph2d: '<circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><path d="M14.5 9.5 17 7"/><path d="m9.5 14.5-2.5 2.5"/><path d="m14.5 14.5 2.5 2.5"/><path d="m9.5 9.5-2.5-2.5"/>',
     treemap: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/>',
-    sunburst: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+    sunburst: '<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="10"/><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/>',
+    blastRadius: '<circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/>',
+    criticalPath: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    clusters: '<polygon points="12 2 21 8 18 19 6 19 3 8"/><circle cx="12" cy="11" r="2"/>',
     dsm: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
     chord: '<circle cx="12" cy="12" r="10"/><path d="M6 18c4-8 8-8 12 0"/><path d="M6 6c4 8 8 8 12 0"/>',
 

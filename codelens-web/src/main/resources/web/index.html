@@ -442,7 +442,7 @@
         </button>
         <!-- Blast Radius tab -->
         <button class="tab level-pill" role="tab" id="tab-impact" data-tab="impact" draggable="true" aria-selected="false" aria-controls="impact-view" title="Blast Radius &amp; Touch Points Explorer: Module ➔ Class ➔ Method ➔ Line flow (6)">
-          <span class="tab-icon"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          <span class="tab-icon"><svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg></span>
           <span class="tab-label">Blast Radius</span>
         </button>
         <!-- CodeStory / Storylines tab -->
@@ -856,7 +856,7 @@
               <span>Search Codebase (⌘K)</span>
             </button>
             <button id="btn-empty-critical-path" class="empty-action-pill" type="button" title="Trace critical execution path across services">
-              <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               <span>Critical Path Analyzer</span>
             </button>
           </div>
@@ -905,7 +905,7 @@
 
         <!-- Critical Path Analyzer Button -->
         <button id="btn-critical-path-tool" class="hud-btn" title="Identify & Trace Critical Path for Persistent Classes">
-          <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
           <span class="hud-btn-text">Critical Path</span>
         </button>
       </div>
@@ -914,7 +914,7 @@
       <div id="critical-path-dock" class="critical-path-dock" style="display:none;" aria-label="Critical Path Stepper">
         <div class="cp-dock-header">
           <div class="cp-dock-title-group">
-            <span class="cp-dock-badge"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Critical Path</span>
+            <span class="cp-dock-badge"><svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Critical Path</span>
             <span class="cp-target-class" id="cp-target-class">Loan</span>
             <span class="cp-target-package" id="cp-target-package">com.tcs.bancs.LN</span>
           </div>
@@ -972,7 +972,7 @@
             <span class="hud-btn-icon"><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span class="hud-btn-text" id="btn-filter-getters-text">Hide POJOs</span>
           </button>
           <button id="btn-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
-            <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 21 8 18 19 6 19 3 8"/><circle cx="12" cy="11" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
           </button>
           <button id="btn-toggle-physics" class="hud-btn active" title="Toggle Live Physics Simulation (Space)">
             <span class="hud-btn-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg></span> <span class="hud-btn-text">Physics</span>
@@ -1273,7 +1273,7 @@
             <svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg> Treemap
           </button>
           <button class="level-pill" data-level="sunburst" title="Sunburst (Radial Hierarchy by Size)">
-            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst
+            <svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="10"/><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/></svg> Sunburst
           </button>
           <span class="level-pill-divider"></span>
           <button class="level-pill" data-level="dsm" title="Dependency Structure Matrix (Adjacency Grid)">
@@ -1312,7 +1312,7 @@
         <!-- 2D Graph View Specific Feature Toggles (Clusters, Physics, Heat) -->
         <div id="codebase-graph-toggles" class="graph-hud-actions" style="display:none;">
           <button id="btn-codebase-toggle-hulls" class="hud-btn active" title="Toggle Community / Package Convex Hulls (H)">
-            <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
+            <span class="hud-btn-icon"><svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 21 8 18 19 6 19 3 8"/><circle cx="12" cy="11" r="2"/></svg></span> <span class="hud-btn-text">Clusters</span>
           </button>
           <button id="btn-codebase-toggle-physics" class="hud-btn active" title="Toggle Live Physics Simulation (Space)">
             <span class="hud-btn-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg></span> <span class="hud-btn-text">Physics</span>
@@ -1537,7 +1537,7 @@
             <span>Search Codebase (⌘K)</span>
           </button>
           <button id="btn-kb-empty-cp" class="empty-action-pill" type="button" title="Trace critical paths across services">
-            <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             <span>Critical Path Analyzer</span>
           </button>
         </div>
@@ -1880,7 +1880,7 @@
         <div class="impact-toolbar">
           <div class="impact-toolbar-left">
             <div class="impact-title-group">
-              <span class="impact-header-badge"><svg class="svg-icon icon-xs icon-rose" style="width:12px;height:12px;vertical-align:-1px;margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>BLAST RADIUS &amp; TOUCH POINTS</span>
+              <span class="impact-header-badge"><svg class="svg-icon icon-xs icon-rose" style="width:12px;height:12px;vertical-align:-1px;margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>BLAST RADIUS &amp; TOUCH POINTS</span>
               <div class="impact-target-chip" id="impact-target-chip" title="Active target entity">
                 <span class="impact-target-kind-pill kind-class" id="impact-target-kind">CLASS</span>
                 <span class="impact-target-name" id="impact-target-name">Select an entity to explore</span>
@@ -1939,7 +1939,7 @@
           <div class="impact-card impact-sankey-card">
             <div class="impact-card-header">
               <div class="impact-card-title-group">
-                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
                 <span class="impact-card-title">Hierarchical Flow &amp; Blast Radius (Sankey Diagram)</span>
                 <span class="impact-card-hint">Ribbon thickness reflects touch point volume. Click any node to filter touch points below.</span>
               </div>
@@ -2073,7 +2073,7 @@
 
           <div class="kb-empty-actions impact-empty-actions">
             <button id="btn-impact-empty-explore" class="empty-action-pill rose" type="button" title="Select and analyze high-impact entity">
-              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
               <span>Explore High-Impact Target</span>
             </button>
             <button id="btn-impact-empty-search" class="empty-action-pill" type="button" title="Quick Search across types, methods, fields (⌘K)">
@@ -2109,7 +2109,7 @@
               </div>
             </div>
             <div class="kb-feature-chip impact-feature-chip">
-              <span class="kb-feature-icon impact-feature-icon"><svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+              <span class="kb-feature-icon impact-feature-icon"><svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg></span>
               <div class="kb-feature-text impact-feature-text">
                 <strong>Ripple &amp; Centrality Risk</strong>
                 <span>Bottleneck identification and cross-module blast</span>
@@ -2223,7 +2223,7 @@
                     <span>What If?</span>
                   </button>
                   <button id="storyline-btn-trace-impact" class="btn btn-sm btn-secondary" title="Analyze impact in Blast Radius Explorer">
-                    <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
                     <span>Blast Radius</span>
                   </button>
                   <button id="storyline-btn-ask-ai" class="btn btn-sm btn-primary" title="Ask CodeStory about architecture or execution flow">
@@ -2607,7 +2607,7 @@
     <!-- Placeholder shown when no entity is selected -->
     <div class="detail-empty" id="detail-empty-state" aria-label="No entity selected">
       <div class="detail-empty-icon-wrap" aria-hidden="true">
-        <svg class="svg-icon icon-blue icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <svg class="svg-icon icon-blue icon-hero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><circle cx="11" cy="11" r="3"/></svg>
       </div>
       <h3 class="detail-empty-title">Entity Inspector</h3>
       <p class="detail-empty-text">Select any class, interface, method, or field to inspect its signatures, hierarchy, complexity, and blast radius.</p>
@@ -2900,7 +2900,7 @@
 
             <div class="help-card">
               <div class="help-card-header">
-                <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Sunburst (Radial Hierarchy)</h4>
+                <h4><svg class="svg-icon icon-amber icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="10"/><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/></svg> Sunburst (Radial Hierarchy)</h4>
                 <span class="help-card-badge">Radial Multi-Ring</span>
               </div>
               <p>Concentric ring segments representing Package &rarr; Class &rarr; Method hierarchy. Segment angle reflects size; click ring slices to zoom radially.</p>
@@ -4988,7 +4988,7 @@
   <div class="modal-dialog cp-picker-dialog">
     <div class="modal-header">
       <div class="modal-title-row">
-        <div class="cp-modal-icon"><svg class="svg-icon icon-amber icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+        <div class="cp-modal-icon"><svg class="svg-icon icon-amber icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
         <div>
           <h2 id="cp-picker-title">Persistent Classes &amp; Critical Path Trace</h2>
           <div class="modal-subtitle">Identify persistent domain entities and trace multi-hop execution flow from entry points to audit sinks</div>
@@ -5221,7 +5221,7 @@
     </div>
     <div class="modal-footer whatif-footer">
       <button class="btn btn-secondary" id="whatif-btn-blast-radius">
-        <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
         <span>Explore Full Blast Radius</span>
       </button>
       <button class="btn btn-primary" id="whatif-btn-done">Done</button>

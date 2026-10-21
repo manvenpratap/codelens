@@ -856,7 +856,7 @@ function getPhaseMetricsData(stageKey, s) {
             colorClass: 'icon-purple-bg',
             iconColor: 'icon-purple',
             valColor: '#c084fc',
-            iconSvg: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+            iconSvg: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
           }
         ]
       };
@@ -1017,7 +1017,7 @@ function getPhaseMetricsData(stageKey, s) {
             colorClass: 'icon-cyan-bg',
             iconColor: 'icon-cyan',
             valColor: '#38bdf8',
-            iconSvg: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+            iconSvg: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
           },
           {
             val: metrics['Tour Stops'] || '5 Stops',
@@ -9528,11 +9528,11 @@ function renderKnowledgeBaseForType(data) {
           Review
         </button>
         <button class="kb-action-btn" id="kb-btn-critical-path" title="Trace Critical Path Execution">
-          <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          <svg class="svg-icon icon-amber icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           Critical Path
         </button>
         <button class="kb-action-btn" id="kb-btn-blast" title="Trace Blast Radius & Touch Points Flow">
-          <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          <svg class="svg-icon icon-rose icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
           Blast Radius
         </button>
       </div>
@@ -13776,7 +13776,7 @@ function actionRow(actions) {
     if (a.icon) {
       iconSvg = a.icon;
     } else if (a.label && (a.label.includes('Blast Radius') || a.label.includes('\u{1F3AF}'))) {
-      iconSvg = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>';
+      iconSvg = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>';
     } else if (a.label && (a.label.includes('Critical Path') || a.label.includes('Trace Critical'))) {
       iconSvg = '<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
     } else if (a.label && (a.label.includes('Hub Explorer') || a.label.includes('\u{1F310}'))) {
@@ -21234,7 +21234,7 @@ function initCommandPalette() {
       title: 'Open Blast Radius & Touch Points Explorer',
       subtitle: 'Analyze upstream impact flows and touchpoint lines across modules',
       shortcut: '6',
-      icon: '<svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+      icon: '<svg class="svg-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>',
       action: () => switchTab('impact')
     },
     {
@@ -21850,7 +21850,7 @@ function renderStorylineDetail(story) {
                 <span>What If?</span>
               </button>
               <button class="storyline-impact-trigger" data-fqn="${esc(stepFqn)}" title="Trace Blast Radius for this method">
-                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
                 <span>Blast Radius</span>
               </button>
             </div>
@@ -21979,7 +21979,7 @@ function renderVisualFlowchart(story) {
               <span>What If?</span>
             </button>
             <button class="storyline-impact-trigger" data-fqn="${esc(stepFqn)}" title="Trace Blast Radius for this method">
-              <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <svg class="svg-icon icon-rose icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3"/></svg>
               <span>Radius</span>
             </button>
           </div>
