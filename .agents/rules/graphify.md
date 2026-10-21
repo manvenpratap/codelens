@@ -1,13 +1,15 @@
 ---
 trigger: always_on
-description: Mandatory Graphify consultation and mandatory git check-in rules.
+description: Mandatory project invariants - Git check-ins, Graphify, Archify, GitHub Wikis, and README maintenance.
 ---
 
-## Mandatory Knowledge Base & Git Check-in Rules
+## Mandatory Project Invariants
 
-This project has an active graphify knowledge graph at `graphify-out/` and automated git lifecycle hooks.
+This project adheres to the workspace engineering standards for documentation, version control, and token optimization.
 
-Rules:
-1. **Mandatory Graphify Consultation**: Before answering architecture or codebase questions, read `graphify-out/GRAPH_REPORT.md` for god nodes and community structure. Use `graphify query "<question>"`, `graphify path "<A>" "<B>"`, and `graphify explain "<concept>"` instead of reading entire files into context.
-2. **Mandatory Git Check-ins**: At the conclusion of every task, bugfix, feature, or refactor, verify and commit all changes to git using a clear conventional commit message (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`). Never leave the repository with an uncommitted or dirty working tree.
-3. **Automated Graph Sync**: All git check-ins trigger the `.git/hooks/post-commit` hook to automatically update `graphify-out/`. If editing outside of git, run `graphify update .` to ensure the AST graph remains in parity.
+### Rules:
+1. **Mandatory Git Check-ins**: At the conclusion of every feature, bugfix, refactor, or task, verify and commit all changes to git using a concise conventional commit message (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`). Never leave the repository with an uncommitted or dirty working tree.
+2. **Mandatory Graphify Token Optimization**: Before reading entire files or answering architecture questions, consult `graphify-out/GRAPH_REPORT.md` or use `graphify query` / `graphify path` to minimize context window bloat. The `.git/hooks/post-commit` hook automatically rebuilds the AST graph upon commit.
+3. **Mandatory Archify Documentation**: Maintain the 5 core Archify diagrams (`architecture`, `workflow`, `sequence`, `dataflow`, `lifecycle`) in `docs/diagrams/` with interactive HTML views and JSON specifications.
+4. **Mandatory GitHub Wiki Maintenance**: Keep the authoritative `wiki/` documentation up-to-date with native embedded Mermaid charts (0 dead `.html`/`.json` links) and synchronized with GitHub wikis via `sync_wikis.py`.
+5. **Mandatory README Upkeep**: Maintain the project's root `README.md` in sync with the latest architecture, feature inventory, compiled diagram links, and quickstart runbooks.
