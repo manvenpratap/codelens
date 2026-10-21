@@ -13771,20 +13771,20 @@ function actionRow(actions) {
     if (a.title) btn.title = a.title;
     btn.addEventListener('click', a.action);
 
-    const cleanLabel = (a.label || '').replace(/^[🎯🌐⬆⬇\s]+/, '');
+    const cleanLabel = (a.label || '').replace(/^[\u{1F3AF}\u{1F310}\u2B06\u2B07\s]+/u, '');
     let iconSvg = '';
     if (a.icon) {
       iconSvg = a.icon;
-    } else if (a.label && (a.label.includes('Blast Radius') || a.label.includes('🎯'))) {
+    } else if (a.label && (a.label.includes('Blast Radius') || a.label.includes('\u{1F3AF}'))) {
       iconSvg = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>';
     } else if (a.label && (a.label.includes('Critical Path') || a.label.includes('Trace Critical'))) {
       iconSvg = '<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
-    } else if (a.label && (a.label.includes('Hub Explorer') || a.label.includes('🌐'))) {
+    } else if (a.label && (a.label.includes('Hub Explorer') || a.label.includes('\u{1F310}'))) {
       iconSvg = '<svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
-    } else if (a.label && (a.label.includes('Callers') || a.label.includes('⬆'))) {
-      iconSvg = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
-    } else if (a.label && (a.label.includes('Callees') || a.label.includes('⬇'))) {
-      iconSvg = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
+    } else if (a.label && (a.label.includes('Callers') || a.label.includes('\u2B06'))) {
+      iconSvg = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+    } else if (a.label && (a.label.includes('Callees') || a.label.includes('\u2B07'))) {
+      iconSvg = '<svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
     }
 
     if (iconSvg) {
