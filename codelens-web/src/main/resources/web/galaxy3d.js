@@ -812,7 +812,7 @@
       });
 
       const sprite = new THREE.Sprite(mat);
-      const worldHeight = isPackage ? 7.5 : 5.0;
+      const worldHeight = isPackage ? 14.0 : 8.5;
       const aspect = w / h;
       sprite.scale.set(worldHeight * aspect, worldHeight, 1);
       return sprite;
@@ -903,10 +903,10 @@
 
         /* Place class "star" nodes in a fan ring around the package centre */
         // Stratify vertically by architectural tier (Controllers high, Services mid, Repositories in gravity well)
-        const ringR = Math.max(38, 20 * Math.sqrt(classNodes.length));
+        const ringR = Math.max(26, 14 * Math.sqrt(classNodes.length));
         classNodes.forEach((n, ci) => {
           const angle = (ci / Math.max(1, classNodes.length)) * Math.PI * 2;
-          const r     = ringR + (ci % 3) * 12;
+          const r     = ringR + (ci % 3) * 8;
           const px    = cx + r * Math.cos(angle);
           const tierMeta = this._getArchitecturalTier(n, n.id, pkgName);
           const py    = cy + tierMeta.yOffset + (ci % 2 === 0 ? 3 : -3);
