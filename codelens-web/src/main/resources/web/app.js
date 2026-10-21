@@ -8468,10 +8468,21 @@ async function loadWholeCodebaseGraph(level, granularity) {
         if (typeof App.codebaseHidePojo === 'boolean' && typeof renderer.setHidePojo === 'function') {
           renderer.setHidePojo(App.codebaseHidePojo);
         }
+        if (App.codebaseArchetypeFilter && typeof renderer.setArchetypeFilter === 'function') {
+          renderer.setArchetypeFilter(App.codebaseArchetypeFilter);
+        }
+        if (App.gitSummary && App.gitSummary.hotEntities && typeof renderer.setHeatData === 'function') {
+          const heatMap = {};
+          for (const e of App.gitSummary.hotEntities) heatMap[e.entityFqn] = e.commitCount;
+          renderer.setHeatData(heatMap);
+        }
         renderer.setData(data);
         if (typeof renderer.setBrightness === 'function') {
           renderer.setBrightness(App.codebaseBrightness || 1.0);
         }
+        renderer.onSelectEntity((id) => {
+          if (typeof selectEntity === 'function') selectEntity(id);
+        });
         App.activeAltRenderer = renderer;
         renderAltVizInspector(`3D Galaxy (${isMethods ? 'Methods' : 'Classes'})`, data.nodes.length, data.edges.length);
         renderCodebaseLegend(data.nodes);

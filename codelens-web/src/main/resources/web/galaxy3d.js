@@ -83,16 +83,26 @@
       this._cometGroup      = null;        // THREE.Points  (head layer)
       this._cometPositions  = null;        // Float32Array for head geo
       this._cometTails      = [];          // [ { points:THREE.Points, positions:Float32Array, step } ]
+      this._orbitingMethods = [];          // Keplerian planetary satellite methods
 
       this._raycaster       = null;
       this._mouse           = null;
       this._hoveredMesh     = null;
+      this._selectedMesh    = null;
       this._highlightEdges  = [];
       this._dimmedEdges     = [];
       this._highlightNeighbors = [];
       this._dimmedNodes     = [];
       this._tooltip         = null;
       this._toolbar         = null;
+      this._telemetryCard   = null;
+      this._isolatedPkg     = null;
+      this._isolationBanner = null;
+      this._heatData        = null;
+      this._heatMode        = false;
+      this._inDegreeMap     = new Map();
+      this._outDegreeMap    = new Map();
+      this._onKeyDown       = null;
       this._resizeObserver  = null;
       this._onSelectEntity  = null;
 
@@ -107,6 +117,33 @@
     }
 
     /* ─────────────────── Public API ─────────────────────────── */
+
+    setHeatData(heatMap) {
+      this._heatData = heatMap;
+      if (this._heatMode) this._updateHeatColors();
+    }
+
+    toggleHeatMode() {
+      this._heatMode = !this._heatMode;
+      this._updateHeatColors();
+      const btn = this._toolbar ? this._toolbar.querySelector('#hud-btn-heat') : null;
+      if (btn) btn.classList.toggle('active', this._heatMode);
+      return this._heatMode;
+    }
+
+    isolatePackage(pkgName) {
+      if (!pkgName) return;
+      this._isolatedPkg = pkgName;
+      this._applyFilters();
+      this.flyToPackage(pkgName);
+      this._updateIsolationBanner();
+    }
+
+    exitIsolation() {
+      this._isolatedPkg = null;
+      this._applyFilters();
+      this._updateIsolationBanner();
+    }
 
     setArchetypeFilter(ruleId) {
       this._archetypeFilter = ruleId || 'ALL';
@@ -259,6 +296,48 @@
       this._tooltip.className = 'galaxy3d-tooltip';
       this._tooltip.style.cssText = 'position:absolute;display:none;pointer-events:none;z-index:150;';
       this._el.appendChild(this._tooltip);
+
+      this._telemetryCard = document.createElement('div');
+      this._telemetryCard.className = 'galaxy3d-telemetry-card';
+      Object.assign(this._telemetryCard.style, {
+        position: 'absolute',
+        bottom: '68px',
+        right: '16px',
+        width: '280px',
+        background: 'rgba(5, 9, 20, 0.88)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: '1px solid rgba(56, 189, 248, 0.25)',
+        borderRadius: '12px',
+        padding: '12px 14px',
+        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(56, 189, 248, 0.08)',
+        display: 'none',
+        zIndex: '140',
+        pointerEvents: 'auto',
+        fontFamily: 'Sora, sans-serif',
+        color: '#f8fafc',
+      });
+      this._el.appendChild(this._telemetryCard);
+
+      this._onKeyDown = (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        if (e.key === 'Escape') {
+          if (this._isolatedPkg) this.exitIsolation();
+          else this.resetView();
+        } else if (e.key === 'h' || e.key === 'H') {
+          this.toggleHeatMode();
+        } else if (e.key === 'i' || e.key === 'I') {
+          if (this._hoveredMesh && this._hoveredMesh.userData.pkg) {
+            this.isolatePackage(this._hoveredMesh.userData.pkg);
+          } else if (this._isolatedPkg) {
+            this.exitIsolation();
+          }
+        } else if (e.key === ' ') {
+          e.preventDefault();
+          this.toggleAutoRotate();
+        }
+      };
+      window.addEventListener('keydown', this._onKeyDown);
 
       const W = this._el.clientWidth  || 900;
       const H = this._el.clientHeight || 600;
@@ -434,6 +513,238 @@
 
     /* ─────────────────── Galaxy Data Layout ────────────────── */
 
+    _getArchitecturalTier(rawNode, id, pkg) {
+      if (window.CodeLensClassifier) {
+        const arch = window.CodeLensClassifier.classifyType(rawNode, id, pkg);
+        if (arch) {
+          const b = (arch.badge || '').toUpperCase();
+          const r = (arch.role || '').toUpperCase();
+          if (b.includes('CTRL') || b.includes('API') || b.includes('REST') || b.includes('GATEWAY') || r.includes('CONTROLLER') || r.includes('ENDPOINT')) {
+            return { tier: 1, name: 'Upper Orbital Cloud (Controller / API)', yOffset: 26 };
+          }
+          if (b.includes('SRV') || b.includes('LOGIC') || b.includes('CORE') || b.includes('DOMAIN') || b.includes('WORKFLOW') || r.includes('SERVICE') || r.includes('BUSINESS')) {
+            return { tier: 2, name: 'Equatorial Disc (Service / Domain Logic)', yOffset: 0 };
+          }
+          if (b.includes('REPO') || b.includes('DAO') || b.includes('STORE') || b.includes('DATA') || b.includes('SQL') || r.includes('REPOSITORY') || r.includes('PERSISTENCE')) {
+            return { tier: 3, name: 'Deep Gravity Well (Repository / Persistence)', yOffset: -28 };
+          }
+          if (b.includes('MODEL') || b.includes('ENTITY') || b.includes('DTO') || b.includes('SCHEMA')) {
+            return { tier: 2.5, name: 'Mid-Low Orbit (Model / Entity)', yOffset: -12 };
+          }
+        }
+      }
+      const s = ((rawNode && (rawNode.label || rawNode.simpleName)) || id || '').toLowerCase();
+      if (s.endsWith('controller') || s.endsWith('resource') || s.endsWith('endpoint') || s.includes('gateway') || s.includes('api')) {
+        return { tier: 1, name: 'Upper Orbital Cloud (Controller / API)', yOffset: 26 };
+      }
+      if (s.endsWith('service') || s.endsWith('manager') || s.endsWith('handler') || s.endsWith('engine') || s.endsWith('processor')) {
+        return { tier: 2, name: 'Equatorial Disc (Service / Domain Logic)', yOffset: 0 };
+      }
+      if (s.endsWith('repository') || s.endsWith('dao') || s.includes('store') || s.includes('mapper') || s.includes('database')) {
+        return { tier: 3, name: 'Deep Gravity Well (Repository / Persistence)', yOffset: -28 };
+      }
+      if (s.endsWith('model') || s.endsWith('entity') || s.endsWith('dto') || s.endsWith('vo')) {
+        return { tier: 2.5, name: 'Mid-Low Orbit (Model / Entity)', yOffset: -12 };
+      }
+      return { tier: 2, name: 'Equatorial Disc (Domain Logic)', yOffset: 0 };
+    }
+
+    _updateHeatColors() {
+      const heat = this._heatData || {};
+      const maxCommits = Math.max(1, ...Object.values(heat));
+
+      this._nodeMeshes.forEach(m => {
+        const d = m.userData;
+        if (!d || !d.node) return;
+        const id = d.node.id;
+        const fqn = d.node.raw ? (d.node.raw.fqn || id) : id;
+        const commits = (heat[id] || heat[fqn] || 0);
+
+        if (!this._heatMode) {
+          m.material.color.setHex(d.colorHex || 0x34d399);
+          m.material.emissive.setHex(d.colorHex || 0x34d399);
+          m.material.emissiveIntensity = d.isMethod ? 0.75 : 1.15;
+          if (d.haloMesh) {
+            d.haloMesh.material.color.setHex(d.colorHex || 0x34d399);
+            d.haloMesh.scale.set(1, 1, 1);
+          }
+        } else {
+          const ratio = Math.min(1.0, commits / Math.max(5, maxCommits * 0.7));
+          let heatHex, heatEmissive;
+          if (ratio > 0.65) {
+            heatHex = 0x67e8f9;
+            heatEmissive = 2.2;
+            if (d.haloMesh) d.haloMesh.scale.set(1.4, 1.4, 1.4);
+          } else if (ratio > 0.35) {
+            heatHex = 0xfbbf24;
+            heatEmissive = 1.6;
+            if (d.haloMesh) d.haloMesh.scale.set(1.2, 1.2, 1.2);
+          } else if (ratio > 0.08) {
+            heatHex = 0xf43f5e;
+            heatEmissive = 1.2;
+            if (d.haloMesh) d.haloMesh.scale.set(1.0, 1.0, 1.0);
+          } else {
+            heatHex = 0x64748b;
+            heatEmissive = 0.55;
+            if (d.haloMesh) d.haloMesh.scale.set(0.85, 0.85, 0.85);
+          }
+
+          m.material.color.setHex(heatHex);
+          m.material.emissive.setHex(heatHex);
+          m.material.emissiveIntensity = heatEmissive;
+          if (d.haloMesh) d.haloMesh.material.color.setHex(heatHex);
+        }
+      });
+    }
+
+    _updateIsolationBanner() {
+      if (!this._isolationBanner) {
+        this._isolationBanner = document.createElement('div');
+        this._isolationBanner.className = 'galaxy3d-isolation-banner';
+        Object.assign(this._isolationBanner.style, {
+          position: 'absolute',
+          top: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: '150',
+          display: 'none',
+          alignItems: 'center',
+          gap: '10px',
+          background: 'rgba(5, 9, 20, 0.88)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(56, 189, 248, 0.4)',
+          borderRadius: '9999px',
+          padding: '6px 16px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.15)',
+          fontFamily: 'Sora, sans-serif',
+          fontSize: '12px',
+          color: '#f8fafc',
+        });
+        this._el.appendChild(this._isolationBanner);
+      }
+
+      if (this._isolatedPkg) {
+        const dispName = (typeof formatPackageDisplayName === 'function')
+          ? formatPackageDisplayName(this._isolatedPkg)
+          : this._isolatedPkg;
+        this._isolationBanner.innerHTML = `
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span style="color:#38bdf8;font-size:14px;">🪐</span>
+            <span>Solo System: <strong style="color:#f8fafc;">${dispName}</strong></span>
+          </span>
+          <button id="galaxy3d-exit-iso-btn" class="hud-btn" style="height:22px;padding:2px 8px;font-size:10px;background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;">
+            ✕ Exit Solo
+          </button>
+        `;
+        const exitBtn = this._isolationBanner.querySelector('#galaxy3d-exit-iso-btn');
+        if (exitBtn) exitBtn.onclick = () => this.exitIsolation();
+        this._isolationBanner.style.display = 'flex';
+      } else {
+        this._isolationBanner.style.display = 'none';
+      }
+    }
+
+    _updateTelemetryCard(mesh) {
+      if (!this._telemetryCard) return;
+      if (!mesh || !mesh.userData || !mesh.userData.node) {
+        if (!this._selectedMesh) this._telemetryCard.style.display = 'none';
+        return;
+      }
+
+      const d = mesh.userData;
+      const raw = d.node.raw || {};
+      const id = d.node.id || '';
+      const fqn = raw.fqn || id;
+      const title = raw.label || raw.simpleName || (id.includes('.') ? id.split('.').pop() : id);
+      const pkg = d.pkg || '';
+      const isMeth = d.isMethod;
+
+      let archBadgeHtml = '';
+      if (window.CodeLensClassifier) {
+        const arch = isMeth
+          ? window.CodeLensClassifier.classifyMethod(raw, id, pkg)
+          : window.CodeLensClassifier.classifyType(raw, id, pkg);
+        if (arch) {
+          archBadgeHtml = `<span style="background:${arch.color}22;border:1px solid ${arch.color}66;color:${arch.color};font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600;white-space:nowrap;">${arch.icon} ${arch.badge}</span>`;
+        }
+      }
+
+      const inDeg = this._inDegreeMap.get(id) || 0;
+      const outDeg = this._outDegreeMap.get(id) || 0;
+      const totDeg = inDeg + outDeg;
+      const instability = totDeg > 0 ? (outDeg / totDeg).toFixed(2) : '0.00';
+      const numInstab = parseFloat(instability);
+      let instabColor = '#34d399';
+      let instabText = 'Stable Bedrock';
+      if (numInstab > 0.65) {
+        instabColor = '#f43f5e';
+        instabText = 'Fragile / High Out';
+      } else if (numInstab > 0.3) {
+        instabColor = '#fbbf24';
+        instabText = 'Balanced Logic';
+      }
+
+      const tierName = d.tierMeta ? d.tierMeta.name : (isMeth ? 'Planetary Satellite Orbit' : 'Equatorial Disc');
+
+      const heat = this._heatData || {};
+      const commits = heat[id] || heat[fqn] || 0;
+      const commitsHtml = commits > 0
+        ? `<span style="color:#f43f5e;font-weight:700;">🔥 ${commits} commits</span>`
+        : `<span style="color:#64748b;">❄ Stable</span>`;
+
+      this._telemetryCard.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-weight:700;font-size:13px;color:#f8fafc;line-height:1.2;">${title}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-top:2px;">${pkg}</div>
+          </div>
+          ${archBadgeHtml}
+        </div>
+
+        <div style="margin-top:8px;font-size:10px;padding:3px 7px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid rgba(255,255,255,0.06);color:#cbd5e1;">
+          🪐 <span style="font-weight:600;">Stratum:</span> ${tierName}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;font-family:'JetBrains Mono',monospace;">
+          <div><span style="color:#64748b;">Callers (In):</span> <strong style="color:#fbbf24;">${inDeg}</strong></div>
+          <div><span style="color:#64748b;">Callees (Out):</span> <strong style="color:#38bdf8;">${outDeg}</strong></div>
+          <div style="grid-column:span 2;"><span style="color:#64748b;">Instability (I):</span> <span style="color:${instabColor};font-weight:600;">${instabText} (${instability})</span></div>
+          <div style="grid-column:span 2;"><span style="color:#64748b;">Velocity:</span> ${commitsHtml}</div>
+        </div>
+
+        <div style="display:flex;gap:5px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);">
+          <button class="hud-btn" id="telemetry-act-isolate" style="flex:1;justify-content:center;font-size:10px;height:22px;">🪐 Isolate</button>
+          <button class="hud-btn" id="telemetry-act-inspect" style="flex:1;justify-content:center;font-size:10px;height:22px;">🔍 Inspect</button>
+          <button class="hud-btn" id="telemetry-act-copy" style="flex:1;justify-content:center;font-size:10px;height:22px;">📋 Copy</button>
+        </div>
+      `;
+
+      const isoBtn = this._telemetryCard.querySelector('#telemetry-act-isolate');
+      if (isoBtn) isoBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.isolatePackage(pkg);
+      };
+
+      const inspBtn = this._telemetryCard.querySelector('#telemetry-act-inspect');
+      if (inspBtn) inspBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (this._onSelectEntity) this._onSelectEntity(id || fqn);
+        else if (window.selectEntity) window.selectEntity(id || fqn);
+      };
+
+      const copyBtn = this._telemetryCard.querySelector('#telemetry-act-copy');
+      if (copyBtn) copyBtn.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(fqn || id).then(() => {
+          copyBtn.textContent = '✓ Copied!';
+          setTimeout(() => { if (copyBtn) copyBtn.textContent = '📋 Copy'; }, 1500);
+        });
+      };
+
+      this._telemetryCard.style.display = 'block';
+    }
+
     _createLabelSprite(text, colorStr, isPackage = true) {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -522,11 +833,19 @@
 
       // Pre-calculate node degree (in-degree + out-degree) for sizing & hierarchy
       const degreeMap = new Map();
+      this._inDegreeMap  = new Map();
+      this._outDegreeMap = new Map();
       rawEdges.forEach(e => {
         const s = e.source || e.caller;
         const t = e.target || e.callee;
-        if (s) degreeMap.set(s, (degreeMap.get(s) || 0) + 1);
-        if (t) degreeMap.set(t, (degreeMap.get(t) || 0) + 1);
+        if (s) {
+          degreeMap.set(s, (degreeMap.get(s) || 0) + 1);
+          this._outDegreeMap.set(s, (this._outDegreeMap.get(s) || 0) + 1);
+        }
+        if (t) {
+          degreeMap.set(t, (degreeMap.get(t) || 0) + 1);
+          this._inDegreeMap.set(t, (this._inDegreeMap.get(t) || 0) + 1);
+        }
       });
 
       const nodeMap = new Map();  // id → nodeObj { id, x,y,z, pkg, colorHex, colorStr, isMethod, raw }
@@ -580,16 +899,19 @@
         const methodNodes = pkgNodes.filter(n => n.type === 'METHOD'  || n.kind === 'METHOD'  || n.id.includes('('));
 
         /* Place class "star" nodes in a fan ring around the package centre */
+        // Stratify vertically by architectural tier (Controllers high, Services mid, Repositories in gravity well)
         const ringR = Math.max(38, 20 * Math.sqrt(classNodes.length));
         classNodes.forEach((n, ci) => {
           const angle = (ci / Math.max(1, classNodes.length)) * Math.PI * 2;
           const r     = ringR + (ci % 3) * 12;
           const px    = cx + r * Math.cos(angle);
-          const py    = cy + (ci % 2 === 0 ? 8 : -8);
+          const tierMeta = this._getArchitecturalTier(n, n.id, pkgName);
+          const py    = cy + tierMeta.yOffset + (ci % 2 === 0 ? 3 : -3);
           const pz    = cz + r * Math.sin(angle);
 
           const obj = { id: n.id, label: n.label || n.simpleName || n.id.split('.').pop(), raw: n,
-                        x: px, y: py, z: pz, pkg: pkgName, colorStr: colorStr, colorHex: colorHex, isMethod: false };
+                        x: px, y: py, z: pz, pkg: pkgName, colorStr: colorStr, colorHex: colorHex, isMethod: false,
+                        tierMeta: tierMeta };
           this._nodes.push(obj);
           nodeMap.set(n.id, obj);
         });
@@ -629,12 +951,13 @@
             const orbitR = 15 + Math.floor(mi / 6) * 10;
             const orbitA = ((mi % 6) / 6) * Math.PI * 2 + Math.floor(mi / 6) * 0.7;
             const px = subCx + orbitR * Math.cos(orbitA);
-            const py = subCy + 5 * Math.sin(orbitA * 0.5);
+            const py = subCy + 4 * Math.sin(orbitA * 0.5);
             const pz = subCz + orbitR * Math.sin(orbitA);
 
             const obj = { id: n.id, label: (n.label || n.simpleName || n.id.split('(')[0].split('.').pop()) + '()',
                           raw: n, x: px, y: py, z: pz, pkg: pkgName, parentClass: clsKey,
-                          colorStr: colorStr, colorHex: colorHex, isMethod: true };
+                          colorStr: colorStr, colorHex: colorHex, isMethod: true,
+                          orbitR: orbitR, orbitA: orbitA, orbitIndex: mi };
             this._nodes.push(obj);
             nodeMap.set(n.id, obj);
           });
@@ -716,20 +1039,39 @@
 
       /* ── 3. Build node sphere meshes ─────────────────────── */
       const nodeMeshMap = new Map();
+      this._orbitingMethods = [];
+
       this._nodes.forEach(n => {
         const isMeth = n.isMethod;
         const deg    = degreeMap.get(n.id) || 0;
-        // Tasteful celestial scale: major classes 1.4-3.0, methods 0.45-0.75
-        const radius = isMeth
+        let radius   = isMeth
           ? Math.max(0.45, Math.min(0.85, 0.45 + (deg > 3 ? 0.2 : 0)))
           : Math.max(1.4, Math.min(3.0, 1.4 + Math.sqrt(deg) * 0.26));
-        const hex    = n.colorHex;
+        let hex      = n.colorHex;
+        let emissiveInt = isMeth ? 0.75 : 1.15;
+
+        // Apply Git Churn Stellar Spectrometry if heat mode is active
+        if (this._heatMode && !isMeth) {
+          const heat = this._heatData || {};
+          const maxCommits = Math.max(1, ...Object.values(heat));
+          const commits = (heat[n.id] || (n.raw && heat[n.raw.fqn])) || 0;
+          const ratio = Math.min(1.0, commits / Math.max(5, maxCommits * 0.7));
+          if (ratio > 0.65) {
+            hex = 0x67e8f9; emissiveInt = 2.2; radius *= 1.25;
+          } else if (ratio > 0.35) {
+            hex = 0xfbbf24; emissiveInt = 1.6; radius *= 1.15;
+          } else if (ratio > 0.08) {
+            hex = 0xf43f5e; emissiveInt = 1.2;
+          } else {
+            hex = 0x64748b; emissiveInt = 0.55;
+          }
+        }
 
         // Radiant celestial star: self-luminous, soft starlight core
         const mat = new THREE.MeshStandardMaterial({
           color: hex,
           emissive: hex,
-          emissiveIntensity: isMeth ? 0.75 : 1.15,
+          emissiveIntensity: emissiveInt,
           roughness: 0.82,
           metalness: 0.05,
         });
@@ -755,15 +1097,30 @@
         mesh.userData = {
           node: n,
           colorStr: n.colorStr,
+          colorHex: n.colorHex,
           pkg: n.pkg,
           isMethod: isMeth,
           haloMesh: haloMesh,
           deg: deg,
           baseRadius: radius,
+          tierMeta: n.tierMeta,
         };
         this._scene.add(mesh);
         this._nodeMeshes.push(mesh);
         nodeMeshMap.set(n.id, mesh);
+
+        // Keplerian orbiting method satellite setup
+        if (isMeth && n.parentClass) {
+          const parentMesh = nodeMeshMap.get(n.parentClass);
+          this._orbitingMethods.push({
+            mesh: mesh,
+            parentMesh: parentMesh,
+            orbitR: n.orbitR || 18,
+            baseOrbitA: n.orbitA || 0,
+            speed: (0.16 + ((n.orbitIndex || 0) % 3) * 0.05) * ((n.orbitIndex || 0) % 2 === 0 ? 1 : -1),
+            bobSpeed: 0.6 + ((n.orbitIndex || 0) % 3) * 0.2,
+          });
+        }
       });
 
       // Top hub superstar labels (top 8 classes by degree for immediate architectural orientation)
@@ -814,7 +1171,7 @@
           blending: THREE.AdditiveBlending,
         });
         const line    = new THREE.Line(geo, lineMat);
-        line.userData = { src: src.id, tgt: tgt.id, origColor: arcCol, origOpacity: arcOp, cross: cross };
+        line.userData = { src: src.id, tgt: tgt.id, srcPkg: src.pkg, tgtPkg: tgt.pkg, origColor: arcCol, origOpacity: arcOp, cross: cross };
         this._scene.add(line);
         this._edgeLines.push(line);
 
@@ -983,6 +1340,16 @@
       });
       this._toolbar.appendChild(arcsBtn);
 
+      const churnBtn = document.createElement('button');
+      churnBtn.id = 'hud-btn-heat';
+      churnBtn.className = 'hud-btn' + (this._heatMode ? ' active' : '');
+      churnBtn.innerHTML = '<span class="hud-btn-icon">🔥</span> <span class="hud-btn-text">Churn</span>';
+      churnBtn.title = 'Toggle Git Churn Stellar Spectrometry (H)';
+      churnBtn.addEventListener('click', () => {
+        this.toggleHeatMode();
+      });
+      this._toolbar.appendChild(churnBtn);
+
       const resetBtn = document.createElement('button');
       resetBtn.className = 'hud-btn';
       resetBtn.innerHTML = '<span class="hud-btn-icon">⌖</span> <span class="hud-btn-text">Reset</span>';
@@ -1049,7 +1416,12 @@
           );
         }
 
-        const show = okSearch && okPkg && !hidden && okPojo && okArchetype;
+        let okIsolated = true;
+        if (this._isolatedPkg) {
+          okIsolated = (d.pkg === this._isolatedPkg);
+        }
+
+        const show = okSearch && okPkg && !hidden && okPojo && okArchetype && okIsolated;
         m.visible = show;
         if (d.haloMesh) d.haloMesh.visible = show;
         if (show) visible.add(id);
@@ -1059,30 +1431,42 @@
         if (!this._showArcs) {
           l.visible = false;
         } else if (l.userData.src && l.userData.tgt) {
-          l.visible = visible.has(l.userData.src) && visible.has(l.userData.tgt);
+          const bothVisible = visible.has(l.userData.src) && visible.has(l.userData.tgt);
+          if (this._isolatedPkg) {
+            const srcIn = l.userData.srcPkg === this._isolatedPkg || visible.has(l.userData.src);
+            const tgtIn = l.userData.tgtPkg === this._isolatedPkg || visible.has(l.userData.tgt);
+            l.visible = bothVisible && srcIn && tgtIn;
+            if (l.visible) l.material.opacity = 0.85;
+          } else {
+            l.visible = bothVisible;
+          }
         }
       });
 
       if (this._cometGroup) {
-        this._cometGroup.visible = this._showArcs;
+        this._cometGroup.visible = this._showArcs && !this._isolatedPkg;
       }
       this._cometTails.forEach(t => {
-        if (t.points) t.points.visible = this._showArcs;
+        if (t.points) t.points.visible = this._showArcs && !this._isolatedPkg;
       });
 
       this._planeMeshes.forEach(p => {
         const pkgOk = !p.userData || !this._hiddenPackages.has(p.userData.pkg);
-        p.visible   = this._showPlanes && pkgOk;
+        const isoOk = !this._isolatedPkg || (p.userData && p.userData.pkg === this._isolatedPkg);
+        p.visible   = this._showPlanes && pkgOk && isoOk;
       });
 
       this._nebulaGroups.forEach(ng => {
-        ng.visible = !ng.userData || !this._hiddenPackages.has(ng.userData.pkg);
+        const pkgOk = !ng.userData || !this._hiddenPackages.has(ng.userData.pkg);
+        const isoOk = !this._isolatedPkg || (ng.userData && ng.userData.pkg === this._isolatedPkg);
+        ng.visible = pkgOk && isoOk;
       });
 
       this._labelSprites.forEach(s => {
         const pkgOk = !this._hiddenPackages.has(s.userData.pkg);
         const entityOk = !s.userData.nodeId || visible.has(s.userData.nodeId);
-        s.visible = this._showLabels && pkgOk && entityOk;
+        const isoOk = !this._isolatedPkg || (s.userData.pkg === this._isolatedPkg);
+        s.visible = this._showLabels && pkgOk && entityOk && isoOk;
       });
 
       this._updatePojoButton(hiddenPojoCount);
@@ -1166,9 +1550,14 @@
         this._tooltip.style.top     = `${ev.clientY - rect.top  + 16}px`;
         this._tooltip.style.display = 'block';
 
+        this._updateTelemetryCard(hit);
+
       } else {
         this._resetHover();
         this._tooltip.style.display = 'none';
+        if (!this._selectedMesh) {
+          this._updateTelemetryCard(null);
+        }
         this._el.style.cursor = 'default';
       }
     }
@@ -1258,6 +1647,8 @@
       const nodeHits = this._raycaster.intersectObjects(this._nodeMeshes.filter(m => m.visible));
       if (nodeHits.length > 0) {
         const hit = nodeHits[0].object;
+        this._selectedMesh = hit;
+        this._updateTelemetryCard(hit);
         const entity = hit.userData.node ? hit.userData.node.raw : null;
         this.flyToNode(hit);
         if (entity && this._onSelectEntity) this._onSelectEntity(entity.id || entity.fqn);
@@ -1274,7 +1665,12 @@
         } else if (hitLabel.userData.nodeId) {
           this.flyToNode(hitLabel.userData.nodeId);
         }
+        return;
       }
+
+      // Clicked in empty cosmic space: unpin selection & hide telemetry card
+      this._selectedMesh = null;
+      this._updateTelemetryCard(null);
     }
 
     /* ─────────────────── Resize ─────────────────────────────── */
@@ -1302,6 +1698,18 @@
       const elapsed = this._clock ? this._clock.elapsedTime : 0;
       const lerp   = 1 - Math.exp(-6 * delta);
 
+      /* Harmonic Keplerian planetary orbits for method satellites */
+      if (this._orbitingMethods && this._orbitingMethods.length > 0) {
+        this._orbitingMethods.forEach(om => {
+          if (!om.mesh.visible || !om.parentMesh) return;
+          const a = om.baseOrbitA + elapsed * om.speed;
+          const px = om.parentMesh.position.x + om.orbitR * Math.cos(a);
+          const pz = om.parentMesh.position.z + om.orbitR * Math.sin(a);
+          const py = om.parentMesh.position.y + 3.5 * Math.sin(elapsed * om.bobSpeed);
+          om.mesh.position.set(px, py, pz);
+        });
+      }
+
       /* Comet particles */
       if (this._cometGroup && this._particles.length > 0) {
         const hp = this._cometPositions;
@@ -1327,7 +1735,7 @@
       }
 
       /* Galactic core light pulse */
-      if (this._coreLight) this._coreLight.intensity = 1.0 + Math.sin(elapsed * 1.2) * 0.2;  // was 2.2 ± 0.4
+      if (this._coreLight) this._coreLight.intensity = 1.0 + Math.sin(elapsed * 1.2) * 0.2;
 
       /* Nebula slow drift */
       this._nebulaGroups.forEach((ng, i) => { ng.rotation.y = elapsed * 0.012 * (i % 2 === 0 ? 1 : -1); });
@@ -1412,6 +1820,9 @@
     destroy() {
       if (this._animId) { cancelAnimationFrame(this._animId); this._animId = null; }
       if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
+      if (this._onKeyDown) { window.removeEventListener('keydown', this._onKeyDown); this._onKeyDown = null; }
+      if (this._telemetryCard) { this._telemetryCard.remove(); this._telemetryCard = null; }
+      if (this._isolationBanner) { this._isolationBanner.remove(); this._isolationBanner = null; }
       if (this._scene) {
         this._scene.traverse(obj => {
           if (obj.geometry) obj.geometry.dispose();
@@ -1450,6 +1861,11 @@
       this._planeMeshes = []; this._edgeMap = new Map();
       this._highlightEdges = []; this._dimmedEdges = [];
       this._highlightNeighbors = []; this._dimmedNodes = [];
+      this._orbitingMethods = [];
+      this._selectedMesh = null;
+      this._isolatedPkg = null;
+      if (this._inDegreeMap) this._inDegreeMap.clear();
+      if (this._outDegreeMap) this._outDegreeMap.clear();
       if (this._labelSprites) {
         this._labelSprites.forEach(s => {
           if (s.material && s.material.map) s.material.map.dispose();
