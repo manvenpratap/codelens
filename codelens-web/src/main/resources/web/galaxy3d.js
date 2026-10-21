@@ -29,14 +29,14 @@
   const TRAIL_LENGTH   = 6;          // comet tail dot count (including head)
   const STAR_COUNTS    = [1500, 600, 150];
   const NEBULA_PTS     = 55;         // additive dust points per package
-  const BLOOM_STRENGTH = 0.85;
-  const BLOOM_RADIUS   = 0.40;
-  const BLOOM_THRESH   = 0.82;
+  const BLOOM_STRENGTH = 1.15;       // rich celestial starlight bloom
+  const BLOOM_RADIUS   = 0.50;
+  const BLOOM_THRESH   = 0.48;       // allow emissive star cores and arcs to glow
 
   // 4 spiral arm base angles (radians)
   const ARM_OFFSETS = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
-  const SPIRAL_A    = 42;            // wider logarithmic spiral (was 22)
-  const SPIRAL_B    = 0.20;          // spiral tightness
+  const SPIRAL_A    = 28;            // compact, cohesive spiral core
+  const SPIRAL_B    = 0.16;          // balanced galactic disk curvature
 
   /* ═══════════════════════════════════════════════════════════
    *  Galaxy3DRenderer
@@ -262,11 +262,11 @@
 
     setBrightness(v) {
       const f = Math.max(0.2, Math.min(2.5, v));
-      if (this._renderer)    this._renderer.toneMappingExposure = 0.75 * f;  // was 1.2
-      if (this._ambientLight) this._ambientLight.intensity = 0.25 * f;        // was 0.5
-      if (this._hemiLight)    this._hemiLight.intensity    = 0.25 * f;        // was 0.6
-      if (this._coreLight)    this._coreLight.intensity    = 1.0  * f;        // was 2.2
-      if (this._dirLight)     this._dirLight.intensity     = 0.25 * f;        // was 0.5
+      if (this._renderer)    this._renderer.toneMappingExposure = 1.20 * f;
+      if (this._ambientLight) this._ambientLight.intensity = 0.65 * f;
+      if (this._hemiLight)    this._hemiLight.intensity    = 0.55 * f;
+      if (this._coreLight)    this._coreLight.intensity    = 2.5  * f;
+      if (this._dirLight)     this._dirLight.intensity     = 0.65 * f;
     }
 
     pause() {
@@ -344,11 +344,11 @@
 
       // Scene
       this._scene = new THREE.Scene();
-      this._scene.fog = new THREE.FogExp2(0x02040a, 0.00075);
+      this._scene.fog = new THREE.Fog(0x02040a, 450, 2600);
 
       // Camera
       this._camera = new THREE.PerspectiveCamera(45, W / H, 1, 4000);
-      this._camera.position.set(0, 200, 550);
+      this._camera.position.set(0, 180, 480);
 
       // Renderer
       this._renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -356,7 +356,7 @@
       this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       if (THREE.sRGBEncoding) this._renderer.outputEncoding = THREE.sRGBEncoding;
       this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this._renderer.toneMappingExposure = 0.75;   // was 1.2 — much dimmer default
+      this._renderer.toneMappingExposure = 1.20;
       this._el.appendChild(this._renderer.domElement);
       this._clock = new THREE.Clock();
 
@@ -371,17 +371,17 @@
       }
 
       // Lights
-      this._ambientLight = new THREE.AmbientLight(0x0a0d1a, 0.25);  // was 0.5
+      this._ambientLight = new THREE.AmbientLight(0x0e172a, 0.65);
       this._scene.add(this._ambientLight);
 
-      this._hemiLight = new THREE.HemisphereLight(0x334466, 0x0a0d1a, 0.25);  // was 0.6
+      this._hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0a0d1a, 0.55);
       this._scene.add(this._hemiLight);
 
-      this._coreLight = new THREE.PointLight(0xfbbf24, 1.0, 700, 2.0);  // was 2.2 / 900
+      this._coreLight = new THREE.PointLight(0xfbbf24, 2.5, 1200, 1.4);
       this._coreLight.position.set(0, 0, 0);
       this._scene.add(this._coreLight);
 
-      this._dirLight = new THREE.DirectionalLight(0x34d399, 0.25);  // was 0.5
+      this._dirLight = new THREE.DirectionalLight(0x34d399, 0.65);
       this._dirLight.position.set(250, 300, 200);
       this._scene.add(this._dirLight);
 
