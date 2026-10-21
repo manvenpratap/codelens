@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class SettlementInstructionService {
 
-    private final CLDGFailGrabber dataGrabber;
+    private final CLDGFailGetter dataGetter;
 
     public SettlementInstructionService() {
-        this.dataGrabber = new CLDGFailGrabber();
+        this.dataGetter = new CLDGFailGetter();
     }
 
-    public SettlementInstructionService(CLDGFailGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public SettlementInstructionService(CLDGFailGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class SettlementInstructionService {
     }
 
     public SettlementFailRecord inspectAndReconcile(String entityId) {
-        SettlementFailRecord entity = this.dataGrabber.fetchSettlementFailRecordById(entityId);
+        SettlementFailRecord entity = this.dataGetter.fetchSettlementFailRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class SettlementInstructionService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: CLTOCheckDepositoryBalance
+     * TCS BaNCS Own Task delegate: CLTOValidateClearingMember
      */
-    public boolean CLTOCheckDepositoryBalance(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOCheckDepositoryBalance", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean CLTOValidateClearingMember(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOValidateClearingMember", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: CLTCSyncGeneralLedger
+     * TCS BaNCS Common Task delegate: CLTCVerifyCustomerKYC
      */
-    public void CLTCSyncGeneralLedger(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCSyncGeneralLedger", correlationId, operation);
+    public void CLTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCVerifyCustomerKYC", correlationId, operation);
     }
 }

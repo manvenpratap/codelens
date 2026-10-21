@@ -14,21 +14,21 @@ import com.tcs.bancs.PM.*;
  */
 public class GeneralLedgerService {
 
-    private final GLDGLedgerGrabber dataGrabber;
+    private final GLDGLedgerGetter dataGetter;
 
     public GeneralLedgerService() {
-        this.dataGrabber = new GLDGLedgerGrabber();
+        this.dataGetter = new GLDGLedgerGetter();
     }
 
-    public GeneralLedgerService(GLDGLedgerGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public GeneralLedgerService(GLDGLedgerGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class GeneralLedgerService {
     }
 
     public LedgerAccount inspectAndReconcile(String entityId) {
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(entityId);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -70,7 +70,7 @@ public class GeneralLedgerService {
         this.GLTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(req.getMessageCorrelationId());
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -109,7 +109,7 @@ public class GeneralLedgerService {
         this.GLTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(req.getMessageCorrelationId());
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -148,7 +148,7 @@ public class GeneralLedgerService {
         this.GLTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(req.getMessageCorrelationId());
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -187,7 +187,7 @@ public class GeneralLedgerService {
         this.GLTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(req.getMessageCorrelationId());
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -226,7 +226,7 @@ public class GeneralLedgerService {
         this.GLTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(req.getMessageCorrelationId());
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -259,7 +259,7 @@ public class GeneralLedgerService {
         this.GLTOValidateBalanceEquation(lookupKey);
 
         // Step 2: Query entity state
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(lookupKey);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -284,7 +284,7 @@ public class GeneralLedgerService {
         this.GLTOPostPostingLeg(lookupKey);
 
         // Step 2: Query entity state
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(lookupKey);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -309,7 +309,7 @@ public class GeneralLedgerService {
         this.GLTOUpdateAccountBalance(lookupKey);
 
         // Step 2: Query entity state
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(lookupKey);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -334,7 +334,7 @@ public class GeneralLedgerService {
         this.GLTOVerifyVoucherAuthorization(lookupKey);
 
         // Step 2: Query entity state
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(lookupKey);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -355,7 +355,7 @@ public class GeneralLedgerService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOValidateBalanceEquation", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void GLTOValidateBalanceEquation(String correlationId, double amount) {
@@ -372,7 +372,7 @@ public class GeneralLedgerService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOPostPostingLeg", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void GLTOPostPostingLeg(String correlationId, double amount) {
@@ -389,7 +389,7 @@ public class GeneralLedgerService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOUpdateAccountBalance", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void GLTOUpdateAccountBalance(String correlationId, double amount) {
@@ -406,7 +406,7 @@ public class GeneralLedgerService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOVerifyVoucherAuthorization", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void GLTOVerifyVoucherAuthorization(String correlationId, double amount) {
@@ -471,7 +471,7 @@ public class GeneralLedgerService {
      */
     public int GLPSEODLedgerBalancing() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPSEODLedgerBalancing", "GL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("GLPSEODLedgerBalancing", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPSEODLedgerBalancing", "GL", "PROCESSED=" + count);
@@ -483,7 +483,7 @@ public class GeneralLedgerService {
      */
     public int GLPBPreBalancingAudit() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPBPreBalancingAudit", "GL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("GLPBPreBalancingAudit", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPBPreBalancingAudit", "GL", "PROCESSED=" + count);
@@ -495,7 +495,7 @@ public class GeneralLedgerService {
      */
     public int GLPAPostBalancingReport() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPAPostBalancingReport", "GL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("GLPAPostBalancingReport", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "GLPAPostBalancingReport", "GL", "PROCESSED=" + count);

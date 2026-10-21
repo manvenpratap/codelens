@@ -12,21 +12,21 @@ import com.tcs.bancs.GL.*;
  */
 public class ExecutiveDashboardService {
 
-    private final ANDGAnalyticsGrabber dataGrabber;
+    private final ANDGAnalyticsGetter dataGetter;
 
     public ExecutiveDashboardService() {
-        this.dataGrabber = new ANDGAnalyticsGrabber();
+        this.dataGetter = new ANDGAnalyticsGetter();
     }
 
-    public ExecutiveDashboardService(ANDGAnalyticsGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public ExecutiveDashboardService(ANDGAnalyticsGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class ExecutiveDashboardService {
     }
 
     public PnLSummaryRecord inspectAndReconcile(String entityId) {
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(entityId);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class ExecutiveDashboardService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: ANTOAggregatePortfolioPnL
+     * TCS BaNCS Own Task delegate: ANTOInterpolateYieldCurve
      */
-    public boolean ANTOAggregatePortfolioPnL(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOAggregatePortfolioPnL", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean ANTOInterpolateYieldCurve(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOInterpolateYieldCurve", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: ANTCNotifyChannel
+     * TCS BaNCS Common Task delegate: ANTCAuditTransaction
      */
-    public void ANTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCNotifyChannel", correlationId, operation);
+    public void ANTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCAuditTransaction", correlationId, operation);
     }
 }

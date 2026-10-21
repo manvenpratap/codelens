@@ -11,21 +11,21 @@ import com.tcs.bancs.RK.*;
  */
 public class MarginCallManagementService {
 
-    private final SCDGValuationGrabber dataGrabber;
+    private final SCDGValuationGetter dataGetter;
 
     public MarginCallManagementService() {
-        this.dataGrabber = new SCDGValuationGrabber();
+        this.dataGetter = new SCDGValuationGetter();
     }
 
-    public MarginCallManagementService(SCDGValuationGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public MarginCallManagementService(SCDGValuationGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class MarginCallManagementService {
     }
 
     public ValuationAppraisalReport inspectAndReconcile(String entityId) {
-        ValuationAppraisalReport entity = this.dataGrabber.fetchValuationAppraisalReportById(entityId);
+        ValuationAppraisalReport entity = this.dataGetter.fetchValuationAppraisalReportById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -49,17 +49,17 @@ public class MarginCallManagementService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: SCTOCheckMarginThreshold
+     * TCS BaNCS Own Task delegate: SCTOEvaluateLtvRatio
      */
-    public boolean SCTOCheckMarginThreshold(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "SCTOCheckMarginThreshold", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean SCTOEvaluateLtvRatio(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "SCTOEvaluateLtvRatio", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: SCTCSyncGeneralLedger
+     * TCS BaNCS Common Task delegate: SCTCAuditTransaction
      */
-    public void SCTCSyncGeneralLedger(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "SCTCSyncGeneralLedger", correlationId, operation);
+    public void SCTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "SCTCAuditTransaction", correlationId, operation);
     }
 }

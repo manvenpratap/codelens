@@ -11,21 +11,21 @@ import com.tcs.bancs.PM.*;
  */
 public class Iso20022TransformationService {
 
-    private final MSDGAuditQueueGrabber dataGrabber;
+    private final MSDGAuditQueueGetter dataGetter;
 
     public Iso20022TransformationService() {
-        this.dataGrabber = new MSDGAuditQueueGrabber();
+        this.dataGetter = new MSDGAuditQueueGetter();
     }
 
-    public Iso20022TransformationService(MSDGAuditQueueGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public Iso20022TransformationService(MSDGAuditQueueGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class Iso20022TransformationService {
     }
 
     public InboundPayloadStore inspectAndReconcile(String entityId) {
-        InboundPayloadStore entity = this.dataGrabber.fetchInboundPayloadStoreById(entityId);
+        InboundPayloadStore entity = this.dataGetter.fetchInboundPayloadStoreById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -49,17 +49,17 @@ public class Iso20022TransformationService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: MSTODecodePayload
+     * TCS BaNCS Own Task delegate: MSTOEnqueueOutboundQueue
      */
-    public boolean MSTODecodePayload(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "MSTODecodePayload", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean MSTOEnqueueOutboundQueue(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "MSTOEnqueueOutboundQueue", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: MSTCAuditTransaction
+     * TCS BaNCS Common Task delegate: MSTCNotifyChannel
      */
-    public void MSTCAuditTransaction(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCAuditTransaction", correlationId, operation);
+    public void MSTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "MSTCNotifyChannel", correlationId, operation);
     }
 }

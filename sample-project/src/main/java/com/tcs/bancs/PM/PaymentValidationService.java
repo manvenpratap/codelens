@@ -12,21 +12,21 @@ import com.tcs.bancs.RK.*;
  */
 public class PaymentValidationService {
 
-    private final PMDGMandateGrabber dataGrabber;
+    private final PMDGMandateGetter dataGetter;
 
     public PaymentValidationService() {
-        this.dataGrabber = new PMDGMandateGrabber();
+        this.dataGetter = new PMDGMandateGetter();
     }
 
-    public PaymentValidationService(PMDGMandateGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PaymentValidationService(PMDGMandateGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class PaymentValidationService {
     }
 
     public PaymentMandate inspectAndReconcile(String entityId) {
-        PaymentMandate entity = this.dataGrabber.fetchPaymentMandateById(entityId);
+        PaymentMandate entity = this.dataGetter.fetchPaymentMandateById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -54,7 +54,7 @@ public class PaymentValidationService {
      */
     public boolean PMTOValidatePaymentMandate(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTOValidatePaymentMandate", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

@@ -12,21 +12,21 @@ import com.tcs.bancs.GL.*;
  */
 public class PnLCalculationService {
 
-    private final ANDGAnalyticsGrabber dataGrabber;
+    private final ANDGAnalyticsGetter dataGetter;
 
     public PnLCalculationService() {
-        this.dataGrabber = new ANDGAnalyticsGrabber();
+        this.dataGetter = new ANDGAnalyticsGetter();
     }
 
-    public PnLCalculationService(ANDGAnalyticsGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PnLCalculationService(ANDGAnalyticsGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class PnLCalculationService {
     }
 
     public PnLSummaryRecord inspectAndReconcile(String entityId) {
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(entityId);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class PnLCalculationService {
         this.ANTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class PnLCalculationService {
         this.ANTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class PnLCalculationService {
         this.ANTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class PnLCalculationService {
         this.ANTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class PnLCalculationService {
         this.ANTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class PnLCalculationService {
         this.ANTOComputeRiskMetrics(lookupKey);
 
         // Step 2: Query entity state
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(lookupKey);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class PnLCalculationService {
         this.ANTOInterpolateYieldCurve(lookupKey);
 
         // Step 2: Query entity state
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(lookupKey);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class PnLCalculationService {
         this.ANTOAggregatePortfolioPnL(lookupKey);
 
         // Step 2: Query entity state
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(lookupKey);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class PnLCalculationService {
         this.ANTOValidateCapitalRatio(lookupKey);
 
         // Step 2: Query entity state
-        PnLSummaryRecord entity = this.dataGrabber.fetchPnLSummaryRecordById(lookupKey);
+        PnLSummaryRecord entity = this.dataGetter.fetchPnLSummaryRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class PnLCalculationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "ANTOComputeRiskMetrics", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void ANTOComputeRiskMetrics(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class PnLCalculationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "ANTOInterpolateYieldCurve", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void ANTOInterpolateYieldCurve(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class PnLCalculationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "ANTOAggregatePortfolioPnL", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void ANTOAggregatePortfolioPnL(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class PnLCalculationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "ANTOValidateCapitalRatio", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void ANTOValidateCapitalRatio(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class PnLCalculationService {
      */
     public int ANPSEODAnalyticsRollup() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPSEODAnalyticsRollup", "AN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("ANPSEODAnalyticsRollup", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPSEODAnalyticsRollup", "AN", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class PnLCalculationService {
      */
     public int ANPBPreRollupDataSanity() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPBPreRollupDataSanity", "AN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("ANPBPreRollupDataSanity", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPBPreRollupDataSanity", "AN", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class PnLCalculationService {
      */
     public int ANPAPostRollupNotification() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPAPostRollupNotification", "AN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("ANPAPostRollupNotification", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "ANPAPostRollupNotification", "AN", "PROCESSED=" + count);

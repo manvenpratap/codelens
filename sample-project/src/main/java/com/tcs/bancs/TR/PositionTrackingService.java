@@ -12,21 +12,21 @@ import com.tcs.bancs.AN.*;
  */
 public class PositionTrackingService {
 
-    private final TRDGMarketQuoteGrabber dataGrabber;
+    private final TRDGMarketQuoteGetter dataGetter;
 
     public PositionTrackingService() {
-        this.dataGrabber = new TRDGMarketQuoteGrabber();
+        this.dataGetter = new TRDGMarketQuoteGetter();
     }
 
-    public PositionTrackingService(TRDGMarketQuoteGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PositionTrackingService(TRDGMarketQuoteGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class PositionTrackingService {
     }
 
     public TradingStrategyConfig inspectAndReconcile(String entityId) {
-        TradingStrategyConfig entity = this.dataGrabber.fetchTradingStrategyConfigById(entityId);
+        TradingStrategyConfig entity = this.dataGetter.fetchTradingStrategyConfigById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class PositionTrackingService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: TRTOUpdatePortfolioPosition
+     * TCS BaNCS Own Task delegate: TRTOValidateOrderLimits
      */
-    public boolean TRTOUpdatePortfolioPosition(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "TRTOUpdatePortfolioPosition", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean TRTOValidateOrderLimits(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "TRTOValidateOrderLimits", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: TRTCNotifyChannel
+     * TCS BaNCS Common Task delegate: TRTCVerifyCustomerKYC
      */
-    public void TRTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "TRTCNotifyChannel", correlationId, operation);
+    public void TRTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "TRTCVerifyCustomerKYC", correlationId, operation);
     }
 }

@@ -12,21 +12,21 @@ import com.tcs.bancs.RK.*;
  */
 public class PaymentInitiationService {
 
-    private final PMDGPaymentGrabber dataGrabber;
+    private final PMDGPaymentGetter dataGetter;
 
     public PaymentInitiationService() {
-        this.dataGrabber = new PMDGPaymentGrabber();
+        this.dataGetter = new PMDGPaymentGetter();
     }
 
-    public PaymentInitiationService(PMDGPaymentGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PaymentInitiationService(PMDGPaymentGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class PaymentInitiationService {
     }
 
     public PaymentTransaction inspectAndReconcile(String entityId) {
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(entityId);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class PaymentInitiationService {
         this.PMTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(req.getMessageCorrelationId());
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class PaymentInitiationService {
         this.PMTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(req.getMessageCorrelationId());
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class PaymentInitiationService {
         this.PMTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(req.getMessageCorrelationId());
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class PaymentInitiationService {
         this.PMTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(req.getMessageCorrelationId());
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class PaymentInitiationService {
         this.PMTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(req.getMessageCorrelationId());
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class PaymentInitiationService {
         this.PMTOValidatePaymentMandate(lookupKey);
 
         // Step 2: Query entity state
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(lookupKey);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class PaymentInitiationService {
         this.PMTORoutePaymentChannel(lookupKey);
 
         // Step 2: Query entity state
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(lookupKey);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class PaymentInitiationService {
         this.PMTODebitSenderAccount(lookupKey);
 
         // Step 2: Query entity state
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(lookupKey);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class PaymentInitiationService {
         this.PMTOCreditBeneficiaryAccount(lookupKey);
 
         // Step 2: Query entity state
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(lookupKey);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class PaymentInitiationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTOValidatePaymentMandate", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void PMTOValidatePaymentMandate(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class PaymentInitiationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTORoutePaymentChannel", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void PMTORoutePaymentChannel(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class PaymentInitiationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTODebitSenderAccount", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void PMTODebitSenderAccount(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class PaymentInitiationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTOCreditBeneficiaryAccount", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void PMTOCreditBeneficiaryAccount(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class PaymentInitiationService {
      */
     public int PMPSEODPaymentClearing() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPSEODPaymentClearing", "PM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("PMPSEODPaymentClearing", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPSEODPaymentClearing", "PM", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class PaymentInitiationService {
      */
     public int PMPBPreClearingValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPBPreClearingValidation", "PM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("PMPBPreClearingValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPBPreClearingValidation", "PM", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class PaymentInitiationService {
      */
     public int PMPAPostClearingReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPAPostClearingReconcile", "PM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("PMPAPostClearingReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "PMPAPostClearingReconcile", "PM", "PROCESSED=" + count);

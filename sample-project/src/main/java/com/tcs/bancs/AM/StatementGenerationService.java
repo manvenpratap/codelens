@@ -11,21 +11,21 @@ import com.tcs.bancs.CU.*;
  */
 public class StatementGenerationService {
 
-    private final AMDGAccountGrabber dataGrabber;
+    private final AMDGAccountGetter dataGetter;
 
     public StatementGenerationService() {
-        this.dataGrabber = new AMDGAccountGrabber();
+        this.dataGetter = new AMDGAccountGetter();
     }
 
-    public StatementGenerationService(AMDGAccountGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public StatementGenerationService(AMDGAccountGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class StatementGenerationService {
     }
 
     public Account inspectAndReconcile(String entityId) {
-        Account entity = this.dataGrabber.fetchAccountById(entityId);
+        Account entity = this.dataGetter.fetchAccountById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -53,7 +53,7 @@ public class StatementGenerationService {
      */
     public boolean AMTOApplyAccountHold(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "AMTOApplyAccountHold", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

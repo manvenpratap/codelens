@@ -14,21 +14,21 @@ import com.tcs.bancs.RK.*;
  */
 public class AmortizationCalculationService {
 
-    private final LNDGScheduleGrabber dataGrabber;
+    private final LNDGScheduleGetter dataGetter;
 
     public AmortizationCalculationService() {
-        this.dataGrabber = new LNDGScheduleGrabber();
+        this.dataGetter = new LNDGScheduleGetter();
     }
 
-    public AmortizationCalculationService(LNDGScheduleGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public AmortizationCalculationService(LNDGScheduleGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class AmortizationCalculationService {
     }
 
     public LoanRepaymentSchedule inspectAndReconcile(String entityId) {
-        LoanRepaymentSchedule entity = this.dataGrabber.fetchLoanRepaymentScheduleById(entityId);
+        LoanRepaymentSchedule entity = this.dataGetter.fetchLoanRepaymentScheduleById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -56,7 +56,7 @@ public class AmortizationCalculationService {
      */
     public boolean LNTOCheckArrears(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCheckArrears", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

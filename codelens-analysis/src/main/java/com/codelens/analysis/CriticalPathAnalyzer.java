@@ -39,7 +39,7 @@ public class CriticalPathAnalyzer {
         public String role;               // ENTRY_POINT | INTERMEDIARY | PERSISTENT_TARGET | DOWNSTREAM_SINK
         public int complexity;
         public int step;                  // 1-based order in path
-        public String archetypeBadge;     // MUTATE | FETCH | BATCH | PERSISTENT | AUDIT | SERVICE | DATA-GRABBER
+        public String archetypeBadge;     // MUTATE | FETCH | BATCH | PERSISTENT | AUDIT | SERVICE | DATA-GETTER | DG-*
         public String archetypeColor;
         public String archetypeIcon;
         public Double x;
@@ -363,7 +363,7 @@ public class CriticalPathAnalyzer {
                 mutationScored, methodMap, typeMap));
         }
 
-        // C. Read / Query Path: Top path hitting Get or ET or Data Grabbers
+        // C. Read / Query Path: Top path hitting Get or ET or Data Getters
         ScoredPath readScored = scoredPaths.stream()
             .filter(p -> p.isRead)
             .findFirst()
@@ -728,8 +728,15 @@ public class CriticalPathAnalyzer {
         if (matchesBaNCSArchetype(fqn, name, "PA")) {
             return new ArchetypeStyle("POST-BATCH", "#ec4899", "skipForward");
         }
-        if (matchesBaNCSArchetype(fqn, name, "DG") || fUpper.contains("GRABBER")) {
-            return new ArchetypeStyle("DATA-GRABBER", "#06b6d4", "box");
+        if (matchesBaNCSArchetype(fqn, name, "DG") || fUpper.contains("GRABBER") || fUpper.contains("GETTER")) {
+            if ((fUpper.contains("PAGING") || fUpper.contains("PAGE")) && fUpper.contains("CURSOR")) {
+                return new ArchetypeStyle("DG-PAGE-CURS", "#2563eb", "sliders");
+            } else if (fUpper.contains("CURSOR") || fUpper.contains("FETCH") || fUpper.contains("OPEN")) {
+                return new ArchetypeStyle("DG-CURSOR", "#0d9488", "database");
+            } else if (fUpper.contains("PAGING") || fUpper.contains("PAGE") || fUpper.contains("MFWD") || fUpper.contains("MBWD")) {
+                return new ArchetypeStyle("DG-PAGING", "#0284c7", "layers");
+            }
+            return new ArchetypeStyle("DATA-GETTER", "#06b6d4", "box");
         }
         if (fUpper.contains("CONTROLLER") || "ENTRY_POINT".equals(role)) {
             return new ArchetypeStyle("ENTRY", "#38bdf8", "globe");

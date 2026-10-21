@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class AmlScreeningService {
 
-    private final RKDGAmlAlertGrabber dataGrabber;
+    private final RKDGAmlAlertGetter dataGetter;
 
     public AmlScreeningService() {
-        this.dataGrabber = new RKDGAmlAlertGrabber();
+        this.dataGetter = new RKDGAmlAlertGetter();
     }
 
-    public AmlScreeningService(RKDGAmlAlertGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public AmlScreeningService(RKDGAmlAlertGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class AmlScreeningService {
     }
 
     public AmlAlertRecord inspectAndReconcile(String entityId) {
-        AmlAlertRecord entity = this.dataGrabber.fetchAmlAlertRecordById(entityId);
+        AmlAlertRecord entity = this.dataGetter.fetchAmlAlertRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -54,7 +54,7 @@ public class AmlScreeningService {
      */
     public boolean RKTOUpdateExposureMatrix(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "RKTOUpdateExposureMatrix", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

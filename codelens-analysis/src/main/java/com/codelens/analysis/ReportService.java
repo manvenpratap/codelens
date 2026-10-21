@@ -2025,7 +2025,12 @@ public class ReportService {
         public int governanceScore;
         public String complianceRating;
         public int messageObjectsCount;
-        public int dataGrabbersCount;
+        public int dataGettersCount;
+        public int dataGettersSimpleCount;
+        public int dataGettersPagingCount;
+        public int dataGettersCursorCount;
+        public int dataGettersPagingCursorCount;
+        public int dataGrabbersCount; // Legacy alias for backward compatibility
         public int businessTransactionsCount;
         public int domainEntitiesCount;
         public int servicesCount;
@@ -2106,24 +2111,53 @@ public class ReportService {
                     v.architecturalRemediation = "Extract domain behavior or calculations from Message Object into a dedicated Domain Service.";
                     data.violations.add(v);
                 }
-            } else if (name.endsWith("DG") || name.contains("DataGrabber") || name.contains("Grabber")) {
+            } else if (name.endsWith("DG") || name.contains("DG") || name.contains("DataGetter") || name.contains("Getter") || name.contains("DataGrabber") || name.contains("Grabber")) {
+                data.dataGettersCount++;
                 data.dataGrabbersCount++;
+
+                boolean hasGet = false;
+                boolean hasMFwd = false;
+                boolean hasMBwd = false;
+                boolean hasOpen = false;
+                boolean hasFetch = false;
+                boolean hasClose = false;
+
                 for (CodeMethod m : typeMethods) {
+                    String sm = m.getSimpleName();
+                    if ("Get".equalsIgnoreCase(sm)) hasGet = true;
+                    if ("GetMFwd".equalsIgnoreCase(sm)) hasMFwd = true;
+                    if ("GetMBwd".equalsIgnoreCase(sm)) hasMBwd = true;
+                    if ("Open".equalsIgnoreCase(sm)) hasOpen = true;
+                    if ("Fetch".equalsIgnoreCase(sm)) hasFetch = true;
+                    if ("Close".equalsIgnoreCase(sm)) hasClose = true;
+
                     Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
                     for (String callee : callees) {
                         String calleeMethod = extractSimpleMethodName(callee);
                         if ("Create".equals(calleeMethod) || "Modify".equals(calleeMethod) || "Delete".equals(calleeMethod)) {
                             dgViolations++;
                             GovernanceViolation v = new GovernanceViolation();
-                            v.ruleName = "DG-01: Read-Only Data Grabber";
+                            v.ruleName = "DG-01: Read-Only Data Getter";
                             v.severity = "CRITICAL";
                             v.entityFqn = m.getFqn();
-                            v.archetypeName = "Data Grabber (DG)";
-                            v.violationDetails = "Data Grabber queries must be strictly idempotent; method calls mutation endpoint: " + callee;
-                            v.architecturalRemediation = "Delegate entity state mutations to a Business Transaction (*BT) instead of a Data Grabber (*DG).";
+                            v.archetypeName = "Data Getter (DG)";
+                            v.violationDetails = "Data Getter queries must be strictly idempotent; method calls mutation endpoint: " + callee;
+                            v.architecturalRemediation = "Delegate entity state mutations to a Business Transaction (*BT) instead of a Data Getter (*DG).";
                             data.violations.add(v);
                         }
                     }
+                }
+
+                boolean isCursor = hasOpen && hasFetch && hasClose;
+                boolean isPaging = hasMFwd && hasMBwd;
+                if (isCursor && isPaging) {
+                    data.dataGettersPagingCursorCount++;
+                } else if (isCursor) {
+                    data.dataGettersCursorCount++;
+                } else if (isPaging) {
+                    data.dataGettersPagingCount++;
+                } else {
+                    data.dataGettersSimpleCount++;
                 }
             } else if (name.endsWith("Controller")) {
                 data.controllersCount++;
@@ -2162,7 +2196,7 @@ public class ReportService {
                 data.businessTransactionsCount++;
                 Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
                 boolean hasAudit = callees.stream().anyMatch(c -> c.contains("AuditTrailService.logAuditEvent") || c.contains("TelemetryRecorder.recordMetric"));
-                if (!hasAudit && !m.getDeclaringTypeFqn().endsWith("Test") && !m.getDeclaringTypeFqn().contains("Grabber")) {
+                if (!hasAudit && !m.getDeclaringTypeFqn().endsWith("Test") && !m.getDeclaringTypeFqn().contains("Grabber") && !m.getDeclaringTypeFqn().contains("Getter")) {
                     btViolations++;
                     GovernanceViolation v = new GovernanceViolation();
                     v.ruleName = "BT-01: Mandatory Audit Trail";
@@ -2176,7 +2210,7 @@ public class ReportService {
             }
         }
 
-        data.totalArchetypesFound = data.messageObjectsCount + data.dataGrabbersCount + data.businessTransactionsCount + data.domainEntitiesCount;
+        data.totalArchetypesFound = data.messageObjectsCount + data.dataGettersCount + data.businessTransactionsCount + data.domainEntitiesCount;
 
         ArchetypeSummary moSum = new ArchetypeSummary();
         moSum.archetype = "Message Objects (MO_*)";
@@ -2187,11 +2221,11 @@ public class ReportService {
         data.archetypeBreakdown.add(moSum);
 
         ArchetypeSummary dgSum = new ArchetypeSummary();
-        dgSum.archetype = "Data Grabbers (*DG)";
-        dgSum.count = data.dataGrabbersCount;
+        dgSum.archetype = "Data Getters (*DG)";
+        dgSum.count = data.dataGettersCount;
         dgSum.violationCount = dgViolations;
-        dgSum.complianceRate = data.dataGrabbersCount > 0 ? Math.round(((data.dataGrabbersCount - dgViolations) / (double) data.dataGrabbersCount) * 1000.0) / 10.0 : 100.0;
-        dgSum.description = "Idempotent read-only query handlers for domain entities";
+        dgSum.complianceRate = data.dataGettersCount > 0 ? Math.round(((data.dataGettersCount - dgViolations) / (double) data.dataGettersCount) * 1000.0) / 10.0 : 100.0;
+        dgSum.description = "Idempotent read-only query handlers for domain entities (Simple, Paging, Cursor, Paging Cursor)";
         data.archetypeBreakdown.add(dgSum);
 
         ArchetypeSummary btSum = new ArchetypeSummary();
@@ -2612,7 +2646,8 @@ public class ReportService {
         sb.append(".badge-fetch { background: rgba(6,182,212,0.2); color: #22d3ee; border: 1px solid rgba(6,182,212,0.4); }\n");
         sb.append(".badge-mutate { background: rgba(249,115,22,0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); }\n");
         sb.append(".badge-batch { background: rgba(168,85,247,0.2); color: #c084fc; border: 1px solid rgba(168,85,247,0.4); }\n");
-        sb.append(".badge-grabber { background: rgba(236,72,153,0.2); color: #f472b6; border: 1px solid rgba(236,72,153,0.4); }\n");
+        sb.append(".badge-getter { background: rgba(6,182,212,0.2); color: #22d3ee; border: 1px solid rgba(6,182,212,0.4); }\n");
+        sb.append(".badge-grabber { background: rgba(6,182,212,0.2); color: #22d3ee; border: 1px solid rgba(6,182,212,0.4); }\n");
         sb.append(".prop-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin: 5px 0; gap: 8px; }\n");
         sb.append(".prop-name { color: var(--text-muted); flex-shrink: 0; }\n");
         sb.append(".prop-val { font-weight: 600; font-family: monospace; color: #e2e8f0; text-align: right; word-break: break-all; }\n");
@@ -2825,7 +2860,7 @@ public class ReportService {
         sb.append("      if (n.startsWith(mod + 'PS')) return { badge: 'BATCH', text: '⚙️ Batch Processor', color: '#a855f7', cls: 'badge-batch' };\n");
         sb.append("      if (n.startsWith(mod + 'PB')) return { badge: 'PRE-BATCH', text: '⏮️ Process Before Batch', color: '#3b82f6', cls: 'badge-class' };\n");
         sb.append("      if (n.startsWith(mod + 'PA')) return { badge: 'POST-BATCH', text: '⏭️ Process After Batch', color: '#10b981', cls: 'badge-method' };\n");
-        sb.append("      if (n.startsWith(mod + 'DG')) return { badge: 'DATA-GRABBER', text: '📊 Data Grabber', color: '#ec4899', cls: 'badge-grabber' };\n");
+        sb.append("      if (n.startsWith(mod + 'DG') || n.includes('Getter') || n.includes('Grabber')) return { badge: 'DATA-GETTER', text: '📊 Data Getter', color: '#06b6d4', cls: 'badge-getter' };\n");
         sb.append("    }\n");
         sb.append("    if (n.startsWith('get') || n.startsWith('set') || n.startsWith('is')) return { badge: 'POJO', text: 'POJO Accessor', color: '#64748b', isPojo: true };\n");
         sb.append("    return null;\n");
@@ -4112,7 +4147,7 @@ public class ReportService {
             String name = t.getSimpleName();
             String fqn = t.getFqn();
             if (name.endsWith("Controller") || name.endsWith("Endpoint") || name.endsWith("Resource")
-                || name.endsWith("Grabber") || name.endsWith("Servlet") || name.endsWith("Handler")
+                || name.endsWith("Getter") || name.endsWith("Grabber") || name.endsWith("Servlet") || name.endsWith("Handler")
                 || fqn.contains(".api.") || fqn.contains(".rest.") || fqn.contains(".endpoint.")) {
                 controllerClasses.add(fqn);
             }
@@ -4171,7 +4206,7 @@ public class ReportService {
 
             // Infer endpoint URL path
             String simpleClass = classFqn != null && classFqn.contains(".") ? classFqn.substring(classFqn.lastIndexOf('.') + 1) : "api";
-            String cleanClass = simpleClass.replaceAll("(Controller|Endpoint|Resource|Grabber|Servlet|Handler|Service)$", "").toLowerCase();
+            String cleanClass = simpleClass.replaceAll("(Controller|Endpoint|Resource|Getter|Grabber|Servlet|Handler|Service)$", "").toLowerCase();
             if (cleanClass.isBlank()) cleanClass = "service";
             String cleanMethod = mName.replaceAll("^(get|post|put|delete|find|fetch|create|save|update|remove)", "").toLowerCase();
             if (cleanMethod.isBlank()) cleanMethod = mName.toLowerCase();

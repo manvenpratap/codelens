@@ -12,21 +12,21 @@ import com.tcs.bancs.RK.*;
  */
 public class PaymentRoutingEngine {
 
-    private final PMDGRoutingGrabber dataGrabber;
+    private final PMDGRoutingGetter dataGetter;
 
     public PaymentRoutingEngine() {
-        this.dataGrabber = new PMDGRoutingGrabber();
+        this.dataGetter = new PMDGRoutingGetter();
     }
 
-    public PaymentRoutingEngine(PMDGRoutingGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PaymentRoutingEngine(PMDGRoutingGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class PaymentRoutingEngine {
     }
 
     public RoutingDirectory inspectAndReconcile(String entityId) {
-        RoutingDirectory entity = this.dataGrabber.fetchRoutingDirectoryById(entityId);
+        RoutingDirectory entity = this.dataGetter.fetchRoutingDirectoryById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class PaymentRoutingEngine {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: PMTOValidatePaymentMandate
+     * TCS BaNCS Own Task delegate: PMTODebitSenderAccount
      */
-    public boolean PMTOValidatePaymentMandate(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "PMTOValidatePaymentMandate", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean PMTODebitSenderAccount(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "PMTODebitSenderAccount", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: PMTCVerifyCustomerKYC
+     * TCS BaNCS Common Task delegate: PMTCNotifyChannel
      */
-    public void PMTCVerifyCustomerKYC(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCVerifyCustomerKYC", correlationId, operation);
+    public void PMTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCNotifyChannel", correlationId, operation);
     }
 }

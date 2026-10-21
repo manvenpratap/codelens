@@ -14,21 +14,21 @@ import com.tcs.bancs.RK.*;
  */
 public class InterestRebateService {
 
-    private final LNDGLoanGrabber dataGrabber;
+    private final LNDGLoanGetter dataGetter;
 
     public InterestRebateService() {
-        this.dataGrabber = new LNDGLoanGrabber();
+        this.dataGetter = new LNDGLoanGetter();
     }
 
-    public InterestRebateService(LNDGLoanGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public InterestRebateService(LNDGLoanGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class InterestRebateService {
     }
 
     public Loan inspectAndReconcile(String entityId) {
-        Loan entity = this.dataGrabber.fetchLoanById(entityId);
+        Loan entity = this.dataGetter.fetchLoanById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -52,17 +52,17 @@ public class InterestRebateService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: LNTOCalculateAmortization
+     * TCS BaNCS Own Task delegate: LNTOUpdateFacilityBalance
      */
-    public boolean LNTOCalculateAmortization(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCalculateAmortization", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean LNTOUpdateFacilityBalance(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "LNTOUpdateFacilityBalance", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: LNTCAuditTransaction
+     * TCS BaNCS Common Task delegate: LNTCNotifyChannel
      */
-    public void LNTCAuditTransaction(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCAuditTransaction", correlationId, operation);
+    public void LNTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "LNTCNotifyChannel", correlationId, operation);
     }
 }

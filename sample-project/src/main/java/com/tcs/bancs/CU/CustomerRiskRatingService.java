@@ -10,21 +10,21 @@ import com.tcs.bancs.common.*;
  */
 public class CustomerRiskRatingService {
 
-    private final CUDGRelationshipGrabber dataGrabber;
+    private final CUDGRelationshipGetter dataGetter;
 
     public CustomerRiskRatingService() {
-        this.dataGrabber = new CUDGRelationshipGrabber();
+        this.dataGetter = new CUDGRelationshipGetter();
     }
 
-    public CustomerRiskRatingService(CUDGRelationshipGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public CustomerRiskRatingService(CUDGRelationshipGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -40,7 +40,7 @@ public class CustomerRiskRatingService {
     }
 
     public PartyRelationship inspectAndReconcile(String entityId) {
-        PartyRelationship entity = this.dataGrabber.fetchPartyRelationshipById(entityId);
+        PartyRelationship entity = this.dataGetter.fetchPartyRelationshipById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -52,7 +52,7 @@ public class CustomerRiskRatingService {
      */
     public boolean CUTOValidateCustomerIdentity(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "CUTOValidateCustomerIdentity", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

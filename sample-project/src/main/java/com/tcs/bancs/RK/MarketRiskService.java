@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class MarketRiskService {
 
-    private final RKDGRiskGrabber dataGrabber;
+    private final RKDGRiskGetter dataGetter;
 
     public MarketRiskService() {
-        this.dataGrabber = new RKDGRiskGrabber();
+        this.dataGetter = new RKDGRiskGetter();
     }
 
-    public MarketRiskService(RKDGRiskGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public MarketRiskService(RKDGRiskGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class MarketRiskService {
     }
 
     public RiskExposure inspectAndReconcile(String entityId) {
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(entityId);
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class MarketRiskService {
         this.RKTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(req.getMessageCorrelationId());
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class MarketRiskService {
         this.RKTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(req.getMessageCorrelationId());
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class MarketRiskService {
         this.RKTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(req.getMessageCorrelationId());
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class MarketRiskService {
         this.RKTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(req.getMessageCorrelationId());
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class MarketRiskService {
         this.RKTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(req.getMessageCorrelationId());
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class MarketRiskService {
         this.RKTOAssessCreditScore(lookupKey);
 
         // Step 2: Query entity state
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(lookupKey);
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class MarketRiskService {
         this.RKTOCalculatePortfolioVaR(lookupKey);
 
         // Step 2: Query entity state
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(lookupKey);
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class MarketRiskService {
         this.RKTOEvaluatePolicyRules(lookupKey);
 
         // Step 2: Query entity state
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(lookupKey);
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class MarketRiskService {
         this.RKTOUpdateExposureMatrix(lookupKey);
 
         // Step 2: Query entity state
-        RiskExposure entity = this.dataGrabber.fetchRiskExposureById(lookupKey);
+        RiskExposure entity = this.dataGetter.fetchRiskExposureById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class MarketRiskService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "RKTOAssessCreditScore", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void RKTOAssessCreditScore(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class MarketRiskService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "RKTOCalculatePortfolioVaR", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void RKTOCalculatePortfolioVaR(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class MarketRiskService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "RKTOEvaluatePolicyRules", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void RKTOEvaluatePolicyRules(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class MarketRiskService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "RKTOUpdateExposureMatrix", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void RKTOUpdateExposureMatrix(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class MarketRiskService {
      */
     public int RKPSEODRiskComputation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPSEODRiskComputation", "RK", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("RKPSEODRiskComputation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPSEODRiskComputation", "RK", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class MarketRiskService {
      */
     public int RKPBPreRiskDataCollection() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPBPreRiskDataCollection", "RK", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("RKPBPreRiskDataCollection", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPBPreRiskDataCollection", "RK", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class MarketRiskService {
      */
     public int RKPAPostRiskReporting() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPAPostRiskReporting", "RK", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("RKPAPostRiskReporting", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "RKPAPostRiskReporting", "RK", "PROCESSED=" + count);

@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class CollateralEarmarkService {
 
-    private final CLDGNettingGrabber dataGrabber;
+    private final CLDGNettingGetter dataGetter;
 
     public CollateralEarmarkService() {
-        this.dataGrabber = new CLDGNettingGrabber();
+        this.dataGetter = new CLDGNettingGetter();
     }
 
-    public CollateralEarmarkService(CLDGNettingGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public CollateralEarmarkService(CLDGNettingGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class CollateralEarmarkService {
     }
 
     public NettingBatch inspectAndReconcile(String entityId) {
-        NettingBatch entity = this.dataGrabber.fetchNettingBatchById(entityId);
+        NettingBatch entity = this.dataGetter.fetchNettingBatchById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class CollateralEarmarkService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: CLTORecordSettlementLeg
+     * TCS BaNCS Own Task delegate: CLTOValidateClearingMember
      */
-    public boolean CLTORecordSettlementLeg(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "CLTORecordSettlementLeg", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean CLTOValidateClearingMember(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CLTOValidateClearingMember", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: CLTCNotifyChannel
+     * TCS BaNCS Common Task delegate: CLTCVerifyCustomerKYC
      */
-    public void CLTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCNotifyChannel", correlationId, operation);
+    public void CLTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CLTCVerifyCustomerKYC", correlationId, operation);
     }
 }

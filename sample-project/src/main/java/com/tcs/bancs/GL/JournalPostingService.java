@@ -14,21 +14,21 @@ import com.tcs.bancs.PM.*;
  */
 public class JournalPostingService {
 
-    private final GLDGVoucherGrabber dataGrabber;
+    private final GLDGVoucherGetter dataGetter;
 
     public JournalPostingService() {
-        this.dataGrabber = new GLDGVoucherGrabber();
+        this.dataGetter = new GLDGVoucherGetter();
     }
 
-    public JournalPostingService(GLDGVoucherGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public JournalPostingService(GLDGVoucherGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class JournalPostingService {
     }
 
     public JournalVoucher inspectAndReconcile(String entityId) {
-        JournalVoucher entity = this.dataGrabber.fetchJournalVoucherById(entityId);
+        JournalVoucher entity = this.dataGetter.fetchJournalVoucherById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -56,7 +56,7 @@ public class JournalPostingService {
      */
     public boolean GLTOVerifyVoucherAuthorization(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOVerifyVoucherAuthorization", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

@@ -12,21 +12,21 @@ import com.tcs.bancs.GL.*;
  */
 public class LiquidityRiskModelingService {
 
-    private final ANDGReportGrabber dataGrabber;
+    private final ANDGReportGetter dataGetter;
 
     public LiquidityRiskModelingService() {
-        this.dataGrabber = new ANDGReportGrabber();
+        this.dataGetter = new ANDGReportGetter();
     }
 
-    public LiquidityRiskModelingService(ANDGReportGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public LiquidityRiskModelingService(ANDGReportGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class LiquidityRiskModelingService {
     }
 
     public RegulatoryReportSnapshot inspectAndReconcile(String entityId) {
-        RegulatoryReportSnapshot entity = this.dataGrabber.fetchRegulatoryReportSnapshotById(entityId);
+        RegulatoryReportSnapshot entity = this.dataGetter.fetchRegulatoryReportSnapshotById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class LiquidityRiskModelingService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: ANTOComputeRiskMetrics
+     * TCS BaNCS Own Task delegate: ANTOInterpolateYieldCurve
      */
-    public boolean ANTOComputeRiskMetrics(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOComputeRiskMetrics", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean ANTOInterpolateYieldCurve(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOInterpolateYieldCurve", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: ANTCVerifyCustomerKYC
+     * TCS BaNCS Common Task delegate: ANTCAuditTransaction
      */
-    public void ANTCVerifyCustomerKYC(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCVerifyCustomerKYC", correlationId, operation);
+    public void ANTCAuditTransaction(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCAuditTransaction", correlationId, operation);
     }
 }

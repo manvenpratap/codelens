@@ -11,21 +11,21 @@ import com.tcs.bancs.RK.*;
  */
 public class CollateralRegistrationService {
 
-    private final SCDGCollateralGrabber dataGrabber;
+    private final SCDGCollateralGetter dataGetter;
 
     public CollateralRegistrationService() {
-        this.dataGrabber = new SCDGCollateralGrabber();
+        this.dataGetter = new SCDGCollateralGetter();
     }
 
-    public CollateralRegistrationService(SCDGCollateralGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public CollateralRegistrationService(SCDGCollateralGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class CollateralRegistrationService {
     }
 
     public CollateralItem inspectAndReconcile(String entityId) {
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(entityId);
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -67,7 +67,7 @@ public class CollateralRegistrationService {
         this.SCTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(req.getMessageCorrelationId());
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -106,7 +106,7 @@ public class CollateralRegistrationService {
         this.SCTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(req.getMessageCorrelationId());
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -145,7 +145,7 @@ public class CollateralRegistrationService {
         this.SCTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(req.getMessageCorrelationId());
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -184,7 +184,7 @@ public class CollateralRegistrationService {
         this.SCTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(req.getMessageCorrelationId());
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -223,7 +223,7 @@ public class CollateralRegistrationService {
         this.SCTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(req.getMessageCorrelationId());
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -256,7 +256,7 @@ public class CollateralRegistrationService {
         this.SCTOAssessCollateralHaircut(lookupKey);
 
         // Step 2: Query entity state
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(lookupKey);
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -281,7 +281,7 @@ public class CollateralRegistrationService {
         this.SCTOEvaluateLtvRatio(lookupKey);
 
         // Step 2: Query entity state
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(lookupKey);
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -306,7 +306,7 @@ public class CollateralRegistrationService {
         this.SCTOUpdatePledgedAsset(lookupKey);
 
         // Step 2: Query entity state
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(lookupKey);
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -331,7 +331,7 @@ public class CollateralRegistrationService {
         this.SCTOCheckMarginThreshold(lookupKey);
 
         // Step 2: Query entity state
-        CollateralItem entity = this.dataGrabber.fetchCollateralItemById(lookupKey);
+        CollateralItem entity = this.dataGetter.fetchCollateralItemById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -352,7 +352,7 @@ public class CollateralRegistrationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "SCTOAssessCollateralHaircut", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void SCTOAssessCollateralHaircut(String correlationId, double amount) {
@@ -369,7 +369,7 @@ public class CollateralRegistrationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "SCTOEvaluateLtvRatio", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void SCTOEvaluateLtvRatio(String correlationId, double amount) {
@@ -386,7 +386,7 @@ public class CollateralRegistrationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "SCTOUpdatePledgedAsset", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void SCTOUpdatePledgedAsset(String correlationId, double amount) {
@@ -403,7 +403,7 @@ public class CollateralRegistrationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "SCTOCheckMarginThreshold", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void SCTOCheckMarginThreshold(String correlationId, double amount) {
@@ -468,7 +468,7 @@ public class CollateralRegistrationService {
      */
     public int SCPSEODLtvMonitoring() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPSEODLtvMonitoring", "SC", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("SCPSEODLtvMonitoring", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPSEODLtvMonitoring", "SC", "PROCESSED=" + count);
@@ -480,7 +480,7 @@ public class CollateralRegistrationService {
      */
     public int SCPBPreLtvScan() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPBPreLtvScan", "SC", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("SCPBPreLtvScan", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPBPreLtvScan", "SC", "PROCESSED=" + count);
@@ -492,7 +492,7 @@ public class CollateralRegistrationService {
      */
     public int SCPAPostMarginAlerts() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPAPostMarginAlerts", "SC", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("SCPAPostMarginAlerts", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "SCPAPostMarginAlerts", "SC", "PROCESSED=" + count);

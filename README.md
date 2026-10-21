@@ -923,7 +923,11 @@ CodeLens includes a built-in, out-of-the-box preset for **TCS BaNCS Core Banking
 |---|---|---|---|---|---|
 | **Message Object** | `MO_*`, `MO_INP_*`, `MO_OUT_*` | `MSG-OBJECT` | `MESSAGE_DTO` | `#14b8a6` *(Teal)* | Request/response DTOs and state transfer payloads |
 | **Persistent Class** | Domain entities with `Get`, `Create`, `Modify` | `PERSISTENT` | `PERSISTENCE` | `#6366f1` *(Indigo)* | Core domain database entities (e.g. `Account`, `Loan`, `OrderEntity`) |
-| **Data Grabber** | `{MODULE}DG` | `GRABBER` | `DATA_ACCESS` | `#06b6d4` *(Cyan)* | Read-only data access objects fetching entity records |
+| **Data Getter (General)** | `{MODULE}DG`, `*DG`, `*Getter` | `DATA-GETTER` | `DATA_ACCESS` | `#06b6d4` *(Cyan)* | Read-only data access objects fetching entity records |
+| **Simple Data Getter** | Structurally only having `Get()` | `DG-SIMPLE` | `DATA_ACCESS` | `#06b6d4` *(Cyan)* | Simple Data Getter with single entity retrieval |
+| **Paging Data Getter** | Having `GetMFwd()` and `GetMBwd()` | `DG-PAGING` | `DATA_ACCESS` | `#0284c7` *(Sky Blue)* | Paging Data Getter with forward & backward pagination |
+| **Cursor Data Getter** | Having `Open()`, `Fetch()`, `Close()` | `DG-CURSOR` | `DATA_ACCESS` | `#0d9488` *(Teal)* | Cursor Data Getter with cursor streaming lifecycle |
+| **Paging Cursor Data Getter** | Having `Open()`, `Fetch()`, `Close()`, `GetMFwd()`, `GetMBwd()` | `DG-PAGE-CURS` | `DATA_ACCESS` | `#2563eb` *(Royal Blue)* | Combined streaming cursor and bi-directional paging |
 
 ### Spring Boot MVC & Domain-Driven Design (DDD)
 CodeLens also provides ready-to-use presets for standard Java enterprise applications:

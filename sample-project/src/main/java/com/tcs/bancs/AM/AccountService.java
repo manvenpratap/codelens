@@ -11,21 +11,21 @@ import com.tcs.bancs.CU.*;
  */
 public class AccountService {
 
-    private final AMDGAccountGrabber dataGrabber;
+    private final AMDGAccountGetter dataGetter;
 
     public AccountService() {
-        this.dataGrabber = new AMDGAccountGrabber();
+        this.dataGetter = new AMDGAccountGetter();
     }
 
-    public AccountService(AMDGAccountGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public AccountService(AMDGAccountGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class AccountService {
     }
 
     public Account inspectAndReconcile(String entityId) {
-        Account entity = this.dataGrabber.fetchAccountById(entityId);
+        Account entity = this.dataGetter.fetchAccountById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -67,7 +67,7 @@ public class AccountService {
         this.AMTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Account entity = this.dataGrabber.fetchAccountById(req.getMessageCorrelationId());
+        Account entity = this.dataGetter.fetchAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -106,7 +106,7 @@ public class AccountService {
         this.AMTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Account entity = this.dataGrabber.fetchAccountById(req.getMessageCorrelationId());
+        Account entity = this.dataGetter.fetchAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -145,7 +145,7 @@ public class AccountService {
         this.AMTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Account entity = this.dataGrabber.fetchAccountById(req.getMessageCorrelationId());
+        Account entity = this.dataGetter.fetchAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -184,7 +184,7 @@ public class AccountService {
         this.AMTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Account entity = this.dataGrabber.fetchAccountById(req.getMessageCorrelationId());
+        Account entity = this.dataGetter.fetchAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -223,7 +223,7 @@ public class AccountService {
         this.AMTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Account entity = this.dataGrabber.fetchAccountById(req.getMessageCorrelationId());
+        Account entity = this.dataGetter.fetchAccountById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -256,7 +256,7 @@ public class AccountService {
         this.AMTOVerifyAccountStatus(lookupKey);
 
         // Step 2: Query entity state
-        Account entity = this.dataGrabber.fetchAccountById(lookupKey);
+        Account entity = this.dataGetter.fetchAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -281,7 +281,7 @@ public class AccountService {
         this.AMTOComputeDailyAccrual(lookupKey);
 
         // Step 2: Query entity state
-        Account entity = this.dataGrabber.fetchAccountById(lookupKey);
+        Account entity = this.dataGetter.fetchAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -306,7 +306,7 @@ public class AccountService {
         this.AMTOApplyAccountHold(lookupKey);
 
         // Step 2: Query entity state
-        Account entity = this.dataGrabber.fetchAccountById(lookupKey);
+        Account entity = this.dataGetter.fetchAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -331,7 +331,7 @@ public class AccountService {
         this.AMTORecordLedgerMovement(lookupKey);
 
         // Step 2: Query entity state
-        Account entity = this.dataGrabber.fetchAccountById(lookupKey);
+        Account entity = this.dataGetter.fetchAccountById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -352,7 +352,7 @@ public class AccountService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "AMTOVerifyAccountStatus", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void AMTOVerifyAccountStatus(String correlationId, double amount) {
@@ -369,7 +369,7 @@ public class AccountService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "AMTOComputeDailyAccrual", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void AMTOComputeDailyAccrual(String correlationId, double amount) {
@@ -386,7 +386,7 @@ public class AccountService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "AMTOApplyAccountHold", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void AMTOApplyAccountHold(String correlationId, double amount) {
@@ -403,7 +403,7 @@ public class AccountService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "AMTORecordLedgerMovement", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void AMTORecordLedgerMovement(String correlationId, double amount) {
@@ -468,7 +468,7 @@ public class AccountService {
      */
     public int AMPSDailyAccrual() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPSDailyAccrual", "AM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("AMPSDailyAccrual", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPSDailyAccrual", "AM", "PROCESSED=" + count);
@@ -480,7 +480,7 @@ public class AccountService {
      */
     public int AMPBPreAccrualValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPBPreAccrualValidation", "AM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("AMPBPreAccrualValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPBPreAccrualValidation", "AM", "PROCESSED=" + count);
@@ -492,7 +492,7 @@ public class AccountService {
      */
     public int AMPAPostAccrualReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPAPostAccrualReconcile", "AM", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("AMPAPostAccrualReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "AMPAPostAccrualReconcile", "AM", "PROCESSED=" + count);

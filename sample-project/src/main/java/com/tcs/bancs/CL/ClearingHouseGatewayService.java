@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class ClearingHouseGatewayService {
 
-    private final CLDGSettlementGrabber dataGrabber;
+    private final CLDGSettlementGetter dataGetter;
 
     public ClearingHouseGatewayService() {
-        this.dataGrabber = new CLDGSettlementGrabber();
+        this.dataGetter = new CLDGSettlementGetter();
     }
 
-    public ClearingHouseGatewayService(CLDGSettlementGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public ClearingHouseGatewayService(CLDGSettlementGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class ClearingHouseGatewayService {
     }
 
     public SettlementInstruction inspectAndReconcile(String entityId) {
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(entityId);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class ClearingHouseGatewayService {
         this.CLTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(req.getMessageCorrelationId());
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class ClearingHouseGatewayService {
         this.CLTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(req.getMessageCorrelationId());
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class ClearingHouseGatewayService {
         this.CLTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(req.getMessageCorrelationId());
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class ClearingHouseGatewayService {
         this.CLTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(req.getMessageCorrelationId());
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class ClearingHouseGatewayService {
         this.CLTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(req.getMessageCorrelationId());
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class ClearingHouseGatewayService {
         this.CLTOValidateClearingMember(lookupKey);
 
         // Step 2: Query entity state
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(lookupKey);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class ClearingHouseGatewayService {
         this.CLTOComputeNetObligation(lookupKey);
 
         // Step 2: Query entity state
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(lookupKey);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class ClearingHouseGatewayService {
         this.CLTORecordSettlementLeg(lookupKey);
 
         // Step 2: Query entity state
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(lookupKey);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class ClearingHouseGatewayService {
         this.CLTOCheckDepositoryBalance(lookupKey);
 
         // Step 2: Query entity state
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(lookupKey);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class ClearingHouseGatewayService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CLTOValidateClearingMember", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CLTOValidateClearingMember(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class ClearingHouseGatewayService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CLTOComputeNetObligation", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CLTOComputeNetObligation(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class ClearingHouseGatewayService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CLTORecordSettlementLeg", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CLTORecordSettlementLeg(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class ClearingHouseGatewayService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CLTOCheckDepositoryBalance", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CLTOCheckDepositoryBalance(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class ClearingHouseGatewayService {
      */
     public int CLPSEODSettlementCutoff() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPSEODSettlementCutoff", "CL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CLPSEODSettlementCutoff", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPSEODSettlementCutoff", "CL", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class ClearingHouseGatewayService {
      */
     public int CLPBPreSettlementCheck() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPBPreSettlementCheck", "CL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CLPBPreSettlementCheck", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPBPreSettlementCheck", "CL", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class ClearingHouseGatewayService {
      */
     public int CLPAPostSettlementReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPAPostSettlementReconcile", "CL", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CLPAPostSettlementReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CLPAPostSettlementReconcile", "CL", "PROCESSED=" + count);

@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class LimitManagementService {
 
-    private final RKDGExposureGrabber dataGrabber;
+    private final RKDGExposureGetter dataGetter;
 
     public LimitManagementService() {
-        this.dataGrabber = new RKDGExposureGrabber();
+        this.dataGetter = new RKDGExposureGetter();
     }
 
-    public LimitManagementService(RKDGExposureGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public LimitManagementService(RKDGExposureGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class LimitManagementService {
     }
 
     public VaRCalculationResult inspectAndReconcile(String entityId) {
-        VaRCalculationResult entity = this.dataGrabber.fetchVaRCalculationResultById(entityId);
+        VaRCalculationResult entity = this.dataGetter.fetchVaRCalculationResultById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class LimitManagementService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: RKTOUpdateExposureMatrix
+     * TCS BaNCS Own Task delegate: RKTOEvaluatePolicyRules
      */
-    public boolean RKTOUpdateExposureMatrix(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "RKTOUpdateExposureMatrix", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean RKTOEvaluatePolicyRules(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "RKTOEvaluatePolicyRules", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: RKTCSyncGeneralLedger
+     * TCS BaNCS Common Task delegate: RKTCNotifyChannel
      */
-    public void RKTCSyncGeneralLedger(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "RKTCSyncGeneralLedger", correlationId, operation);
+    public void RKTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "RKTCNotifyChannel", correlationId, operation);
     }
 }

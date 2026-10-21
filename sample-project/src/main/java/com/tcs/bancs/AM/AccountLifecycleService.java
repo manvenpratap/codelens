@@ -11,21 +11,21 @@ import com.tcs.bancs.CU.*;
  */
 public class AccountLifecycleService {
 
-    private final AMDGStatementGrabber dataGrabber;
+    private final AMDGStatementGetter dataGetter;
 
     public AccountLifecycleService() {
-        this.dataGrabber = new AMDGStatementGrabber();
+        this.dataGetter = new AMDGStatementGetter();
     }
 
-    public AccountLifecycleService(AMDGStatementGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public AccountLifecycleService(AMDGStatementGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class AccountLifecycleService {
     }
 
     public AccountFeeSchedule inspectAndReconcile(String entityId) {
-        AccountFeeSchedule entity = this.dataGrabber.fetchAccountFeeScheduleById(entityId);
+        AccountFeeSchedule entity = this.dataGetter.fetchAccountFeeScheduleById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -49,17 +49,17 @@ public class AccountLifecycleService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: AMTOApplyAccountHold
+     * TCS BaNCS Own Task delegate: AMTOVerifyAccountStatus
      */
-    public boolean AMTOApplyAccountHold(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOApplyAccountHold", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean AMTOVerifyAccountStatus(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOVerifyAccountStatus", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: AMTCNotifyChannel
+     * TCS BaNCS Common Task delegate: AMTCVerifyCustomerKYC
      */
-    public void AMTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCNotifyChannel", correlationId, operation);
+    public void AMTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCVerifyCustomerKYC", correlationId, operation);
     }
 }

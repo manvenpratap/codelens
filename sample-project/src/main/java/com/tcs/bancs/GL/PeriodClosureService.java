@@ -14,21 +14,21 @@ import com.tcs.bancs.PM.*;
  */
 public class PeriodClosureService {
 
-    private final GLDGPeriodGrabber dataGrabber;
+    private final GLDGPeriodGetter dataGetter;
 
     public PeriodClosureService() {
-        this.dataGrabber = new GLDGPeriodGrabber();
+        this.dataGetter = new GLDGPeriodGetter();
     }
 
-    public PeriodClosureService(GLDGPeriodGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public PeriodClosureService(GLDGPeriodGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class PeriodClosureService {
     }
 
     public FinancialPeriod inspectAndReconcile(String entityId) {
-        FinancialPeriod entity = this.dataGrabber.fetchFinancialPeriodById(entityId);
+        FinancialPeriod entity = this.dataGetter.fetchFinancialPeriodById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -52,17 +52,17 @@ public class PeriodClosureService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: GLTOPostPostingLeg
+     * TCS BaNCS Own Task delegate: GLTOValidateBalanceEquation
      */
-    public boolean GLTOPostPostingLeg(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "GLTOPostPostingLeg", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean GLTOValidateBalanceEquation(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "GLTOValidateBalanceEquation", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: GLTCAuditTransaction
+     * TCS BaNCS Common Task delegate: GLTCVerifyCustomerKYC
      */
-    public void GLTCAuditTransaction(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "GLTCAuditTransaction", correlationId, operation);
+    public void GLTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "GLTCVerifyCustomerKYC", correlationId, operation);
     }
 }

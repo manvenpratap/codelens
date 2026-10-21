@@ -12,21 +12,21 @@ import com.tcs.bancs.CU.*;
  */
 public class DepositBookingService {
 
-    private final DPDGDepositGrabber dataGrabber;
+    private final DPDGDepositGetter dataGetter;
 
     public DepositBookingService() {
-        this.dataGrabber = new DPDGDepositGrabber();
+        this.dataGetter = new DPDGDepositGetter();
     }
 
-    public DepositBookingService(DPDGDepositGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public DepositBookingService(DPDGDepositGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class DepositBookingService {
     }
 
     public DepositContract inspectAndReconcile(String entityId) {
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(entityId);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class DepositBookingService {
         this.DPTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(req.getMessageCorrelationId());
+        DepositContract entity = this.dataGetter.fetchDepositContractById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class DepositBookingService {
         this.DPTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(req.getMessageCorrelationId());
+        DepositContract entity = this.dataGetter.fetchDepositContractById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class DepositBookingService {
         this.DPTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(req.getMessageCorrelationId());
+        DepositContract entity = this.dataGetter.fetchDepositContractById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class DepositBookingService {
         this.DPTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(req.getMessageCorrelationId());
+        DepositContract entity = this.dataGetter.fetchDepositContractById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class DepositBookingService {
         this.DPTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(req.getMessageCorrelationId());
+        DepositContract entity = this.dataGetter.fetchDepositContractById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class DepositBookingService {
         this.DPTOVerifyDepositTerms(lookupKey);
 
         // Step 2: Query entity state
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(lookupKey);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class DepositBookingService {
         this.DPTOCalculateInterestPayout(lookupKey);
 
         // Step 2: Query entity state
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(lookupKey);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class DepositBookingService {
         this.DPTOUpdateDepositPrincipal(lookupKey);
 
         // Step 2: Query entity state
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(lookupKey);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class DepositBookingService {
         this.DPTOApplyPenalRate(lookupKey);
 
         // Step 2: Query entity state
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(lookupKey);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class DepositBookingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "DPTOVerifyDepositTerms", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void DPTOVerifyDepositTerms(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class DepositBookingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "DPTOCalculateInterestPayout", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void DPTOCalculateInterestPayout(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class DepositBookingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "DPTOUpdateDepositPrincipal", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void DPTOUpdateDepositPrincipal(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class DepositBookingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "DPTOApplyPenalRate", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void DPTOApplyPenalRate(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class DepositBookingService {
      */
     public int DPPSEODMaturityBatch() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPSEODMaturityBatch", "DP", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("DPPSEODMaturityBatch", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPSEODMaturityBatch", "DP", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class DepositBookingService {
      */
     public int DPPBPreMaturityValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPBPreMaturityValidation", "DP", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("DPPBPreMaturityValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPBPreMaturityValidation", "DP", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class DepositBookingService {
      */
     public int DPPAPostMaturityDisbursement() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPAPostMaturityDisbursement", "DP", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("DPPAPostMaturityDisbursement", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "DPPAPostMaturityDisbursement", "DP", "PROCESSED=" + count);

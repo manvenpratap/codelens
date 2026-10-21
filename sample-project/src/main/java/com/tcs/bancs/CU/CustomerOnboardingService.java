@@ -10,21 +10,21 @@ import com.tcs.bancs.common.*;
  */
 public class CustomerOnboardingService {
 
-    private final CUDGCustomerGrabber dataGrabber;
+    private final CUDGCustomerGetter dataGetter;
 
     public CustomerOnboardingService() {
-        this.dataGrabber = new CUDGCustomerGrabber();
+        this.dataGetter = new CUDGCustomerGetter();
     }
 
-    public CustomerOnboardingService(CUDGCustomerGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public CustomerOnboardingService(CUDGCustomerGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -40,7 +40,7 @@ public class CustomerOnboardingService {
     }
 
     public CustomerProfile inspectAndReconcile(String entityId) {
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(entityId);
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -66,7 +66,7 @@ public class CustomerOnboardingService {
         this.CUTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(req.getMessageCorrelationId());
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -104,7 +104,7 @@ public class CustomerOnboardingService {
         this.CUTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(req.getMessageCorrelationId());
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -142,7 +142,7 @@ public class CustomerOnboardingService {
         this.CUTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(req.getMessageCorrelationId());
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -180,7 +180,7 @@ public class CustomerOnboardingService {
         this.CUTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(req.getMessageCorrelationId());
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -218,7 +218,7 @@ public class CustomerOnboardingService {
         this.CUTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(req.getMessageCorrelationId());
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -250,7 +250,7 @@ public class CustomerOnboardingService {
         this.CUTOValidateCustomerIdentity(lookupKey);
 
         // Step 2: Query entity state
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(lookupKey);
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -275,7 +275,7 @@ public class CustomerOnboardingService {
         this.CUTOAssessKycRiskLevel(lookupKey);
 
         // Step 2: Query entity state
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(lookupKey);
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -300,7 +300,7 @@ public class CustomerOnboardingService {
         this.CUTOUpdateCustomerStatus(lookupKey);
 
         // Step 2: Query entity state
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(lookupKey);
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -325,7 +325,7 @@ public class CustomerOnboardingService {
         this.CUTOLinkAssociatedParty(lookupKey);
 
         // Step 2: Query entity state
-        CustomerProfile entity = this.dataGrabber.fetchCustomerProfileById(lookupKey);
+        CustomerProfile entity = this.dataGetter.fetchCustomerProfileById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -346,7 +346,7 @@ public class CustomerOnboardingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CUTOValidateCustomerIdentity", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CUTOValidateCustomerIdentity(String correlationId, double amount) {
@@ -363,7 +363,7 @@ public class CustomerOnboardingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CUTOAssessKycRiskLevel", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CUTOAssessKycRiskLevel(String correlationId, double amount) {
@@ -380,7 +380,7 @@ public class CustomerOnboardingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CUTOUpdateCustomerStatus", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CUTOUpdateCustomerStatus(String correlationId, double amount) {
@@ -397,7 +397,7 @@ public class CustomerOnboardingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "CUTOLinkAssociatedParty", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void CUTOLinkAssociatedParty(String correlationId, double amount) {
@@ -462,7 +462,7 @@ public class CustomerOnboardingService {
      */
     public int CUPSEODKycExpiryCheck() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPSEODKycExpiryCheck", "CU", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CUPSEODKycExpiryCheck", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPSEODKycExpiryCheck", "CU", "PROCESSED=" + count);
@@ -474,7 +474,7 @@ public class CustomerOnboardingService {
      */
     public int CUPBPreKycAudit() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPBPreKycAudit", "CU", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CUPBPreKycAudit", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPBPreKycAudit", "CU", "PROCESSED=" + count);
@@ -486,7 +486,7 @@ public class CustomerOnboardingService {
      */
     public int CUPAPostKycNotification() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPAPostKycNotification", "CU", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("CUPAPostKycNotification", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "CUPAPostKycNotification", "CU", "PROCESSED=" + count);

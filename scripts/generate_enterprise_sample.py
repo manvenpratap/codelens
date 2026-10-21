@@ -100,7 +100,7 @@ MODULES = {
             ("MO_AccountSummary", [("String", "accountNumber"), ("String", "customerId"), ("String", "accountType"), ("double", "balance"), ("String", "status")]),
             ("MO_PostingLeg", [("String", "accountNumber"), ("String", "entrySide"), ("double", "amount"), ("String", "glCode"), ("String", "narrative")])
         ],
-        "data_grabbers": ["AMDGAccountGrabber", "AMDGBalanceGrabber", "AMDGLimitGrabber", "AMDGStatementGrabber"],
+        "data_getters": ["AMDGAccountGetter", "AMDGBalanceGetter", "AMDGLimitGetter", "AMDGStatementGetter"],
         "business_transactions": ["AMBTAccountOpen", "AMBTFundTransfer", "AMBTCloseAccount", "AMBTApplyCharge", "AMBTHoldFunds"],
         "elementary_transactions": ["AMETFetchBalance", "AMETQueryAccountDetails", "AMETSearchStatements", "AMETValidateAccount"],
         "batch_processors": ["AMPSDailyAccrual", "AMPBPreAccrualValidation", "AMPAPostAccrualReconcile"],
@@ -200,7 +200,7 @@ MODULES = {
             ("MO_LoanAccountSummary", [("String", "loanId"), ("String", "customerId"), ("double", "outstandingBalance"), ("String", "npaCategory"), ("String", "status")]),
             ("MO_AmortizationInstallment", [("int", "periodNumber"), ("String", "dueDate"), ("double", "installmentAmount"), ("double", "principal"), ("double", "interest")])
         ],
-        "data_grabbers": ["LNDGLoanGrabber", "LNDGScheduleGrabber", "LNDGDelinquencyGrabber", "LNDGDisbursementGrabber"],
+        "data_getters": ["LNDGLoanGetter", "LNDGScheduleGetter", "LNDGDelinquencyGetter", "LNDGDisbursementGetter"],
         "business_transactions": ["LNBTLoanOrigination", "LNBTDisburseLoan", "LNBTProcessRepayment", "LNBTForecloseLoan", "LNBTRestructureSchedule"],
         "elementary_transactions": ["LNETQuerySchedule", "LNETGetLoanSummary", "LNETCalculateForeclosure", "LNETCheckDelinquencyStatus"],
         "batch_processors": ["LNPSInstallmentDueBatch", "LNPBPreDueValidation", "LNPAPostPaymentReconcile"],
@@ -297,7 +297,7 @@ MODULES = {
             ("MO_MarketDepthSnapshot", [("String", "symbol"), ("double", "bestBid"), ("double", "bestAsk"), ("int", "bidVolume"), ("int", "askVolume")]),
             ("MO_AlgorithmicSignal", [("String", "strategyId"), ("String", "symbol"), ("String", "action"), ("double", "confidence")])
         ],
-        "data_grabbers": ["TRDGTradeGrabber", "TRDGOrderBookGrabber", "TRDGPortfolioGrabber", "TRDGMarketQuoteGrabber"],
+        "data_getters": ["TRDGTradeGetter", "TRDGOrderBookGetter", "TRDGPortfolioGetter", "TRDGMarketQuoteGetter"],
         "business_transactions": ["TRBTSubmitOrder", "TRBTCancelOrder", "TRBTExecuteTrade", "TRBTAllocatePosition", "TRBTRebalancePortfolio"],
         "elementary_transactions": ["TRETGetOrderStatus", "TRETQueryActiveOrders", "TRETGetPositionSummary", "TRETFetchMarketQuote"],
         "batch_processors": ["TRPSEODPositionMarking", "TRPBPreMarkValidation", "TRPAPostTradeReconcile"],
@@ -396,7 +396,7 @@ MODULES = {
             ("MO_FailReport", [("String", "failId"), ("String", "instructionId"), ("String", "reason"), ("double", "penalty")]),
             ("MO_DepositoryBalance", [("String", "participant"), ("String", "isin"), ("int", "available"), ("int", "pledged")])
         ],
-        "data_grabbers": ["CLDGSettlementGrabber", "CLDGNettingGrabber", "CLDGCustodyGrabber", "CLDGFailGrabber"],
+        "data_getters": ["CLDGSettlementGetter", "CLDGNettingGetter", "CLDGCustodyGetter", "CLDGFailGetter"],
         "business_transactions": ["CLBTSettleInstruction", "CLBTProcessNetting", "CLBTAffirmTrade", "CLBTMarginTransfer", "CLBTResolveSettlementFail"],
         "elementary_transactions": ["CLETCheckSettlementStatus", "CLETQueryNettingObligations", "CLETGetDepositoryHoldings", "CLETQueryFailRecords"],
         "batch_processors": ["CLPSEODSettlementCutoff", "CLPBPreSettlementCheck", "CLPAPostSettlementReconcile"],
@@ -496,7 +496,7 @@ MODULES = {
             ("MO_StressTestScenario", [("String", "scenarioId"), ("String", "name"), ("double", "shockPct"), ("double", "marketImpact")]),
             ("MO_CounterpartyRating", [("String", "partyId"), ("String", "creditRating"), ("double", "defaultProbability")])
         ],
-        "data_grabbers": ["RKDGRiskGrabber", "RKDGLimitGrabber", "RKDGAmlAlertGrabber", "RKDGExposureGrabber"],
+        "data_getters": ["RKDGRiskGetter", "RKDGLimitGetter", "RKDGAmlAlertGetter", "RKDGExposureGetter"],
         "business_transactions": ["RKBTEvaluateLimit", "RKBTProcessAmlAlert", "RKBTRecalculateExposure", "RKBTApproveRiskOverride", "RKBTExecuteStressTest"],
         "elementary_transactions": ["RKETCalculateVaR", "RKETCheckCounterpartyLimit", "RKETQueryAmlStatus", "RKETFetchExposureBreakdown"],
         "batch_processors": ["RKPSEODRiskComputation", "RKPBPreRiskDataCollection", "RKPAPostRiskReporting"],
@@ -592,7 +592,7 @@ MODULES = {
             ("MO_DeadLetterNotice", [("String", "messageId"), ("String", "exceptionMsg"), ("int", "attempts")]),
             ("MO_ProtocolSessionState", [("String", "sessionId"), ("String", "protocol"), ("boolean", "connected"), ("int", "inSeq"), ("int", "outSeq")])
         ],
-        "data_grabbers": ["MSDGMessageGrabber", "MSDGAuditQueueGrabber", "MSDGPayloadGrabber", "MSDGRoutingGrabber"],
+        "data_getters": ["MSDGMessageGetter", "MSDGAuditQueueGetter", "MSDGPayloadGetter", "MSDGRoutingGetter"],
         "business_transactions": ["MSBTRouteInboundMessage", "MSBTDispatchOutboundMessage", "MSBTTransformPayload", "MSBTAcknowledgeMessage", "MSBTProcessDeadLetter"],
         "elementary_transactions": ["MSETQueryMessageStatus", "MSETGetPayloadAudit", "MSETInspectQueueHealth", "MSETValidateSchema"],
         "batch_processors": ["MSPSEODQueueArchive", "MSPBPreArchiveValidation", "MSPAPostArchiveReconcile"],
@@ -688,7 +688,7 @@ MODULES = {
             ("MO_AttributionFactor", [("String", "factorName"), ("double", "weight"), ("double", "contribution")]),
             ("MO_BenchmarkComparison", [("String", "portfolioId"), ("String", "benchmarkId"), ("double", "alpha"), ("double", "beta")])
         ],
-        "data_grabbers": ["ANDGAnalyticsGrabber", "ANDGYieldCurveGrabber", "ANDGLiquidityGrabber", "ANDGReportGrabber"],
+        "data_getters": ["ANDGAnalyticsGetter", "ANDGYieldCurveGetter", "ANDGLiquidityGetter", "ANDGReportGetter"],
         "business_transactions": ["ANBTCalculatePnL", "ANBTCalibrateYieldCurve", "ANBTGenerateRegulatoryFiling", "ANBTExecuteLiquidityTest", "ANBTPublishMetrics"],
         "elementary_transactions": ["ANETGetPnLSummary", "ANETFetchYieldCurve", "ANETQueryCapitalAdequacy", "ANETGetRegulatoryFilingStatus"],
         "batch_processors": ["ANPSEODAnalyticsRollup", "ANPBPreRollupDataSanity", "ANPAPostRollupNotification"],
@@ -784,7 +784,7 @@ MODULES = {
             ("MO_TdsCertificate", [("String", "depositId"), ("double", "grossInterest"), ("double", "taxDeducted"), ("String", "financialYear")]),
             ("MO_DepositRolloverReport", [("String", "depositId"), ("String", "newMaturityDate"), ("double", "newPrincipal")])
         ],
-        "data_grabbers": ["DPDGDepositGrabber", "DPDGInterestLedgerGrabber", "DPDGPenaltyRuleGrabber", "DPDGMaturityGrabber"],
+        "data_getters": ["DPDGDepositGetter", "DPDGInterestLedgerGetter", "DPDGPenaltyRuleGetter", "DPDGMaturityGetter"],
         "business_transactions": ["DPBTBookDeposit", "DPBTLiquidatePrematurely", "DPBTMatureDeposit", "DPBTRenewContract", "DPBTAccrueDepositInterest"],
         "elementary_transactions": ["DPETGetDepositDetails", "DPETSimulateMaturityValue", "DPETCalculateBreakValue", "DPETQueryActiveDeposits"],
         "batch_processors": ["DPPSEODMaturityBatch", "DPPBPreMaturityValidation", "DPPAPostMaturityDisbursement"],
@@ -881,7 +881,7 @@ MODULES = {
             ("MO_IntercompanyClearingEntry", [("String", "fromEntity"), ("String", "toEntity"), ("double", "amount")]),
             ("MO_ReconciliationException", [("String", "glCode"), ("double", "variance"), ("String", "reason")])
         ],
-        "data_grabbers": ["GLDGLedgerGrabber", "GLDGVoucherGrabber", "GLDGTrialBalanceGrabber", "GLDGPeriodGrabber"],
+        "data_getters": ["GLDGLedgerGetter", "GLDGVoucherGetter", "GLDGTrialBalanceGetter", "GLDGPeriodGetter"],
         "business_transactions": ["GLBTPostJournalEntry", "GLBTApproveVoucher", "GLBTCloseFiscalPeriod", "GLBTReconcileAccounts", "GLBTPostCorrectionLeg"],
         "elementary_transactions": ["GLETGetAccountBalance", "GLETFetchTrialBalance", "GLETQueryVoucher", "GLETValidateDoubleEntry"],
         "batch_processors": ["GLPSEODLedgerBalancing", "GLPBPreBalancingAudit", "GLPAPostBalancingReport"],
@@ -978,7 +978,7 @@ MODULES = {
             ("MO_LiquidityReservation", [("String", "network"), ("double", "reservedAmount"), ("String", "status")]),
             ("MO_PaymentChannelStatus", [("String", "channel"), ("boolean", "isOperational"), ("double", "throughputTps")])
         ],
-        "data_grabbers": ["PMDGPaymentGrabber", "PMDGRoutingGrabber", "PMDGMandateGrabber", "PMDGClearingQueueGrabber"],
+        "data_getters": ["PMDGPaymentGetter", "PMDGRoutingGetter", "PMDGMandateGetter", "PMDGClearingQueueGetter"],
         "business_transactions": ["PMBTInitiatePayment", "PMBTAuthorizePayment", "PMBTSettlePaymentInstruction", "PMBTCancelPayment", "PMBTExecuteDirectDebit"],
         "elementary_transactions": ["PMETGetPaymentStatus", "PMETCheckRoutingPath", "PMETValidateIban", "PMETQueryMandate"],
         "batch_processors": ["PMPSEODPaymentClearing", "PMPBPreClearingValidation", "PMPAPostClearingReconcile"],
@@ -1074,7 +1074,7 @@ MODULES = {
             ("MO_CustomerCreditScore", [("String", "customerId"), ("int", "bureauScore"), ("String", "bureauAgency")]),
             ("MO_CustomerDormancyAlert", [("String", "customerId"), ("int", "daysInactive"), ("String", "recommendedAction")])
         ],
-        "data_grabbers": ["CUDGCustomerGrabber", "CUDGKycGrabber", "CUDGRelationshipGrabber", "CUDGExposureRollupGrabber"],
+        "data_getters": ["CUDGCustomerGetter", "CUDGKycGetter", "CUDGRelationshipGetter", "CUDGExposureRollupGetter"],
         "business_transactions": ["CUBTOnboardCustomer", "CUBTVerifyKyc", "CUBTUpdateRiskProfile", "CUBTLinkPartyRelationship", "CUBTDeactivateCustomer"],
         "elementary_transactions": ["CUETGetCustomerProfile", "CUETQueryKycStatus", "CUETFetchRelationships", "CUETValidateTaxId"],
         "batch_processors": ["CUPSEODKycExpiryCheck", "CUPBPreKycAudit", "CUPAPostKycNotification"],
@@ -1172,7 +1172,7 @@ MODULES = {
             ("MO_CollateralReleaseRequest", [("String", "pledgeId"), ("String", "reason")]),
             ("MO_LienStatusResponse", [("String", "collateralId"), ("String", "lienStatus"), ("double", "encumbered")])
         ],
-        "data_grabbers": ["SCDGCollateralGrabber", "SCDGPledgeGrabber", "SCDGMarginCallGrabber", "SCDGValuationGrabber"],
+        "data_getters": ["SCDGCollateralGetter", "SCDGPledgeGetter", "SCDGMarginCallGetter", "SCDGValuationGetter"],
         "business_transactions": ["SCBTRegisterCollateral", "SCBTRevalueCollateral", "SCBTCapitalizePledge", "SCBTIssueMarginCall", "SCBTReleaseLien"],
         "elementary_transactions": ["SCETGetCollateralDetails", "SCETCalculateLTV", "SCETQueryActivePledges", "SCETCheckMarginDeficit"],
         "batch_processors": ["SCPSEODLtvMonitoring", "SCPBPreLtvScan", "SCPAPostMarginAlerts"],
@@ -1205,7 +1205,7 @@ MODULES = {
 Code generation templates for BaNCS archetypes:
   - Persistent Classes (Get, Create, Modify + business methods)
   - Message Objects (MO_INP_*, MO_OUT_*, MO_*)
-  - Data Grabbers (*DG)
+  - Data Getters (*DG: Simple, Paging, Cursor, Paging Cursor)
   - Business Transactions (*BT)
   - Elementary Transactions (*ET)
   - Batch Processors (*PS, *PB, *PA)
@@ -1393,7 +1393,99 @@ public class {mo_name} implements Serializable {{
 """
 
 
-def generate_data_grabber(mod_code: str, dg_name: str, primary_entity: str, summary_mo: str) -> str:
+def generate_data_getter(mod_code: str, dg_name: str, primary_entity: str, summary_mo: str, dg_type_idx: int = 0) -> str:
+    subtype = dg_type_idx % 4
+    if subtype == 0:
+        archetype_title = "Simple Data Getter"
+        contract_code = f"""    /**
+     * Type 1: Simple Data Getter - Get() method only.
+     */
+    public {primary_entity} Get(String id) {{
+        return fetch{primary_entity}ById(id);
+    }}"""
+    elif subtype == 1:
+        archetype_title = "Paging Data Getter"
+        contract_code = f"""    /**
+     * Type 2: Paging Data Getter - Forward and backward pagination (GetMFwd, GetMBwd).
+     */
+    public List<{primary_entity}> GetMFwd(String startKey, int pageSize) {{
+        List<{primary_entity}> results = retrieveAll();
+        int limit = Math.max(1, Math.min(pageSize, results.size()));
+        return new ArrayList<>(results.subList(0, limit));
+    }}
+
+    public List<{primary_entity}> GetMBwd(String startKey, int pageSize) {{
+        List<{primary_entity}> results = retrieveAll();
+        Collections.reverse(results);
+        int limit = Math.max(1, Math.min(pageSize, results.size()));
+        return new ArrayList<>(results.subList(0, limit));
+    }}"""
+    elif subtype == 2:
+        archetype_title = "Cursor Data Getter"
+        contract_code = f"""    /**
+     * Type 3: Cursor Data Getter - Streaming cursor lifecycle (Open, Fetch, Close).
+     */
+    private Iterator<{primary_entity}> cursorIterator;
+    private boolean cursorOpen = false;
+
+    public void Open(String criteria) {{
+        this.cursorIterator = retrieveAll().iterator();
+        this.cursorOpen = true;
+        AuditTrailService.logAuditEvent("DATA_GETTER_CURSOR_OPEN", "{dg_name}", criteria, "OPEN");
+    }}
+
+    public {primary_entity} Fetch() {{
+        if (!cursorOpen || cursorIterator == null || !cursorIterator.hasNext()) {{
+            return null;
+        }}
+        return cursorIterator.next();
+    }}
+
+    public void Close() {{
+        this.cursorOpen = false;
+        this.cursorIterator = null;
+        AuditTrailService.logAuditEvent("DATA_GETTER_CURSOR_CLOSE", "{dg_name}", "STATUS", "CLOSED");
+    }}"""
+    else:
+        archetype_title = "Paging Cursor Data Getter"
+        contract_code = f"""    /**
+     * Type 4: Paging Cursor Data Getter - Cursor lifecycle and paging (Open, Fetch, Close, GetMFwd, GetMBwd).
+     */
+    private Iterator<{primary_entity}> cursorIterator;
+    private boolean cursorOpen = false;
+
+    public void Open(String criteria) {{
+        this.cursorIterator = retrieveAll().iterator();
+        this.cursorOpen = true;
+        AuditTrailService.logAuditEvent("DATA_GETTER_CURSOR_OPEN", "{dg_name}", criteria, "OPEN");
+    }}
+
+    public {primary_entity} Fetch() {{
+        if (!cursorOpen || cursorIterator == null || !cursorIterator.hasNext()) {{
+            return null;
+        }}
+        return cursorIterator.next();
+    }}
+
+    public void Close() {{
+        this.cursorOpen = false;
+        this.cursorIterator = null;
+        AuditTrailService.logAuditEvent("DATA_GETTER_CURSOR_CLOSE", "{dg_name}", "STATUS", "CLOSED");
+    }}
+
+    public List<{primary_entity}> GetMFwd(String startKey, int pageSize) {{
+        List<{primary_entity}> results = retrieveAll();
+        int limit = Math.max(1, Math.min(pageSize, results.size()));
+        return new ArrayList<>(results.subList(0, limit));
+    }}
+
+    public List<{primary_entity}> GetMBwd(String startKey, int pageSize) {{
+        List<{primary_entity}> results = retrieveAll();
+        Collections.reverse(results);
+        int limit = Math.max(1, Math.min(pageSize, results.size()));
+        return new ArrayList<>(results.subList(0, limit));
+    }}"""
+
     return f"""package com.tcs.bancs.{mod_code};
 
 import java.util.*;
@@ -1401,7 +1493,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.tcs.bancs.common.*;
 
 /**
- * TCS BaNCS Data Grabber: {dg_name}
+ * TCS BaNCS Data Getter: {dg_name}
+ * Archetype: {archetype_title}
  * Specialized query and data retrieval component for {mod_code} domain entities.
  */
 public class {dg_name} {{
@@ -1410,6 +1503,8 @@ public class {dg_name} {{
 
     public {dg_name}() {{
     }}
+
+{contract_code}
 
     public {primary_entity} fetch{primary_entity}ById(String id) {{
         if (id == null || id.isBlank()) {{
@@ -1440,7 +1535,7 @@ public class {dg_name} {{
         {primary_entity} entity = fetch{primary_entity}ById(id);
         {summary_mo} summary = new {summary_mo}();
         summary.setMessageCorrelationId("DG_SUMMARY_" + id);
-        AuditTrailService.logAuditEvent("DATA_GRABBER_QUERY", "{dg_name}", id, "grabSummary");
+        AuditTrailService.logAuditEvent("DATA_GETTER_QUERY", "{dg_name}", id, "grabSummary");
         return summary;
     }}
 
@@ -1559,7 +1654,7 @@ def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: st
         this.{tc_1}(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        {entity_name} entity = this.dataGrabber.fetch{entity_name}ById(req.getMessageCorrelationId());
+        {entity_name} entity = this.dataGetter.fetch{entity_name}ById(req.getMessageCorrelationId());
         if (entity != null) {{
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -1597,7 +1692,7 @@ def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: st
         this.{to_1}(lookupKey);
 
         // Step 2: Query entity state
-        {entity_name} entity = this.dataGrabber.fetch{entity_name}ById(lookupKey);
+        {entity_name} entity = this.dataGetter.fetch{entity_name}ById(lookupKey);
         if (entity != null) {{
             entity.Get(lookupKey);
         }}
@@ -1620,7 +1715,7 @@ def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: st
             return false;
         }}
         AuditTrailService.logAuditEvent("TASK_OWN", "{to_name}", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }}
 
     public void {to_name}(String correlationId, double amount) {{
@@ -1650,7 +1745,7 @@ def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: st
      */
     public int {bp_name}() {{
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "{bp_name}", "{mod_code}", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("{bp_name}", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "{bp_name}", "{mod_code}", "PROCESSED=" + count);
@@ -1667,7 +1762,7 @@ def generate_service(mod_code: str, svc_name: str, entity_name: str, dg_name: st
      */
     public boolean {to_alt}(String correlationId) {{
         AuditTrailService.logAuditEvent("TASK_OWN", "{to_alt}", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }}
 
     /**
@@ -1691,21 +1786,21 @@ import com.tcs.bancs.common.*;
  */
 public class {svc_name} {{
 
-    private final {dg_name} dataGrabber;
+    private final {dg_name} dataGetter;
 
     public {svc_name}() {{
-        this.dataGrabber = new {dg_name}();
+        this.dataGetter = new {dg_name}();
     }}
 
-    public {svc_name}({dg_name} dataGrabber) {{
-        this.dataGrabber = dataGrabber;
+    public {svc_name}({dg_name} dataGetter) {{
+        this.dataGetter = dataGetter;
     }}
 
     public boolean validateTransactionPreconditions(String contextId) {{
         if (contextId == null || contextId.isEmpty()) {{
             return false;
         }}
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }}
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {{
@@ -1721,7 +1816,7 @@ public class {svc_name} {{
     }}
 
     public {entity_name} inspectAndReconcile(String entityId) {{
-        {entity_name} entity = this.dataGrabber.fetch{entity_name}ById(entityId);
+        {entity_name} entity = this.dataGetter.fetch{entity_name}ById(entityId);
         if (entity != null) {{
             entity.Modify("RECONCILED");
         }}
@@ -2159,7 +2254,7 @@ def main():
 
         p_classes = mod_meta["persistent_classes"]
         mos = mod_meta["message_objects"]
-        dgs = mod_meta["data_grabbers"]
+        dgs = mod_meta.get("data_getters", mod_meta.get("data_grabbers", []))
         bts = mod_meta["business_transactions"]
         ets = mod_meta["elementary_transactions"]
         bps = mod_meta["batch_processors"]
@@ -2190,10 +2285,10 @@ def main():
             write_java_file(f"{mod_code}/{mo_name}.java", code)
             count += 1
 
-        # C. Data Grabbers (4)
+        # C. Data Getters (4)
         for i, dg_name in enumerate(dgs):
             target_entity = p_classes[i % len(p_classes)]["name"]
-            code = generate_data_grabber(mod_code, dg_name, target_entity, primary_summary_mo)
+            code = generate_data_getter(mod_code, dg_name, target_entity, primary_summary_mo, i)
             write_java_file(f"{mod_code}/{dg_name}.java", code)
             count += 1
 

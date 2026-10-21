@@ -10,21 +10,21 @@ import com.tcs.bancs.common.*;
  */
 public class KycVerificationService {
 
-    private final CUDGKycGrabber dataGrabber;
+    private final CUDGKycGetter dataGetter;
 
     public KycVerificationService() {
-        this.dataGrabber = new CUDGKycGrabber();
+        this.dataGetter = new CUDGKycGetter();
     }
 
-    public KycVerificationService(CUDGKycGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public KycVerificationService(CUDGKycGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -40,7 +40,7 @@ public class KycVerificationService {
     }
 
     public KycDocument inspectAndReconcile(String entityId) {
-        KycDocument entity = this.dataGrabber.fetchKycDocumentById(entityId);
+        KycDocument entity = this.dataGetter.fetchKycDocumentById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -48,17 +48,17 @@ public class KycVerificationService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: CUTOUpdateCustomerStatus
+     * TCS BaNCS Own Task delegate: CUTOLinkAssociatedParty
      */
-    public boolean CUTOUpdateCustomerStatus(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "CUTOUpdateCustomerStatus", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean CUTOLinkAssociatedParty(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "CUTOLinkAssociatedParty", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: CUTCNotifyChannel
+     * TCS BaNCS Common Task delegate: CUTCSyncGeneralLedger
      */
-    public void CUTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "CUTCNotifyChannel", correlationId, operation);
+    public void CUTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "CUTCSyncGeneralLedger", correlationId, operation);
     }
 }

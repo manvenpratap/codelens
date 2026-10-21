@@ -11,21 +11,21 @@ import com.tcs.bancs.PM.*;
  */
 public class SwiftParserService {
 
-    private final MSDGMessageGrabber dataGrabber;
+    private final MSDGMessageGetter dataGetter;
 
     public SwiftParserService() {
-        this.dataGrabber = new MSDGMessageGrabber();
+        this.dataGetter = new MSDGMessageGetter();
     }
 
-    public SwiftParserService(MSDGMessageGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public SwiftParserService(MSDGMessageGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class SwiftParserService {
     }
 
     public MessageHeaderRecord inspectAndReconcile(String entityId) {
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(entityId);
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -67,7 +67,7 @@ public class SwiftParserService {
         this.MSTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -106,7 +106,7 @@ public class SwiftParserService {
         this.MSTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -145,7 +145,7 @@ public class SwiftParserService {
         this.MSTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -184,7 +184,7 @@ public class SwiftParserService {
         this.MSTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -223,7 +223,7 @@ public class SwiftParserService {
         this.MSTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -256,7 +256,7 @@ public class SwiftParserService {
         this.MSTOValidateMessageHeader(lookupKey);
 
         // Step 2: Query entity state
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(lookupKey);
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -281,7 +281,7 @@ public class SwiftParserService {
         this.MSTODecodePayload(lookupKey);
 
         // Step 2: Query entity state
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(lookupKey);
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -306,7 +306,7 @@ public class SwiftParserService {
         this.MSTOEnqueueOutboundQueue(lookupKey);
 
         // Step 2: Query entity state
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(lookupKey);
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -331,7 +331,7 @@ public class SwiftParserService {
         this.MSTORecordAuditLog(lookupKey);
 
         // Step 2: Query entity state
-        MessageHeaderRecord entity = this.dataGrabber.fetchMessageHeaderRecordById(lookupKey);
+        MessageHeaderRecord entity = this.dataGetter.fetchMessageHeaderRecordById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -352,7 +352,7 @@ public class SwiftParserService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "MSTOValidateMessageHeader", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void MSTOValidateMessageHeader(String correlationId, double amount) {
@@ -369,7 +369,7 @@ public class SwiftParserService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "MSTODecodePayload", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void MSTODecodePayload(String correlationId, double amount) {
@@ -386,7 +386,7 @@ public class SwiftParserService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "MSTOEnqueueOutboundQueue", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void MSTOEnqueueOutboundQueue(String correlationId, double amount) {
@@ -403,7 +403,7 @@ public class SwiftParserService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "MSTORecordAuditLog", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void MSTORecordAuditLog(String correlationId, double amount) {
@@ -468,7 +468,7 @@ public class SwiftParserService {
      */
     public int MSPSEODQueueArchive() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPSEODQueueArchive", "MS", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("MSPSEODQueueArchive", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPSEODQueueArchive", "MS", "PROCESSED=" + count);
@@ -480,7 +480,7 @@ public class SwiftParserService {
      */
     public int MSPBPreArchiveValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPBPreArchiveValidation", "MS", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("MSPBPreArchiveValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPBPreArchiveValidation", "MS", "PROCESSED=" + count);
@@ -492,7 +492,7 @@ public class SwiftParserService {
      */
     public int MSPAPostArchiveReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPAPostArchiveReconcile", "MS", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("MSPAPostArchiveReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "MSPAPostArchiveReconcile", "MS", "PROCESSED=" + count);

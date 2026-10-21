@@ -12,21 +12,21 @@ import com.tcs.bancs.RK.*;
  */
 public class FeeDeductionService {
 
-    private final PMDGPaymentGrabber dataGrabber;
+    private final PMDGPaymentGetter dataGetter;
 
     public FeeDeductionService() {
-        this.dataGrabber = new PMDGPaymentGrabber();
+        this.dataGetter = new PMDGPaymentGetter();
     }
 
-    public FeeDeductionService(PMDGPaymentGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public FeeDeductionService(PMDGPaymentGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class FeeDeductionService {
     }
 
     public PaymentTransaction inspectAndReconcile(String entityId) {
-        PaymentTransaction entity = this.dataGrabber.fetchPaymentTransactionById(entityId);
+        PaymentTransaction entity = this.dataGetter.fetchPaymentTransactionById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class FeeDeductionService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: PMTOCreditBeneficiaryAccount
+     * TCS BaNCS Own Task delegate: PMTODebitSenderAccount
      */
-    public boolean PMTOCreditBeneficiaryAccount(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "PMTOCreditBeneficiaryAccount", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean PMTODebitSenderAccount(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "PMTODebitSenderAccount", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: PMTCSyncGeneralLedger
+     * TCS BaNCS Common Task delegate: PMTCNotifyChannel
      */
-    public void PMTCSyncGeneralLedger(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCSyncGeneralLedger", correlationId, operation);
+    public void PMTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "PMTCNotifyChannel", correlationId, operation);
     }
 }

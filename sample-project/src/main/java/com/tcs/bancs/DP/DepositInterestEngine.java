@@ -12,21 +12,21 @@ import com.tcs.bancs.CU.*;
  */
 public class DepositInterestEngine {
 
-    private final DPDGInterestLedgerGrabber dataGrabber;
+    private final DPDGInterestLedgerGetter dataGetter;
 
     public DepositInterestEngine() {
-        this.dataGrabber = new DPDGInterestLedgerGrabber();
+        this.dataGetter = new DPDGInterestLedgerGetter();
     }
 
-    public DepositInterestEngine(DPDGInterestLedgerGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public DepositInterestEngine(DPDGInterestLedgerGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class DepositInterestEngine {
     }
 
     public DepositInterestLedger inspectAndReconcile(String entityId) {
-        DepositInterestLedger entity = this.dataGrabber.fetchDepositInterestLedgerById(entityId);
+        DepositInterestLedger entity = this.dataGetter.fetchDepositInterestLedgerById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -54,7 +54,7 @@ public class DepositInterestEngine {
      */
     public boolean DPTOApplyPenalRate(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "DPTOApplyPenalRate", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

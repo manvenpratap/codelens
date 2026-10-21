@@ -12,21 +12,21 @@ import com.tcs.bancs.TR.*;
  */
 public class FailManagementService {
 
-    private final CLDGSettlementGrabber dataGrabber;
+    private final CLDGSettlementGetter dataGetter;
 
     public FailManagementService() {
-        this.dataGrabber = new CLDGSettlementGrabber();
+        this.dataGetter = new CLDGSettlementGetter();
     }
 
-    public FailManagementService(CLDGSettlementGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public FailManagementService(CLDGSettlementGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class FailManagementService {
     }
 
     public SettlementInstruction inspectAndReconcile(String entityId) {
-        SettlementInstruction entity = this.dataGrabber.fetchSettlementInstructionById(entityId);
+        SettlementInstruction entity = this.dataGetter.fetchSettlementInstructionById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -54,7 +54,7 @@ public class FailManagementService {
      */
     public boolean CLTOComputeNetObligation(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "CLTOComputeNetObligation", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

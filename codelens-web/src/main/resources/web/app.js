@@ -5463,7 +5463,7 @@ function groupTypesByArchetype(types, pkgFqn) {
         const b = (arch.badge || '').toUpperCase();
         if (b === 'MSG-OBJECT') weight = 10;
         else if (b === 'PERSISTENT') weight = 20;
-        else if (b === 'DATA-GRABBER') weight = 30;
+        else if (b === 'DATA-GRABBER' || b === 'DATA-GETTER' || b.startsWith('DG-')) weight = 30;
         else if (b === 'SRV') weight = 40;
         else if (b === 'CTRL') weight = 45;
         else if (b === 'REPO') weight = 46;
@@ -16332,7 +16332,7 @@ const REPORTS_METADATA = {
   },
   'archetype-governance': {
     title: 'Enterprise Archetype & Layering Governance',
-    subtitle: 'Architecture compliance audit for TCS BaNCS & DDD patterns: un-audited transactions, state-mutating grabbers, and inverted dependencies.',
+    subtitle: 'Architecture compliance audit for TCS BaNCS & DDD patterns: un-audited transactions, state-mutating getters, and inverted dependencies.',
     badge: 'COMPLIANCE',
     badgeClass: 'tag-gov'
   },
@@ -16624,7 +16624,7 @@ const REPORT_FILTERS_CONFIG = {
     placeholder: 'Filter governance violations, bypasses, mutations…',
     pills: [
       { id: 'ALL', label: 'All' },
-      { id: 'MUTATIONS', label: 'Unaudited Mutations', match: (tr, t) => t.includes('mutation') || t.includes('grabber') },
+      { id: 'MUTATIONS', label: 'Unaudited Mutations', match: (tr, t) => t.includes('mutation') || t.includes('getter') || t.includes('grabber') },
       { id: 'BYPASS', label: 'Layer Bypass', match: (tr, t) => t.includes('bypass') || t.includes('controller-to-dao') || t.includes('inversion') || t.includes('dao') },
       { id: 'CRITICAL', label: 'Critical', match: (tr, t) => tr.querySelector('.risk-critical') !== null || t.includes('critical') },
       { id: 'WARNING', label: 'Warning', match: (tr, t) => tr.querySelector('.risk-high') !== null || t.includes('warning') || t.includes('warn') }
@@ -16634,7 +16634,7 @@ const REPORT_FILTERS_CONFIG = {
         id: 'rule',
         label: 'All Rule Violations',
         options: [
-          { val: 'MUTATION', label: 'State Mutation Bypasses', match: (tr, t) => t.includes('mutation') || t.includes('grabber') },
+          { val: 'MUTATION', label: 'State Mutation Bypasses', match: (tr, t) => t.includes('mutation') || t.includes('getter') || t.includes('grabber') },
           { val: 'LAYER', label: 'Layer Violations (Controller → DAO)', match: (tr, t) => t.includes('bypass') || t.includes('layer') || t.includes('dao') },
           { val: 'NAMING', label: 'Archetype / Naming Drift', match: (tr, t) => t.includes('naming') || t.includes('archetype') }
         ]
@@ -18060,7 +18060,7 @@ const ReportsHub = {
         <div class="report-kpi-card" style="--kpi-accent: #a855f7;">
           <span class="report-kpi-label">Governance Rules</span>
           <div class="report-kpi-val">4 Active</div>
-          <span class="report-kpi-sub">Audit Trail, Grabber Purity, Inverted Layers</span>
+          <span class="report-kpi-sub">Audit Trail, Getter Purity, Inverted Layers</span>
         </div>
       </div>
 
@@ -18094,7 +18094,7 @@ const ReportsHub = {
           <td colspan="6" style="text-align:center; padding:24px; color:#34d399;">
             <svg class="svg-icon icon-emerald icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
             <div style="font-weight:700; margin-top:6px;">Zero Governance Violations</div>
-            <div style="color:var(--text-muted); font-size:11.5px;">All transactions, data grabbers, and entity layers conform to governance policies.</div>
+            <div style="color:var(--text-muted); font-size:11.5px;">All transactions, data getters, and entity layers conform to governance policies.</div>
           </td>
         </tr>
       `;

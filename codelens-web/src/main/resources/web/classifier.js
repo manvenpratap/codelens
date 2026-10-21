@@ -124,12 +124,82 @@
       scope: 'CLASS',
       matchType: 'PREFIX',
       pattern: '{MODULE}DG',
-      label: 'Data Grabber',
-      badge: 'DATA-GRABBER',
+      label: 'Data Getter',
+      badge: 'DATA-GETTER',
       category: 'DATA_ACCESS',
       color: '#06b6d4',
       icon: 'box',
-      description: 'Data grabber / data retrieval components ({MODULE}DG, *DG)',
+      description: 'Data getter / data retrieval components ({MODULE}DG, *DG, *Getter)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-dg-simple',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'STRUCTURAL',
+      pattern: '* (Get)',
+      label: 'Simple Data Getter',
+      badge: 'DG-SIMPLE',
+      category: 'DATA_ACCESS',
+      color: '#06b6d4',
+      icon: 'box',
+      description: 'Simple Data Getter with Get() method only',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-dg-paging',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'STRUCTURAL',
+      pattern: '* (GetMFwd, GetMBwd)',
+      label: 'Paging Data Getter',
+      badge: 'DG-PAGING',
+      category: 'DATA_ACCESS',
+      color: '#0284c7',
+      icon: 'layers',
+      description: 'Paging Data Getter with forward and backward paging (GetMFwd, GetMBwd)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-dg-cursor',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'STRUCTURAL',
+      pattern: '* (Open, Fetch, Close)',
+      label: 'Cursor Data Getter',
+      badge: 'DG-CURSOR',
+      category: 'DATA_ACCESS',
+      color: '#0d9488',
+      icon: 'database',
+      description: 'Cursor Data Getter with cursor lifecycle (Open, Fetch, Close)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-dg-paging-cursor',
+      target: 'CLASS',
+      scope: 'CLASS',
+      matchType: 'STRUCTURAL',
+      pattern: '* (Open, Fetch, Close, GetMFwd, GetMBwd)',
+      label: 'Paging Cursor Data Getter',
+      badge: 'DG-PAGE-CURS',
+      category: 'DATA_ACCESS',
+      color: '#2563eb',
+      icon: 'sliders',
+      description: 'Paging Cursor Data Getter with cursor and paging methods (Open, Fetch, Close, GetMFwd, GetMBwd)',
+      enabled: true
+    },
+    {
+      id: 'rule-bancs-dg-op',
+      target: 'METHOD',
+      scope: 'METHOD',
+      matchType: 'REGEX',
+      pattern: '^(GetMFwd|GetMBwd|Open|Fetch|Close)$',
+      label: 'Getter Query Operation',
+      badge: 'DG-OP',
+      category: 'DATA_ACCESS',
+      color: '#06b6d4',
+      icon: 'box',
+      description: 'Data Getter query operations (GetMFwd, GetMBwd, Open, Fetch, Close)',
       enabled: true
     },
     {
@@ -540,6 +610,13 @@
               parsed[crudIdx].label = 'CRUD Operation';
               changed = true;
             }
+            const dgIdx = parsed.findIndex(r => r.id === 'rule-bancs-dg');
+            if (dgIdx >= 0 && (parsed[dgIdx].label === 'Data Grabber' || parsed[dgIdx].badge === 'DATA-GRABBER')) {
+              parsed[dgIdx].label = 'Data Getter';
+              parsed[dgIdx].badge = 'DATA-GETTER';
+              parsed[dgIdx].description = 'Data getter / data retrieval components ({MODULE}DG, *DG, *Getter)';
+              changed = true;
+            }
             const existingIds = new Set(parsed.map(r => r.id));
             const missingDefaults = DEFAULT_ARCHETYPE_RULES.filter(r => !existingIds.has(r.id));
             if (missingDefaults.length > 0) {
@@ -594,6 +671,43 @@
     }
 
     /**
+     * Extracts lowercase normalized method names from a class node or FQN lookup
+     */
+    _extractMethodNames(nameOrNode, fqn, pkg) {
+      const name = typeof nameOrNode === 'string'
+        ? nameOrNode
+        : (nameOrNode?.simpleName || nameOrNode?.name || nameOrNode?.label || '');
+      const fullFqn = fqn || (typeof nameOrNode === 'object' ? (nameOrNode?.fqn || nameOrNode?.id || '') : '');
+      const packageFqn = pkg || (typeof nameOrNode === 'object' ? (nameOrNode?.packageFqn || nameOrNode?.pkg || '') : '');
+
+      const methodNames = new Set();
+      if (typeof nameOrNode === 'object' && nameOrNode !== null) {
+        const rawMethods = Array.isArray(nameOrNode.methods)
+          ? nameOrNode.methods
+          : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
+        for (const m of rawMethods) {
+          const raw = typeof m === 'string' ? m : (m.simpleName || m.name || '');
+          const clean = String(raw).replace(/\(.*?\)/g, '').trim().toLowerCase();
+          if (clean) methodNames.add(clean);
+        }
+      }
+
+      // Fallback to _typeMethodsMap if methods not embedded in node
+      if (methodNames.size === 0 && this._typeMethodsMap) {
+        const fromMap = (fullFqn ? this._typeMethodsMap.get(fullFqn) : null) ||
+                        (name ? this._typeMethodsMap.get(name) : null) ||
+                        (packageFqn && name ? this._typeMethodsMap.get(packageFqn + '.' + name) : null);
+        if (fromMap) {
+          fromMap.forEach(m => {
+            const clean = String(m).replace(/\(.*?\)/g, '').trim().toLowerCase();
+            if (clean) methodNames.add(clean);
+          });
+        }
+      }
+      return methodNames;
+    }
+
+    /**
      * Identifies if a class is a persistent class based on:
      * 1. Possessing Get(), Create(), and Modify() methods
      * 2. Being registered in _persistentClasses set (from DB query)
@@ -619,27 +733,7 @@
       }
 
       // 3. Extract and check method names
-      let methodNames = new Set();
-      if (typeof nameOrNode === 'object' && nameOrNode !== null) {
-        const rawMethods = Array.isArray(nameOrNode.methods)
-          ? nameOrNode.methods
-          : (Array.isArray(nameOrNode.children) ? nameOrNode.children.filter(c => c.kind === 'METHOD' || c.type === 'METHOD') : []);
-        for (const m of rawMethods) {
-          const mName = (typeof m === 'string' ? m : (m.simpleName || m.name || '')).replace(/\(.*?\)/g, '').trim();
-          if (mName) methodNames.add(mName);
-        }
-      }
-
-      // Fallback to _typeMethodsMap if methods not embedded in node
-      if (methodNames.size === 0 && this._typeMethodsMap) {
-        const fromMap = (fullFqn ? this._typeMethodsMap.get(fullFqn) : null) ||
-                        (name ? this._typeMethodsMap.get(name) : null) ||
-                        (packageFqn && name ? this._typeMethodsMap.get(packageFqn + '.' + name) : null);
-        if (fromMap) {
-          fromMap.forEach(m => methodNames.add(m));
-        }
-      }
-
+      const methodNames = this._extractMethodNames(nameOrNode, fullFqn, packageFqn);
       if (this.hasPersistentMethods(methodNames)) {
         return true;
       }
@@ -650,6 +744,113 @@
       }
 
       return false;
+    }
+
+    /**
+     * Identifies if a class is a Data Getter:
+     * - Cannot be a Message Object (MO_*) or Persistent Class (with Create & Modify)
+     * - Name matches {MODULE}DG*, *DG, *DataGetter, *Getter, *DataGrabber, *Grabber
+     * - OR has cursor methods (Open, Fetch, Close) or paging methods (GetMFwd, GetMBwd)
+     */
+    isDataGetterClass(nameOrNode, fqn, pkg) {
+      const name = typeof nameOrNode === 'string'
+        ? nameOrNode
+        : (nameOrNode?.simpleName || nameOrNode?.name || nameOrNode?.label || '');
+      if (!name) return false;
+      if (this._isMessageObjectName(name)) return false;
+
+      // Cannot be Data Getter if it has Persistent Class mutations (Create, Modify)
+      const methods = this._extractMethodNames(nameOrNode, fqn, pkg);
+      if (methods.has('create') && (methods.has('modify') || methods.has('smodify') || methods.has('mmodify') || methods.has('mmodidy'))) {
+        return false;
+      }
+
+      const upper = String(name).toUpperCase();
+      const mod = this.extractModule(pkg || fqn || '');
+      const hasModPrefix = mod ? (upper.startsWith(mod + 'DG') || upper.startsWith(mod + 'GETTER') || upper.startsWith(mod + 'GRABBER')) : false;
+
+      // Naming convention match
+      if (hasModPrefix ||
+          upper.endsWith('DG') ||
+          upper.includes('DG') ||
+          upper.endsWith('GETTER') ||
+          upper.endsWith('DATAGETTER') ||
+          upper.endsWith('GRABBER') ||
+          upper.endsWith('DATAGRABBER') ||
+          /^[A-Z]{2,4}DG/.test(upper)) {
+        return true;
+      }
+
+      // Structural match: has cursor or paging methods
+      const hasOpen = methods.has('open');
+      const hasFetch = methods.has('fetch');
+      const hasClose = methods.has('close');
+      const hasGetMFwd = methods.has('getmfwd');
+      const hasGetMBwd = methods.has('getmbwd');
+
+      if ((hasOpen && hasFetch && hasClose) || (hasGetMFwd && hasGetMBwd)) {
+        return true;
+      }
+
+      return false;
+    }
+
+    /**
+     * Determines which of the 4 structural Data Getter subtypes applies:
+     * 1. Simple: Only having Get() Method
+     * 2. Paging: GetMFwd() and GetMBwd()
+     * 3. Cursor: Open(), Fetch(), Close()
+     * 4. Paging Cursor: Open(), Fetch(), Close(), GetMFwd() and GetMBwd()
+     */
+    getDataGetterSubtype(nameOrNode, fqn, pkg) {
+      const methods = this._extractMethodNames(nameOrNode, fqn, pkg);
+
+      const hasOpen = methods.has('open');
+      const hasFetch = methods.has('fetch');
+      const hasClose = methods.has('close');
+      const hasGetMFwd = methods.has('getmfwd');
+      const hasGetMBwd = methods.has('getmbwd');
+      const hasGet = methods.has('get');
+
+      const isCursor = hasOpen && hasFetch && hasClose;
+      const isPaging = hasGetMFwd && hasGetMBwd;
+
+      // 4. Paging Cursor: Open(), Fetch(), Close(), GetMFwd() and GetMBwd()
+      if (isCursor && isPaging) {
+        return 'PAGE_CURSOR';
+      }
+
+      // 3. Cursor: Open(), Fetch(), Close()
+      if (isCursor) {
+        return 'CURSOR';
+      }
+
+      // 2. Paging: GetMFwd() and GetMBwd()
+      if (isPaging) {
+        return 'PAGING';
+      }
+
+      // 1. Simple: Only having Get() Method
+      if (hasGet) {
+        return 'SIMPLE';
+      }
+
+      // Naming fallback heuristics if methods not yet indexed
+      const name = typeof nameOrNode === 'string'
+        ? nameOrNode
+        : (nameOrNode?.simpleName || nameOrNode?.name || nameOrNode?.label || '');
+      const upper = String(name || '').toUpperCase();
+      if ((upper.includes('PAGE') || upper.includes('PAGING')) && upper.includes('CURSOR')) {
+        return 'PAGE_CURSOR';
+      }
+      if (upper.includes('CURSOR')) {
+        return 'CURSOR';
+      }
+      if (upper.includes('PAGE') || upper.includes('PAGING') || upper.includes('MFWD') || upper.includes('MBWD')) {
+        return 'PAGING';
+      }
+
+      return 'SIMPLE';
     }
 
     /**
@@ -810,19 +1011,35 @@
       const res = this.classifyEntity(entity, fqn, pkg, isMethod);
       const matchedRuleId = res ? res.ruleId : 'UNCLASSIFIED';
 
+      const isDgParentFilter = (f) => f === 'rule-bancs-dg' || f === 'DATA-GETTER' || f === 'DATA-GRABBER';
+      const isDgMatch = (r) => r && (r.ruleId === 'rule-bancs-dg' || r.ruleId.startsWith('rule-bancs-dg-') || r.badge === 'DATA-GETTER' || r.badge === 'DATA-GRABBER' || (r.badge && r.badge.startsWith('DG-')));
+
       if (archetypeFilter instanceof Set) {
         if (archetypeFilter.has('ALL')) return true;
-        return archetypeFilter.has(matchedRuleId);
+        if (archetypeFilter.has(matchedRuleId)) return true;
+        if (res && archetypeFilter.has(res.badge)) return true;
+        for (const f of archetypeFilter) {
+          if (isDgParentFilter(f) && isDgMatch(res)) return true;
+        }
+        return false;
       }
       if (Array.isArray(archetypeFilter)) {
         if (archetypeFilter.includes('ALL')) return true;
-        return archetypeFilter.includes(matchedRuleId);
+        if (archetypeFilter.includes(matchedRuleId)) return true;
+        if (res && archetypeFilter.includes(res.badge)) return true;
+        for (const f of archetypeFilter) {
+          if (isDgParentFilter(f) && isDgMatch(res)) return true;
+        }
+        return false;
       }
 
       if (archetypeFilter === 'NONE' || archetypeFilter === 'UNCLASSIFIED') {
         return res === null;
       }
-      return res !== null && res.ruleId === archetypeFilter;
+      if (isDgParentFilter(archetypeFilter) && isDgMatch(res)) {
+        return true;
+      }
+      return res !== null && (res.ruleId === archetypeFilter || res.badge === archetypeFilter);
     }
 
     _isMessageObjectName(name) {
@@ -899,11 +1116,72 @@
             };
           }
         }
+
+        // 3. Data Getter Check (Simple, Paging, Cursor, Paging Cursor)
+        if (!isMsgObject && this.isDataGetterClass(nameOrNode, fullFqn, packageFqn)) {
+          const subtype = this.getDataGetterSubtype(nameOrNode, fullFqn, packageFqn);
+          let ruleTargetId = 'rule-bancs-dg-simple';
+          let defaultBadge = 'DG-SIMPLE';
+          let defaultLabel = 'Simple Data Getter';
+          let defaultColor = '#06b6d4';
+          let defaultIcon = 'box';
+          let defaultDesc = 'Simple Data Getter with Get() method only';
+
+          if (subtype === 'PAGE_CURSOR') {
+            ruleTargetId = 'rule-bancs-dg-paging-cursor';
+            defaultBadge = 'DG-PAGE-CURS';
+            defaultLabel = 'Paging Cursor Data Getter';
+            defaultColor = '#2563eb';
+            defaultIcon = 'sliders';
+            defaultDesc = 'Paging Cursor Data Getter with cursor and paging methods (Open, Fetch, Close, GetMFwd, GetMBwd)';
+          } else if (subtype === 'CURSOR') {
+            ruleTargetId = 'rule-bancs-dg-cursor';
+            defaultBadge = 'DG-CURSOR';
+            defaultLabel = 'Cursor Data Getter';
+            defaultColor = '#0d9488';
+            defaultIcon = 'database';
+            defaultDesc = 'Cursor Data Getter with cursor lifecycle (Open, Fetch, Close)';
+          } else if (subtype === 'PAGING') {
+            ruleTargetId = 'rule-bancs-dg-paging';
+            defaultBadge = 'DG-PAGING';
+            defaultLabel = 'Paging Data Getter';
+            defaultColor = '#0284c7';
+            defaultIcon = 'layers';
+            defaultDesc = 'Paging Data Getter with forward and backward paging (GetMFwd, GetMBwd)';
+          }
+
+          const specificRule = activeRules.find(r => r.id === ruleTargetId && r.enabled);
+          if (specificRule) {
+            return {
+              ruleId: specificRule.id,
+              label: specificRule.label,
+              badge: specificRule.badge || defaultBadge,
+              category: specificRule.category || 'DATA_ACCESS',
+              color: specificRule.color || defaultColor,
+              icon: specificRule.icon || defaultIcon,
+              description: specificRule.description || defaultDesc
+            };
+          }
+
+          // Fallback to parent rule-bancs-dg
+          const parentDgRule = activeRules.find(r => r.id === 'rule-bancs-dg' || r.badge === 'DATA-GETTER' || r.badge === 'DATA-GRABBER');
+          if (parentDgRule) {
+            return {
+              ruleId: parentDgRule.id,
+              label: parentDgRule.label,
+              badge: defaultBadge,
+              category: parentDgRule.category || 'DATA_ACCESS',
+              color: defaultColor,
+              icon: defaultIcon,
+              description: defaultDesc
+            };
+          }
+        }
       }
 
       // Check standard pattern-matching rules for other archetypes
       for (const rule of activeRules) {
-        if (rule.id === 'rule-bancs-pc' || rule.id === 'rule-bancs-mo' || rule.badge === 'PERSISTENT' || rule.badge === 'MSG-OBJECT') {
+        if (rule.id === 'rule-bancs-pc' || rule.id === 'rule-bancs-mo' || rule.id === 'rule-bancs-dg' || rule.id.startsWith('rule-bancs-dg-') || rule.badge === 'PERSISTENT' || rule.badge === 'MSG-OBJECT' || rule.badge === 'DATA-GETTER' || rule.badge === 'DATA-GRABBER' || (rule.badge && rule.badge.startsWith('DG-'))) {
           continue; // Handled specially above
         }
         if (this._matchesRule(name, rule, fullFqn, packageFqn, nameOrNode)) {
@@ -926,6 +1204,18 @@
       if (!rule) return false;
       const matchType = rule.matchType || 'PREFIX';
       if (matchType === 'STRUCTURAL') {
+        if (rule.id === 'rule-bancs-pc' || rule.badge === 'PERSISTENT') {
+          return this.isPersistentClass(nameOrNode || name, fqn, pkg);
+        }
+        if (rule.id.startsWith('rule-bancs-dg') || (rule.badge && rule.badge.startsWith('DG-'))) {
+          if (!this.isDataGetterClass(nameOrNode || name, fqn, pkg)) return false;
+          const sub = this.getDataGetterSubtype(nameOrNode || name, fqn, pkg);
+          if (rule.id === 'rule-bancs-dg-simple' || rule.badge === 'DG-SIMPLE') return sub === 'SIMPLE';
+          if (rule.id === 'rule-bancs-dg-paging' || rule.badge === 'DG-PAGING') return sub === 'PAGING';
+          if (rule.id === 'rule-bancs-dg-cursor' || rule.badge === 'DG-CURSOR') return sub === 'CURSOR';
+          if (rule.id === 'rule-bancs-dg-paging-cursor' || rule.badge === 'DG-PAGE-CURS') return sub === 'PAGE_CURSOR';
+          return true;
+        }
         return this.isPersistentClass(nameOrNode || name, fqn, pkg);
       }
       if (!rule.pattern) return false;

@@ -11,21 +11,21 @@ import com.tcs.bancs.CU.*;
  */
 public class FeeAssessmentService {
 
-    private final AMDGLimitGrabber dataGrabber;
+    private final AMDGLimitGetter dataGetter;
 
     public FeeAssessmentService() {
-        this.dataGrabber = new AMDGLimitGrabber();
+        this.dataGetter = new AMDGLimitGetter();
     }
 
-    public FeeAssessmentService(AMDGLimitGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public FeeAssessmentService(AMDGLimitGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -41,7 +41,7 @@ public class FeeAssessmentService {
     }
 
     public OverdraftFacility inspectAndReconcile(String entityId) {
-        OverdraftFacility entity = this.dataGrabber.fetchOverdraftFacilityById(entityId);
+        OverdraftFacility entity = this.dataGetter.fetchOverdraftFacilityById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -49,17 +49,17 @@ public class FeeAssessmentService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: AMTOComputeDailyAccrual
+     * TCS BaNCS Own Task delegate: AMTORecordLedgerMovement
      */
-    public boolean AMTOComputeDailyAccrual(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "AMTOComputeDailyAccrual", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean AMTORecordLedgerMovement(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "AMTORecordLedgerMovement", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: AMTCAuditTransaction
+     * TCS BaNCS Common Task delegate: AMTCSyncGeneralLedger
      */
-    public void AMTCAuditTransaction(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCAuditTransaction", correlationId, operation);
+    public void AMTCSyncGeneralLedger(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "AMTCSyncGeneralLedger", correlationId, operation);
     }
 }

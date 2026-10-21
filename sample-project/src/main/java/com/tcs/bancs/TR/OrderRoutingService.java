@@ -12,21 +12,21 @@ import com.tcs.bancs.AN.*;
  */
 public class OrderRoutingService {
 
-    private final TRDGTradeGrabber dataGrabber;
+    private final TRDGTradeGetter dataGetter;
 
     public OrderRoutingService() {
-        this.dataGrabber = new TRDGTradeGrabber();
+        this.dataGetter = new TRDGTradeGetter();
     }
 
-    public OrderRoutingService(TRDGTradeGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public OrderRoutingService(TRDGTradeGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class OrderRoutingService {
     }
 
     public OrderEntity inspectAndReconcile(String entityId) {
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(entityId);
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -68,7 +68,7 @@ public class OrderRoutingService {
         this.TRTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(req.getMessageCorrelationId());
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -107,7 +107,7 @@ public class OrderRoutingService {
         this.TRTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(req.getMessageCorrelationId());
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -146,7 +146,7 @@ public class OrderRoutingService {
         this.TRTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(req.getMessageCorrelationId());
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -185,7 +185,7 @@ public class OrderRoutingService {
         this.TRTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(req.getMessageCorrelationId());
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -224,7 +224,7 @@ public class OrderRoutingService {
         this.TRTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(req.getMessageCorrelationId());
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -257,7 +257,7 @@ public class OrderRoutingService {
         this.TRTOValidateOrderLimits(lookupKey);
 
         // Step 2: Query entity state
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(lookupKey);
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -282,7 +282,7 @@ public class OrderRoutingService {
         this.TRTORouteExecutionSlice(lookupKey);
 
         // Step 2: Query entity state
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(lookupKey);
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -307,7 +307,7 @@ public class OrderRoutingService {
         this.TRTOUpdatePortfolioPosition(lookupKey);
 
         // Step 2: Query entity state
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(lookupKey);
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -332,7 +332,7 @@ public class OrderRoutingService {
         this.TRTOCheckMarginSufficiency(lookupKey);
 
         // Step 2: Query entity state
-        OrderEntity entity = this.dataGrabber.fetchOrderEntityById(lookupKey);
+        OrderEntity entity = this.dataGetter.fetchOrderEntityById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -353,7 +353,7 @@ public class OrderRoutingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "TRTOValidateOrderLimits", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void TRTOValidateOrderLimits(String correlationId, double amount) {
@@ -370,7 +370,7 @@ public class OrderRoutingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "TRTORouteExecutionSlice", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void TRTORouteExecutionSlice(String correlationId, double amount) {
@@ -387,7 +387,7 @@ public class OrderRoutingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "TRTOUpdatePortfolioPosition", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void TRTOUpdatePortfolioPosition(String correlationId, double amount) {
@@ -404,7 +404,7 @@ public class OrderRoutingService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "TRTOCheckMarginSufficiency", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void TRTOCheckMarginSufficiency(String correlationId, double amount) {
@@ -469,7 +469,7 @@ public class OrderRoutingService {
      */
     public int TRPSEODPositionMarking() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPSEODPositionMarking", "TR", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("TRPSEODPositionMarking", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPSEODPositionMarking", "TR", "PROCESSED=" + count);
@@ -481,7 +481,7 @@ public class OrderRoutingService {
      */
     public int TRPBPreMarkValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPBPreMarkValidation", "TR", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("TRPBPreMarkValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPBPreMarkValidation", "TR", "PROCESSED=" + count);
@@ -493,7 +493,7 @@ public class OrderRoutingService {
      */
     public int TRPAPostTradeReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPAPostTradeReconcile", "TR", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("TRPAPostTradeReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "TRPAPostTradeReconcile", "TR", "PROCESSED=" + count);

@@ -14,21 +14,21 @@ import com.tcs.bancs.RK.*;
  */
 public class LoanOriginationService {
 
-    private final LNDGLoanGrabber dataGrabber;
+    private final LNDGLoanGetter dataGetter;
 
     public LoanOriginationService() {
-        this.dataGrabber = new LNDGLoanGrabber();
+        this.dataGetter = new LNDGLoanGetter();
     }
 
-    public LoanOriginationService(LNDGLoanGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public LoanOriginationService(LNDGLoanGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class LoanOriginationService {
     }
 
     public Loan inspectAndReconcile(String entityId) {
-        Loan entity = this.dataGrabber.fetchLoanById(entityId);
+        Loan entity = this.dataGetter.fetchLoanById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -70,7 +70,7 @@ public class LoanOriginationService {
         this.LNTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Loan entity = this.dataGrabber.fetchLoanById(req.getMessageCorrelationId());
+        Loan entity = this.dataGetter.fetchLoanById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -109,7 +109,7 @@ public class LoanOriginationService {
         this.LNTCAuditTransaction(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Loan entity = this.dataGrabber.fetchLoanById(req.getMessageCorrelationId());
+        Loan entity = this.dataGetter.fetchLoanById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -148,7 +148,7 @@ public class LoanOriginationService {
         this.LNTCNotifyChannel(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Loan entity = this.dataGrabber.fetchLoanById(req.getMessageCorrelationId());
+        Loan entity = this.dataGetter.fetchLoanById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -187,7 +187,7 @@ public class LoanOriginationService {
         this.LNTCSyncGeneralLedger(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Loan entity = this.dataGrabber.fetchLoanById(req.getMessageCorrelationId());
+        Loan entity = this.dataGetter.fetchLoanById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -226,7 +226,7 @@ public class LoanOriginationService {
         this.LNTCVerifyCustomerKYC(req.getMessageCorrelationId());
 
         // Step 3: Domain Entity Mutation (Persistent Class Get, Create, Modify)
-        Loan entity = this.dataGrabber.fetchLoanById(req.getMessageCorrelationId());
+        Loan entity = this.dataGetter.fetchLoanById(req.getMessageCorrelationId());
         if (entity != null) {
             entity.Get(req.getMessageCorrelationId());
             entity.Create();
@@ -259,7 +259,7 @@ public class LoanOriginationService {
         this.LNTOVerifyCollateralCoverage(lookupKey);
 
         // Step 2: Query entity state
-        Loan entity = this.dataGrabber.fetchLoanById(lookupKey);
+        Loan entity = this.dataGetter.fetchLoanById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -284,7 +284,7 @@ public class LoanOriginationService {
         this.LNTOCalculateAmortization(lookupKey);
 
         // Step 2: Query entity state
-        Loan entity = this.dataGrabber.fetchLoanById(lookupKey);
+        Loan entity = this.dataGetter.fetchLoanById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -309,7 +309,7 @@ public class LoanOriginationService {
         this.LNTOUpdateFacilityBalance(lookupKey);
 
         // Step 2: Query entity state
-        Loan entity = this.dataGrabber.fetchLoanById(lookupKey);
+        Loan entity = this.dataGetter.fetchLoanById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -334,7 +334,7 @@ public class LoanOriginationService {
         this.LNTOCheckArrears(lookupKey);
 
         // Step 2: Query entity state
-        Loan entity = this.dataGrabber.fetchLoanById(lookupKey);
+        Loan entity = this.dataGetter.fetchLoanById(lookupKey);
         if (entity != null) {
             entity.Get(lookupKey);
         }
@@ -355,7 +355,7 @@ public class LoanOriginationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "LNTOVerifyCollateralCoverage", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void LNTOVerifyCollateralCoverage(String correlationId, double amount) {
@@ -372,7 +372,7 @@ public class LoanOriginationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCalculateAmortization", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void LNTOCalculateAmortization(String correlationId, double amount) {
@@ -389,7 +389,7 @@ public class LoanOriginationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "LNTOUpdateFacilityBalance", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void LNTOUpdateFacilityBalance(String correlationId, double amount) {
@@ -406,7 +406,7 @@ public class LoanOriginationService {
             return false;
         }
         AuditTrailService.logAuditEvent("TASK_OWN", "LNTOCheckArrears", correlationId, "STATUS_OK");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     public void LNTOCheckArrears(String correlationId, double amount) {
@@ -471,7 +471,7 @@ public class LoanOriginationService {
      */
     public int LNPSInstallmentDueBatch() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPSInstallmentDueBatch", "LN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("LNPSInstallmentDueBatch", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPSInstallmentDueBatch", "LN", "PROCESSED=" + count);
@@ -483,7 +483,7 @@ public class LoanOriginationService {
      */
     public int LNPBPreDueValidation() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPBPreDueValidation", "LN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("LNPBPreDueValidation", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPBPreDueValidation", "LN", "PROCESSED=" + count);
@@ -495,7 +495,7 @@ public class LoanOriginationService {
      */
     public int LNPAPostPaymentReconcile() {
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPAPostPaymentReconcile", "LN", "START");
-        List<?> records = this.dataGrabber.retrieveAll();
+        List<?> records = this.dataGetter.retrieveAll();
         int count = records != null ? records.size() : 0;
         executeBatchProcessingCycle("LNPAPostPaymentReconcile", count);
         AuditTrailService.logAuditEvent("BATCH_PROCESS", "LNPAPostPaymentReconcile", "LN", "PROCESSED=" + count);

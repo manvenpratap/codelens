@@ -12,21 +12,21 @@ import com.tcs.bancs.RK.*;
  */
 public class DirectDebitMandateService {
 
-    private final PMDGClearingQueueGrabber dataGrabber;
+    private final PMDGClearingQueueGetter dataGetter;
 
     public DirectDebitMandateService() {
-        this.dataGrabber = new PMDGClearingQueueGrabber();
+        this.dataGetter = new PMDGClearingQueueGetter();
     }
 
-    public DirectDebitMandateService(PMDGClearingQueueGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public DirectDebitMandateService(PMDGClearingQueueGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class DirectDebitMandateService {
     }
 
     public ClearingReturnRecord inspectAndReconcile(String entityId) {
-        ClearingReturnRecord entity = this.dataGrabber.fetchClearingReturnRecordById(entityId);
+        ClearingReturnRecord entity = this.dataGetter.fetchClearingReturnRecordById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -54,7 +54,7 @@ public class DirectDebitMandateService {
      */
     public boolean PMTORoutePaymentChannel(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "PMTORoutePaymentChannel", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

@@ -12,21 +12,21 @@ import com.tcs.bancs.CU.*;
  */
 public class TaxDeductionService {
 
-    private final DPDGDepositGrabber dataGrabber;
+    private final DPDGDepositGetter dataGetter;
 
     public TaxDeductionService() {
-        this.dataGrabber = new DPDGDepositGrabber();
+        this.dataGetter = new DPDGDepositGetter();
     }
 
-    public TaxDeductionService(DPDGDepositGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public TaxDeductionService(DPDGDepositGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class TaxDeductionService {
     }
 
     public DepositContract inspectAndReconcile(String entityId) {
-        DepositContract entity = this.dataGrabber.fetchDepositContractById(entityId);
+        DepositContract entity = this.dataGetter.fetchDepositContractById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class TaxDeductionService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: DPTOUpdateDepositPrincipal
+     * TCS BaNCS Own Task delegate: DPTOVerifyDepositTerms
      */
-    public boolean DPTOUpdateDepositPrincipal(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "DPTOUpdateDepositPrincipal", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean DPTOVerifyDepositTerms(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "DPTOVerifyDepositTerms", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: DPTCNotifyChannel
+     * TCS BaNCS Common Task delegate: DPTCVerifyCustomerKYC
      */
-    public void DPTCNotifyChannel(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "DPTCNotifyChannel", correlationId, operation);
+    public void DPTCVerifyCustomerKYC(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "DPTCVerifyCustomerKYC", correlationId, operation);
     }
 }

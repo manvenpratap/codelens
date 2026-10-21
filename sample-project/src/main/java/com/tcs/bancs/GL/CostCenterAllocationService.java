@@ -14,21 +14,21 @@ import com.tcs.bancs.PM.*;
  */
 public class CostCenterAllocationService {
 
-    private final GLDGLedgerGrabber dataGrabber;
+    private final GLDGLedgerGetter dataGetter;
 
     public CostCenterAllocationService() {
-        this.dataGrabber = new GLDGLedgerGrabber();
+        this.dataGetter = new GLDGLedgerGetter();
     }
 
-    public CostCenterAllocationService(GLDGLedgerGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public CostCenterAllocationService(GLDGLedgerGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -44,7 +44,7 @@ public class CostCenterAllocationService {
     }
 
     public LedgerAccount inspectAndReconcile(String entityId) {
-        LedgerAccount entity = this.dataGrabber.fetchLedgerAccountById(entityId);
+        LedgerAccount entity = this.dataGetter.fetchLedgerAccountById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -56,7 +56,7 @@ public class CostCenterAllocationService {
      */
     public boolean GLTOVerifyVoucherAuthorization(String correlationId) {
         AuditTrailService.logAuditEvent("TASK_OWN", "GLTOVerifyVoucherAuthorization", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**

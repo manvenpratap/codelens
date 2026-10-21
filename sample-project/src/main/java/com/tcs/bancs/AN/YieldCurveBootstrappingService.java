@@ -12,21 +12,21 @@ import com.tcs.bancs.GL.*;
  */
 public class YieldCurveBootstrappingService {
 
-    private final ANDGYieldCurveGrabber dataGrabber;
+    private final ANDGYieldCurveGetter dataGetter;
 
     public YieldCurveBootstrappingService() {
-        this.dataGrabber = new ANDGYieldCurveGrabber();
+        this.dataGetter = new ANDGYieldCurveGetter();
     }
 
-    public YieldCurveBootstrappingService(ANDGYieldCurveGrabber dataGrabber) {
-        this.dataGrabber = dataGrabber;
+    public YieldCurveBootstrappingService(ANDGYieldCurveGetter dataGetter) {
+        this.dataGetter = dataGetter;
     }
 
     public boolean validateTransactionPreconditions(String contextId) {
         if (contextId == null || contextId.isEmpty()) {
             return false;
         }
-        return this.dataGrabber.exists(contextId);
+        return this.dataGetter.exists(contextId);
     }
 
     public double calculateInterestOrCharges(double baseAmount, double rate) {
@@ -42,7 +42,7 @@ public class YieldCurveBootstrappingService {
     }
 
     public YieldCurveSnapshot inspectAndReconcile(String entityId) {
-        YieldCurveSnapshot entity = this.dataGrabber.fetchYieldCurveSnapshotById(entityId);
+        YieldCurveSnapshot entity = this.dataGetter.fetchYieldCurveSnapshotById(entityId);
         if (entity != null) {
             entity.Modify("RECONCILED");
         }
@@ -50,17 +50,17 @@ public class YieldCurveBootstrappingService {
     }
 
     /**
-     * TCS BaNCS Own Task delegate: ANTOValidateCapitalRatio
+     * TCS BaNCS Own Task delegate: ANTOAggregatePortfolioPnL
      */
-    public boolean ANTOValidateCapitalRatio(String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOValidateCapitalRatio", correlationId, "SECONDARY_SERVICE");
-        return this.dataGrabber != null && this.dataGrabber.exists(correlationId);
+    public boolean ANTOAggregatePortfolioPnL(String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_OWN", "ANTOAggregatePortfolioPnL", correlationId, "SECONDARY_SERVICE");
+        return this.dataGrabber != null && this.dataGetter.exists(correlationId);
     }
 
     /**
-     * TCS BaNCS Common Task delegate: ANTCSyncGeneralLedger
+     * TCS BaNCS Common Task delegate: ANTCNotifyChannel
      */
-    public void ANTCSyncGeneralLedger(String operation, String correlationId) {
-        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCSyncGeneralLedger", correlationId, operation);
+    public void ANTCNotifyChannel(String operation, String correlationId) {
+        AuditTrailService.logAuditEvent("TASK_COMMON", "ANTCNotifyChannel", correlationId, operation);
     }
 }
