@@ -1224,8 +1224,8 @@
       }
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       const mat = new THREE.PointsMaterial({
-        color: colorHex, size: 24 + Math.random() * 14,
-        transparent: true, opacity: 0.14,
+        color: colorHex, size: 8 + Math.random() * 6,
+        transparent: true, opacity: 0.035,
         depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
       });
       const cloud = new THREE.Points(geo, mat);
@@ -1245,7 +1245,7 @@
       const headPos = new Float32Array(N * 3);
       headGeo.setAttribute('position', new THREE.BufferAttribute(headPos, 3));
       const headMat = new THREE.PointsMaterial({
-        color: 0x6ee7b7, size: 3.2, transparent: true, opacity: 0.95,
+        color: 0x6ee7b7, size: 1.8, transparent: true, opacity: 0.70,
         depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
       });
       this._cometGroup     = new THREE.Points(headGeo, headMat);
@@ -1260,9 +1260,9 @@
         tGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
         const tMat = new THREE.PointsMaterial({
           color: 0x34d399,
-          size: Math.max(0.8, 3.2 - t * 0.45),
+          size: Math.max(0.6, 1.8 - t * 0.25),
           transparent: true,
-          opacity: 0.70 * Math.pow(0.52, t),
+          opacity: 0.45 * Math.pow(0.50, t),
           depthWrite: false,
           blending: THREE.AdditiveBlending,
           sizeAttenuation: true,
@@ -1722,6 +1722,9 @@
           const pz = om.parentMesh.position.z + om.orbitR * Math.sin(a);
           const py = om.parentMesh.position.y + 3.5 * Math.sin(elapsed * om.bobSpeed);
           om.mesh.position.set(px, py, pz);
+          if (om.mesh.userData && om.mesh.userData.haloMesh) {
+            om.mesh.userData.haloMesh.position.set(px, py, pz);
+          }
         });
       }
 
@@ -1750,7 +1753,10 @@
       }
 
       /* Galactic core light pulse */
-      if (this._coreLight) this._coreLight.intensity = 1.0 + Math.sin(elapsed * 1.2) * 0.2;
+      if (this._coreLight) {
+        const factor = this._brightnessFactor || 1.0;
+        this._coreLight.intensity = (0.65 + Math.sin(elapsed * 1.2) * 0.12) * factor;
+      }
 
       /* Nebula slow drift */
       this._nebulaGroups.forEach((ng, i) => { ng.rotation.y = elapsed * 0.012 * (i % 2 === 0 ? 1 : -1); });
