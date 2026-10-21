@@ -1048,10 +1048,10 @@
         const isMeth = n.isMethod;
         const deg    = degreeMap.get(n.id) || 0;
         let radius   = isMeth
-          ? Math.max(0.45, Math.min(0.85, 0.45 + (deg > 3 ? 0.2 : 0)))
-          : Math.max(1.4, Math.min(3.0, 1.4 + Math.sqrt(deg) * 0.26));
+          ? Math.max(1.1, Math.min(2.2, 1.1 + (deg > 3 ? 0.35 : 0)))
+          : Math.max(3.2, Math.min(7.5, 3.2 + Math.sqrt(deg) * 0.65));
         let hex      = n.colorHex;
-        let emissiveInt = isMeth ? 0.75 : 1.15;
+        let emissiveInt = isMeth ? 1.4 : 2.2;
 
         // Apply Git Churn Stellar Spectrometry if heat mode is active
         if (this._heatMode && !isMeth) {
@@ -1060,13 +1060,13 @@
           const commits = (heat[n.id] || (n.raw && heat[n.raw.fqn])) || 0;
           const ratio = Math.min(1.0, commits / Math.max(5, maxCommits * 0.7));
           if (ratio > 0.65) {
-            hex = 0x67e8f9; emissiveInt = 2.2; radius *= 1.25;
+            hex = 0x67e8f9; emissiveInt = 2.8; radius *= 1.25;
           } else if (ratio > 0.35) {
-            hex = 0xfbbf24; emissiveInt = 1.6; radius *= 1.15;
+            hex = 0xfbbf24; emissiveInt = 2.2; radius *= 1.15;
           } else if (ratio > 0.08) {
-            hex = 0xf43f5e; emissiveInt = 1.2;
+            hex = 0xf43f5e; emissiveInt = 1.7;
           } else {
-            hex = 0x64748b; emissiveInt = 0.55;
+            hex = 0x64748b; emissiveInt = 0.85;
           }
         }
 
@@ -1075,27 +1075,25 @@
           color: hex,
           emissive: hex,
           emissiveIntensity: emissiveInt,
-          roughness: 0.82,
-          metalness: 0.05,
+          roughness: 0.35,
+          metalness: 0.10,
         });
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, isMeth ? 12 : 24, isMeth ? 12 : 24), mat);
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, isMeth ? 14 : 24, isMeth ? 14 : 24), mat);
         mesh.position.set(n.x, n.y, n.z);
 
         let haloMesh = null;
-        // Major class stars get a soft ethereal starlight corona
-        if (!isMeth) {
-          const hMat = new THREE.MeshBasicMaterial({
-            color: hex,
-            transparent: true,
-            opacity: 0.08,
-            side: THREE.BackSide,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-          });
-          haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.2, 16, 16), hMat);
-          haloMesh.position.copy(mesh.position);
-          this._scene.add(haloMesh);
-        }
+        // Ethereal starlight corona aura
+        const hMat = new THREE.MeshBasicMaterial({
+          color: hex,
+          transparent: true,
+          opacity: isMeth ? 0.18 : 0.28,
+          side: THREE.BackSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * (isMeth ? 2.0 : 2.5), 16, 16), hMat);
+        haloMesh.position.copy(mesh.position);
+        this._scene.add(haloMesh);
 
         mesh.userData = {
           node: n,
