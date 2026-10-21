@@ -369,7 +369,8 @@
                   <span id="scan-changes-count-label">Changes Detected on Disk</span>
                 </span>
                 <button id="btn-popover-rescan-incremental" class="btn btn-amber btn-xs" title="Rescan only modified and new classes">
-                  ⚡ Rescan Changes
+                  <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  Rescan Changes
                 </button>
               </div>
               <div class="scan-changes-list" id="scan-popover-changes-list"></div>
@@ -377,7 +378,7 @@
 
             <!-- Rescan Advice Banner -->
             <div class="scan-advice-banner" id="scan-advice-banner">
-              <span class="advice-icon" id="scan-advice-icon">💡</span>
+              <span class="advice-icon" id="scan-advice-icon"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></span>
               <div class="advice-content">
                 <div class="advice-title" id="scan-advice-title">All files successfully indexed</div>
                 <div class="advice-desc" id="scan-advice-desc">If files were modified on disk, trigger a rescan to update indexes.</div>
@@ -389,7 +390,8 @@
             <span class="scan-timestamp" id="scan-popover-timestamp">Last scan: Just now</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <button id="btn-popover-rescan-incremental-footer" class="btn btn-amber btn-sm" style="display:none;">
-                ⚡ Rescan Changes
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Rescan Changes
               </button>
               <button id="btn-popover-rescan" class="btn btn-primary btn-sm">
                 <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -1194,7 +1196,7 @@
 
           <!-- Empty State (when 0 callers and 0 callees) -->
           <div id="hub-empty-state" class="hub-empty-state-wrap" style="display:none;">
-            <div class="hub-empty-icon">🔍</div>
+            <div class="hub-empty-icon"><svg class="svg-icon icon-lg icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
             <div class="hub-empty-title">No Connections Found</div>
             <div class="hub-empty-desc" id="hub-empty-desc">This method has no recorded upstream callers or downstream callees.</div>
             <div class="hub-empty-actions">
@@ -1205,7 +1207,7 @@
 
           <!-- Bottom Legend & Helper Note -->
           <div class="hub-bottom-legend">
-            <span class="hub-legend-tip">💡 <strong>Tip:</strong> Click any package arc to drill down into caller methods · Drag to pan · Scroll to zoom · Esc to close drawer</span>
+            <span class="hub-legend-tip"><svg class="svg-icon icon-xs icon-amber" style="vertical-align:-2px;margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg><strong>Tip:</strong> Click any package arc to drill down into caller methods · Drag to pan · Scroll to zoom · Esc to close drawer</span>
           </div>
         </div>
 
@@ -1541,21 +1543,21 @@
         </div>
         <div class="kb-empty-features-grid">
           <div class="kb-feature-chip">
-            <span class="kb-feature-icon">🏛️</span>
+            <span class="kb-feature-icon"><svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 10h.01M15 10h.01"/></svg></span>
             <div class="kb-feature-text">
               <strong>Hierarchy &amp; Modularity</strong>
               <span>Extends, implements, and package boundaries</span>
             </div>
           </div>
           <div class="kb-feature-chip">
-            <span class="kb-feature-icon">⚡</span>
+            <span class="kb-feature-icon"><svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
             <div class="kb-feature-text">
               <strong>Cyclomatic CC &amp; Hotspots</strong>
               <span>Decision points, loops, and cognitive complexity</span>
             </div>
           </div>
           <div class="kb-feature-chip">
-            <span class="kb-feature-icon">🔗</span>
+            <span class="kb-feature-icon"><svg class="svg-icon icon-sm icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
             <div class="kb-feature-text">
               <strong>Field Propagation Chains</strong>
               <span>Writer methods, callers, and blast cascades</span>
@@ -1878,7 +1880,7 @@
         <div class="impact-toolbar">
           <div class="impact-toolbar-left">
             <div class="impact-title-group">
-              <span class="impact-header-badge">🎯 BLAST RADIUS &amp; TOUCH POINTS</span>
+              <span class="impact-header-badge"><svg class="svg-icon icon-xs icon-rose" style="width:12px;height:12px;vertical-align:-1px;margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>BLAST RADIUS &amp; TOUCH POINTS</span>
               <div class="impact-target-chip" id="impact-target-chip" title="Active target entity">
                 <span class="impact-target-kind-pill kind-class" id="impact-target-kind">CLASS</span>
                 <span class="impact-target-name" id="impact-target-name">Select an entity to explore</span>
@@ -2085,7 +2087,7 @@
           </div>
 
           <div class="impact-empty-sample-wrap">
-            <span class="impact-empty-sample-hint">Click &ldquo;🎯 Blast Radius Flow&rdquo; on any Inspector panel, or pick a sample entity:</span>
+            <span class="impact-empty-sample-hint">Click &ldquo;Blast Radius Flow&rdquo; on any Inspector panel, or pick a sample entity:</span>
             <div class="impact-sample-chips" id="impact-sample-chips">
               <!-- Dynamically populated sample chips from scanned codebase -->
             </div>
@@ -2093,21 +2095,21 @@
 
           <div class="kb-empty-features-grid impact-empty-features-grid">
             <div class="kb-feature-chip impact-feature-chip">
-              <span class="kb-feature-icon impact-feature-icon">🌊</span>
+              <span class="kb-feature-icon impact-feature-icon"><svg class="svg-icon icon-sm icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2.5-3 5-3 7.5 0s5 3 7.5 0 5-3 7-1"/><path d="M2 17c2.5-3 5-3 7.5 0s5 3 7.5 0 5-3 7-1"/></svg></span>
               <div class="kb-feature-text impact-feature-text">
                 <strong>Hierarchical Flow &amp; Sankey</strong>
                 <span>Multi-tier caller rollups and execution cascades</span>
               </div>
             </div>
             <div class="kb-feature-chip impact-feature-chip">
-              <span class="kb-feature-icon impact-feature-icon">⚡</span>
+              <span class="kb-feature-icon impact-feature-icon"><svg class="svg-icon icon-sm icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
               <div class="kb-feature-text impact-feature-text">
                 <strong>Line-Level Touch Points</strong>
                 <span>Direct jump to every caller, reader, &amp; writer site</span>
               </div>
             </div>
             <div class="kb-feature-chip impact-feature-chip">
-              <span class="kb-feature-icon impact-feature-icon">🎯</span>
+              <span class="kb-feature-icon impact-feature-icon"><svg class="svg-icon icon-sm icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
               <div class="kb-feature-text impact-feature-text">
                 <strong>Ripple &amp; Centrality Risk</strong>
                 <span>Bottleneck identification and cross-module blast</span>

@@ -676,7 +676,7 @@
       // Auto Orbit toggle
       const orbitBtn = document.createElement('button');
       orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
-      orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
+      orbitBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8"/><path d="M21 3v5h-5"/></svg></span> <span class="hud-btn-text">Orbit</span>';
       orbitBtn.addEventListener('click', () => {
         this.toggleAutoRotate();
         orbitBtn.classList.toggle('active', this._autoRotate);
@@ -686,7 +686,7 @@
       // Wireframe toggle
       const wireBtn = document.createElement('button');
       wireBtn.className = 'hud-btn' + (this._showWireframe ? ' active' : '');
-      wireBtn.innerHTML = '<span class="hud-btn-icon">⬡</span> <span class="hud-btn-text">Wireframe</span>';
+      wireBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 8.5 2 15.5 12 22 22 15.5 22 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg></span> <span class="hud-btn-text">Wireframe</span>';
       wireBtn.addEventListener('click', () => {
         this.toggleWireframe();
         wireBtn.classList.toggle('active', this._showWireframe);

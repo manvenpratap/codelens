@@ -3650,7 +3650,7 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         if (isHub) {
           html += `
             <button class="neighbor-hub-btn" id="btn-card-open-hub">
-              ⚡ Open all ${neighborIds.length} in Hub Explorer →
+              <svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Open all ${neighborIds.length} in Hub Explorer →
             </button>
           `;
         }

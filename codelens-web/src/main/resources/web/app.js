@@ -2917,7 +2917,7 @@ function renderTasksPanel(procs) {
             </div>
           </div>
           <div class="process-card-badges-actions">
-            ${p.mutexGroup && p.mutexGroup !== 'NONE' ? `<span class="meta-chip-mutex" title="Concurrency lock: ${esc(p.mutexGroup)}">🔒 ${esc(p.mutexGroup === 'DATABASE_EXCLUSIVE' || p.mutexGroup === 'DB_EXCLUSIVE' ? 'DB Exclusive' : (p.mutexGroup === 'ANALYSIS_EXCLUSIVE' ? 'Analysis Mutex' : p.mutexGroup))}</span>` : ''}
+            ${p.mutexGroup && p.mutexGroup !== 'NONE' ? `<span class="meta-chip-mutex" title="Concurrency lock: ${esc(p.mutexGroup)}"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> ${esc(p.mutexGroup === 'DATABASE_EXCLUSIVE' || p.mutexGroup === 'DB_EXCLUSIVE' ? 'DB Exclusive' : (p.mutexGroup === 'ANALYSIS_EXCLUSIVE' ? 'Analysis Mutex' : p.mutexGroup))}</span>` : ''}
             ${p.loadTier ? `<span class="meta-chip-load tier-${(p.loadTier).toLowerCase()}" title="Load weight: ${p.loadWeight ?? 0} unit(s)${p.mutexGroup && p.mutexGroup !== 'NONE' ? ` · Mutex: ${p.mutexGroup}` : ''}">${esc(p.loadTier)} · ${p.loadWeight ?? 0}u</span>` : ''}
             <span class="process-card-badge status-${badgeStatusClass}">${statusBadgeIcon}${statusBadgeText}</span>
             ${p.canKill ? `<button class="btn-kill-process" data-id="${esc(p.id)}" title="Terminate hanging thread"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Kill</button>` : ''}
@@ -3300,7 +3300,7 @@ function initJvmManagerControls() {
     try {
       const res = await api.jvmDeadlocks();
       if (res.hasDeadlocks) {
-        showJvmAlert('error', `⚠️ Deadlock Detected! ${res.count} thread(s) are permanently deadlocked.`);
+        showJvmAlert('error', `Deadlock Detected! ${res.count} thread(s) are permanently deadlocked.`);
       } else {
         showJvmAlert('success', `Clean scan: No deadlocked threads detected in the JVM.`);
       }
@@ -3414,7 +3414,7 @@ function initJvmManagerControls() {
       const res = await api.simulateAutoRecovery(60);
       const inc = res.incident || {};
       const alloc = res.simulatedPayloadMb || 60;
-      showJvmAlert('success', `⚡ Auto-Recovery Test Passed: Simulated ${alloc} MB pressure spike. Sentinel recovered ${(inc.reclaimedMb || 0).toFixed(1)} MB in ${inc.durationMs || 0} ms (Heap: ${inc.heapBeforeMb || 0} MB → ${inc.heapAfterMb || 0} MB).`);
+      showJvmAlert('success', `Auto-Recovery Test Passed: Simulated ${alloc} MB pressure spike. Sentinel recovered ${(inc.reclaimedMb || 0).toFixed(1)} MB in ${inc.durationMs || 0} ms (Heap: ${inc.heapBeforeMb || 0} MB → ${inc.heapAfterMb || 0} MB).`);
       loadProcessHubData();
       loadJvmAutoRecovery();
     } catch (err) {
@@ -3437,7 +3437,7 @@ function initJvmManagerControls() {
     }
     try {
       const res = await api.triggerAutoRecovery();
-      showJvmAlert('success', `🧹 Force recovery pass complete: Evicted caches, trimmed DB, and reclaimed ${res.reclaimedMb} MB in ${res.durationMs} ms (Heap: ${res.heapBeforeMb} MB → ${res.heapAfterMb} MB). Circuit breaker is ${res.circuitBreakerActive ? 'OPEN' : 'CLOSED'}.`);
+      showJvmAlert('success', `Force recovery pass complete: Evicted caches, trimmed DB, and reclaimed ${res.reclaimedMb} MB in ${res.durationMs} ms (Heap: ${res.heapBeforeMb} MB → ${res.heapAfterMb} MB). Circuit breaker is ${res.circuitBreakerActive ? 'OPEN' : 'CLOSED'}.`);
       loadProcessHubData();
       loadJvmAutoRecovery();
     } catch (err) {
@@ -6273,7 +6273,7 @@ function renderKnowledgeBaseDependenciesView(pkgFqn, container, depData, targetS
           <button class="flow-seg-btn" data-density="top6">Top 6</button>
         </div>
         <button class="flow-tool-btn active" id="btn-flow-anim" title="Toggle energy pulses">
-          <span>⚡ Flow FX</span>
+          <span><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Flow FX</span>
         </button>
         <button class="btn-flow-toggle" id="btn-flow-toggle" title="Toggle flow map visibility">
           <span>▲ Hide</span>
@@ -9471,9 +9471,9 @@ function renderTypeDetail(data) {
 
   // Action buttons
   body.appendChild(actionRow([
-    { label: '🎯 Blast Radius Flow', title: 'Trace complete blast radius & touch points flow across modules, classes, and methods', action: () => openBlastRadiusExplorer(type.fqn, type.kind || 'CLASS') },
-    { label: '🎯 Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
-    { label: '🌐 Hub Explorer', title: 'Explore cross-package callers & callees for this class', action: () => { switchTab('graph'); if (window.hubExplorerInstance) window.hubExplorerInstance.load(type.fqn, 'callers'); } },
+    { label: 'Blast Radius Flow', title: 'Trace complete blast radius & touch points flow across modules, classes, and methods', action: () => openBlastRadiusExplorer(type.fqn, type.kind || 'CLASS') },
+    { label: 'Trace Critical Path', title: 'Trace execution flow and persistent state transitions for this class', action: () => loadAndVisualizeCriticalPath(type.fqn) },
+    { label: 'Hub Explorer', title: 'Explore cross-package callers & callees for this class', action: () => { switchTab('graph'); if (window.hubExplorerInstance) window.hubExplorerInstance.load(type.fqn, 'callers'); } },
     { label: 'View All Methods', badge: methods.length, title: `View all ${methods.length} methods in Knowledge Base`, action: () => { switchTab('knowledge'); renderKnowledgeBaseForType(data); } },
   ]));
 
@@ -9867,13 +9867,13 @@ function renderMethodDetail(data) {
 
   body.appendChild(actionRow([
     {
-      label: '🎯 Blast Radius Flow',
+      label: 'Blast Radius Flow',
       title: 'Trace complete blast radius & touch points flow across modules, classes, and callers',
       action: () => openBlastRadiusExplorer(method.fqn, 'METHOD')
     },
     {
       id: 'btn-inspect-callers',
-      label: '⬆ Callers',
+      label: 'Callers',
       badge: callerCount,
       badgeClass: 'count-badge-callers',
       className: 'action-btn-callers' + (isCallersActive ? ' active' : ''),
@@ -9893,7 +9893,7 @@ function renderMethodDetail(data) {
     },
     {
       id: 'btn-inspect-callees',
-      label: '⬇ Callees',
+      label: 'Callees',
       badge: calleeCount,
       badgeClass: 'count-badge-callees',
       className: 'action-btn-callees' + (isCalleesActive ? ' active' : ''),
@@ -9969,7 +9969,7 @@ function renderFieldDetail(data) {
 
 
   body.appendChild(actionRow([
-    { label: '🎯 Blast Radius Flow', title: 'Trace complete readers, writers, classes, and modules touching this field down to the line of code', action: () => openBlastRadiusExplorer(field.fqn, 'FIELD') },
+    { label: 'Blast Radius Flow', title: 'Trace complete readers, writers, classes, and modules touching this field down to the line of code', action: () => openBlastRadiusExplorer(field.fqn, 'FIELD') },
     { label: 'Impact (Direct)', title: 'Show direct readers, writers, and immediate propagators of this field', action: () => { switchTab('graph'); loadFieldImpact(field.id); } },
     { label: 'Propagation Chain', title: 'Trace multi-hop upstream triggers and calling entrypoints that modify this field', action: () => { switchTab('graph'); loadFieldPropagationChain(field.id); } },
   ]));
@@ -9996,7 +9996,7 @@ function renderPackageDetail(pkg) {
 
   const headerActions = [
     {
-      label: '🎯 Blast Radius Flow',
+      label: 'Blast Radius Flow',
       title: 'Trace complete blast radius & touch points flow for this module',
       action: () => openBlastRadiusExplorer(pkg.fqn || pkg.name, 'PACKAGE')
     }
@@ -10935,16 +10935,16 @@ function updateScanSummaryUI(s) {
     adviceBanner.className = 'scan-advice-banner';
     if (s.status === 'ERROR') {
       adviceBanner.classList.add('advice-error');
-      if (adviceIcon) adviceIcon.textContent = '❌';
+      if (adviceIcon) adviceIcon.innerHTML = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
       adviceTitle.textContent = 'Scan encountered an error';
       adviceDesc.textContent = s.errorDetail || s.message || 'Check source directory permissions and trigger a rescan.';
     } else if (errors > 0 || remaining > 0) {
       adviceBanner.classList.add('advice-warning');
-      if (adviceIcon) adviceIcon.textContent = '⚠️';
+      if (adviceIcon) adviceIcon.innerHTML = '<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
       adviceTitle.textContent = 'Scan completed with remaining files or errors';
       adviceDesc.textContent = `${errors > 0 ? errors + ' file(s) had parse errors. ' : ''}${remaining > 0 ? remaining + ' file(s) were not processed. ' : ''}Triggering a rescan will retry incomplete files.`;
     } else {
-      if (adviceIcon) adviceIcon.textContent = '💡';
+      if (adviceIcon) adviceIcon.innerHTML = '<svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>';
       adviceTitle.textContent = 'All codebase files are up to date';
       adviceDesc.textContent = 'If you modified source files on disk, click Rescan to update AST indexes and call graphs.';
     }
@@ -11005,7 +11005,7 @@ async function checkCodebaseChanges() {
       if (countLabel) countLabel.textContent = `${changes.totalChanges} Changes Detected on Disk`;
       if (footerDeltaBtn) {
         footerDeltaBtn.style.display = 'inline-flex';
-        footerDeltaBtn.textContent = `⚡ Rescan Changes (${changes.totalChanges})`;
+        footerDeltaBtn.innerHTML = `<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Rescan Changes (${changes.totalChanges})`;
       }
 
       if (changesList) {
@@ -11040,7 +11040,7 @@ async function checkCodebaseChanges() {
       // Update badge to alert user of pending changes
       if (badge && badgeText && (!App.lastScanProgress || App.lastScanProgress.status !== 'SCANNING')) {
         badge.className = 'scan-status-badge status-warning';
-        badgeText.textContent = `⚡ ${changes.totalChanges} Δ`;
+        badgeText.innerHTML = `<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:3px;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${changes.totalChanges} Δ`;
         badge.title = `${changes.totalChanges} changed files on disk (${changes.newFiles.length} new, ${changes.modifiedFiles.length} mod, ${changes.deletedFiles.length} del). Click to rescan.`;
       }
 
@@ -11051,9 +11051,9 @@ async function checkCodebaseChanges() {
       const adviceDesc = qs('#scan-advice-desc');
       if (adviceBanner && adviceTitle && adviceDesc) {
         adviceBanner.className = 'scan-advice-banner advice-warning';
-        if (adviceIcon) adviceIcon.textContent = '⚡';
+        if (adviceIcon) adviceIcon.innerHTML = '<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>';
         adviceTitle.textContent = `${changes.totalChanges} file(s) modified since last scan`;
-        adviceDesc.textContent = `Click "⚡ Rescan Changes" to incrementally update classes, methods, and call graph in seconds.`;
+        adviceDesc.textContent = `Click "Rescan Changes" to incrementally update classes, methods, and call graph in seconds.`;
       }
     } else {
       if (changesSection) changesSection.style.display = 'none';
@@ -13771,8 +13771,30 @@ function actionRow(actions) {
     if (a.title) btn.title = a.title;
     btn.addEventListener('click', a.action);
 
+    const cleanLabel = (a.label || '').replace(/^[🎯🌐⬆⬇\s]+/, '');
+    let iconSvg = '';
+    if (a.icon) {
+      iconSvg = a.icon;
+    } else if (a.label && (a.label.includes('Blast Radius') || a.label.includes('🎯'))) {
+      iconSvg = '<svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>';
+    } else if (a.label && (a.label.includes('Critical Path') || a.label.includes('Trace Critical'))) {
+      iconSvg = '<svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+    } else if (a.label && (a.label.includes('Hub Explorer') || a.label.includes('🌐'))) {
+      iconSvg = '<svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+    } else if (a.label && (a.label.includes('Callers') || a.label.includes('⬆'))) {
+      iconSvg = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+    } else if (a.label && (a.label.includes('Callees') || a.label.includes('⬇'))) {
+      iconSvg = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
+    }
+
+    if (iconSvg) {
+      const iconSpan = createElement('span', { class: 'action-btn-icon' });
+      iconSpan.innerHTML = iconSvg;
+      btn.appendChild(iconSpan);
+    }
+
     const lbl = createElement('span', { class: 'action-btn-label' });
-    lbl.textContent = a.label;
+    lbl.textContent = cleanLabel;
     btn.appendChild(lbl);
 
     if (a.badge !== undefined && a.badge !== null) {
@@ -14216,7 +14238,7 @@ function formatDate(epochMs) {
 
 /** Map Java type kind to a clean label glyph. */
 function kindIcon(kind) {
-  return { CLASS: 'C', INTERFACE: 'I', ENUM: 'E', RECORD: 'R', ANNOTATION: '@', ENDPOINT: '🌐', TABLE: '🗄️', EVENT: '⚡' }[kind] || 'T';
+  return { CLASS: 'C', INTERFACE: 'I', ENUM: 'E', RECORD: 'R', ANNOTATION: '@', ENDPOINT: 'API', TABLE: 'DB', EVENT: 'EV' }[kind] || 'T';
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -17449,7 +17471,7 @@ const ReportsHub = {
                   KB →
                 </button>
                 <button class="btn-ghost" style="font-size:11px; padding:3px 7px; color:#ef4444;" onclick="jumpToGraphHeat('${esc(h.entityFqn)}');" title="View in Graph Heat Mode">
-                  Graph ♨ →
+                  <svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Heat →
                 </button>
               </div>
             </td>
@@ -17941,7 +17963,7 @@ const ReportsHub = {
               <span style="color:#fbbf24;">➔</span> <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(c.path[0])}', 'knowledge');" style="color:#38bdf8; text-decoration:none; cursor:pointer;">${esc(c.path[0])}</a>
             </div>
             <div style="margin-top:8px; font-size:12px; color:#34d399;">
-              💡 <strong>Recommended Decoupling Cut:</strong> Break edge <code>${esc(c.recommendedCutEdge)}</code> via dependency injection or event bus.
+              <svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:3px;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg><strong>Recommended Decoupling Cut:</strong> Break edge <code>${esc(c.recommendedCutEdge)}</code> via dependency injection or event bus.
             </div>
           </div>
         `;
@@ -18087,7 +18109,7 @@ const ReportsHub = {
               <a href="#" onclick="event.preventDefault(); inspectReportEntity('${esc(v.entityFqn)}', 'knowledge');" style="color:#38bdf8; font-family:var(--font-mono); font-size:11px; text-decoration:none; cursor:pointer;">${esc(v.entityFqn)}</a>
             </td>
             <td style="color:var(--text-muted); font-size:11.5px; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.violationDetails)}">${esc(v.violationDetails)}</td>
-            <td style="color:#34d399; font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.architecturalRemediation)}">💡 ${esc(v.architecturalRemediation)}</td>
+            <td style="color:#34d399; font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(v.architecturalRemediation)}"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:3px;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>${esc(v.architecturalRemediation)}</td>
             <td>
               <div style="display:flex; align-items:center; gap:4px;">
                 <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(v.entityFqn)}', 'knowledge');" title="Inspect in Knowledge Base">
@@ -19134,7 +19156,7 @@ const ReportsHub = {
                       <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; max-width:240px;" title="${esc(f.entityFqn)}">${esc(f.entityFqn)}</div>
                     </td>
                     <td style="font-size:12px; color:var(--text-secondary); max-width:300px;">${esc(f.findingDetail)}</td>
-                    <td style="font-size:12px; color:#34d399; max-width:320px;">💡 ${esc(f.remediationAdvice)}</td>
+                    <td style="font-size:12px; color:#34d399; max-width:320px;"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:3px;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>${esc(f.remediationAdvice)}</td>
                     <td>
                       <div style="display:flex; align-items:center; gap:4px;">
                         <button class="btn-ghost" style="font-size:11px; padding:3px 7px;" onclick="inspectReportEntity('${esc(f.entityFqn)}', 'knowledge');">KB →</button>
@@ -19222,7 +19244,7 @@ const ReportsHub = {
           <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;">
             ${d.decouplingRecommendations.map(rec => `
               <div style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--text-secondary);">
-                <span style="color:#10b981; font-size:14px; line-height:1;">💡</span>
+                <span style="color:#10b981; display:flex; align-items:center; margin-top:2px;"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></span>
                 <div>${esc(rec)}</div>
               </div>
             `).join('')}
@@ -19837,7 +19859,7 @@ function renderPersistentClassesList(query = '', sortBy = 'risk') {
 
     // Entry point snippet
     const entryHtml = c.primaryEntryPoint
-      ? `<span class="cp-entry-tag" title="Primary Entry Point">⚡ ${esc(c.primaryEntryPoint.split('.').slice(-2).join('.'))}</span>`
+      ? `<span class="cp-entry-tag" title="Primary Entry Point"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>${esc(c.primaryEntryPoint.split('.').slice(-2).join('.'))}</span>`
       : '';
 
     card.innerHTML = `
@@ -20197,7 +20219,7 @@ function initCriticalPathUI() {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════
-   🎯 BLAST RADIUS & TOUCH POINTS EXPLORER CONTROLLER & SANKEY RENDERER
+   BLAST RADIUS & TOUCH POINTS EXPLORER CONTROLLER & SANKEY RENDERER
    ═════════════════════════════════════════════════════════════════════════════ */
 
 let currentBlastRadiusData = null;
@@ -20918,7 +20940,7 @@ function renderTouchPointsTable() {
       </td>
       <td style="text-align:center;">
         <button class="impact-line-badge" title="Open ${esc(item.sourceFile || '')} at line ${item.sourceLine}">
-          <span>⚡ Line ${item.sourceLine}</span>
+          <span><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Line ${item.sourceLine}</span>
         </button>
       </td>
     `;
@@ -22230,7 +22252,7 @@ async function openWhatIfModal(fqn) {
     if (testsBadgeCount) testsBadgeCount.textContent = tests.length;
     if (testsWrap) {
       if (tests.length === 0) {
-        testsWrap.innerHTML = '<div style="color:var(--amber); font-size:12px; display:flex; align-items:center; gap:6px;">⚠️ Notice: No automated test suites currently cover this method in the call graph. Extra care is recommended.</div>';
+        testsWrap.innerHTML = '<div style="color:var(--amber); font-size:12px; display:flex; align-items:center; gap:6px;"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Notice: No automated test suites currently cover this method in the call graph. Extra care is recommended.</div>';
       } else {
         testsWrap.innerHTML = tests.map(t => `
           <span class="whatif-test-chip">✓ ${esc(t)}</span>
@@ -22982,7 +23004,7 @@ async function loadAiConfigToSettings() {
         } else {
           if (label) label.textContent = 'Failed';
           if (typeof showToast === 'function') {
-            showToast('⚠️ ' + (data.message || 'Connection test failed'), 'error', 4500);
+            showToast(data.message || 'Connection test failed', 'error', 4500);
           }
           const diagLabel = prov === 'local' ? 'Local Synthesizer Error' : `${pTitle} (${mod || 'default'}) Offline`;
           updateAiSettingsDiagnostics(prov, mod, diagLabel, true);
@@ -22990,7 +23012,7 @@ async function loadAiConfigToSettings() {
       } catch (e) {
         if (label) label.textContent = 'Failed';
         if (typeof showToast === 'function') {
-          showToast('⚠️ Failed to run AI test: ' + (e.message || 'Network error'), 'error', 4500);
+          showToast('Failed to run AI test: ' + (e.message || 'Network error'), 'error', 4500);
         }
         updateAiSettingsDiagnostics(prov, mod, 'Test Handshake Failed', true);
       } finally {
@@ -23304,7 +23326,7 @@ function renderSystemTour(data) {
   if (watchEl) {
     watchEl.innerHTML = (data.concurrencyWatchpoints || []).map(cw => `
       <div class="tour-watchpoint-item">
-        <span style="color: var(--amber);">⚠️</span>
+        <span style="color: var(--amber); display:inline-flex; align-items:center;"><svg class="svg-icon icon-xs icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
         <span>${esc(cw)}</span>
       </div>
     `).join('');
@@ -23457,7 +23479,7 @@ function renderGitPrStory(story) {
       storiesCard.style.display = 'flex';
       storiesList.innerHTML = affStories.map(a => `
         <div class="git-pr-storyline-row">
-          <span style="color:var(--purple); font-weight:700;">⚡</span>
+          <span style="color:var(--purple); display:flex; align-items:center;"><svg class="svg-icon icon-xs icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
           <div style="flex:1;">
             <span style="font-weight:600;">${esc(a.title)}</span>
             <span style="font-size:11px; color:var(--text-muted); margin-left:6px;">[Step ${a.stepIndex}/${a.totalSteps}: ${esc(a.affectedStepName)}]</span>
@@ -23516,7 +23538,7 @@ function renderGitPrStory(story) {
     const items = story.reviewChecklist || [];
     checkList.innerHTML = items.map(item => `
       <div class="git-pr-checklist-item">
-        <span style="color:var(--mint);">◻</span>
+        <span style="color:var(--mint); display:flex; align-items:center;"><svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></span>
         <span>${esc(item)}</span>
       </div>
     `).join('');

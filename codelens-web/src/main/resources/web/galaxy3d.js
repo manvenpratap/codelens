@@ -630,11 +630,11 @@
           : this._isolatedPkg;
         this._isolationBanner.innerHTML = `
           <span style="display:flex;align-items:center;gap:6px;">
-            <span style="color:#38bdf8;font-size:14px;">🪐</span>
+            <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="5"/><ellipse cx="12" cy="12" rx="10" ry="3.5" transform="rotate(-25 12 12)"/></svg>
             <span>Solo System: <strong style="color:#f8fafc;">${dispName}</strong></span>
           </span>
-          <button id="galaxy3d-exit-iso-btn" class="hud-btn" style="height:22px;padding:2px 8px;font-size:10px;background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;">
-            ✕ Exit Solo
+          <button id="galaxy3d-exit-iso-btn" class="hud-btn" style="height:22px;padding:2px 8px;font-size:10px;background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Exit Solo
           </button>
         `;
         const exitBtn = this._isolationBanner.querySelector('#galaxy3d-exit-iso-btn');
@@ -690,8 +690,8 @@
       const heat = this._heatData || {};
       const commits = heat[id] || heat[fqn] || 0;
       const commitsHtml = commits > 0
-        ? `<span style="color:#f43f5e;font-weight:700;">🔥 ${commits} commits</span>`
-        : `<span style="color:#64748b;">❄ Stable</span>`;
+        ? `<span style="color:#f43f5e;font-weight:700;"><svg class="svg-icon icon-xs icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>${commits} commits</span>`
+        : `<span style="color:#64748b;"><svg class="svg-icon icon-xs icon-slate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>Stable</span>`;
 
       this._telemetryCard.innerHTML = `
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
@@ -702,8 +702,9 @@
           ${archBadgeHtml}
         </div>
 
-        <div style="margin-top:8px;font-size:10px;padding:3px 7px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid rgba(255,255,255,0.06);color:#cbd5e1;">
-          🪐 <span style="font-weight:600;">Stratum:</span> ${tierName}
+        <div style="margin-top:8px;font-size:10px;padding:3px 7px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid rgba(255,255,255,0.06);color:#cbd5e1;display:flex;align-items:center;gap:5px;">
+          <svg class="svg-icon icon-xs icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.5" transform="rotate(-20 12 12)"/></svg>
+          <span><span style="font-weight:600;">Stratum:</span> ${tierName}</span>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;font-family:'JetBrains Mono',monospace;">
@@ -714,9 +715,9 @@
         </div>
 
         <div style="display:flex;gap:5px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);">
-          <button class="hud-btn" id="telemetry-act-isolate" style="flex:1;justify-content:center;font-size:10px;height:22px;">🪐 Isolate</button>
-          <button class="hud-btn" id="telemetry-act-inspect" style="flex:1;justify-content:center;font-size:10px;height:22px;">🔍 Inspect</button>
-          <button class="hud-btn" id="telemetry-act-copy" style="flex:1;justify-content:center;font-size:10px;height:22px;">📋 Copy</button>
+          <button class="hud-btn" id="telemetry-act-isolate" style="flex:1;justify-content:center;font-size:10px;height:22px;"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.5" transform="rotate(-20 12 12)"/></svg> Isolate</button>
+          <button class="hud-btn" id="telemetry-act-inspect" style="flex:1;justify-content:center;font-size:10px;height:22px;"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Inspect</button>
+          <button class="hud-btn" id="telemetry-act-copy" style="flex:1;justify-content:center;font-size:10px;height:22px;"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg> Copy</button>
         </div>
       `;
 
@@ -737,8 +738,10 @@
       if (copyBtn) copyBtn.onclick = (e) => {
         e.stopPropagation();
         navigator.clipboard.writeText(fqn || id).then(() => {
-          copyBtn.textContent = '✓ Copied!';
-          setTimeout(() => { if (copyBtn) copyBtn.textContent = '📋 Copy'; }, 1500);
+          copyBtn.innerHTML = '<svg class="svg-icon icon-xs icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+          setTimeout(() => {
+            if (copyBtn) copyBtn.innerHTML = '<svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg> Copy';
+          }, 1500);
         });
       };
 
@@ -1291,7 +1294,7 @@
 
       const orbitBtn = document.createElement('button');
       orbitBtn.className = 'hud-btn' + (this._autoRotate ? ' active' : '');
-      orbitBtn.innerHTML = '<span class="hud-btn-icon">⟳</span> <span class="hud-btn-text">Orbit</span>';
+      orbitBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8"/><path d="M21 3v5h-5"/></svg></span> <span class="hud-btn-text">Orbit</span>';
       orbitBtn.title = 'Toggle Galactic Orbit rotation';
       orbitBtn.addEventListener('click', () => {
         this.toggleAutoRotate();
@@ -1301,7 +1304,7 @@
 
       const viewBtn = document.createElement('button');
       viewBtn.className = 'hud-btn' + (this._isTopDown ? ' active' : '');
-      viewBtn.innerHTML = '<span class="hud-btn-icon">◎</span> <span class="hud-btn-text">' + (this._isTopDown ? '3D View' : 'Top-Down') + '</span>';
+      viewBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg></span> <span class="hud-btn-text">' + (this._isTopDown ? '3D View' : 'Top-Down') + '</span>';
       viewBtn.title = 'Switch between Top-Down map and 3D Celestial view';
       viewBtn.addEventListener('click', () => {
         const isTop = this.toggleTopDown();
@@ -1322,7 +1325,7 @@
 
       const ringsBtn = document.createElement('button');
       ringsBtn.className = 'hud-btn' + (this._showPlanes ? ' active' : '');
-      ringsBtn.innerHTML = '<span class="hud-btn-icon">◯</span> <span class="hud-btn-text">Rings</span>';
+      ringsBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="10" ry="5"/></svg></span> <span class="hud-btn-text">Rings</span>';
       ringsBtn.title = 'Toggle Ethereal Orbital Boundary Rings';
       ringsBtn.addEventListener('click', () => {
         this.togglePlanes();
@@ -1332,7 +1335,7 @@
 
       const arcsBtn = document.createElement('button');
       arcsBtn.className = 'hud-btn' + (this._showArcs ? ' active' : '');
-      arcsBtn.innerHTML = '<span class="hud-btn-icon">⤹</span> <span class="hud-btn-text">Arcs</span>';
+      arcsBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19a14 14 0 0 1 14-14m0 0v6m0-6h-6"/></svg></span> <span class="hud-btn-text">Arcs</span>';
       arcsBtn.title = 'Toggle Call Arcs';
       arcsBtn.addEventListener('click', () => {
         const on = this.toggleArcs();
@@ -1343,7 +1346,7 @@
       const churnBtn = document.createElement('button');
       churnBtn.id = 'hud-btn-heat';
       churnBtn.className = 'hud-btn' + (this._heatMode ? ' active' : '');
-      churnBtn.innerHTML = '<span class="hud-btn-icon">🔥</span> <span class="hud-btn-text">Churn</span>';
+      churnBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> <span class="hud-btn-text">Churn</span>';
       churnBtn.title = 'Toggle Git Churn Stellar Spectrometry (H)';
       churnBtn.addEventListener('click', () => {
         this.toggleHeatMode();
@@ -1352,7 +1355,7 @@
 
       const resetBtn = document.createElement('button');
       resetBtn.className = 'hud-btn';
-      resetBtn.innerHTML = '<span class="hud-btn-icon">⌖</span> <span class="hud-btn-text">Reset</span>';
+      resetBtn.innerHTML = '<span class="hud-btn-icon"><svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg></span> <span class="hud-btn-text">Reset</span>';
       resetBtn.title = 'Reset Camera to Galactic Overview';
       resetBtn.addEventListener('click', () => {
         this.resetView();
