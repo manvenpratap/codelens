@@ -33,10 +33,12 @@
   const BLOOM_RADIUS   = 0.32;       // tight starlight aura, prevents blowout (calibrated from 0.50)
   const BLOOM_THRESH   = 0.82;       // only intense stellar cores bloom, not ambient background (calibrated from 0.48)
 
-  // 4 spiral arm base angles (radians)
-  const ARM_OFFSETS = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
-  const SPIRAL_A    = 46;            // cohesive spiral core with comfortable spacing (calibrated from 28)
-  const SPIRAL_B    = 0.15;          // balanced galactic disk curvature
+  // Phyllotaxis (sunflower) layout constants for guaranteed cluster separation
+  const GOLDEN_ANGLE   = Math.PI * (3 - Math.sqrt(5));  // ≈ 137.508°
+  const RING_SCALE     = 8;    // ringR = max(RING_MIN, RING_SCALE * sqrt(classCount))
+  const RING_MIN       = 14;   // minimum cluster ring radius (units)
+  const CLUSTER_GAP    = 60;   // guaranteed clearance between any two cluster boundaries (units)
+  const CORE_RING_BASE = 80;   // core/common packages placed in inner ring at this radius
 
   /* ═══════════════════════════════════════════════════════════
    *  Galaxy3DRenderer
@@ -347,11 +349,11 @@
 
       // Scene
       this._scene = new THREE.Scene();
-      this._scene.fog = new THREE.Fog(0x02040a, 450, 2600);
+      this._scene.fog = new THREE.Fog(0x02040a, 800, 3200);
 
-      // Camera
-      this._camera = new THREE.PerspectiveCamera(45, W / H, 1, 4000);
-      this._camera.position.set(0, 180, 480);
+      // Camera — positioned to frame the phyllotaxis disc (~940u wide) at FOV 45
+      this._camera = new THREE.PerspectiveCamera(45, W / H, 1, 5000);
+      this._camera.position.set(0, 280, 760);
 
       // Renderer
       this._renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -369,8 +371,8 @@
         this._controls.enableDamping   = true;
         this._controls.dampingFactor   = 0.06;
         this._controls.minDistance     = 25;
-        this._controls.maxDistance     = 1800;
-        this._controls.autoRotateSpeed = 0.35;
+        this._controls.maxDistance     = 3000;
+        this._controls.autoRotateSpeed = 0.30;
       }
 
       // Lights
@@ -438,18 +440,19 @@
 
     _buildHolographicGrid() {
       // Galactic plane grid
-      const grid = new THREE.GridHelper(950, 46, 0x0d9488, 0x0d3833);
+      const grid = new THREE.GridHelper(2400, 80, 0x0d9488, 0x0d3833);
       grid.position.y = -12;
       grid.material.transparent = true;
       grid.material.opacity     = 0.14;
       grid.material.depthWrite  = false;
       this._scene.add(grid);
 
-      // Zone rings — inner core / mid domain / outer boundary
+      // Zone rings — inner core / mid domain / outer boundary (scaled to phyllotaxis disc)
       [
-        { r: 100,  col: 0xfbbf24, op: 0.30 },
-        { r: 220,  col: 0x10b981, op: 0.22 },
-        { r: 370,  col: 0x3b82f6, op: 0.18 },
+        { r: 130,  col: 0xfbbf24, op: 0.25 },
+        { r: 350,  col: 0x10b981, op: 0.18 },
+        { r: 650,  col: 0x3b82f6, op: 0.14 },
+        { r: 970,  col: 0x8b5cf6, op: 0.10 },
       ].forEach(({ r, col, op }) => {
         const geo  = new THREE.RingGeometry(r - 0.8, r, 80);
         const mat  = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false });
@@ -877,7 +880,52 @@
       });
       const totalPkgs = sortedPkgs.length;
 
-      /* ── 2. Place packages on spiral arms ────────────────── */
+      /* ── 2. Place packages using phyllotaxis (sunflower) layout ──
+       *  Each package gets a disc of radius ringR.  We compute the
+       *  pitch (distance between disc centres) that guarantees every
+       *  adjacent pair has at least CLUSTER_GAP clearance, then space
+       *  packages outward along the golden angle.  Core/common packages
+       *  are placed in a compact inner ring rather than the outer fan.
+       * ─────────────────────────────────────────────────────────────── */
+
+      // Pre-compute ring radius for every package (based on class count)
+      const pkgRingR = new Map();
+      sortedPkgs.forEach(p => {
+        const classCount = pkgMap.get(p).filter(n => n.type !== 'METHOD' && n.kind !== 'METHOD' && !n.id.includes('(')).length;
+        pkgRingR.set(p, Math.max(RING_MIN, RING_SCALE * Math.sqrt(classCount)));
+      });
+      const maxRingR = Math.max(...pkgRingR.values());
+
+      // Pitch = diameter of largest cluster + guaranteed gap between cluster perimeters.
+      // In golden-angle phyllotaxis, successive elements alternate by 137.5°, ensuring
+      // all cluster discs remain cleanly separated by at least CLUSTER_GAP units.
+      const pitch = Math.ceil(2 * maxRingR + CLUSTER_GAP);
+
+      const corePkgs  = sortedPkgs.filter(p => CORE_RE.test(p));
+      const outerPkgs = sortedPkgs.filter(p => !CORE_RE.test(p));
+      let outerIdx = 0;
+
+      // Build phyllotaxis position map
+      const pkgPos = new Map();
+
+      // Core packages: compact inner orbit ring so they cluster near the nucleus
+      corePkgs.forEach((pkgName, ci) => {
+        const r     = CORE_RING_BASE + ci * (pkgRingR.get(pkgName) * 2 + 30);
+        const angle = (ci / Math.max(1, corePkgs.length)) * Math.PI * 2;
+        const cy    = (ci % 2 === 0 ? 6 : -6);
+        pkgPos.set(pkgName, { cx: r * Math.cos(angle), cy, cz: r * Math.sin(angle) });
+      });
+
+      // Outer packages: phyllotaxis fan (golden angle, sqrt-radius growth)
+      outerPkgs.forEach((pkgName) => {
+        outerIdx++;
+        const r     = pitch * Math.sqrt(outerIdx);
+        const angle = outerIdx * GOLDEN_ANGLE;
+        // Gentle vertical stagger for 3D depth (±30 units over the whole disc)
+        const cy    = Math.sin(angle * 0.7) * 28;
+        pkgPos.set(pkgName, { cx: r * Math.cos(angle), cy, cz: r * Math.sin(angle) });
+      });
+
       this._nodes = [];
 
       sortedPkgs.forEach((pkgName, pIdx) => {
@@ -887,26 +935,7 @@
           : '#34d399';
         const colorHex = parseInt(colorStr.replace('#', ''), 16) || 0x34d399;
 
-        /* Spiral arm position */
-        let cx = 0, cy = 0, cz = 0;
-        const isCore = CORE_RE.test(pkgName);
-        if (isCore && totalPkgs > 1) {
-          const corePkgs = sortedPkgs.filter(p => CORE_RE.test(p));
-          const coreIdx  = corePkgs.indexOf(pkgName);
-          const coreAngle = (coreIdx / Math.max(1, corePkgs.length)) * Math.PI * 2;
-          const coreR     = 42 + (coreIdx % 2) * 12;
-          cx = coreR * Math.cos(coreAngle);
-          cz = coreR * Math.sin(coreAngle);
-          cy = (coreIdx % 2 === 0 ? 4 : -4);
-        } else {
-          const armIdx  = pIdx % ARM_OFFSETS.length;
-          const armStep = Math.floor(pIdx / ARM_OFFSETS.length) + 1;
-          const theta   = ARM_OFFSETS[armIdx] + armStep * 1.2;
-          const r       = SPIRAL_A * Math.exp(SPIRAL_B * theta);
-          cx = r * Math.cos(theta);
-          cz = r * Math.sin(theta);
-          cy = (armIdx % 2 === 0 ? 1 : -1) * armStep * 8;
-        }
+        const { cx, cy, cz } = pkgPos.get(pkgName);
 
         /* Separate classes and methods */
         const classNodes  = pkgNodes.filter(n => n.type !== 'METHOD' && n.kind !== 'METHOD' && !n.id.includes('('));
@@ -914,7 +943,7 @@
 
         /* Place class "star" nodes in a fan ring around the package centre */
         // Stratify vertically by architectural tier (Controllers high, Services mid, Repositories in gravity well)
-        const ringR = Math.max(26, 14 * Math.sqrt(classNodes.length));
+        const ringR = pkgRingR.get(pkgName);
         classNodes.forEach((n, ci) => {
           const angle = (ci / Math.max(1, classNodes.length)) * Math.PI * 2;
           const r     = ringR + (ci % 3) * 8;
@@ -1825,9 +1854,9 @@
           const projectedHeight = Math.max(size.y * 0.91 + size.z * 0.42, size.y, 60);
           const distVertical = (projectedHeight / 2) / Math.tan(vFov / 2);
 
-          // Snug, rich framing filling ~82% of the viewport (was over-padded by 1.4x on maxDim)
+          // Snug, rich framing filling ~82% of the viewport
           let cameraDistance = Math.max(distHorizontal, distVertical) * 1.08;
-          cameraDistance = Math.max(160, Math.min(cameraDistance, 880));
+          cameraDistance = Math.max(160, Math.min(cameraDistance, 2600));
 
           const dir = new THREE.Vector3(0, 0.42, 0.98).normalize();
           this._targetCamPos = center.clone().add(dir.multiplyScalar(cameraDistance));
@@ -1836,7 +1865,7 @@
           return;
         }
       }
-      this._targetCamPos = new THREE.Vector3(0, 180, 480);
+      this._targetCamPos = new THREE.Vector3(0, 280, 760);
       this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
       if (this._controls) this._controls.update();
     }
@@ -1846,7 +1875,7 @@
       if (this._nodeMeshes && this._nodeMeshes.length > 0) {
         this.fitToScreen();
       } else {
-        this._targetCamPos = new THREE.Vector3(0, 180, 480);
+        this._targetCamPos = new THREE.Vector3(0, 280, 760);
         this._targetCtrlTgt = new THREE.Vector3(0, 0, 0);
         if (this._controls) this._controls.update();
       }

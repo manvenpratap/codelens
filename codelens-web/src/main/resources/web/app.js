@@ -116,7 +116,7 @@ async function ensure3DStudioDependencies() {
   ]);
   await Promise.all([
     loadScript('/city3d.js?v=1.0.6'),
-    loadScript('/galaxy3d.js?v=1.0.8')
+    loadScript('/galaxy3d.js?v=1.0.9')
   ]);
 }
 
