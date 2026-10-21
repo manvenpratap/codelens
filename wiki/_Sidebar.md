@@ -18,5 +18,5 @@
 
 **Repository Resources**
 * [Project Context & System Diagrams](https://github.com/manvenpratap/codelens/blob/main/PROJECT_CONTEXT.md)
-* [Architecture Diagrams (docs/diagrams)](https://github.com/manvenpratap/codelens/tree/main/docs/diagrams)
+* [Architecture & System Design](Architecture-and-System-Design)
 * [GitHub Repository](https://github.com/manvenpratap/codelens)

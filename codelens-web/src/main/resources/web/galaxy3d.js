@@ -26,17 +26,17 @@
   /* ═══════════════════════════════════════════════════════════
    *  Constants
    * ═══════════════════════════════════════════════════════════ */
-  const TRAIL_LENGTH   = 6;          // comet tail dot count (including head)
+  const TRAIL_LENGTH   = 5;          // comet tail dot count (including head)
   const STAR_COUNTS    = [1500, 600, 150];
-  const NEBULA_PTS     = 55;         // additive dust points per package
-  const BLOOM_STRENGTH = 1.15;       // rich celestial starlight bloom
-  const BLOOM_RADIUS   = 0.50;
-  const BLOOM_THRESH   = 0.48;       // allow emissive star cores and arcs to glow
+  const NEBULA_PTS     = 20;         // subtle cosmic dust points per package
+  const BLOOM_STRENGTH = 0.40;       // tasteful, crisp celestial starlight diffraction (calibrated from 1.15)
+  const BLOOM_RADIUS   = 0.32;       // tight starlight aura, prevents blowout (calibrated from 0.50)
+  const BLOOM_THRESH   = 0.82;       // only intense stellar cores bloom, not ambient background (calibrated from 0.48)
 
   // 4 spiral arm base angles (radians)
   const ARM_OFFSETS = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
-  const SPIRAL_A    = 28;            // compact, cohesive spiral core
-  const SPIRAL_B    = 0.16;          // balanced galactic disk curvature
+  const SPIRAL_A    = 46;            // cohesive spiral core with comfortable spacing (calibrated from 28)
+  const SPIRAL_B    = 0.15;          // balanced galactic disk curvature
 
   /* ═══════════════════════════════════════════════════════════
    *  Galaxy3DRenderer
@@ -114,6 +114,7 @@
       this._hemiLight    = null;
       this._coreLight    = null;
       this._dirLight     = null;
+      this._brightnessFactor = 1.0;
     }
 
     /* ─────────────────── Public API ─────────────────────────── */
@@ -262,11 +263,13 @@
 
     setBrightness(v) {
       const f = Math.max(0.2, Math.min(2.5, v));
-      if (this._renderer)    this._renderer.toneMappingExposure = 1.20 * f;
-      if (this._ambientLight) this._ambientLight.intensity = 0.65 * f;
-      if (this._hemiLight)    this._hemiLight.intensity    = 0.55 * f;
-      if (this._coreLight)    this._coreLight.intensity    = 2.5  * f;
-      if (this._dirLight)     this._dirLight.intensity     = 0.65 * f;
+      this._brightnessFactor = f;
+      if (this._renderer)     this._renderer.toneMappingExposure = 0.90 * f;
+      if (this._ambientLight)  this._ambientLight.intensity = 0.40 * f;
+      if (this._hemiLight)     this._hemiLight.intensity    = 0.35 * f;
+      if (this._coreLight)     this._coreLight.intensity    = 0.65 * f;
+      if (this._dirLight)      this._dirLight.intensity     = 0.45 * f;
+      if (this._bloomPass)     this._bloomPass.strength     = BLOOM_STRENGTH * f;
     }
 
     pause() {
@@ -356,7 +359,7 @@
       this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       if (THREE.sRGBEncoding) this._renderer.outputEncoding = THREE.sRGBEncoding;
       this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this._renderer.toneMappingExposure = 1.20;
+      this._renderer.toneMappingExposure = 0.90;
       this._el.appendChild(this._renderer.domElement);
       this._clock = new THREE.Clock();
 
@@ -371,17 +374,17 @@
       }
 
       // Lights
-      this._ambientLight = new THREE.AmbientLight(0x0e172a, 0.65);
+      this._ambientLight = new THREE.AmbientLight(0x0e172a, 0.40);
       this._scene.add(this._ambientLight);
 
-      this._hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0a0d1a, 0.55);
+      this._hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0a0d1a, 0.35);
       this._scene.add(this._hemiLight);
 
-      this._coreLight = new THREE.PointLight(0xfbbf24, 2.5, 1200, 1.4);
+      this._coreLight = new THREE.PointLight(0xfbbf24, 0.65, 1200, 1.4);
       this._coreLight.position.set(0, 0, 0);
       this._scene.add(this._coreLight);
 
-      this._dirLight = new THREE.DirectionalLight(0x34d399, 0.65);
+      this._dirLight = new THREE.DirectionalLight(0x34d399, 0.45);
       this._dirLight.position.set(250, 300, 200);
       this._scene.add(this._dirLight);
 
@@ -456,16 +459,16 @@
         this._scene.add(mesh);
       });
 
-      // Supermassive nucleus sphere
+      // Supermassive nucleus sphere (warm celestial sun, calibrated to avoid center blowout)
       const nucMat = new THREE.MeshStandardMaterial({
-        color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 1.8,  // was 3.5
-        roughness: 0.1, metalness: 0.1,
+        color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.70,
+        roughness: 0.35, metalness: 0.15,
       });
-      this._scene.add(new THREE.Mesh(new THREE.SphereGeometry(9, 24, 24), nucMat));
+      this._scene.add(new THREE.Mesh(new THREE.SphereGeometry(8, 24, 24), nucMat));
 
       // Nucleus corona halo
-      const haloMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.065, side: THREE.BackSide, depthWrite: false });
-      this._scene.add(new THREE.Mesh(new THREE.SphereGeometry(18, 24, 24), haloMat));
+      const haloMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.035, side: THREE.BackSide, depthWrite: false });
+      this._scene.add(new THREE.Mesh(new THREE.SphereGeometry(14, 24, 24), haloMat));
     }
 
     /* ─────────────────── Post-Processing ───────────────────── */
@@ -887,7 +890,15 @@
         /* Spiral arm position */
         let cx = 0, cy = 0, cz = 0;
         const isCore = CORE_RE.test(pkgName);
-        if (!isCore || totalPkgs <= 1) {
+        if (isCore && totalPkgs > 1) {
+          const corePkgs = sortedPkgs.filter(p => CORE_RE.test(p));
+          const coreIdx  = corePkgs.indexOf(pkgName);
+          const coreAngle = (coreIdx / Math.max(1, corePkgs.length)) * Math.PI * 2;
+          const coreR     = 42 + (coreIdx % 2) * 12;
+          cx = coreR * Math.cos(coreAngle);
+          cz = coreR * Math.sin(coreAngle);
+          cy = (coreIdx % 2 === 0 ? 4 : -4);
+        } else {
           const armIdx  = pIdx % ARM_OFFSETS.length;
           const armStep = Math.floor(pIdx / ARM_OFFSETS.length) + 1;
           const theta   = ARM_OFFSETS[armIdx] + armStep * 1.2;
@@ -1051,7 +1062,7 @@
           ? Math.max(1.1, Math.min(2.2, 1.1 + (deg > 3 ? 0.35 : 0)))
           : Math.max(3.2, Math.min(7.5, 3.2 + Math.sqrt(deg) * 0.65));
         let hex      = n.colorHex;
-        let emissiveInt = isMeth ? 1.4 : 2.2;
+        let emissiveInt = isMeth ? 0.35 : 0.65; // calibrated: preserves rich jewel tone saturation without bleaching white
 
         // Apply Git Churn Stellar Spectrometry if heat mode is active
         if (this._heatMode && !isMeth) {
@@ -1060,38 +1071,38 @@
           const commits = (heat[n.id] || (n.raw && heat[n.raw.fqn])) || 0;
           const ratio = Math.min(1.0, commits / Math.max(5, maxCommits * 0.7));
           if (ratio > 0.65) {
-            hex = 0x67e8f9; emissiveInt = 2.8; radius *= 1.25;
+            hex = 0x67e8f9; emissiveInt = 1.15; radius *= 1.25;
           } else if (ratio > 0.35) {
-            hex = 0xfbbf24; emissiveInt = 2.2; radius *= 1.15;
+            hex = 0xfbbf24; emissiveInt = 0.90; radius *= 1.15;
           } else if (ratio > 0.08) {
-            hex = 0xf43f5e; emissiveInt = 1.7;
+            hex = 0xf43f5e; emissiveInt = 0.65;
           } else {
-            hex = 0x64748b; emissiveInt = 0.85;
+            hex = 0x64748b; emissiveInt = 0.30;
           }
         }
 
-        // Radiant celestial star: self-luminous, soft starlight core
+        // Radiant celestial star: self-luminous, rich color saturation
         const mat = new THREE.MeshStandardMaterial({
           color: hex,
           emissive: hex,
           emissiveIntensity: emissiveInt,
-          roughness: 0.35,
-          metalness: 0.10,
+          roughness: 0.45,
+          metalness: 0.15,
         });
         const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, isMeth ? 14 : 24, isMeth ? 14 : 24), mat);
         mesh.position.set(n.x, n.y, n.z);
 
         let haloMesh = null;
-        // Ethereal starlight corona aura
+        // Ethereal starlight corona aura (tight, subtle halo that prevents additive stack blowout)
         const hMat = new THREE.MeshBasicMaterial({
           color: hex,
           transparent: true,
-          opacity: isMeth ? 0.18 : 0.28,
+          opacity: isMeth ? 0.025 : 0.05,
           side: THREE.BackSide,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         });
-        haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * (isMeth ? 2.0 : 2.5), 16, 16), hMat);
+        haloMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * (isMeth ? 1.2 : 1.35), 16, 16), hMat);
         haloMesh.position.copy(mesh.position);
         this._scene.add(haloMesh);
 
