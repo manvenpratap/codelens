@@ -6553,6 +6553,9 @@ public class CodeLensServer {
         if (config != null) {
             CallGraphAnalyzer.setCustomPojoPatterns(config.getPojoCustomPatterns());
             aiGroundingService.configure(config.getAiProvider(), config.getAiModel(), config.getAiEndpoint(), config.getAiApiKey());
+            if (criticalPathAnalyzer != null) {
+                criticalPathAnalyzer.setArchetypeRules(config.getArchetypeRulesJson());
+            }
         }
     }
 
@@ -6574,6 +6577,9 @@ public class CodeLensServer {
             if (updated != null) {
                 CallGraphAnalyzer.setCustomPojoPatterns(updated.getPojoCustomPatterns());
                 aiGroundingService.configure(updated.getAiProvider(), updated.getAiModel(), updated.getAiEndpoint(), updated.getAiApiKey());
+                if (criticalPathAnalyzer != null) {
+                    criticalPathAnalyzer.setArchetypeRules(updated.getArchetypeRulesJson());
+                }
                 invalidateGraphCache();
                 triggerReportsPrecomputeAsync(null, true);
             }
@@ -6614,6 +6620,9 @@ public class CodeLensServer {
             if (imported != null) {
                 CallGraphAnalyzer.setCustomPojoPatterns(imported.getPojoCustomPatterns());
                 aiGroundingService.configure(imported.getAiProvider(), imported.getAiModel(), imported.getAiEndpoint(), imported.getAiApiKey());
+                if (criticalPathAnalyzer != null) {
+                    criticalPathAnalyzer.setArchetypeRules(imported.getArchetypeRulesJson());
+                }
                 invalidateGraphCache();
             }
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
@@ -6631,6 +6640,9 @@ public class CodeLensServer {
         try {
             CallGraphAnalyzer.setCustomPojoPatterns(activeConfig.getPojoCustomPatterns());
             aiGroundingService.configure(activeConfig.getAiProvider(), activeConfig.getAiModel(), activeConfig.getAiEndpoint(), activeConfig.getAiApiKey());
+            if (criticalPathAnalyzer != null) {
+                criticalPathAnalyzer.setArchetypeRules(activeConfig.getArchetypeRulesJson());
+            }
             invalidateGraphCache();
             File targetFile = activeConfigFile != null ? activeConfigFile : new File("./codelens.conf");
             activeConfig.saveToFile(targetFile);

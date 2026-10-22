@@ -1,7 +1,9 @@
 package com.codelens.analysis;
 
+import com.codelens.core.model.CodeLensConfig;
 import com.codelens.core.model.CodeMethod;
 import com.codelens.core.model.CodeType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
 
@@ -20,9 +22,56 @@ import java.util.*;
 public class CriticalPathAnalyzer {
 
     private final CallGraphAnalyzer callGraphAnalyzer;
+    private final List<ConfiguredArchetypeRule> configuredRules = new ArrayList<>();
+    private static final ObjectMapper jsonMapper = new ObjectMapper();
 
     public CriticalPathAnalyzer(CallGraphAnalyzer callGraphAnalyzer) {
+        this(callGraphAnalyzer, null);
+    }
+
+    public CriticalPathAnalyzer(CallGraphAnalyzer callGraphAnalyzer, String archetypeRulesJson) {
         this.callGraphAnalyzer = callGraphAnalyzer;
+        setArchetypeRules(archetypeRulesJson);
+    }
+
+    public synchronized void setArchetypeRules(String archetypeRulesJson) {
+        configuredRules.clear();
+        String json = archetypeRulesJson;
+        if (json == null || json.isBlank() || "[]".equals(json.trim())) {
+            json = CodeLensConfig.DEFAULT_ARCHETYPE_RULES_JSON;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = jsonMapper.readTree(json);
+            if (root.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode node : root) {
+                    if (node.path("enabled").asBoolean(true)) {
+                        ConfiguredArchetypeRule rule = new ConfiguredArchetypeRule();
+                        rule.id = node.path("id").asText();
+                        rule.target = node.path("target").asText("METHOD");
+                        rule.matchType = node.path("matchType").asText("PREFIX");
+                        rule.pattern = node.path("pattern").asText();
+                        rule.label = node.path("label").asText();
+                        rule.badge = node.path("badge").asText(rule.label);
+                        rule.category = node.path("category").asText("");
+                        rule.color = node.path("color").asText("#10b981");
+                        rule.icon = node.path("icon").asText("tag");
+                        configuredRules.add(rule);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static class ConfiguredArchetypeRule {
+        public String id;
+        public String target;
+        public String matchType;
+        public String pattern;
+        public String label;
+        public String badge;
+        public String category;
+        public String color;
+        public String icon;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -699,49 +748,107 @@ public class CriticalPathAnalyzer {
     }
 
     private ArchetypeStyle classifyArchetype(String fqn, String name, String role) {
-        String nUpper = (name != null ? name : "").toUpperCase();
-        String fUpper = (fqn != null ? fqn : "").toUpperCase();
+        String nUpper = (name != null ? name : "").toUpperCase(Locale.ROOT);
+        String fUpper = (fqn != null ? fqn : "").toUpperCase(Locale.ROOT);
+
         if ("PERSISTENT_TARGET".equals(role)) {
+            for (ConfiguredArchetypeRule r : configuredRules) {
+                if ("PERSISTENT".equalsIgnoreCase(r.badge) || "rule-bancs-pc".equalsIgnoreCase(r.id)) {
+                    return new ArchetypeStyle(r.badge, r.color, r.icon);
+                }
+            }
             return new ArchetypeStyle("PERSISTENT", "#6366f1", "database");
         }
         if ("DOWNSTREAM_SINK".equals(role) || fUpper.contains("AUDIT") || fUpper.contains("LOG") || fUpper.contains("EVENT")) {
+            for (ConfiguredArchetypeRule r : configuredRules) {
+                if ("AUDIT".equalsIgnoreCase(r.badge)) {
+                    return new ArchetypeStyle(r.badge, r.color, r.icon);
+                }
+            }
             return new ArchetypeStyle("AUDIT", "#ef4444", "shield");
         }
-        if (matchesBaNCSArchetype(fqn, name, "BT") || nUpper.startsWith("MODIFY") || nUpper.startsWith("CREATE")) {
-            return new ArchetypeStyle("MUTATE", "#f59e0b", "zap");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "ET") || nUpper.startsWith("GET") || nUpper.startsWith("FETCH")) {
-            return new ArchetypeStyle("FETCH", "#10b981", "download");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "TO") || nUpper.endsWith("TO") || nUpper.contains("OWNTASK") || fUpper.contains("TASKOWN")) {
-            return new ArchetypeStyle("TASK-OWN", "#0ea5e9", "checkSquare");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "TC") || nUpper.endsWith("TC") || nUpper.contains("COMMONTASK") || fUpper.contains("TASKCOMMON")) {
-            return new ArchetypeStyle("TASK-COMMON", "#a855f7", "share2");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "PS") || fUpper.contains("BATCH")) {
-            return new ArchetypeStyle("BATCH", "#8b5cf6", "settings");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "PB")) {
-            return new ArchetypeStyle("PRE-BATCH", "#3b82f6", "skipBack");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "PA")) {
-            return new ArchetypeStyle("POST-BATCH", "#ec4899", "skipForward");
-        }
-        if (matchesBaNCSArchetype(fqn, name, "DG") || fUpper.contains("GRABBER") || fUpper.contains("GETTER")) {
-            if ((fUpper.contains("PAGING") || fUpper.contains("PAGE")) && fUpper.contains("CURSOR")) {
-                return new ArchetypeStyle("DG-PAGE-CURS", "#2563eb", "sliders");
-            } else if (fUpper.contains("CURSOR") || fUpper.contains("FETCH") || fUpper.contains("OPEN")) {
-                return new ArchetypeStyle("DG-CURSOR", "#0d9488", "database");
-            } else if (fUpper.contains("PAGING") || fUpper.contains("PAGE") || fUpper.contains("MFWD") || fUpper.contains("MBWD")) {
-                return new ArchetypeStyle("DG-PAGING", "#0284c7", "layers");
+
+        // Check configured rules in priority order
+        for (ConfiguredArchetypeRule r : configuredRules) {
+            if (matchesConfiguredRule(r, fqn, name)) {
+                return new ArchetypeStyle(r.badge, r.color, r.icon);
             }
-            return new ArchetypeStyle("DATA-GETTER", "#06b6d4", "box");
         }
+
         if (fUpper.contains("CONTROLLER") || "ENTRY_POINT".equals(role)) {
             return new ArchetypeStyle("ENTRY", "#38bdf8", "globe");
         }
         return new ArchetypeStyle("SERVICE", "#64748b", "layers");
+    }
+
+    private boolean matchesConfiguredRule(ConfiguredArchetypeRule r, String fqn, String name) {
+        if (r == null || r.pattern == null || r.pattern.isBlank()) return false;
+        String n = name != null ? name : "";
+        String f = fqn != null ? fqn : "";
+        String nUpper = n.toUpperCase(Locale.ROOT);
+        String fUpper = f.toUpperCase(Locale.ROOT);
+
+        if ("STRUCTURAL".equalsIgnoreCase(r.matchType)) {
+            if ("rule-bancs-pc".equalsIgnoreCase(r.id) || "PERSISTENT".equalsIgnoreCase(r.badge)) {
+                return nUpper.startsWith("PC_") || fUpper.contains(".PC_") || nUpper.endsWith("ENTITY") || fUpper.endsWith("ENTITY");
+            }
+            if (r.id != null && (r.id.startsWith("rule-bancs-dg") || r.badge.startsWith("DG-") || "DATA-GETTER".equalsIgnoreCase(r.badge))) {
+                boolean isDgName = matchesBaNCSArchetype(fqn, name, "DG") || fUpper.contains("GRABBER") || fUpper.contains("GETTER");
+                if (!isDgName) return false;
+                if ("rule-bancs-dg-paging-cursor".equalsIgnoreCase(r.id) || "DG-PAGE-CURS".equalsIgnoreCase(r.badge)) {
+                    return (fUpper.contains("PAGING") || fUpper.contains("PAGE")) && fUpper.contains("CURSOR");
+                }
+                if ("rule-bancs-dg-cursor".equalsIgnoreCase(r.id) || "DG-CURSOR".equalsIgnoreCase(r.badge)) {
+                    return fUpper.contains("CURSOR") || fUpper.contains("FETCH") || fUpper.contains("OPEN");
+                }
+                if ("rule-bancs-dg-paging".equalsIgnoreCase(r.id) || "DG-PAGING".equalsIgnoreCase(r.badge)) {
+                    return fUpper.contains("PAGING") || fUpper.contains("PAGE") || fUpper.contains("MFWD") || fUpper.contains("MBWD");
+                }
+                if ("rule-bancs-dg-simple".equalsIgnoreCase(r.id) || "DG-SIMPLE".equalsIgnoreCase(r.badge)) {
+                    return !fUpper.contains("CURSOR") && !fUpper.contains("PAGING") && !fUpper.contains("PAGE") && !fUpper.contains("MFWD") && !fUpper.contains("MBWD");
+                }
+                return true;
+            }
+            return false;
+        }
+
+        String p = r.pattern.trim();
+        if (p.contains("{MODULE}") || p.contains("{MOD}")) {
+            String suffix = p.replace("{MODULE}", "").replace("{MOD}", "");
+            if (matchesBaNCSArchetype(fqn, name, suffix)) {
+                return true;
+            }
+        }
+
+        if ("REGEX".equalsIgnoreCase(r.matchType)) {
+            try {
+                if (n.matches(p) || f.matches(p)) return true;
+            } catch (Exception ignored) {}
+        }
+
+        if (p.contains("*") || "GLOB".equalsIgnoreCase(r.matchType)) {
+            String regex = "^" + java.util.regex.Pattern.quote(p).replace("*", "\\E.*\\Q") + "$";
+            if (n.toLowerCase(Locale.ROOT).matches("(?i)" + regex) || f.toLowerCase(Locale.ROOT).matches("(?i)" + regex)) {
+                return true;
+            }
+        }
+
+        String nLow = n.toLowerCase(Locale.ROOT);
+        String fLow = f.toLowerCase(Locale.ROOT);
+        String pLow = p.toLowerCase(Locale.ROOT);
+        String mt = r.matchType != null ? r.matchType.toUpperCase(Locale.ROOT) : "PREFIX";
+        switch (mt) {
+            case "PREFIX":
+                return nLow.startsWith(pLow) || fLow.startsWith(pLow);
+            case "SUFFIX":
+                return nLow.endsWith(pLow) || fLow.endsWith(pLow);
+            case "CONTAINS":
+                return nLow.contains(pLow) || fLow.contains(pLow);
+            case "EXACT":
+                return nLow.equalsIgnoreCase(pLow) || fLow.equalsIgnoreCase(pLow);
+            default:
+                return nLow.startsWith(pLow);
+        }
     }
 
     private static boolean matchesBaNCSArchetype(String fqn, String name, String suffix) {

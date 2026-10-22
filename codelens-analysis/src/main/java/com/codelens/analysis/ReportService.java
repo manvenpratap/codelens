@@ -2084,231 +2084,246 @@ public class ReportService {
             classMethods.computeIfAbsent(m.getDeclaringTypeFqn(), k -> new ArrayList<>()).add(m);
         }
 
-        int moViolations = 0;
-        int dgViolations = 0;
-        int btViolations = 0;
-        int entViolations = 0;
-
+        // 1. Calculate structural metrics for classes
         for (CodeType t : types) {
             String name = t.getSimpleName();
             String fqn = t.getFqn();
             List<CodeMethod> typeMethods = classMethods.getOrDefault(fqn, Collections.emptyList());
+            Set<String> mNames = getMethodNamesLower(typeMethods);
 
-            if (name.startsWith("MO_")) {
+            boolean hasGet = mNames.contains("get");
+            boolean hasMFwd = mNames.contains("getmfwd");
+            boolean hasMBwd = mNames.contains("getmbwd");
+            boolean hasOpen = mNames.contains("open");
+            boolean hasFetch = mNames.contains("fetch");
+            boolean hasClose = mNames.contains("close");
+            boolean hasCreate = mNames.contains("create");
+            boolean hasModify = mNames.contains("modify") || mNames.contains("smodify") || mNames.contains("mmodify") || mNames.contains("mmodidy") || mNames.contains("save") || mNames.contains("update");
+
+            boolean isCursor = hasOpen && hasFetch && hasClose;
+            boolean isPaging = hasMFwd && hasMBwd;
+            boolean isPageCursor = isCursor && isPaging;
+
+            boolean isMO = name != null && name.startsWith("MO_");
+            boolean isDG = name != null && (name.endsWith("DG") || name.contains("DG") || name.contains("DataGetter") || name.contains("Getter") || name.contains("DataGrabber") || name.contains("Grabber") || isCursor || isPaging);
+            boolean isPC = !isMO && hasGet && (hasCreate || hasModify);
+
+            if (isMO) {
                 data.messageObjectsCount++;
-                int outgoingCalls = 0;
-                for (CodeMethod m : typeMethods) {
-                    outgoingCalls += methodCalls.getOrDefault(m.getFqn(), Collections.emptySet()).size();
-                }
-                if (outgoingCalls > 10) {
-                    moViolations++;
-                    GovernanceViolation v = new GovernanceViolation();
-                    v.ruleName = "MO-01: Stateless Data Carrier";
-                    v.severity = "WARNING";
-                    v.entityFqn = fqn;
-                    v.archetypeName = "Message Object (MO)";
-                    v.violationDetails = "Message Object contains " + outgoingCalls + " outgoing method calls; data objects should be passive DTOs.";
-                    v.architecturalRemediation = "Extract domain behavior or calculations from Message Object into a dedicated Domain Service.";
-                    data.violations.add(v);
-                }
-            } else if (name.endsWith("DG") || name.contains("DG") || name.contains("DataGetter") || name.contains("Getter") || name.contains("DataGrabber") || name.contains("Grabber")) {
+            }
+            if (isDG) {
                 data.dataGettersCount++;
                 data.dataGrabbersCount++;
-
-                boolean hasGet = false;
-                boolean hasMFwd = false;
-                boolean hasMBwd = false;
-                boolean hasOpen = false;
-                boolean hasFetch = false;
-                boolean hasClose = false;
-
-                for (CodeMethod m : typeMethods) {
-                    String sm = m.getSimpleName();
-                    if ("Get".equalsIgnoreCase(sm)) hasGet = true;
-                    if ("GetMFwd".equalsIgnoreCase(sm)) hasMFwd = true;
-                    if ("GetMBwd".equalsIgnoreCase(sm)) hasMBwd = true;
-                    if ("Open".equalsIgnoreCase(sm)) hasOpen = true;
-                    if ("Fetch".equalsIgnoreCase(sm)) hasFetch = true;
-                    if ("Close".equalsIgnoreCase(sm)) hasClose = true;
-
-                    Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
-                    for (String callee : callees) {
-                        String calleeMethod = extractSimpleMethodName(callee);
-                        if ("Create".equals(calleeMethod) || "Modify".equals(calleeMethod) || "Delete".equals(calleeMethod)) {
-                            dgViolations++;
-                            GovernanceViolation v = new GovernanceViolation();
-                            v.ruleName = "DG-01: Read-Only Data Getter";
-                            v.severity = "CRITICAL";
-                            v.entityFqn = m.getFqn();
-                            v.archetypeName = "Data Getter (DG)";
-                            v.violationDetails = "Data Getter queries must be strictly idempotent; method calls mutation endpoint: " + callee;
-                            v.architecturalRemediation = "Delegate entity state mutations to a Business Transaction (*BT) instead of a Data Getter (*DG).";
-                            data.violations.add(v);
-                        }
-                    }
-                }
-
-                boolean isCursor = hasOpen && hasFetch && hasClose;
-                boolean isPaging = hasMFwd && hasMBwd;
-                if (isCursor && isPaging) {
-                    data.dataGettersPagingCursorCount++;
-                } else if (isCursor) {
-                    data.dataGettersCursorCount++;
-                } else if (isPaging) {
-                    data.dataGettersPagingCount++;
-                } else {
-                    data.dataGettersSimpleCount++;
-                }
-            } else if (name.endsWith("Controller")) {
-                data.controllersCount++;
-            } else if (name.endsWith("Service")) {
-                data.servicesCount++;
+                if (isPageCursor) data.dataGettersPagingCursorCount++;
+                else if (isCursor) data.dataGettersCursorCount++;
+                else if (isPaging) data.dataGettersPagingCount++;
+                else data.dataGettersSimpleCount++;
             }
-
-            boolean hasGet = typeMethods.stream().anyMatch(m -> "Get".equals(m.getSimpleName()));
-            boolean hasCreate = typeMethods.stream().anyMatch(m -> "Create".equals(m.getSimpleName()));
-            boolean hasModify = typeMethods.stream().anyMatch(m -> "Modify".equals(m.getSimpleName()));
-            if (hasGet && (hasCreate || hasModify)) {
+            if (isPC) {
                 data.domainEntitiesCount++;
-                for (CodeMethod m : typeMethods) {
-                    Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
-                    for (String callee : callees) {
-                        String targetClass = extractClassFromFqn(callee);
-                        if (targetClass.endsWith("Controller") || targetClass.endsWith("GatewayService")) {
-                            entViolations++;
-                            GovernanceViolation v = new GovernanceViolation();
-                            v.ruleName = "EN-01: Inverted Entity Layering";
-                            v.severity = "WARNING";
-                            v.entityFqn = m.getFqn();
-                            v.archetypeName = "Domain Entity";
-                            v.violationDetails = "Domain entity directly calls external presentation/gateway: " + callee;
-                            v.architecturalRemediation = "Decouple domain entity from external communication layers using inversion of control or domain events.";
-                            data.violations.add(v);
-                        }
-                    }
-                }
+            }
+            if (name != null && name.endsWith("Controller")) {
+                data.controllersCount++;
+            } else if (name != null && name.endsWith("Service")) {
+                data.servicesCount++;
             }
         }
 
         for (CodeMethod m : methods) {
             String mName = m.getSimpleName();
-            if (mName.contains("BT") || mName.startsWith("execute") || mName.contains("Transaction")) {
+            if (mName != null && (mName.contains("BT") || mName.startsWith("execute") || mName.contains("Transaction"))) {
                 data.businessTransactionsCount++;
-                Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
-                boolean hasAudit = callees.stream().anyMatch(c -> c.contains("AuditTrailService.logAuditEvent") || c.contains("TelemetryRecorder.recordMetric"));
-                if (!hasAudit && !m.getDeclaringTypeFqn().endsWith("Test") && !m.getDeclaringTypeFqn().contains("Grabber") && !m.getDeclaringTypeFqn().contains("Getter")) {
-                    btViolations++;
-                    GovernanceViolation v = new GovernanceViolation();
-                    v.ruleName = "BT-01: Mandatory Audit Trail";
-                    v.severity = "WARNING";
-                    v.entityFqn = m.getFqn();
-                    v.archetypeName = "Business Transaction (BT)";
-                    v.violationDetails = "Financial transaction method lacks verifiable audit trail or telemetry invocation.";
-                    v.architecturalRemediation = "Add AuditTrailService.logAuditEvent(...) call before committing financial transaction state.";
-                    data.violations.add(v);
-                }
             }
         }
 
-        data.totalArchetypesFound = data.messageObjectsCount + data.dataGettersCount + data.businessTransactionsCount + data.domainEntitiesCount;
+        // 2. Resolve archetype rules from conf (fallback to CodeLensConfig defaults if omitted)
+        String rulesJson = archetypeRulesJson;
+        if (rulesJson == null || rulesJson.isBlank() || "[]".equals(rulesJson.trim())) {
+            rulesJson = CodeLensConfig.DEFAULT_ARCHETYPE_RULES_JSON;
+        }
 
-        ArchetypeSummary moSum = new ArchetypeSummary();
-        moSum.archetype = "Message Objects (MO_*)";
-        moSum.count = data.messageObjectsCount;
-        moSum.violationCount = moViolations;
-        moSum.complianceRate = data.messageObjectsCount > 0 ? Math.round(((data.messageObjectsCount - moViolations) / (double) data.messageObjectsCount) * 1000.0) / 10.0 : 100.0;
-        moSum.description = "Passive data contracts and payload carriers across services";
-        data.archetypeBreakdown.add(moSum);
+        List<com.fasterxml.jackson.databind.JsonNode> activeRules = new ArrayList<>();
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = jsonMapper.readTree(rulesJson);
+            if (root.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode ruleNode : root) {
+                    if (ruleNode.path("enabled").asBoolean(true)) {
+                        activeRules.add(ruleNode);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse archetype rules JSON: {}", e.getMessage());
+        }
 
-        ArchetypeSummary dgSum = new ArchetypeSummary();
-        dgSum.archetype = "Data Getters (*DG)";
-        dgSum.count = data.dataGettersCount;
-        dgSum.violationCount = dgViolations;
-        dgSum.complianceRate = data.dataGettersCount > 0 ? Math.round(((data.dataGettersCount - dgViolations) / (double) data.dataGettersCount) * 1000.0) / 10.0 : 100.0;
-        dgSum.description = "Idempotent read-only query handlers for domain entities (Simple, Paging, Cursor, Paging Cursor)";
-        data.archetypeBreakdown.add(dgSum);
+        // 3. Evaluate each configured archetype rule dynamically
+        for (com.fasterxml.jackson.databind.JsonNode ruleNode : activeRules) {
+            String ruleId = ruleNode.path("id").asText();
+            String label = ruleNode.path("label").asText();
+            String badge = ruleNode.hasNonNull("badge") ? ruleNode.get("badge").asText() : label;
+            String pattern = ruleNode.path("pattern").asText();
+            String matchType = (ruleNode.hasNonNull("matchType") ? ruleNode.get("matchType").asText() : "PREFIX").toUpperCase(Locale.ROOT);
+            String target = (ruleNode.hasNonNull("target") ? ruleNode.get("target").asText() : "METHOD").toUpperCase(Locale.ROOT);
+            String category = (ruleNode.hasNonNull("category") ? ruleNode.get("category").asText() : "").toUpperCase(Locale.ROOT);
+            String desc = ruleNode.path("description").asText();
 
-        ArchetypeSummary btSum = new ArchetypeSummary();
-        btSum.archetype = "Business Transactions (*BT*)";
-        btSum.count = data.businessTransactionsCount;
-        btSum.violationCount = btViolations;
-        btSum.complianceRate = data.businessTransactionsCount > 0 ? Math.round(((data.businessTransactionsCount - btViolations) / (double) data.businessTransactionsCount) * 1000.0) / 10.0 : 100.0;
-        btSum.description = "Financial workflows with mandatory auditability and validation";
-        data.archetypeBreakdown.add(btSum);
+            int matchCount = 0;
+            int ruleViolations = 0;
 
-        ArchetypeSummary entSum = new ArchetypeSummary();
-        entSum.archetype = "Persistent Domain Entities";
-        entSum.count = data.domainEntitiesCount;
-        entSum.violationCount = entViolations;
-        entSum.complianceRate = data.domainEntitiesCount > 0 ? Math.round(((data.domainEntitiesCount - entViolations) / (double) data.domainEntitiesCount) * 1000.0) / 10.0 : 100.0;
-        entSum.description = "Core business state models encapsulating domain rules";
-        data.archetypeBreakdown.add(entSum);
+            if ("CLASS".equals(target) || "TYPE".equals(target)) {
+                for (CodeType t : types) {
+                    String name = t.getSimpleName();
+                    String fqn = t.getFqn();
+                    List<CodeMethod> typeMethods = classMethods.getOrDefault(fqn, Collections.emptyList());
+                    Set<String> mNames = getMethodNamesLower(typeMethods);
+                    boolean matches = false;
 
-        // Incorporate custom configured archetype rules if provided
-        if (archetypeRulesJson != null && !archetypeRulesJson.isBlank()) {
-            try {
-                com.fasterxml.jackson.databind.JsonNode root = jsonMapper.readTree(archetypeRulesJson);
-                if (root.isArray()) {
-                    for (com.fasterxml.jackson.databind.JsonNode ruleNode : root) {
-                        boolean enabled = ruleNode.path("enabled").asBoolean(true);
-                        if (!enabled) continue;
-                        String label = ruleNode.path("label").asText();
-                        String badge = ruleNode.hasNonNull("badge") ? ruleNode.get("badge").asText() : label;
-                        String pattern = ruleNode.path("pattern").asText();
-                        String matchType = (ruleNode.hasNonNull("matchType") ? ruleNode.get("matchType").asText() : "PREFIX").toUpperCase();
-                        String target = (ruleNode.hasNonNull("target") ? ruleNode.get("target").asText() : "METHOD").toUpperCase();
-                        String desc = ruleNode.path("description").asText();
-                        if (pattern.isBlank()) continue;
-
-                        int matchCount = 0;
-                        int ruleViolations = 0;
-
-                        if ("CLASS".equals(target) || "TYPE".equals(target)) {
-                            for (CodeType t : types) {
-                                if (matchesArchetypePattern(t.getSimpleName(), t.getFqn(), pattern, matchType)) {
-                                    matchCount++;
-                                }
-                            }
+                    if ("STRUCTURAL".equals(matchType)) {
+                        boolean isCursor = mNames.contains("open") && mNames.contains("fetch") && mNames.contains("close");
+                        boolean isPaging = mNames.contains("getmfwd") && mNames.contains("getmbwd");
+                        if ("rule-bancs-pc".equals(ruleId) || "PERSISTENT".equalsIgnoreCase(badge) || pattern.contains("Get,Create,Modify")) {
+                            boolean hasGet = mNames.contains("get");
+                            boolean hasCreate = mNames.contains("create");
+                            boolean hasModify = mNames.contains("modify") || mNames.contains("smodify") || mNames.contains("mmodify") || mNames.contains("mmodidy") || mNames.contains("save") || mNames.contains("update");
+                            matches = hasGet && (hasCreate || hasModify) && (name == null || !name.startsWith("MO_"));
+                        } else if ("rule-bancs-dg-paging-cursor".equals(ruleId) || "DG-PAGE-CURS".equalsIgnoreCase(badge)) {
+                            matches = isCursor && isPaging;
+                        } else if ("rule-bancs-dg-cursor".equals(ruleId) || "DG-CURSOR".equalsIgnoreCase(badge)) {
+                            matches = isCursor && !isPaging;
+                        } else if ("rule-bancs-dg-paging".equals(ruleId) || "DG-PAGING".equalsIgnoreCase(badge)) {
+                            matches = isPaging && !isCursor;
+                        } else if ("rule-bancs-dg-simple".equals(ruleId) || "DG-SIMPLE".equalsIgnoreCase(badge)) {
+                            matches = mNames.contains("get") && !isCursor && !isPaging;
                         } else {
-                            for (CodeMethod m : methods) {
-                                if (matchesArchetypePattern(m.getSimpleName(), m.getFqn(), pattern, matchType)) {
-                                    matchCount++;
-                                    if ("FETCH".equalsIgnoreCase(badge) || "READ_ONLY".equalsIgnoreCase(ruleNode.path("category").asText())) {
-                                        Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
-                                        for (String callee : callees) {
-                                            String cm = extractSimpleMethodName(callee);
-                                            if ("Create".equals(cm) || "Modify".equals(cm) || "Delete".equals(cm) || cm.startsWith("insert") || cm.startsWith("update") || cm.startsWith("delete")) {
-                                                ruleViolations++;
-                                                GovernanceViolation v = new GovernanceViolation();
-                                                v.ruleName = badge + "-01: Read-Only Contract";
-                                                v.severity = "WARNING";
-                                                v.entityFqn = m.getFqn();
-                                                v.archetypeName = (label.isBlank() ? badge : label);
-                                                v.violationDetails = "Read-only archetype method calls mutating endpoint: " + callee;
-                                                v.architecturalRemediation = "Extract state mutations out of read-only " + badge + " routine.";
-                                                data.violations.add(v);
-                                                break;
-                                            }
-                                        }
+                            matches = matchesArchetypePattern(name, fqn, pattern, matchType);
+                        }
+                    } else {
+                        matches = matchesArchetypePattern(name, fqn, pattern, matchType);
+                    }
+
+                    if (matches) {
+                        matchCount++;
+
+                        // Violation checks for classes
+                        if ("rule-bancs-mo".equals(ruleId) || "MESSAGE_DTO".equals(category) || "MSG-OBJECT".equalsIgnoreCase(badge)) {
+                            int outgoingCalls = 0;
+                            for (CodeMethod m : typeMethods) {
+                                outgoingCalls += methodCalls.getOrDefault(m.getFqn(), Collections.emptySet()).size();
+                            }
+                            if (outgoingCalls > 10) {
+                                ruleViolations++;
+                                GovernanceViolation v = new GovernanceViolation();
+                                v.ruleName = "MO-01: Stateless Data Carrier";
+                                v.severity = "WARNING";
+                                v.entityFqn = fqn;
+                                v.archetypeName = label.isBlank() ? badge : label;
+                                v.violationDetails = "Message Object contains " + outgoingCalls + " outgoing method calls; data objects should be passive DTOs.";
+                                v.architecturalRemediation = "Extract domain behavior or calculations from Message Object into a dedicated Domain Service.";
+                                data.violations.add(v);
+                            }
+                        }
+
+                        if (ruleId.startsWith("rule-bancs-dg") || "DATA-GETTER".equalsIgnoreCase(badge) || badge.startsWith("DG-")) {
+                            for (CodeMethod m : typeMethods) {
+                                Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                                for (String callee : callees) {
+                                    String cm = extractSimpleMethodName(callee);
+                                    if ("Create".equals(cm) || "Modify".equals(cm) || "Delete".equals(cm)
+                                            || "SModify".equals(cm) || "MModify".equals(cm)
+                                            || cm.startsWith("insert") || cm.startsWith("update") || cm.startsWith("delete")) {
+                                        ruleViolations++;
+                                        GovernanceViolation v = new GovernanceViolation();
+                                        v.ruleName = "DG-01: Read-Only Data Getter";
+                                        v.severity = "CRITICAL";
+                                        v.entityFqn = m.getFqn();
+                                        v.archetypeName = label.isBlank() ? badge : label;
+                                        v.violationDetails = "Data Getter queries must be strictly idempotent; method calls mutation endpoint: " + callee;
+                                        v.architecturalRemediation = "Delegate entity state mutations to a Business Transaction (*BT) instead of a Data Getter (*DG).";
+                                        data.violations.add(v);
+                                        break;
                                     }
                                 }
                             }
                         }
 
-                        if (matchCount > 0) {
-                            ArchetypeSummary customSum = new ArchetypeSummary();
-                            customSum.archetype = (label.isBlank() ? badge : label) + " [" + badge + "]";
-                            customSum.count = matchCount;
-                            customSum.violationCount = ruleViolations;
-                            customSum.complianceRate = Math.round(((matchCount - ruleViolations) / (double) matchCount) * 1000.0) / 10.0;
-                            customSum.description = desc.isBlank() ? ("Custom archetype rule: " + pattern) : desc;
-                            data.archetypeBreakdown.add(customSum);
-                            data.totalArchetypesFound += matchCount;
+                        if ("rule-bancs-pc".equals(ruleId) || "PERSISTENT".equalsIgnoreCase(badge) || "PERSISTENCE".equals(category)) {
+                            for (CodeMethod m : typeMethods) {
+                                Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                                for (String callee : callees) {
+                                    String targetClass = extractClassFromFqn(callee);
+                                    if (targetClass.endsWith("Controller") || targetClass.endsWith("GatewayService")) {
+                                        ruleViolations++;
+                                        GovernanceViolation v = new GovernanceViolation();
+                                        v.ruleName = "EN-01: Inverted Entity Layering";
+                                        v.severity = "WARNING";
+                                        v.entityFqn = m.getFqn();
+                                        v.archetypeName = label.isBlank() ? badge : label;
+                                        v.violationDetails = "Domain entity directly calls external presentation/gateway: " + callee;
+                                        v.architecturalRemediation = "Decouple domain entity from external communication layers using inversion of control or domain events.";
+                                        data.violations.add(v);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            } catch (Exception e) {
-                log.warn("Failed to parse custom archetype rules JSON: {}", e.getMessage());
+            } else {
+                // METHOD target
+                for (CodeMethod m : methods) {
+                    if (matchesArchetypePattern(m.getSimpleName(), m.getFqn(), pattern, matchType)) {
+                        matchCount++;
+
+                        if ("FETCH".equalsIgnoreCase(badge) || "READ_ONLY".equalsIgnoreCase(category)) {
+                            Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                            for (String callee : callees) {
+                                String cm = extractSimpleMethodName(callee);
+                                if ("Create".equals(cm) || "Modify".equals(cm) || "Delete".equals(cm)
+                                        || "SModify".equals(cm) || "MModify".equals(cm)
+                                        || cm.startsWith("insert") || cm.startsWith("update") || cm.startsWith("delete")) {
+                                    ruleViolations++;
+                                    GovernanceViolation v = new GovernanceViolation();
+                                    v.ruleName = badge + "-01: Read-Only Contract";
+                                    v.severity = "WARNING";
+                                    v.entityFqn = m.getFqn();
+                                    v.archetypeName = label.isBlank() ? badge : label;
+                                    v.violationDetails = "Read-only archetype method calls mutating endpoint: " + callee;
+                                    v.architecturalRemediation = "Extract state mutations out of read-only " + badge + " routine.";
+                                    data.violations.add(v);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if ("MUTATE".equalsIgnoreCase(badge) || "MUTATION".equalsIgnoreCase(category) || "rule-bancs-bt".equals(ruleId)) {
+                            Set<String> callees = methodCalls.getOrDefault(m.getFqn(), Collections.emptySet());
+                            boolean hasAudit = callees.stream().anyMatch(c -> c.contains("AuditTrailService.logAuditEvent") || c.contains("TelemetryRecorder.recordMetric"));
+                            String decType = m.getDeclaringTypeFqn() != null ? m.getDeclaringTypeFqn() : "";
+                            if (!hasAudit && !decType.endsWith("Test") && !decType.contains("Grabber") && !decType.contains("Getter")) {
+                                ruleViolations++;
+                                GovernanceViolation v = new GovernanceViolation();
+                                v.ruleName = "BT-01: Mandatory Audit Trail";
+                                v.severity = "WARNING";
+                                v.entityFqn = m.getFqn();
+                                v.archetypeName = label.isBlank() ? badge : label;
+                                v.violationDetails = "Financial transaction method lacks verifiable audit trail or telemetry invocation.";
+                                v.architecturalRemediation = "Add AuditTrailService.logAuditEvent(...) call before committing financial transaction state.";
+                                data.violations.add(v);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (matchCount > 0) {
+                ArchetypeSummary sum = new ArchetypeSummary();
+                sum.archetype = (label.isBlank() ? badge : label) + " [" + badge + "]";
+                sum.count = matchCount;
+                sum.violationCount = ruleViolations;
+                sum.complianceRate = Math.round(((matchCount - ruleViolations) / (double) matchCount) * 1000.0) / 10.0;
+                sum.description = desc.isBlank() ? ("Archetype rule: " + pattern) : desc;
+                data.archetypeBreakdown.add(sum);
+                data.totalArchetypesFound += matchCount;
             }
         }
 
@@ -2511,13 +2526,29 @@ public class ReportService {
         return false;
     }
 
+    private static Set<String> getMethodNamesLower(List<CodeMethod> methods) {
+        Set<String> set = new HashSet<>();
+        if (methods == null) return set;
+        for (CodeMethod m : methods) {
+            if (m.getSimpleName() != null) {
+                set.add(m.getSimpleName().replaceAll("\\(.*\\)", "").trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return set;
+    }
+
     private static boolean matchesArchetypePattern(String simpleName, String fqn, String pattern, String matchType) {
         if (simpleName == null || pattern == null || pattern.isBlank()) return false;
         String p = pattern.trim();
         if (p.contains("{MODULE}") || p.contains("{MOD}")) {
             String pkg = extractPackageFromFqn(fqn);
             String mod = extractModuleToken(pkg);
-            p = p.replace("{MODULE}", mod).replace("{MOD}", mod);
+            if (mod.isBlank()) {
+                p = p.replace("{MODULE}", "[A-Z]{2,4}").replace("{MOD}", "[A-Z]{2,4}");
+                matchType = "REGEX";
+            } else {
+                p = p.replace("{MODULE}", mod).replace("{MOD}", mod);
+            }
         }
         String s = simpleName;
         if ("REGEX".equalsIgnoreCase(matchType)) {
@@ -2525,15 +2556,16 @@ public class ReportService {
         }
         if (p.contains("*") || "GLOB".equalsIgnoreCase(matchType)) {
             String regex = "^" + java.util.regex.Pattern.quote(p).replace("*", "\\E.*\\Q") + "$";
-            return s.toLowerCase(Locale.ROOT).matches("(?i)" + regex);
+            return s.toLowerCase(Locale.ROOT).matches("(?i)" + regex) || (fqn != null && fqn.toLowerCase(Locale.ROOT).matches("(?i)" + regex));
         }
         String sLow = s.toLowerCase(Locale.ROOT);
         String pLow = p.toLowerCase(Locale.ROOT);
-        switch (matchType != null ? matchType.toUpperCase() : "PREFIX") {
-            case "PREFIX": return sLow.startsWith(pLow);
-            case "SUFFIX": return sLow.endsWith(pLow);
-            case "CONTAINS": return sLow.contains(pLow);
-            case "EXACT": return sLow.equalsIgnoreCase(pLow);
+        String fLow = fqn != null ? fqn.toLowerCase(Locale.ROOT) : "";
+        switch (matchType != null ? matchType.toUpperCase(Locale.ROOT) : "PREFIX") {
+            case "PREFIX": return sLow.startsWith(pLow) || fLow.startsWith(pLow);
+            case "SUFFIX": return sLow.endsWith(pLow) || fLow.endsWith(pLow);
+            case "CONTAINS": return sLow.contains(pLow) || fLow.contains(pLow);
+            case "EXACT": return sLow.equalsIgnoreCase(pLow) || fLow.equalsIgnoreCase(pLow);
             default: return sLow.startsWith(pLow);
         }
     }

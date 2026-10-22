@@ -60,7 +60,30 @@ public class CodeLensConfig {
     private String pojoCustomPatterns = "get*, set*, is*, has*, with*";
 
     // ── Custom Archetype Rules (JSON string array) ──
-    private String archetypeRulesJson = "[]";
+    public static final String DEFAULT_ARCHETYPE_RULES_JSON =
+        "[{\"id\":\"rule-ddd-aggregate\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"SUFFIX\",\"pattern\":\"*Aggregate\",\"label\":\"Aggregate Root\",\"badge\":\"AGGREGATE\",\"category\":\"DOMAIN\",\"color\":\"#8b5cf6\",\"icon\":\"box\",\"description\":\"Domain-Driven Design Aggregate Root\",\"enabled\":true}," +
+        "{\"id\":\"rule-ddd-entity\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"SUFFIX\",\"pattern\":\"*Entity\",\"label\":\"Domain Entity\",\"badge\":\"ENTITY\",\"category\":\"DOMAIN\",\"color\":\"#3b82f6\",\"icon\":\"database\",\"description\":\"Domain Entity with business identity\",\"enabled\":true}," +
+        "{\"id\":\"rule-ddd-vo\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"SUFFIX\",\"pattern\":\"*VO\",\"label\":\"Value Object\",\"badge\":\"VAL-OBJ\",\"category\":\"DOMAIN\",\"color\":\"#06b6d4\",\"icon\":\"tag\",\"description\":\"Immutable Domain Value Object\",\"enabled\":true}," +
+        "{\"id\":\"rule-ddd-usecase\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"SUFFIX\",\"pattern\":\"*UseCase\",\"label\":\"Use Case / Interactor\",\"badge\":\"USE-CASE\",\"category\":\"APPLICATION\",\"color\":\"#10b981\",\"icon\":\"zap\",\"description\":\"Application Use Case / Command Handler\",\"enabled\":true}," +
+        "{\"id\":\"rule-ddd-repo\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"SUFFIX\",\"pattern\":\"*Repository\",\"label\":\"Domain Repository\",\"badge\":\"REPO\",\"category\":\"INFRA\",\"color\":\"#ec4899\",\"icon\":\"database\",\"description\":\"Domain Repository Contract / Gateway\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-et\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}ET\",\"label\":\"Elementary Transaction\",\"badge\":\"FETCH\",\"category\":\"READ_ONLY\",\"color\":\"#10b981\",\"icon\":\"download\",\"description\":\"Elementary transactions only meant for fetching data\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-bt\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}BT\",\"label\":\"Business Transaction\",\"badge\":\"MUTATE\",\"category\":\"MUTATION\",\"color\":\"#f59e0b\",\"icon\":\"zap\",\"description\":\"Business transactions meant for create/update data\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-to\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}TO\",\"label\":\"Own Task\",\"badge\":\"TASK-OWN\",\"category\":\"WORKFLOW\",\"color\":\"#0ea5e9\",\"icon\":\"check\",\"description\":\"Module own task workflow execution ({MODULE}TO)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-tc\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}TC\",\"label\":\"Common Task\",\"badge\":\"TASK-COMMON\",\"category\":\"SHARED_TASK\",\"color\":\"#a855f7\",\"icon\":\"layers\",\"description\":\"Cross-module common task workflow execution ({MODULE}TC)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-ps\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}PS\",\"label\":\"Batch Processor\",\"badge\":\"BATCH\",\"category\":\"BATCH\",\"color\":\"#8b5cf6\",\"icon\":\"settings\",\"description\":\"Batch processor / background jobs\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-pb\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}PB\",\"label\":\"Process Before Batch\",\"badge\":\"PRE-BATCH\",\"category\":\"PRE_PROCESS\",\"color\":\"#3b82f6\",\"icon\":\"skipBack\",\"description\":\"Process before batch execution\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-pa\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}PA\",\"label\":\"Process After Batch\",\"badge\":\"POST-BATCH\",\"category\":\"POST_PROCESS\",\"color\":\"#ec4899\",\"icon\":\"skipForward\",\"description\":\"Process after batch execution\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}DG\",\"label\":\"Data Getter\",\"badge\":\"DATA-GETTER\",\"category\":\"DATA_ACCESS\",\"color\":\"#06b6d4\",\"icon\":\"box\",\"description\":\"Data getter / data retrieval components ({MODULE}DG, *DG, *Getter)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg-simple\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"STRUCTURAL\",\"pattern\":\"* (Get)\",\"label\":\"Simple Data Getter\",\"badge\":\"DG-SIMPLE\",\"category\":\"DATA_ACCESS\",\"color\":\"#06b6d4\",\"icon\":\"box\",\"description\":\"Simple Data Getter with Get() method only\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg-paging\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"STRUCTURAL\",\"pattern\":\"* (GetMFwd, GetMBwd)\",\"label\":\"Paging Data Getter\",\"badge\":\"DG-PAGING\",\"category\":\"DATA_ACCESS\",\"color\":\"#0284c7\",\"icon\":\"layers\",\"description\":\"Paging Data Getter with forward and backward paging (GetMFwd, GetMBwd)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg-cursor\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"STRUCTURAL\",\"pattern\":\"* (Open, Fetch, Close)\",\"label\":\"Cursor Data Getter\",\"badge\":\"DG-CURSOR\",\"category\":\"DATA_ACCESS\",\"color\":\"#0d9488\",\"icon\":\"database\",\"description\":\"Cursor Data Getter with cursor lifecycle (Open, Fetch, Close)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg-paging-cursor\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"STRUCTURAL\",\"pattern\":\"* (Open, Fetch, Close, GetMFwd, GetMBwd)\",\"label\":\"Paging Cursor Data Getter\",\"badge\":\"DG-PAGE-CURS\",\"category\":\"DATA_ACCESS\",\"color\":\"#2563eb\",\"icon\":\"sliders\",\"description\":\"Paging Cursor Data Getter with cursor and paging methods (Open, Fetch, Close, GetMFwd, GetMBwd)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-dg-op\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"REGEX\",\"pattern\":\"^(GetMFwd|GetMBwd|Open|Fetch|Close)$\",\"label\":\"Getter Query Operation\",\"badge\":\"DG-OP\",\"category\":\"DATA_ACCESS\",\"color\":\"#06b6d4\",\"icon\":\"box\",\"description\":\"Data Getter query operations (GetMFwd, GetMBwd, Open, Fetch, Close)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-crud\",\"target\":\"METHOD\",\"scope\":\"METHOD\",\"matchType\":\"REGEX\",\"pattern\":\"^(Get|Create|Modify|SModify|MModify|MModidy|Save|Update|Delete|Remove)$\",\"label\":\"CRUD Operation\",\"badge\":\"CRUD\",\"category\":\"PERSISTENCE\",\"color\":\"#d946ef\",\"icon\":\"database\",\"description\":\"Persistent CRUD lifecycle operations (Get, Create, Modify, SModify, MModify) interacting with Hibernate/DB\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-pc\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"STRUCTURAL\",\"pattern\":\"* (Get,Create,Modify)\",\"label\":\"Persistent Class\",\"badge\":\"PERSISTENT\",\"category\":\"PERSISTENCE\",\"color\":\"#6366f1\",\"icon\":\"database\",\"description\":\"Persistent classes with Get(), Create(), and Modify()/SModify()/MModify() methods (non-MO entities)\",\"enabled\":true}," +
+        "{\"id\":\"rule-bancs-mo\",\"target\":\"CLASS\",\"scope\":\"CLASS\",\"matchType\":\"GLOB\",\"pattern\":\"MO_*\",\"label\":\"Message Object\",\"badge\":\"MSG-OBJECT\",\"category\":\"MESSAGE_DTO\",\"color\":\"#14b8a6\",\"icon\":\"fileText\",\"description\":\"Message objects for input/output payloads (MO_INP_*, MO_OUT_*, MO_*)\",\"enabled\":true}]";
+
+    private String archetypeRulesJson = DEFAULT_ARCHETYPE_RULES_JSON;
 
     // ── AI & Grounding Configuration ──
     private String aiProvider = "local"; // "local" | "ollama" | "openai"
@@ -189,17 +212,21 @@ public class CodeLensConfig {
     @com.fasterxml.jackson.annotation.JsonSetter("archetypeRulesJson")
     public void setArchetypeRulesJsonFromJson(com.fasterxml.jackson.databind.JsonNode node) {
         if (node == null || node.isNull()) {
-            this.archetypeRulesJson = "[]";
+            this.archetypeRulesJson = DEFAULT_ARCHETYPE_RULES_JSON;
         } else if (node.isArray()) {
             this.archetypeRulesJson = node.toString();
         } else if (node.isTextual()) {
-            this.archetypeRulesJson = node.asText();
+            String txt = node.asText();
+            this.archetypeRulesJson = (txt == null || txt.isBlank() || "[]".equals(txt.trim())) ? DEFAULT_ARCHETYPE_RULES_JSON : txt;
         } else {
             this.archetypeRulesJson = node.toString();
         }
     }
 
-    public void setArchetypeRulesJson(String archetypeRulesJson) { this.archetypeRulesJson = archetypeRulesJson != null ? archetypeRulesJson : "[]"; }
+    public void setArchetypeRulesJson(String archetypeRulesJson) {
+        this.archetypeRulesJson = (archetypeRulesJson != null && !archetypeRulesJson.isBlank() && !"[]".equals(archetypeRulesJson.trim()))
+            ? archetypeRulesJson : DEFAULT_ARCHETYPE_RULES_JSON;
+    }
 
     public String getAiProvider() { return aiProvider; }
     public void setAiProvider(String aiProvider) { this.aiProvider = aiProvider != null ? aiProvider : "local"; }
@@ -398,7 +425,12 @@ public class CodeLensConfig {
         }
 
         if (props.containsKey("archetypes.rulesJson")) {
-            this.archetypeRulesJson = props.getProperty("archetypes.rulesJson");
+            String val = props.getProperty("archetypes.rulesJson");
+            if (val != null && !val.isBlank() && !"[]".equals(val.trim())) {
+                this.archetypeRulesJson = val;
+            } else {
+                this.archetypeRulesJson = DEFAULT_ARCHETYPE_RULES_JSON;
+            }
         }
 
         if (props.containsKey("ai.provider")) {

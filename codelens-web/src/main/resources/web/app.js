@@ -16289,6 +16289,15 @@ async function syncSettingsFromServer() {
         if (serverConfig.defaultMacroGranularity || serverConfig['macro.defaultGranularity']) {
           App.codebaseGranularity = serverConfig.defaultMacroGranularity || serverConfig['macro.defaultGranularity'];
         }
+        const archJson = serverConfig.archetypeRulesJson ?? serverConfig['archetypes.rulesJson'];
+        if (archJson && window.CodeLensClassifier) {
+          try {
+            const rules = typeof archJson === 'string' ? JSON.parse(archJson) : archJson;
+            if (Array.isArray(rules) && rules.length > 0) {
+              window.CodeLensClassifier.setRules(rules);
+            }
+          } catch (_) {}
+        }
         const local = localStorage.getItem(SETTINGS_STORAGE_KEY);
         if (!local) {
           applyImportedConfig(serverConfig);

@@ -406,7 +406,10 @@
     }
   ];
 
-  const DEFAULT_ARCHETYPE_RULES = BANCS_PRESET_RULES;
+  const DEFAULT_ARCHETYPE_RULES = [
+    ...DDD_PRESET_RULES.filter(r => r.id !== 'rule-ddd-event'),
+    ...BANCS_PRESET_RULES
+  ];
 
   class CodeLensClassifier {
     constructor() {
@@ -902,6 +905,12 @@
 
     getRules() {
       return [...this._rules];
+    }
+
+    setRules(rules) {
+      if (Array.isArray(rules)) {
+        this.saveRules(rules);
+      }
     }
 
     saveRules(rules) {

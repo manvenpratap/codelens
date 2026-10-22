@@ -1,9 +1,7 @@
 package com.codelens.analysis;
 
 import com.codelens.core.model.*;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class CallGraphAndReportTest {
 
@@ -875,6 +873,139 @@ public class CallGraphAndReportTest {
 
         // Clean up custom pattern
         CallGraphAnalyzer.setCustomPojoPatterns("");
+    }
+
+    public void testConfigDrivenArchetypeGovernanceAndDataGetters() {
+        ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
+
+        // Simple DG: only Get
+        CodeType dgSimple = new CodeType();
+        dgSimple.setFqn("com.tcs.bancs.AM.AMSimpleDG");
+        dgSimple.setSimpleName("AMSimpleDG");
+        CodeMethod mGet = new CodeMethod();
+        mGet.setFqn("com.tcs.bancs.AM.AMSimpleDG.Get()");
+        mGet.setSimpleName("Get");
+        mGet.setDeclaringTypeFqn("com.tcs.bancs.AM.AMSimpleDG");
+
+        // Paging DG: GetMFwd and GetMBwd
+        CodeType dgPaging = new CodeType();
+        dgPaging.setFqn("com.tcs.bancs.AM.AMPagingDG");
+        dgPaging.setSimpleName("AMPagingDG");
+        CodeMethod mFwd = new CodeMethod();
+        mFwd.setFqn("com.tcs.bancs.AM.AMPagingDG.GetMFwd()");
+        mFwd.setSimpleName("GetMFwd");
+        mFwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingDG");
+        CodeMethod mBwd = new CodeMethod();
+        mBwd.setFqn("com.tcs.bancs.AM.AMPagingDG.GetMBwd()");
+        mBwd.setSimpleName("GetMBwd");
+        mBwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingDG");
+
+        // Cursor DG: Open, Fetch, Close
+        CodeType dgCursor = new CodeType();
+        dgCursor.setFqn("com.tcs.bancs.AM.AMCursorDG");
+        dgCursor.setSimpleName("AMCursorDG");
+        CodeMethod mOpen = new CodeMethod();
+        mOpen.setFqn("com.tcs.bancs.AM.AMCursorDG.Open()");
+        mOpen.setSimpleName("Open");
+        mOpen.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
+        CodeMethod mFetch = new CodeMethod();
+        mFetch.setFqn("com.tcs.bancs.AM.AMCursorDG.Fetch()");
+        mFetch.setSimpleName("Fetch");
+        mFetch.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
+        CodeMethod mClose = new CodeMethod();
+        mClose.setFqn("com.tcs.bancs.AM.AMCursorDG.Close()");
+        mClose.setSimpleName("Close");
+        mClose.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
+
+        // Paging Cursor DG: Open, Fetch, Close, GetMFwd, GetMBwd
+        CodeType dgPagingCursor = new CodeType();
+        dgPagingCursor.setFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        dgPagingCursor.setSimpleName("AMPagingCursorDG");
+        CodeMethod mPCOpen = new CodeMethod();
+        mPCOpen.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Open()");
+        mPCOpen.setSimpleName("Open");
+        mPCOpen.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        CodeMethod mPCFetch = new CodeMethod();
+        mPCFetch.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Fetch()");
+        mPCFetch.setSimpleName("Fetch");
+        mPCFetch.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        CodeMethod mPCClose = new CodeMethod();
+        mPCClose.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Close()");
+        mPCClose.setSimpleName("Close");
+        mPCClose.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        CodeMethod mPCFwd = new CodeMethod();
+        mPCFwd.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.GetMFwd()");
+        mPCFwd.setSimpleName("GetMFwd");
+        mPCFwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        CodeMethod mPCBwd = new CodeMethod();
+        mPCBwd.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.GetMBwd()");
+        mPCBwd.setSimpleName("GetMBwd");
+        mPCBwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+
+        // Message Object: MO_INP_CustData
+        CodeType moType = new CodeType();
+        moType.setFqn("com.tcs.bancs.AM.MO_INP_CustData");
+        moType.setSimpleName("MO_INP_CustData");
+
+        // Persistent Class: Account (Get, Create, Modify)
+        CodeType pcType = new CodeType();
+        pcType.setFqn("com.tcs.bancs.AM.Account");
+        pcType.setSimpleName("Account");
+        CodeMethod pcGet = new CodeMethod();
+        pcGet.setFqn("com.tcs.bancs.AM.Account.Get()");
+        pcGet.setSimpleName("Get");
+        pcGet.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
+        CodeMethod pcCreate = new CodeMethod();
+        pcCreate.setFqn("com.tcs.bancs.AM.Account.Create()");
+        pcCreate.setSimpleName("Create");
+        pcCreate.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
+        CodeMethod pcModify = new CodeMethod();
+        pcModify.setFqn("com.tcs.bancs.AM.Account.Modify()");
+        pcModify.setSimpleName("Modify");
+        pcModify.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
+
+        // Business Transaction: AMBTTransferFunds
+        CodeMethod btMethod = new CodeMethod();
+        btMethod.setFqn("com.tcs.bancs.AM.AMBTTransferFunds.execute()");
+        btMethod.setSimpleName("AMBTTransferFunds");
+        btMethod.setDeclaringTypeFqn("com.tcs.bancs.AM.AMBTTransferFunds");
+
+        List<CodeType> types = List.of(dgSimple, dgPaging, dgCursor, dgPagingCursor, moType, pcType);
+        List<CodeMethod> methods = List.of(mGet, mFwd, mBwd, mOpen, mFetch, mClose, mPCOpen, mPCFetch, mPCClose, mPCFwd, mPCBwd, pcGet, pcCreate, pcModify, btMethod);
+
+        ReportService.ArchetypeGovernanceReportData govData = reportService.buildArchetypeGovernanceData(
+            types, methods, Collections.emptyList(), Collections.emptyList(), CodeLensConfig.DEFAULT_ARCHETYPE_RULES_JSON
+        );
+
+        assertNotNull(govData, "Report data should not be null");
+        assertEquals(1, govData.dataGettersSimpleCount, "Simple Data Getter count");
+        assertEquals(1, govData.dataGettersPagingCount, "Paging Data Getter count");
+        assertEquals(1, govData.dataGettersCursorCount, "Cursor Data Getter count");
+        assertEquals(1, govData.dataGettersPagingCursorCount, "Paging Cursor Data Getter count");
+        assertEquals(4, govData.dataGettersCount, "Total Data Getters count");
+        assertEquals(1, govData.messageObjectsCount, "Message Objects count");
+        assertEquals(1, govData.domainEntitiesCount, "Persistent Domain Entities count");
+        assertEquals(1, govData.businessTransactionsCount, "Business Transactions count");
+
+        // Verify there is no duplicate naming in breakdown
+        Set<String> archetypeNames = new HashSet<>();
+        for (ReportService.ArchetypeSummary s : govData.archetypeBreakdown) {
+            assertTrue(archetypeNames.add(s.archetype), "Archetype breakdown should not contain duplicate entries: " + s.archetype);
+        }
+
+        // Verify CriticalPathAnalyzer is configuration-driven
+        CallGraphAnalyzer callGraph = new CallGraphAnalyzer();
+        String customRulesJson = "[{\"id\":\"rule-bancs-bt\",\"target\":\"METHOD\",\"matchType\":\"PREFIX\",\"pattern\":\"{MODULE}BT\",\"label\":\"Business Transaction\",\"badge\":\"CUSTOM-MUTATE\",\"category\":\"MUTATION\",\"color\":\"#ff00ff\",\"icon\":\"bolt\",\"enabled\":true}]";
+        CriticalPathAnalyzer criticalAnalyzer = new CriticalPathAnalyzer(callGraph, customRulesJson);
+        Map<String, CodeMethod> methodMap = new HashMap<>();
+        methodMap.put(btMethod.getFqn(), btMethod);
+        Map<String, CodeType> typeMap = new HashMap<>();
+        typeMap.put(pcType.getFqn(), pcType);
+
+        CriticalPathAnalyzer.CriticalPathReport cpReport = criticalAnalyzer.analyzeCriticalPaths(
+            pcType.getFqn(), callGraph.getCallGraph(), methodMap, typeMap, false
+        );
+        assertNotNull(cpReport, "Critical path report should not be null");
     }
 
     public void testPrefixMapAndO1LookupsPerformance() {
