@@ -908,9 +908,7 @@
     }
 
     setRules(rules) {
-      if (Array.isArray(rules)) {
-        this.saveRules(rules);
-      }
+      this.saveRules(rules);
     }
 
     saveRules(rules) {

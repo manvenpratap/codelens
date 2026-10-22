@@ -1,6 +1,7 @@
 package com.codelens.analysis;
 
 import com.codelens.core.model.*;
+import com.codelens.core.util.FqnUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -2057,6 +2058,16 @@ public class ReportService {
         public String architecturalRemediation;
     }
 
+    private record TypeArchetypeMeta(
+        CodeType type,
+        List<CodeMethod> methods,
+        Set<String> mNames,
+        boolean isCursor,
+        boolean isPaging,
+        boolean hasGet,
+        boolean hasModify
+    ) {}
+
     public ArchetypeGovernanceReportData buildArchetypeGovernanceData(List<CodeType> types,
                                                                       List<CodeMethod> methods,
                                                                       List<CodeField> fields,
@@ -2085,6 +2096,7 @@ public class ReportService {
         }
 
         // 1. Calculate structural metrics for classes
+        List<TypeArchetypeMeta> typeMetas = new ArrayList<>(types.size());
         for (CodeType t : types) {
             String name = t.getSimpleName();
             String fqn = t.getFqn();
@@ -2127,6 +2139,8 @@ public class ReportService {
             } else if (name != null && name.endsWith("Service")) {
                 data.servicesCount++;
             }
+
+            typeMetas.add(new TypeArchetypeMeta(t, typeMethods, mNames, isCursor, isPaging, hasGet, hasCreate || hasModify));
         }
 
         for (CodeMethod m : methods) {
@@ -2171,29 +2185,24 @@ public class ReportService {
             int ruleViolations = 0;
 
             if ("CLASS".equals(target) || "TYPE".equals(target)) {
-                for (CodeType t : types) {
+                for (TypeArchetypeMeta meta : typeMetas) {
+                    CodeType t = meta.type();
                     String name = t.getSimpleName();
                     String fqn = t.getFqn();
-                    List<CodeMethod> typeMethods = classMethods.getOrDefault(fqn, Collections.emptyList());
-                    Set<String> mNames = getMethodNamesLower(typeMethods);
+                    List<CodeMethod> typeMethods = meta.methods();
                     boolean matches = false;
 
                     if ("STRUCTURAL".equals(matchType)) {
-                        boolean isCursor = mNames.contains("open") && mNames.contains("fetch") && mNames.contains("close");
-                        boolean isPaging = mNames.contains("getmfwd") && mNames.contains("getmbwd");
                         if ("rule-bancs-pc".equals(ruleId) || "PERSISTENT".equalsIgnoreCase(badge) || pattern.contains("Get,Create,Modify")) {
-                            boolean hasGet = mNames.contains("get");
-                            boolean hasCreate = mNames.contains("create");
-                            boolean hasModify = mNames.contains("modify") || mNames.contains("smodify") || mNames.contains("mmodify") || mNames.contains("mmodidy") || mNames.contains("save") || mNames.contains("update");
-                            matches = hasGet && (hasCreate || hasModify) && (name == null || !name.startsWith("MO_"));
+                            matches = meta.hasGet() && meta.hasModify() && (name == null || !name.startsWith("MO_"));
                         } else if ("rule-bancs-dg-paging-cursor".equals(ruleId) || "DG-PAGE-CURS".equalsIgnoreCase(badge)) {
-                            matches = isCursor && isPaging;
+                            matches = meta.isCursor() && meta.isPaging();
                         } else if ("rule-bancs-dg-cursor".equals(ruleId) || "DG-CURSOR".equalsIgnoreCase(badge)) {
-                            matches = isCursor && !isPaging;
+                            matches = meta.isCursor() && !meta.isPaging();
                         } else if ("rule-bancs-dg-paging".equals(ruleId) || "DG-PAGING".equalsIgnoreCase(badge)) {
-                            matches = isPaging && !isCursor;
+                            matches = meta.isPaging() && !meta.isCursor();
                         } else if ("rule-bancs-dg-simple".equals(ruleId) || "DG-SIMPLE".equalsIgnoreCase(badge)) {
-                            matches = mNames.contains("get") && !isCursor && !isPaging;
+                            matches = meta.hasGet() && !meta.isCursor() && !meta.isPaging();
                         } else {
                             matches = matchesArchetypePattern(name, fqn, pattern, matchType);
                         }
@@ -2479,33 +2488,23 @@ public class ReportService {
     // ─────────────────────────────────────────────────────────────────────────
 
     private static String extractClassFromFqn(String entityFqn) {
-        return CallGraphAnalyzer.extractClassFqn(entityFqn);
+        return FqnUtils.extractClassFqn(entityFqn);
     }
 
     private static String extractClassSimple(String classFqn) {
-        if (classFqn == null) return "";
-        int dot = classFqn.lastIndexOf('.');
-        return (dot >= 0) ? classFqn.substring(dot + 1) : classFqn;
+        return FqnUtils.extractClassSimple(classFqn);
     }
 
     private static String extractPackageFromFqn(String classFqn) {
-        if (classFqn == null) return "(default)";
-        int dot = classFqn.lastIndexOf('.');
-        return (dot >= 0) ? classFqn.substring(0, dot) : "(default)";
+        return FqnUtils.extractPackageFromFqn(classFqn);
     }
 
     private static String extractPackageSimple(String pkgFqn) {
-        if (pkgFqn == null) return "(default)";
-        int dot = pkgFqn.lastIndexOf('.');
-        return (dot >= 0) ? pkgFqn.substring(dot + 1) : pkgFqn;
+        return FqnUtils.extractPackageSimple(pkgFqn);
     }
 
     private static String extractSimpleMethodName(String methodFqn) {
-        if (methodFqn == null) return "";
-        int paren = methodFqn.indexOf('(');
-        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(dot + 1) : base;
+        return FqnUtils.extractSimpleName(methodFqn);
     }
 
     private static boolean isPotentialEntryPoint(String methodName, String declaringClass) {

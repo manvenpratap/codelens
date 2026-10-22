@@ -21,6 +21,21 @@ public class CallGraphAndReportTest {
         if (obj == null) throw new AssertionError("Assertion failed (expected non-null): " + msg);
     }
 
+    private static CodeType testType(String fqn, String simpleName) {
+        CodeType t = new CodeType();
+        t.setFqn(fqn);
+        t.setSimpleName(simpleName);
+        return t;
+    }
+
+    private static CodeMethod testMethod(String fqn, String simpleName, String declaringTypeFqn) {
+        CodeMethod m = new CodeMethod();
+        m.setFqn(fqn);
+        m.setSimpleName(simpleName);
+        m.setDeclaringTypeFqn(declaringTypeFqn);
+        return m;
+    }
+
     public void testCallGraphRebuildAndViews() {
         CallGraphAnalyzer analyzer = new CallGraphAnalyzer();
 
@@ -879,96 +894,39 @@ public class CallGraphAndReportTest {
         ReportService reportService = new ReportService(new CallGraphAnalyzer(), new FieldImpactAnalyzer(), new CodeReviewEngine());
 
         // Simple DG: only Get
-        CodeType dgSimple = new CodeType();
-        dgSimple.setFqn("com.tcs.bancs.AM.AMSimpleDG");
-        dgSimple.setSimpleName("AMSimpleDG");
-        CodeMethod mGet = new CodeMethod();
-        mGet.setFqn("com.tcs.bancs.AM.AMSimpleDG.Get()");
-        mGet.setSimpleName("Get");
-        mGet.setDeclaringTypeFqn("com.tcs.bancs.AM.AMSimpleDG");
+        CodeType dgSimple = testType("com.tcs.bancs.AM.AMSimpleDG", "AMSimpleDG");
+        CodeMethod mGet = testMethod("com.tcs.bancs.AM.AMSimpleDG.Get()", "Get", dgSimple.getFqn());
 
         // Paging DG: GetMFwd and GetMBwd
-        CodeType dgPaging = new CodeType();
-        dgPaging.setFqn("com.tcs.bancs.AM.AMPagingDG");
-        dgPaging.setSimpleName("AMPagingDG");
-        CodeMethod mFwd = new CodeMethod();
-        mFwd.setFqn("com.tcs.bancs.AM.AMPagingDG.GetMFwd()");
-        mFwd.setSimpleName("GetMFwd");
-        mFwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingDG");
-        CodeMethod mBwd = new CodeMethod();
-        mBwd.setFqn("com.tcs.bancs.AM.AMPagingDG.GetMBwd()");
-        mBwd.setSimpleName("GetMBwd");
-        mBwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingDG");
+        CodeType dgPaging = testType("com.tcs.bancs.AM.AMPagingDG", "AMPagingDG");
+        CodeMethod mFwd = testMethod("com.tcs.bancs.AM.AMPagingDG.GetMFwd()", "GetMFwd", dgPaging.getFqn());
+        CodeMethod mBwd = testMethod("com.tcs.bancs.AM.AMPagingDG.GetMBwd()", "GetMBwd", dgPaging.getFqn());
 
         // Cursor DG: Open, Fetch, Close
-        CodeType dgCursor = new CodeType();
-        dgCursor.setFqn("com.tcs.bancs.AM.AMCursorDG");
-        dgCursor.setSimpleName("AMCursorDG");
-        CodeMethod mOpen = new CodeMethod();
-        mOpen.setFqn("com.tcs.bancs.AM.AMCursorDG.Open()");
-        mOpen.setSimpleName("Open");
-        mOpen.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
-        CodeMethod mFetch = new CodeMethod();
-        mFetch.setFqn("com.tcs.bancs.AM.AMCursorDG.Fetch()");
-        mFetch.setSimpleName("Fetch");
-        mFetch.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
-        CodeMethod mClose = new CodeMethod();
-        mClose.setFqn("com.tcs.bancs.AM.AMCursorDG.Close()");
-        mClose.setSimpleName("Close");
-        mClose.setDeclaringTypeFqn("com.tcs.bancs.AM.AMCursorDG");
+        CodeType dgCursor = testType("com.tcs.bancs.AM.AMCursorDG", "AMCursorDG");
+        CodeMethod mOpen = testMethod("com.tcs.bancs.AM.AMCursorDG.Open()", "Open", dgCursor.getFqn());
+        CodeMethod mFetch = testMethod("com.tcs.bancs.AM.AMCursorDG.Fetch()", "Fetch", dgCursor.getFqn());
+        CodeMethod mClose = testMethod("com.tcs.bancs.AM.AMCursorDG.Close()", "Close", dgCursor.getFqn());
 
         // Paging Cursor DG: Open, Fetch, Close, GetMFwd, GetMBwd
-        CodeType dgPagingCursor = new CodeType();
-        dgPagingCursor.setFqn("com.tcs.bancs.AM.AMPagingCursorDG");
-        dgPagingCursor.setSimpleName("AMPagingCursorDG");
-        CodeMethod mPCOpen = new CodeMethod();
-        mPCOpen.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Open()");
-        mPCOpen.setSimpleName("Open");
-        mPCOpen.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
-        CodeMethod mPCFetch = new CodeMethod();
-        mPCFetch.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Fetch()");
-        mPCFetch.setSimpleName("Fetch");
-        mPCFetch.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
-        CodeMethod mPCClose = new CodeMethod();
-        mPCClose.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.Close()");
-        mPCClose.setSimpleName("Close");
-        mPCClose.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
-        CodeMethod mPCFwd = new CodeMethod();
-        mPCFwd.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.GetMFwd()");
-        mPCFwd.setSimpleName("GetMFwd");
-        mPCFwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
-        CodeMethod mPCBwd = new CodeMethod();
-        mPCBwd.setFqn("com.tcs.bancs.AM.AMPagingCursorDG.GetMBwd()");
-        mPCBwd.setSimpleName("GetMBwd");
-        mPCBwd.setDeclaringTypeFqn("com.tcs.bancs.AM.AMPagingCursorDG");
+        CodeType dgPagingCursor = testType("com.tcs.bancs.AM.AMPagingCursorDG", "AMPagingCursorDG");
+        CodeMethod mPCOpen = testMethod("com.tcs.bancs.AM.AMPagingCursorDG.Open()", "Open", dgPagingCursor.getFqn());
+        CodeMethod mPCFetch = testMethod("com.tcs.bancs.AM.AMPagingCursorDG.Fetch()", "Fetch", dgPagingCursor.getFqn());
+        CodeMethod mPCClose = testMethod("com.tcs.bancs.AM.AMPagingCursorDG.Close()", "Close", dgPagingCursor.getFqn());
+        CodeMethod mPCFwd = testMethod("com.tcs.bancs.AM.AMPagingCursorDG.GetMFwd()", "GetMFwd", dgPagingCursor.getFqn());
+        CodeMethod mPCBwd = testMethod("com.tcs.bancs.AM.AMPagingCursorDG.GetMBwd()", "GetMBwd", dgPagingCursor.getFqn());
 
         // Message Object: MO_INP_CustData
-        CodeType moType = new CodeType();
-        moType.setFqn("com.tcs.bancs.AM.MO_INP_CustData");
-        moType.setSimpleName("MO_INP_CustData");
+        CodeType moType = testType("com.tcs.bancs.AM.MO_INP_CustData", "MO_INP_CustData");
 
         // Persistent Class: Account (Get, Create, Modify)
-        CodeType pcType = new CodeType();
-        pcType.setFqn("com.tcs.bancs.AM.Account");
-        pcType.setSimpleName("Account");
-        CodeMethod pcGet = new CodeMethod();
-        pcGet.setFqn("com.tcs.bancs.AM.Account.Get()");
-        pcGet.setSimpleName("Get");
-        pcGet.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
-        CodeMethod pcCreate = new CodeMethod();
-        pcCreate.setFqn("com.tcs.bancs.AM.Account.Create()");
-        pcCreate.setSimpleName("Create");
-        pcCreate.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
-        CodeMethod pcModify = new CodeMethod();
-        pcModify.setFqn("com.tcs.bancs.AM.Account.Modify()");
-        pcModify.setSimpleName("Modify");
-        pcModify.setDeclaringTypeFqn("com.tcs.bancs.AM.Account");
+        CodeType pcType = testType("com.tcs.bancs.AM.Account", "Account");
+        CodeMethod pcGet = testMethod("com.tcs.bancs.AM.Account.Get()", "Get", pcType.getFqn());
+        CodeMethod pcCreate = testMethod("com.tcs.bancs.AM.Account.Create()", "Create", pcType.getFqn());
+        CodeMethod pcModify = testMethod("com.tcs.bancs.AM.Account.Modify()", "Modify", pcType.getFqn());
 
         // Business Transaction: AMBTTransferFunds
-        CodeMethod btMethod = new CodeMethod();
-        btMethod.setFqn("com.tcs.bancs.AM.AMBTTransferFunds.execute()");
-        btMethod.setSimpleName("AMBTTransferFunds");
-        btMethod.setDeclaringTypeFqn("com.tcs.bancs.AM.AMBTTransferFunds");
+        CodeMethod btMethod = testMethod("com.tcs.bancs.AM.AMBTTransferFunds.execute()", "AMBTTransferFunds", "com.tcs.bancs.AM.AMBTTransferFunds");
 
         List<CodeType> types = List.of(dgSimple, dgPaging, dgCursor, dgPagingCursor, moType, pcType);
         List<CodeMethod> methods = List.of(mGet, mFwd, mBwd, mOpen, mFetch, mClose, mPCOpen, mPCFetch, mPCClose, mPCFwd, mPCBwd, pcGet, pcCreate, pcModify, btMethod);

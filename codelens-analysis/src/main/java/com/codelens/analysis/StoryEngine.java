@@ -3,6 +3,7 @@ package com.codelens.analysis;
 import com.codelens.core.model.CodeMethod;
 import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
+import com.codelens.core.util.FqnUtils;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
 
@@ -587,25 +588,15 @@ public class StoryEngine {
     }
 
     private String extractSimpleName(String fqn) {
-        if (fqn == null) return "";
-        int paren = fqn.indexOf('(');
-        String base = (paren > 0) ? fqn.substring(0, paren) : fqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(dot + 1) : base;
+        return FqnUtils.extractSimpleName(fqn);
     }
 
     private String extractClassFqn(String methodFqn) {
-        if (methodFqn == null) return "";
-        int paren = methodFqn.indexOf('(');
-        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(0, dot) : base;
+        return FqnUtils.extractClassFqn(methodFqn);
     }
 
     private String extractClassSimple(String classFqn) {
-        if (classFqn == null) return "";
-        int dot = classFqn.lastIndexOf('.');
-        return (dot >= 0) ? classFqn.substring(dot + 1) : classFqn;
+        return FqnUtils.extractClassSimple(classFqn);
     }
 
     public ChangeImpactStory analyzeChangeImpact(String methodFqn,

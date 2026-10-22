@@ -3,6 +3,7 @@ package com.codelens.analysis;
 import com.codelens.core.model.CodeMethod;
 import com.codelens.core.model.CodeRelationship;
 import com.codelens.core.model.CodeType;
+import com.codelens.core.util.FqnUtils;
 import org.jgrapht.Graph;
 import org.jgrapht.alg.cycle.TarjanSimpleCycles;
 import org.jgrapht.graph.DefaultDirectedGraph;
@@ -320,16 +321,10 @@ public class ArchitectureGuardrailEngine {
     }
 
     private static String extractClassFqn(String methodFqn) {
-        if (methodFqn == null) return "";
-        int paren = methodFqn.indexOf('(');
-        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(0, dot) : base;
+        return FqnUtils.extractClassFqn(methodFqn);
     }
 
     private static String simpleName(String fqn) {
-        if (fqn == null) return "";
-        int dot = fqn.lastIndexOf('.');
-        return dot >= 0 ? fqn.substring(dot + 1) : fqn;
+        return FqnUtils.extractClassSimple(fqn);
     }
 }

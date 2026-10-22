@@ -425,12 +425,7 @@ public class CodeLensConfig {
         }
 
         if (props.containsKey("archetypes.rulesJson")) {
-            String val = props.getProperty("archetypes.rulesJson");
-            if (val != null && !val.isBlank() && !"[]".equals(val.trim())) {
-                this.archetypeRulesJson = val;
-            } else {
-                this.archetypeRulesJson = DEFAULT_ARCHETYPE_RULES_JSON;
-            }
+            setArchetypeRulesJson(props.getProperty("archetypes.rulesJson"));
         }
 
         if (props.containsKey("ai.provider")) {

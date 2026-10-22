@@ -1258,11 +1258,7 @@ public class CallGraphAnalyzer {
     }
 
     public static String extractClassFqn(String methodFqn) {
-        if (methodFqn == null) return "";
-        int paren = methodFqn.indexOf('(');
-        String base = (paren > 0) ? methodFqn.substring(0, paren) : methodFqn;
-        int dot = base.lastIndexOf('.');
-        return (dot >= 0) ? base.substring(0, dot) : base;
+        return com.codelens.core.util.FqnUtils.extractClassFqn(methodFqn);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
