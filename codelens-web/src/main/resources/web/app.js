@@ -21826,7 +21826,25 @@ function renderStorylineDetail(story) {
   if (heroSteps) heroSteps.textContent = `${(story.steps || []).length} steps`;
   if (heroTitle) heroTitle.textContent = story.title;
   const epDisplay = story.entryPointFqn || story.entryPoint || '';
-  if (heroEntry) heroEntry.innerHTML = `Entry Point: <code>${esc(epDisplay)}</code>`;
+  if (heroEntry) {
+    heroEntry.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; width:100%; gap:12px; flex-wrap:wrap;">
+        <div>Entry Point: <code>${esc(epDisplay)}</code></div>
+        <button class="btn-ghost storyline-walkthrough-btn" id="btn-storyline-walkthrough" style="display:inline-flex; align-items:center; gap:6px; color:#38bdf8; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer;" title="Trace this story step-by-step on the Graph Canvas (Etchpad Walkthrough)">
+          <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          <span>Canvas Walkthrough ⤢</span>
+        </button>
+      </div>
+    `;
+    const wtBtn = heroEntry.querySelector('#btn-storyline-walkthrough');
+    if (wtBtn) {
+      wtBtn.onclick = () => {
+        if (story.steps && story.steps.length > 0) {
+          window.openTraceWalkthrough(story.title, story.steps);
+        }
+      };
+    }
+  }
   if (narrativeText) narrativeText.textContent = story.executiveSummary || 'Execution workflow traced from call graph.';
 
   // Render Steps
@@ -21846,10 +21864,14 @@ function renderStorylineDetail(story) {
           <div class="storyline-step-card">
             <div class="storyline-step-card-top">
               <span class="storyline-role-pill ${roleClass}">${esc(step.roleLabel || step.role)}</span>
-              <span class="storyline-step-signature">${esc(step.classSimpleName)}.${esc(step.simpleName)}</span>
+              <span class="storyline-step-signature prose-node-link" data-fqn="${esc(stepFqn)}" title="Click to focus on Graph Canvas">${esc(step.classSimpleName)}.${esc(step.simpleName)} <span class="pnl-icon">⤢</span></span>
             </div>
             <div class="storyline-step-action">${esc(step.narrativeAction)}</div>
             <div class="storyline-step-footer">
+              <button class="storyline-canvas-trigger" data-fqn="${esc(stepFqn)}" title="Focus and trace this step on the live Graph Canvas">
+                <svg class="svg-icon icon-cyan icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m12 8 4 4-4 4M8 12h8"/></svg>
+                <span>Canvas →</span>
+              </button>
               <button class="storyline-cite-btn" data-file="${esc(step.sourceFile)}" data-line="${step.startLine}" title="Jump to source in Monaco Editor">
                 <svg class="svg-icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 <span>${esc(shortFile)}:${step.startLine}</span>
@@ -22502,7 +22524,14 @@ function renderSimpleMarkdown(text) {
     return esc(str)
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/`([^`]+)`/g, (match, p1) => {
+        const isEntity = /^[A-Z][a-zA-Z0-9_$]*(\.[a-zA-Z0-9_$]+)*(\(.*\))?$/.test(p1) ||
+                         /^[a-z][a-z0-9_]*(\.[a-zA-Z0-9_$]+)+$/.test(p1);
+        if (isEntity) {
+          return `<button type="button" class="prose-node-link" data-fqn="${p1}" title="Focus on Graph Canvas"><code>${p1}</code><span class="pnl-icon">⤢</span></button>`;
+        }
+        return `<code>${p1}</code>`;
+      })
       .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="ask-md-link">$1</a>');
   }
 
@@ -23558,6 +23587,233 @@ window.openSystemTourModal = openSystemTourModal;
 window.closeSystemTourModal = closeSystemTourModal;
 window.switchTourLayer = switchTourLayer;
 window.generateGitPrStory = generateGitPrStory;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ETCHPAD-INSPIRED GROUNDING & TRACE LAYER WORKFLOWS
+   1. Interactive Prose-to-Canvas Grounding (etchpad-explain)
+   2. In-Canvas Semantic Git Diff Overlays
+   3. Floating Trace Layer HUD (etchpad-walkthrough)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Navigate camera and focus on any entity on the live Graph Canvas. */
+window.navigateToGraphNode = async function(fqn) {
+  if (!fqn) return;
+  if (typeof closeCodestoryAskModal === 'function') closeCodestoryAskModal();
+  if (typeof closeWhatIfModal === 'function') closeWhatIfModal();
+  if (typeof closeSystemTourModal === 'function') closeSystemTourModal();
+
+  switchTab('graph');
+
+  // Let DOM / canvas layout settle
+  setTimeout(async () => {
+    if (App.graph) {
+      const found = App.graph.focusNode(fqn, 1.45, 350);
+      if (!found) {
+        // If node is not in current graph slice, load its call graph
+        if (typeof selectMethod === 'function') {
+          await selectMethod(fqn);
+        }
+      }
+    }
+  }, 60);
+};
+
+// Global delegation for all prose-node-link and canvas triggers
+document.addEventListener('click', (e) => {
+  const trigger = e.target.closest('.prose-node-link, .storyline-canvas-trigger, .storyline-step-signature[data-fqn]');
+  if (trigger) {
+    const fqn = trigger.getAttribute('data-fqn');
+    if (fqn) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.navigateToGraphNode(fqn);
+    }
+  }
+});
+
+// Wire In-Canvas Git Diff Toggle Button & Trace Layer HUD Controls
+(function initEtchpadFeatures() {
+  const bindControls = () => {
+    const diffBtn = qs('#btn-toggle-diff');
+    if (diffBtn && !diffBtn._bound) {
+      diffBtn._bound = true;
+      diffBtn.addEventListener('click', async () => {
+        const isNowActive = diffBtn.classList.toggle('active');
+        if (isNowActive) {
+          if (!App.gitDiffData) {
+            try {
+              if (typeof showToast === 'function') showToast('Loading Git semantic diff...', 'info');
+              const data = await api.get('/git/pr-story');
+              if (data && (data.changedMethods || data.changedClasses)) {
+                const modifiedSet = new Set();
+                const addedSet = new Set();
+                const deletedSet = new Set();
+                (data.changedMethods || []).forEach(m => {
+                  if (m.fqn) modifiedSet.add(m.fqn);
+                  if (m.classFqn) modifiedSet.add(m.classFqn);
+                  if (m.simpleName) modifiedSet.add(m.simpleName);
+                });
+                App.gitDiffData = { modifiedSet, addedSet, deletedSet };
+              }
+            } catch (err) {
+              console.warn('Could not load git diff:', err);
+            }
+          }
+          if (App.graph) {
+            App.graph.setDiffMode(true, App.gitDiffData);
+            if (typeof showToast === 'function') showToast('Semantic Git Diff Overlay Active', 'success');
+          }
+        } else {
+          if (App.graph) {
+            App.graph.setDiffMode(false);
+            if (typeof showToast === 'function') showToast('Git Diff Overlay Off', 'info');
+          }
+        }
+      });
+    }
+
+    initTraceLayerHud();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindControls);
+  } else {
+    bindControls();
+  }
+})();
+
+// ── Trace Layer HUD Controller (etchpad-walkthrough on canvas) ───────────────
+let activeTraceWalkthrough = null;
+let tracePlayInterval = null;
+
+function initTraceLayerHud() {
+  const hud = qs('#trace-layer-hud');
+  if (!hud || hud._bound) return;
+  hud._bound = true;
+
+  const prevBtn = qs('#btn-trace-prev');
+  const nextBtn = qs('#btn-trace-next');
+  const playBtn = qs('#btn-trace-play');
+  const fitBtn = qs('#btn-trace-fit');
+  const closeBtn = qs('#btn-trace-close');
+
+  if (prevBtn) prevBtn.addEventListener('click', () => stepTraceWalkthrough(-1));
+  if (nextBtn) nextBtn.addEventListener('click', () => stepTraceWalkthrough(1));
+  if (fitBtn) fitBtn.addEventListener('click', () => {
+    if (activeTraceWalkthrough && App.graph) {
+      const step = activeTraceWalkthrough.steps[activeTraceWalkthrough.currentIndex];
+      if (step) App.graph.focusNode(step.fqn || step.entityFqn || step.methodFqn, 1.45, 300);
+    }
+  });
+  if (closeBtn) closeBtn.addEventListener('click', closeTraceWalkthrough);
+
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      if (tracePlayInterval) {
+        stopTraceAutoplay();
+      } else {
+        startTraceAutoplay();
+      }
+    });
+  }
+}
+
+function startTraceAutoplay() {
+  const playBtn = qs('#btn-trace-play');
+  const playText = qs('#trace-play-text');
+  if (playBtn) playBtn.classList.add('active');
+  if (playText) playText.textContent = 'Pause';
+
+  tracePlayInterval = setInterval(() => {
+    if (!activeTraceWalkthrough) {
+      stopTraceAutoplay();
+      return;
+    }
+    if (activeTraceWalkthrough.currentIndex >= activeTraceWalkthrough.steps.length - 1) {
+      stopTraceAutoplay();
+      return;
+    }
+    stepTraceWalkthrough(1);
+  }, 2600);
+}
+
+function stopTraceAutoplay() {
+  if (tracePlayInterval) {
+    clearInterval(tracePlayInterval);
+    tracePlayInterval = null;
+  }
+  const playBtn = qs('#btn-trace-play');
+  const playText = qs('#trace-play-text');
+  if (playBtn) playBtn.classList.remove('active');
+  if (playText) playText.textContent = 'Play';
+}
+
+window.openTraceWalkthrough = function(title, steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return;
+  activeTraceWalkthrough = {
+    title: title || 'Execution Flow Walkthrough',
+    steps: steps,
+    currentIndex: 0
+  };
+
+  switchTab('graph');
+  const hud = qs('#trace-layer-hud');
+  if (hud) {
+    hud.style.display = 'flex';
+  }
+
+  // If Critical Path dock is open, hide it to give full focus to Trace Layer
+  const cpDock = qs('#critical-path-dock');
+  if (cpDock) cpDock.style.display = 'none';
+
+  renderCurrentTraceStep();
+};
+
+function closeTraceWalkthrough() {
+  stopTraceAutoplay();
+  activeTraceWalkthrough = null;
+  const hud = qs('#trace-layer-hud');
+  if (hud) hud.style.display = 'none';
+  if (App.graph && typeof App.graph.clearCriticalPath === 'function') {
+    App.graph.clearCriticalPath();
+  }
+}
+
+function stepTraceWalkthrough(delta) {
+  if (!activeTraceWalkthrough) return;
+  const nextIdx = activeTraceWalkthrough.currentIndex + delta;
+  if (nextIdx >= 0 && nextIdx < activeTraceWalkthrough.steps.length) {
+    activeTraceWalkthrough.currentIndex = nextIdx;
+    renderCurrentTraceStep();
+  }
+}
+
+function renderCurrentTraceStep() {
+  if (!activeTraceWalkthrough) return;
+  const idx = activeTraceWalkthrough.currentIndex;
+  const total = activeTraceWalkthrough.steps.length;
+  const step = activeTraceWalkthrough.steps[idx];
+  if (!step) return;
+
+  const stepText = qs('#trace-hud-step-text');
+  const roleBadge = qs('#trace-hud-role-badge');
+  const narrative = qs('#trace-hud-narrative');
+  const progressBar = qs('#trace-hud-progress-bar');
+
+  if (stepText) stepText.textContent = `Step ${idx + 1} of ${total}`;
+  if (roleBadge) roleBadge.textContent = step.role || step.category || 'Step';
+  if (narrative) narrative.textContent = step.narrativeAction || step.action || step.title || step.fqn || 'Tracing flow step...';
+  if (progressBar) progressBar.style.width = `${Math.round(((idx + 1) / total) * 100)}%`;
+
+  // Focus node on canvas with pulse
+  const fqn = step.fqn || step.entityFqn || step.methodFqn;
+  if (fqn && App.graph) {
+    App.graph.focusNode(fqn, 1.45, 350);
+  }
+}
+
+window.closeTraceWalkthrough = closeTraceWalkthrough;
+window.stepTraceWalkthrough = stepTraceWalkthrough;
 
 
 

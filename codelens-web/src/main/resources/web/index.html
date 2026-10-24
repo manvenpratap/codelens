@@ -964,6 +964,38 @@
         </div>
       </div>
 
+      <!-- Etchpad-Style Trace Layer HUD (Walkthrough & Execution Story Overlay) -->
+      <div id="trace-layer-hud" class="trace-layer-hud" style="display:none;" aria-label="Trace Layer HUD">
+        <div class="trace-hud-header">
+          <div class="trace-hud-pill-group">
+            <span class="trace-hud-step-pill" id="trace-hud-step-pill"><span class="trace-hud-pulse-dot"></span> <span id="trace-hud-step-text">Step 1 of 5</span></span>
+            <span class="trace-hud-role-badge" id="trace-hud-role-badge">Controller ➔ Service</span>
+          </div>
+          <div class="trace-hud-actions">
+            <button id="btn-trace-play" class="trace-hud-btn" title="Auto-play walkthrough">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span id="trace-play-text">Play</span>
+            </button>
+            <button id="btn-trace-fit" class="trace-hud-btn" title="Center camera on current step">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><polyline points="21 15 21 21 15 21"/><polyline points="3 9 3 3 9 3"/></svg>
+            </button>
+            <button id="btn-trace-close" class="trace-hud-btn icon-only" title="Close Trace Layer">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="trace-hud-narrative" id="trace-hud-narrative">
+          Tracing execution sequence...
+        </div>
+        <div class="trace-hud-controls">
+          <button id="btn-trace-prev" class="trace-nav-btn" title="Previous step">‹ Prev</button>
+          <div class="trace-hud-progress-bar-wrap">
+            <div class="trace-hud-progress-bar" id="trace-hud-progress-bar" style="width: 20%;"></div>
+          </div>
+          <button id="btn-trace-next" class="trace-nav-btn" title="Next step">Next ›</button>
+        </div>
+      </div>
+
       <!-- Graphify Bottom Floating Controls Toolbar (Feature Toggles, Archetypes, Camera/Zoom) -->
       <div id="graph-canvas-toolbar" class="graph-hud-bar graph-bottom-bar" aria-label="In-Canvas Display Options">
         <!-- Feature Toggles -->
@@ -979,6 +1011,9 @@
           </button>
           <button id="btn-heat" class="hud-btn" title="Toggle Commit Churn Heat Overlay">
             <span class="hud-btn-icon"><svg class="svg-icon icon-red icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> <span class="hud-btn-text">Heat</span>
+          </button>
+          <button id="btn-toggle-diff" class="hud-btn" title="Toggle Semantic Git Diff Overlay (Etchpad Mode)">
+            <span class="hud-btn-icon"><svg class="svg-icon icon-emerald icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg></span> <span class="hud-btn-text">Git Diff</span>
           </button>
         </div>
 

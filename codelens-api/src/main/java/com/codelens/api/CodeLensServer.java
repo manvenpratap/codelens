@@ -4719,9 +4719,10 @@ public class CodeLensServer {
             if (lowerHost.equals("localhost") || lowerHost.equals("127.0.0.1") || lowerHost.equals("::1")) {
                 return true;
             }
-            java.net.InetAddress addr = java.net.InetAddress.getByName(host);
-            if (addr.isLoopbackAddress()) return true;
-            if (addr.isLinkLocalAddress() || addr.isAnyLocalAddress()) return false;
+            // Block cloud metadata services and link-local addresses
+            if (lowerHost.startsWith("169.254.") || lowerHost.equals("metadata.google.internal")) {
+                return false;
+            }
             return true;
         } catch (Exception e) {
             return false;

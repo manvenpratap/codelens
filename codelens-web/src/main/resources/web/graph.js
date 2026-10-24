@@ -502,6 +502,11 @@ class ForceGraph {
     this._heatData  = {};
     this._heatMax   = 1;
 
+    // Etchpad-inspired features: Semantic Git Diff & In-Canvas Semantic Zoom
+    this._diffMode  = false;
+    this._diffData  = null;
+    this._semanticZoomEnabled = true;
+
     // Particle animations
     this._particles = [];
     this._lastParticleSpawn = 0;
@@ -1599,9 +1604,10 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
 
   focusNode(nodeId, targetScale = 1.35, duration = 300) {
     const node = this._findNodeByFqn(nodeId);
-    if (!node) return;
+    if (!node) return null;
 
     this._selectedNode = node;
+    node._pulseUntil = performance.now() + 2200; // Trigger animated beacon pulse wave
     const dpr = window.devicePixelRatio || 1;
     const W = this._canvas.width / dpr;
     const H = this._canvas.height / dpr;
@@ -1645,6 +1651,49 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       this._markDirty();
       this.requestRender();
     }
+    return node;
+  }
+
+  setDiffMode(enabled, diffData = null) {
+    this._diffMode = !!enabled;
+    if (diffData) {
+      this._diffData = {
+        modifiedSet: new Set(diffData.modified || diffData.modifiedSet || []),
+        addedSet:    new Set(diffData.added    || diffData.addedSet    || []),
+        deletedSet:  new Set(diffData.deleted  || diffData.deletedSet  || [])
+      };
+    } else if (!enabled) {
+      this._diffData = null;
+    }
+    this._markDirty();
+    this.requestRender();
+  }
+
+  setSemanticZoom(enabled) {
+    this._semanticZoomEnabled = !!enabled;
+    this._markDirty();
+    this.requestRender();
+  }
+
+  _getNodeDiffStatus(node) {
+    if (!this._diffMode || !this._diffData || !node) return null;
+    const id = node.id || '';
+    const fqn = node.fqn || id;
+    const simple = node.label || id.split('.').pop() || '';
+
+    const check = (set) => {
+      if (!set || set.size === 0) return false;
+      if (set.has(id) || set.has(fqn) || set.has(simple)) return true;
+      const base = id.includes('(') ? id.substring(0, id.indexOf('(')) : id;
+      const dotIdx = base.lastIndexOf('.');
+      if (dotIdx > 0 && set.has(base.substring(0, dotIdx))) return true;
+      return false;
+    };
+
+    if (check(this._diffData.addedSet))    return 'ADDED';
+    if (check(this._diffData.modifiedSet)) return 'MODIFIED';
+    if (check(this._diffData.deletedSet))  return 'DELETED';
+    return null;
   }
 
   setCriticalPath(criticalPath) {
@@ -2733,21 +2782,27 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
         }
       }
 
-      // Focus opacity logic (enhanced Graphify contrast)
+      // Focus opacity logic (enhanced Graphify contrast & Etchpad-style diff/wire lighting)
       let opacity = 0.65;
+      const srcDiff = this._diffMode ? this._getNodeDiffStatus(src) : null;
+      const tgtDiff = this._diffMode ? this._getNodeDiffStatus(tgt) : null;
+      const isDiffEdge = this._diffMode && (srcDiff || tgtDiff);
+
       if (this._criticalPath) {
         opacity = isCriticalEdge ? 1.0 : 0.08;
+      } else if (this._diffMode) {
+        opacity = isDiffEdge ? 1.0 : 0.05;
       } else if (activeNode) {
         const isIncident = (src.id === activeNode.id || tgt.id === activeNode.id);
         opacity = isIncident ? 1.0 : 0.06;
       }
 
       const edgeParticles = particlesByEdge.get(i) || null;
-      this._drawSingleEdge(ctx, src, tgt, e, opacity, edgeParticles, cpEdge);
+      this._drawSingleEdge(ctx, src, tgt, e, opacity, edgeParticles, cpEdge, isDiffEdge, srcDiff, tgtDiff);
     }
   }
 
-  _drawSingleEdge(ctx, src, tgt, edge, opacity, particles, cpEdge = null) {
+  _drawSingleEdge(ctx, src, tgt, edge, opacity, particles, cpEdge = null, isDiffEdge = false, srcDiff = null, tgtDiff = null) {
     const dx = tgt.x - src.x;
     const dy = tgt.y - src.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2767,20 +2822,34 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const my = (sy + ey) / 2 + ux * 22;
 
     const isCritical = !!cpEdge;
-    const isSameComm = src.community !== undefined && src.community === tgt.community;
-    const baseColor = isCritical
-      ? '#f59e0b'
-      : (isSameComm && src.communityColor
-          ? hexToRgba(src.communityColor, 0.45)
-          : (GC.edgeKind[edge.kind] || GC.edgeKind.default));
+    const activeNode = this._hoveredNode || this._selectedNode;
+    const isCaller = activeNode && (tgt.id === activeNode.id);
+    const isCallee = activeNode && (src.id === activeNode.id);
+    const isWireLit = isCaller || isCallee;
 
-    // Critical Path edge halo
-    if (isCritical) {
+    const isSameComm = src.community !== undefined && src.community === tgt.community;
+
+    let baseColor = isCritical
+      ? '#f59e0b'
+      : (isDiffEdge
+          ? ((srcDiff === 'ADDED' || tgtDiff === 'ADDED') ? '#10b981' : ((srcDiff === 'MODIFIED' || tgtDiff === 'MODIFIED') ? '#f59e0b' : '#ef4444'))
+          : (isWireLit
+              ? (isCaller ? '#fbbf24' : '#38bdf8')
+              : (isSameComm && src.communityColor
+                  ? hexToRgba(src.communityColor, 0.45)
+                  : (GC.edgeKind[edge.kind] || GC.edgeKind.default))));
+
+    // Critical Path, Lit Wire, or Diff halo
+    if (isCritical || isWireLit || isDiffEdge) {
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.quadraticCurveTo(mx, my, ex, ey);
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.45)';
-      ctx.lineWidth = 6.0;
+      ctx.strokeStyle = isCritical
+        ? 'rgba(245, 158, 11, 0.45)'
+        : (isDiffEdge
+            ? hexToRgba(baseColor, 0.4)
+            : (isCaller ? 'rgba(251, 191, 36, 0.45)' : 'rgba(56, 189, 248, 0.45)'));
+      ctx.lineWidth = isCritical ? 6.0 : (isWireLit ? 5.2 : 4.2);
       ctx.stroke();
     }
 
@@ -2788,14 +2857,14 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     ctx.moveTo(sx, sy);
     ctx.quadraticCurveTo(mx, my, ex, ey);
     ctx.strokeStyle = hexToRgba(baseColor, opacity);
-    ctx.lineWidth = isCritical ? 3.4 : (opacity > 0.8 ? 2.2 : 1.4);
+    ctx.lineWidth = isCritical ? 3.4 : (isWireLit ? 2.8 : (opacity > 0.8 ? 2.2 : 1.4));
     ctx.stroke();
 
     // Arrowhead
     const tx = 2 * (ex - mx);
     const ty = 2 * (ey - my);
     const ta = Math.atan2(ty, tx);
-    const as = isCritical ? 10.5 : 8.5;
+    const as = isCritical ? 10.5 : (isWireLit ? 9.5 : 8.5);
 
     ctx.beginPath();
     ctx.moveTo(ex, ey);
@@ -2822,26 +2891,36 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       ctx.fillText(String(cpEdge.step), mx, my);
     }
 
-    // Flowing Energy Particles
-    if ((particles && particles.length > 0 && opacity > 0.3) || (isCritical && opacity > 0.5)) {
-      const activeParticles = (particles && particles.length > 0) ? particles : [
-        { t: ((Date.now() % 2000) / 2000) },
-        { t: (((Date.now() + 1000) % 2000) / 2000) }
-      ];
+    // Flowing Energy Particles (Etchpad-style animated circuit pulses)
+    if (isWireLit || isDiffEdge || (particles && particles.length > 0 && opacity > 0.3) || (isCritical && opacity > 0.5)) {
+      const now = Date.now();
+      const speed = isWireLit ? 1200 : 2000;
+      const activeParticles = (isWireLit || isDiffEdge || isCritical) ? [
+        { t: ((now % speed) / speed) },
+        { t: (((now + speed / 2) % speed) / speed) }
+      ] : ((particles && particles.length > 0) ? particles : [
+        { t: ((now % 2000) / 2000) },
+        { t: (((now + 1000) % 2000) / 2000) }
+      ]);
+
       for (const p of activeParticles) {
         const mt = 1 - p.t;
         const px = mt * mt * sx + 2 * mt * p.t * mx + p.t * p.t * ex;
         const py = mt * mt * sy + 2 * mt * p.t * my + p.t * p.t * ey;
 
         ctx.beginPath();
-        ctx.arc(px, py, isCritical ? 5.5 : 4, 0, Math.PI * 2);
-        ctx.fillStyle = hexToRgba(baseColor, 0.5);
+        ctx.arc(px, py, (isCritical || isWireLit) ? 5.0 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(baseColor, 0.6);
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(px, py, isCritical ? 2.5 : 1.8, 0, Math.PI * 2);
+        ctx.arc(px, py, (isCritical || isWireLit) ? 2.4 : 1.8, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
+      }
+
+      if (isWireLit || isDiffEdge) {
+        this.requestFrame();
       }
     }
   }
@@ -2911,12 +2990,17 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
     const isCurrentStep = cpNode && (this._criticalStepIndex === cpNode.step);
 
     // Pick base and glow color
-    let mainColor = isCriticalNode ? (cpNode && cpNode.archetypeColor ? cpNode.archetypeColor : '#f59e0b') : node.communityColor;
+    const diffStatus = this._getNodeDiffStatus(node);
+    let mainColor = isCriticalNode
+      ? (cpNode && cpNode.archetypeColor ? cpNode.archetypeColor : '#f59e0b')
+      : (diffStatus
+          ? (diffStatus === 'ADDED' ? '#10b981' : (diffStatus === 'MODIFIED' ? '#f59e0b' : '#ef4444'))
+          : node.communityColor);
     let heatRatio = 0;
 
     const hasSingleRoot = this._hasSingleRoot;
 
-    if (this._heatMode && !isCriticalNode) {
+    if (this._heatMode && !isCriticalNode && !diffStatus) {
       const raw = (this._heatData[node.id] !== undefined)
         ? this._heatData[node.id]
         : ((node.label && this._heatData[node.label] !== undefined)
@@ -2936,12 +3020,84 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       } else {
         mainColor = lerpColor('#f59e0b', '#ef4444', (heatRatio - 0.35) / 0.65);
       }
-    } else if (node.role === 'root' && hasSingleRoot && !isCriticalNode) {
+    } else if (node.role === 'root' && hasSingleRoot && !isCriticalNode && !diffStatus) {
       mainColor = GC.roles.root;
     }
 
     ctx.save();
     ctx.globalAlpha = opacity;
+
+    // Pulse beacon when node was focused via prose link or search
+    if (node._pulseUntil && node._pulseUntil > performance.now()) {
+      const remaining = Math.max(0, (node._pulseUntil - performance.now()) / 2200);
+      const wave = (1 - remaining);
+      const pr1 = r + wave * 44;
+      const pr2 = r + ((wave + 0.5) % 1) * 44;
+
+      ctx.beginPath();
+      ctx.arc(x, y, pr1, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${remaining * 0.85})`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, pr2, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(168, 85, 247, ${remaining * 0.55})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      this.requestFrame();
+    }
+
+    // Etchpad-style Semantic Zoom (In-Canvas Blueprint Card at scale >= 1.6)
+    const isSemanticZoom = this._semanticZoomEnabled && (this._sc >= 1.6) && (isHovered || isSelected || this._sc >= 1.95);
+    if (isSemanticZoom) {
+      const labelText = node.label || node.id.split('.').pop() || '';
+      const cardW = Math.max(165, Math.round(labelText.length * 7.5) + 40);
+      const cardH = 72;
+      const cardX = x - cardW / 2;
+      const cardY = y - cardH / 2;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(cardX, cardY, cardW, cardH, 8);
+      } else {
+        ctx.rect(cardX, cardY, cardW, cardH);
+      }
+      ctx.fillStyle = 'rgba(10, 15, 29, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = isSelected ? '#ffffff' : hexToRgba(mainColor, 0.9);
+      ctx.lineWidth = isSelected ? 2.4 : 1.6;
+      ctx.stroke();
+
+      // Card Header
+      const badgeText = diffStatus ? `${diffStatus}` : (node.type || 'NODE');
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      ctx.fillStyle = diffStatus ? mainColor : (cpNode && cpNode.archetypeColor ? cpNode.archetypeColor : mainColor);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`[${badgeText}]`, cardX + 10, cardY + 9);
+
+      // Title
+      ctx.font = 'bold 12px Space Grotesk, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(labelText, cardX + 10, cardY + 23);
+
+      // Package / Subtitle
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = '#94a3b8';
+      let pkgText = node.package || (node.id.includes('.') ? node.id.substring(0, node.id.lastIndexOf('.')) : '');
+      if (pkgText.length > 28) pkgText = '…' + pkgText.slice(-26);
+      ctx.fillText(pkgText, cardX + 10, cardY + 41);
+
+      // Metrics strip
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = hexToRgba(mainColor, 0.9);
+      ctx.fillText(`DEG: ${node.degree || 0}  ROLE: ${node.role || 'node'}` + (isCriticalNode ? ` [STEP ${cpNode ? cpNode.step : ''}]` : ''), cardX + 10, cardY + 55);
+
+      ctx.restore();
+      return;
+    }
 
     // Fast LoD path when zoomed out (< 0.35 scale) for non-focused nodes
     if (this._sc < 0.35 && !isHovered && !isSelected && !isCriticalNode) {
@@ -3037,6 +3193,25 @@ window.GRAPHIFY_COLORS = GRAPHIFY_COLORS;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(cpNode.step), bx, by);
+    }
+
+    // 4c. Git Diff badge on node (top-left corner)
+    if (diffStatus) {
+      const bx = x - r * 0.72;
+      const by = y - r * 0.72;
+      ctx.beginPath();
+      ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = diffStatus === 'ADDED' ? '#10b981' : (diffStatus === 'MODIFIED' ? '#f59e0b' : '#ef4444');
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(diffStatus === 'ADDED' ? '+' : (diffStatus === 'MODIFIED' ? '~' : '-'), bx, by);
     }
 
     // 5. High-Legibility Colorful Label Pill Below Node (guarded by _showLabels & shouldDrawLabel)

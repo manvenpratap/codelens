@@ -612,6 +612,11 @@ CodeLens organizes primary codebase intelligence into 5 dedicated workspace scre
 
 #### 1. Graph Canvas (Graphify Knowledge Graph & Verlet Physics)
 - **Verlet Physics Simulation**: Real-time multi-body force simulation calculating Coulomb repulsion, Hooke spring tension, package clustering, and anti-collision.
+- **Wire Lighting & Directional Energy Photons**: Selecting or hovering over any node illuminates upstream callers in electric amber (`#fbbf24`) and downstream callees in neon cyan (`#38bdf8`), streaming animated photon pulses along active wires.
+- **In-Canvas Semantic Zooming**: Zooming closely (`scale >= 1.6x`) dynamically transforms circle nodes into rich architectural blueprint cards detailing archetype badges, package paths, and member metrics.
+- **In-Canvas Semantic Git Diff Mode (`Git Diff`)**: Real-time Git PR and working tree diff overlay rendering additions in emerald (`+`), modifications in amber (`~`), and deletions in crimson (`-`), while dimming unchanged code.
+- **Trace Layer Walkthrough HUD**: Floating presentation and stepper HUD for CodeStory transactions and execution paths with step counter, roles, narrative synthesis, progress bar, and play/pause autoplay.
+- **Interactive Prose-to-Canvas Grounding**: Clickable entity badges throughout CodeStory, Onboarding Tour, and AI responses smoothly glide the camera to the target node with animated beacon radar pulses.
 - **Convex Hull Clustering (`◈ Clusters`)**: Visualizes architectural modules as colored translucent hulls.
 - **Behavioral Hotspots Heat Mode (`♨ Heat` / <kbd>H</kbd>)**: Overlays thermal shaders on nodes based on composite risk $CC \times \log_2(1 + \text{churn}) \times \log_{10}(LOC)$.
 - **BFS Depth Controls (1–15 hops / Max)**: Explore transitive callers and callee dependencies.
